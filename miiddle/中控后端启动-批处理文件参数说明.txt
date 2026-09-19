@@ -1,0 +1,10 @@
+根据部署实际环境，以文本形式打开“ZK-SERVER-2.0.0.bat”进行相关属性配置，配置说明如下：
+server.port	端口号
+DB_IP		数据库IP
+DB_PORT		数据库端口号
+DB_USER		数据库用户名
+DB_PWD		数据库密码
+DB_NAME		数据库名称
+PWD_EXP_TIME	密码过期时间（天）
+GISSERVER_IP	SERVERIP
+GISSERVER_PORT	SERVER端口

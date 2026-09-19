@@ -1,0 +1,1 @@
+alter table stargis_catalogs_logs add COLUMN descr text COMMENT '描述';

@@ -1,0 +1,2 @@
+-- add by lf_20240805  服务类型增加要素类
+INSERT INTO stargis_servicetype (id, name, zhurl, zhid, zhname, description, enableflag, deleteflag, ordernum, restype, modification_time, creation_time, metaflag, urlrules, thumbnail, code, featurcclassid, parentid, restype2, componentname, icon) VALUES ('402894de912183ab0191219a69d90007', '要素类', NULL, NULL, 'featurcclass', NULL, NULL, NULL, NULL, '402894067fd50d9a017fd5250e110005', NULL, '2024-08-05 16:14:13.465', NULL, NULL, NULL, 'featurcclass', NULL, '', NULL, NULL, NULL);

@@ -1,0 +1,2 @@
+-- add by lf_20240627 增加postgresql的数据库类型
+INSERT INTO estar_dictionary_system (id, dickey, dicname, dicvalue, dicdesc, status, parentid, creation_time, modification_time, codekey, dicversion, isdelete, sortid, dictcode, mylevel, state) VALUES ('efc307c13cb84d0ebb0a5ccbfd4a0af9', '18', 'PostgreSQL', 'PostgreSQL', 18, 'app', '4028eea281ad3c9d0181ad68e0600000', '2024-06-27 10:05:39.874', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);

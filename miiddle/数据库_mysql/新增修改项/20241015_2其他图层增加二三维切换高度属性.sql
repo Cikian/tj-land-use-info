@@ -1,0 +1,1 @@
+alter table stargis_layer_attr add COLUMN swichHeight varchar(255) COMMENT '二三维切换高度';

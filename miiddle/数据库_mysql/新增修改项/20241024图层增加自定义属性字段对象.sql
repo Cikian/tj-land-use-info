@@ -1,0 +1,1 @@
+alter table stargis_layer add COLUMN customProperty longtext COMMENT '自定义属性';

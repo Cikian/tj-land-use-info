@@ -1,0 +1,2 @@
+-- add by lf_20250604 二维数据的服务类型增加TMS
+INSERT INTO stargis_servicetype (ID, NAME, ZHURL, ZHID, ZHNAME, DESCRIPTION, ENABLEFLAG, DELETEFLAG, ORDERNUM, RESTYPE, modification_Time, creation_Time, METAFLAG, URLRULES, THUMBNAIL, CODE, FeaturcClassID, parentid, restype2, ComponentName, Icon) VALUES ('8e1e0c6d0385435aaf007aea88b47895', 'TMS(IIS发布)', '', NULL, 'TMS', '二维数据', NULL, NULL, NULL, '402894067fd50d9a017fd523c0b80003', NULL, '2025-06-04 14:23:07', NULL, '', '', 'TMS', NULL, '', '4028728189da36910189da390c080002', '', '');
