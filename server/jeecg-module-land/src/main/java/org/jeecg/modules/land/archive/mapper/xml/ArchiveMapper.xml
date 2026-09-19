@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.mapper.ArchiveMapper">
+
+    <!--
+      档案主表 Mapper
+      注意：本文件必须放在 src/main/java 下（jeecg 约定），
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml
+    -->
+
+    <!-- ================================================================
+         公用 WHERE 片段：档案维护列表 / 档案查询 / 统计 / 导出 共用同一套条件，
+         保证「列表里看到什么，统计与导出就是什么」。
+         所有引用方都必须把档案主表别名为 a。
+         ================================================================ -->
+    <sql id="queryWhere">
+        a.`del_flag` = 0
+        <if test="q.archiveNo != null and q.archiveNo != ''">
+            AND a.`archive_no` LIKE CONCAT('%', #{q.archiveNo}, '%')
+        </if>
+        <if test="q.archiveName != null and q.archiveName != ''">
+            AND a.`archive_name` LIKE CONCAT('%', #{q.archiveName}, '%')
+        </if>
+        <if test="q.ptxmmc != null and q.ptxmmc != ''">
+            AND a.`ptxmmc` LIKE CONCAT('%', #{q.ptxmmc}, '%')
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND a.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.dkmc != null and q.dkmc != ''">
+            AND a.`dkmc` LIKE CONCAT('%', #{q.dkmc}, '%')
+        </if>
+        <if test="q.xzqh != null and q.xzqh != ''">
+            AND a.`xzqh` = #{q.xzqh}
+        </if>
+        <if test="q.ptsslb != null and q.ptsslb != ''">
+            AND a.`ptsslb` = #{q.ptsslb}
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND a.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.landId != null and q.landId != ''">
+            AND a.`land_id` = #{q.landId}
+        </if>
+        <if test="q.archiveYear != null">
+            AND a.`archive_year` = #{q.archiveYear}
+        </if>
+        <if test="q.responsibleDept != null and q.responsibleDept != ''">
+            AND a.`responsible_dept` = #{q.responsibleDept}
+        </if>
+        <if test="q.responsibleUser != null and q.responsibleUser != ''">
+            AND a.`responsible_user` LIKE CONCAT('%', #{q.responsibleUser}, '%')
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND a.`status` = #{q.status}
+        </if>
+        <if test="q.secretLevel != null and q.secretLevel != ''">
+            AND a.`secret_level` = #{q.secretLevel}
+        </if>
+        <if test="q.archiveType != null and q.archiveType != ''">
+            AND a.`archive_type` = #{q.archiveType}
+        </if>
+        <if test="q.sourceType != null and q.sourceType != ''">
+            AND a.`source_type` = #{q.sourceType}
+        </if>
+        <if test="q.beginDate != null and q.beginDate != ''">
+            AND a.`archive_date` &gt;= #{q.beginDate}
+        </if>
+        <if test="q.endDate != null and q.endDate != ''">
+            AND a.`archive_date` &lt;= #{q.endDate}
+        </if>
+        <if test="q.beginCreateTime != null and q.beginCreateTime != ''">
+            AND a.`create_time` &gt;= CONCAT(#{q.beginCreateTime}, ' 00:00:00')
+        </if>
+        <if test="q.endCreateTime != null and q.endCreateTime != ''">
+            AND a.`create_time` &lt;= CONCAT(#{q.endCreateTime}, ' 23:59:59')
+        </if>
+        <!-- 按档案类别检索：类别挂在文件上，且支持传父类别（用 path 前缀做包含式匹配） -->
+        <if test="(q.categoryId != null and q.categoryId != '') or (q.categoryPath != null and q.categoryPath != '')">
+            AND EXISTS (
+                SELECT 1 FROM `t_archive_file` cf
+                WHERE cf.`archive_id` = a.`id` AND cf.`del_flag` = 0
+                <if test="q.categoryPath != null and q.categoryPath != ''">
+                    AND (cf.`category_path` = #{q.categoryPath}
+                         OR cf.`category_path` LIKE CONCAT(#{q.categoryPath}, '/%'))
+                </if>
+                <if test="q.categoryId != null and q.categoryId != ''">
+                    AND cf.`category_id` = #{q.categoryId}
+                </if>
+            )
+        </if>
+        <!-- 按文件名检索 -->
+        <if test="q.fileName != null and q.fileName != ''">
+            AND EXISTS (
+                SELECT 1 FROM `t_archive_file` ff
+                WHERE ff.`archive_id` = a.`id` AND ff.`del_flag` = 0
+                  AND ff.`file_name` LIKE CONCAT('%', #{q.fileName}, '%')
+            )
+        </if>
+    </sql>
+
+    <!-- 列表里的「档案类别」列：由卷内文件聚合而来 -->
+    <sql id="categoryAggColumns">
+        (SELECT GROUP_CONCAT(DISTINCT f.`category_name` ORDER BY f.`category_name` SEPARATOR '、')
+           FROM `t_archive_file` f WHERE f.`archive_id` = a.`id` AND f.`del_flag` = 0) AS categoryNames,
+        (SELECT GROUP_CONCAT(DISTINCT f.`category_id`)
+           FROM `t_archive_file` f WHERE f.`archive_id` = a.`id` AND f.`del_flag` = 0) AS categoryIds
+    </sql>
+
+    <!-- ================= 分页列表 ================= -->
+    <select id="selectArchivePage" resultType="org.jeecg.modules.land.archive.entity.Archive">
+        SELECT a.*,
+               <include refid="categoryAggColumns"/>
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        ORDER BY a.`create_time` DESC, a.`archive_no` DESC
+    </select>
+
+    <!-- ================= 详情 ================= -->
+    <select id="selectDetailById" resultType="org.jeecg.modules.land.archive.entity.Archive">
+        SELECT a.*,
+               <include refid="categoryAggColumns"/>
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0 AND a.`id` = #{id}
+        LIMIT 1
+    </select>
+
+    <!-- ================= 导出 ================= -->
+    <select id="selectForExport" resultType="org.jeecg.modules.land.archive.entity.Archive">
+        SELECT a.*,
+               <include refid="categoryAggColumns"/>
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        ORDER BY a.`crzdbh`, a.`ptxmmc`, a.`archive_no`
+    </select>
+
+    <!-- ================= 统计 ================= -->
+    <select id="selectStatOverview" resultType="java.util.Map">
+        SELECT
+            COUNT(1)                                                        AS total,
+            SUM(CASE WHEN a.`status` = '已归档' THEN 1 ELSE 0 END)           AS archivedCount,
+            SUM(CASE WHEN a.`status` &lt;&gt; '已归档' THEN 1 ELSE 0 END)       AS unarchivedCount,
+            SUM(a.`file_count`)                                             AS fileTotal,
+            SUM(a.`total_size`)                                             AS totalSize,
+            COUNT(DISTINCT COALESCE(a.`facility_id`, a.`ptxmmc`, a.`id`))    AS projectCount
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <select id="selectStatFileOverview" resultType="java.util.Map">
+        SELECT
+            COUNT(1)                        AS fileTotal,
+            COALESCE(SUM(f.`file_size`), 0) AS totalSize
+        FROM `t_archive_file` f
+        JOIN `t_archive` a ON a.`id` = f.`archive_id`
+        WHERE f.`del_flag` = 0 AND <include refid="queryWhere"/>
+    </select>
+
+    <select id="selectStatByStatus" resultType="org.jeecg.modules.land.archive.vo.ArchiveStatVO$NameCount">
+        SELECT a.`status` AS `name`, COUNT(1) AS `count`
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        GROUP BY a.`status`
+        ORDER BY `count` DESC
+    </select>
+
+    <select id="selectStatByYear" resultType="org.jeecg.modules.land.archive.vo.ArchiveStatVO$NameCount">
+        SELECT CAST(a.`archive_year` AS CHAR) AS `name`, COUNT(1) AS `count`
+        FROM `t_archive` a
+        WHERE a.`archive_year` IS NOT NULL AND <include refid="queryWhere"/>
+        GROUP BY a.`archive_year`
+        ORDER BY a.`archive_year`
+    </select>
+
+    <select id="selectStatBySecretLevel" resultType="org.jeecg.modules.land.archive.vo.ArchiveStatVO$NameCount">
+        SELECT COALESCE(a.`secret_level`, '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        GROUP BY a.`secret_level`
+        ORDER BY `count` DESC
+    </select>
+
+    <select id="selectStatByXzqh" resultType="org.jeecg.modules.land.archive.vo.ArchiveStatVO$NameCount">
+        SELECT COALESCE(NULLIF(a.`xzqh`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        GROUP BY a.`xzqh`
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 卷内文件按类别聚合（顶级类别的归并由 Java 侧用类别 path 完成） -->
+    <select id="selectStatFileByCategory" resultType="java.util.Map">
+        SELECT
+            f.`category_id`   AS categoryId,
+            MAX(f.`category_path`) AS categoryPath,
+            MAX(f.`category_name`) AS categoryName,
+            COUNT(1)          AS cnt
+        FROM `t_archive_file` f
+        JOIN `t_archive` a ON a.`id` = f.`archive_id`
+        WHERE f.`del_flag` = 0 AND <include refid="queryWhere"/>
+        GROUP BY f.`category_id`
+    </select>
+
+    <select id="selectStatByProject" resultType="org.jeecg.modules.land.archive.vo.ArchiveStatVO$ProjectStat">
+        SELECT
+            a.`facility_id`  AS facilityId,
+            MAX(a.`ptxmmc`)  AS ptxmmc,
+            MAX(a.`crzdbh`)  AS crzdbh,
+            MAX(a.`dkmc`)    AS dkmc,
+            MAX(a.`xzqh`)    AS xzqh,
+            COUNT(1)         AS total,
+            SUM(CASE WHEN a.`status` = '已归档' THEN 1 ELSE 0 END)      AS archivedCount,
+            SUM(CASE WHEN a.`status` &lt;&gt; '已归档' THEN 1 ELSE 0 END)  AS unarchivedCount,
+            SUM(a.`file_count`) AS fileCount
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+        GROUP BY a.`facility_id`
+        ORDER BY total DESC, ptxmmc
+        LIMIT #{limit}
+    </select>
+
+    <!-- ================= 档案号 ================= -->
+    <!--
+      取某年度已用掉的最大流水号。
+      说明：
+        ① 不按 del_flag 过滤——逻辑删除的档案号仍占着 (archive_no, del_flag) 唯一键的一半，
+           若把已删记录的号再分配一次，虽然不违反唯一键，但会让台账出现重号，故一律跳号处理；
+        ② 用 CHAR_LENGTH 精确限定「前缀 + 4 位流水」的格式，避免手工改写过
+           「DA-2026-0001-补充」这类号被 CAST 成 1 而污染最大值
+           （不用 REGEXP：jeecg 的 JSqlParser 拦截器对非常规语法的兼容性更差）。
+    -->
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(a.`archive_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_archive` a
+        WHERE a.`archive_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(a.`archive_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByArchiveNo" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND a.`archive_no` = #{archiveNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND a.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+</mapper>

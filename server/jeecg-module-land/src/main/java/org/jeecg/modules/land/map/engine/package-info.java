@@ -1,0 +1,10 @@
+/**
+ * ★ 三维引擎适配层（RenderControl Shim）。旧系统 84/139 个 JS、442 处调用点绑死在 VRStar 插件上，本层是替换枢纽。
+ *
+ * <p>清单 5.2.0.5
+ *
+ * <p>所属工程：jeecg-module-land（JEECG-Boot 3.4.3 / JDK 1.8）
+ * <p>参考文档：docs/升级改造工作内容清单.md
+ */
+package org.jeecg.modules.land.map.engine;
+

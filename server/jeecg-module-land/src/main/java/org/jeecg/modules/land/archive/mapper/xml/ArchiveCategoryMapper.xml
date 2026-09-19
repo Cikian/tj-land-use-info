@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.mapper.ArchiveCategoryMapper">
+
+    <!--
+      档案类别树 Mapper
+      注意：本文件必须放在 src/main/java 下（jeecg 约定），
+            根 pom 的 <resources> 已把 src/main/java 里的 *.xml 打进 classpath，
+            application-dev.yml 的 mapper-locations 为
+            classpath*:org/jeecg/modules/**/xml/*Mapper.xml
+    -->
+
+    <!-- 批量重算子树 path / level（移动类别） -->
+    <update id="refreshSubtreePath">
+        UPDATE t_archive_category
+        SET path = CONCAT(#{newPrefix}, SUBSTRING(path, CHAR_LENGTH(#{oldPrefix}) + 1)),
+            level = level + #{levelDelta},
+            update_time = NOW()
+        WHERE del_flag = 0
+          AND path LIKE CONCAT(#{oldPrefix}, '/%')
+    </update>
+
+    <!-- 按 path 前缀批量启停（含自身） -->
+    <update id="updateStatusByPathPrefix">
+        UPDATE t_archive_category
+        SET status = #{status},
+            update_by = #{updateBy},
+            update_time = NOW()
+        WHERE del_flag = 0
+          AND (path = #{pathPrefix} OR path LIKE CONCAT(#{pathPrefix}, '/%'))
+    </update>
+
+    <!--
+      探测表是否存在（档案文件表尚未落地时用于跳过前置校验）
+      注意：必须用 SCHEMA()，不能用 DATABASE()：
+            jeecg 的 MyBatis 拦截器会用 JSqlParser 解析 SQL，
+            而 JSqlParser 4.3 解析 DATABASE() 会抛 ParseException。
+    -->
+    <select id="countTable" resultType="int">
+        SELECT COUNT(1)
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = SCHEMA()
+          AND TABLE_NAME = #{tableName}
+    </select>
+
+    <!--
+      按类别统计档案数量。
+      ★ 档案类别挂在卷内文件（t_archive_file.category_id）上，而不是档案主表 t_archive 上，
+        所以「该类别下的档案数」的口径 = 该类别下的文件数。
+        档案模块上线（t_archive_file 建表）后这条 SQL 自动生效，前后端都不需要改动。
+    -->
+    <select id="countArchiveGroupByCategory" resultType="java.util.Map">
+        SELECT f.`category_id` AS categoryId, COUNT(1) AS cnt
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0
+        GROUP BY f.`category_id`
+    </select>
+
+    <!--
+      类别（含全部子类别）下的文件数 —— 「移除类别」的前置校验用。
+      path 是「主键串」，所以前缀匹配即可覆盖整棵子树。
+      （只要类别有子类别，移除本来就会被第一条校验拦住；这里按子树统计是为了
+        覆盖「先挂了档案、后加了子类别」的历史数据，避免漏判。）
+    -->
+    <select id="countArchiveByCategoryPath" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0
+          AND (f.`category_path` = #{categoryPath}
+               OR f.`category_path` LIKE CONCAT(#{categoryPath}, '/%'))
+    </select>
+
+</mapper>

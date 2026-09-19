@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.document.mapper.DocSendMapper">
+
+    <sql id="queryWhere">
+        d.`del_flag` = 0
+        <if test="q.docNo != null and q.docNo != ''">
+            AND d.`doc_no` LIKE CONCAT('%', #{q.docNo}, '%')
+        </if>
+        <if test="q.docTitle != null and q.docTitle != ''">
+            AND d.`doc_title` LIKE CONCAT('%', #{q.docTitle}, '%')
+        </if>
+        <if test="q.docType != null and q.docType != ''">
+            AND d.`doc_type` = #{q.docType}
+        </if>
+        <if test="q.toDept != null and q.toDept != ''">
+            AND d.`to_dept` LIKE CONCAT('%', #{q.toDept}, '%')
+        </if>
+        <if test="q.secretLevel != null and q.secretLevel != ''">
+            AND d.`secret_level` = #{q.secretLevel}
+        </if>
+        <if test="q.urgency != null and q.urgency != ''">
+            AND d.`urgency` = #{q.urgency}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND d.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.ptxmmc != null and q.ptxmmc != ''">
+            AND d.`ptxmmc` LIKE CONCAT('%', #{q.ptxmmc}, '%')
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND d.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.archived != null">
+            <choose>
+                <when test="q.archived">
+                    AND d.`archive_id` IS NOT NULL
+                </when>
+                <otherwise>
+                    AND d.`archive_id` IS NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="q.beginDate != null and q.beginDate != ''">
+            AND d.`issue_date` &gt;= #{q.beginDate}
+        </if>
+        <if test="q.endDate != null and q.endDate != ''">
+            AND d.`issue_date` &lt;= #{q.endDate}
+        </if>
+    </sql>
+
+    <select id="selectDocPage" resultType="org.jeecg.modules.land.archive.document.entity.DocSend">
+        SELECT d.*,
+               (SELECT COUNT(1) FROM `t_doc_attachment` t
+                 WHERE t.`doc_type` = 'send' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount
+        FROM `t_doc_send` d
+        WHERE <include refid="queryWhere"/>
+        ORDER BY d.`create_time` DESC
+    </select>
+
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(d.`doc_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_doc_send` d
+        WHERE d.`doc_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(d.`doc_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByDocNo" resultType="int">
+        SELECT COUNT(1) FROM `t_doc_send` d
+        WHERE d.`del_flag` = 0 AND d.`doc_no` = #{docNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND d.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+</mapper>

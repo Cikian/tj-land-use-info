@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.document.mapper.DocReceiveFlowMapper">
+
+    <select id="selectByDocId" resultType="org.jeecg.modules.land.archive.document.entity.DocReceiveFlow">
+        SELECT f.*
+        FROM `t_doc_receive_flow` f
+        WHERE f.`del_flag` = 0 AND f.`doc_id` = #{docId}
+        ORDER BY f.`seq_no`, f.`create_time`
+    </select>
+
+    <!--
+      当前待办：handle_time 为空且 seq_no 最大的那条。
+      用 LIMIT 1 + ORDER BY 而不是 MAX(seq_no) 子查询，避免同一 seqNo 重复时返回多行。
+    -->
+    <select id="selectCurrentOpenFlow" resultType="org.jeecg.modules.land.archive.document.entity.DocReceiveFlow">
+        SELECT f.*
+        FROM `t_doc_receive_flow` f
+        WHERE f.`del_flag` = 0 AND f.`doc_id` = #{docId} AND f.`handle_time` IS NULL
+        ORDER BY f.`seq_no` DESC, f.`create_time` DESC
+        LIMIT 1
+    </select>
+
+</mapper>

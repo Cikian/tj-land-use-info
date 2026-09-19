@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.data.mapper.FacilityMapper">
+
+    <!--
+      市政配套项目 Mapper（表名沿用旧库 xj_kjkfb_supporting_facilities）
+      注意：本表的审计列是驼峰（delFlag / createTime / createAccount），
+            查询时若要过滤删除状态，列名必须写 delFlag 而不是 del_flag。
+    -->
+
+    <sql id="optionColumns">
+        f.`id`      AS id,
+        f.`ptxmmc`  AS ptxmmc,
+        f.`crzdbh`  AS crzdbh,
+        f.`dkmc`    AS dkmc,
+        f.`ptsslb`  AS ptsslb,
+        f.`xzqh`    AS xzqh,
+        f.`xmfl`    AS xmfl,
+        f.`jsdw`    AS jsdw
+    </sql>
+
+    <select id="selectOptions" resultType="org.jeecg.modules.land.data.vo.FacilityOptionVO">
+        SELECT <include refid="optionColumns"/>
+        FROM `xj_kjkfb_supporting_facilities` f
+        WHERE f.`crzdbh` = #{crzdbh}
+        <if test="keyword != null and keyword != ''">
+            AND f.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY f.`ptxmmc`
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchOptions" resultType="org.jeecg.modules.land.data.vo.FacilityOptionVO">
+        SELECT <include refid="optionColumns"/>
+        FROM `xj_kjkfb_supporting_facilities` f
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (f.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%')
+                 OR f.`crzdbh` LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY f.`crzdbh`, f.`ptxmmc`
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByPtxmmc" resultType="org.jeecg.modules.land.data.entity.Facility">
+        SELECT * FROM `xj_kjkfb_supporting_facilities`
+        WHERE `ptxmmc` = #{ptxmmc}
+        LIMIT 1
+    </select>
+
+    <select id="countByCrzdbh" resultType="long">
+        SELECT COUNT(1) FROM `xj_kjkfb_supporting_facilities` WHERE `crzdbh` = #{crzdbh}
+    </select>
+
+</mapper>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.document.mapper.DocReceiveMapper">
+
+    <sql id="queryWhere">
+        d.`del_flag` = 0
+        <if test="q.docNo != null and q.docNo != ''">
+            AND d.`doc_no` LIKE CONCAT('%', #{q.docNo}, '%')
+        </if>
+        <if test="q.docTitle != null and q.docTitle != ''">
+            AND d.`doc_title` LIKE CONCAT('%', #{q.docTitle}, '%')
+        </if>
+        <if test="q.docType != null and q.docType != ''">
+            AND d.`doc_type` = #{q.docType}
+        </if>
+        <if test="q.fromDept != null and q.fromDept != ''">
+            AND d.`from_dept` LIKE CONCAT('%', #{q.fromDept}, '%')
+        </if>
+        <if test="q.fromDocNo != null and q.fromDocNo != ''">
+            AND d.`from_doc_no` LIKE CONCAT('%', #{q.fromDocNo}, '%')
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND d.`status` = #{q.status}
+        </if>
+        <if test="q.secretLevel != null and q.secretLevel != ''">
+            AND d.`secret_level` = #{q.secretLevel}
+        </if>
+        <if test="q.urgency != null and q.urgency != ''">
+            AND d.`urgency` = #{q.urgency}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND d.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.ptxmmc != null and q.ptxmmc != ''">
+            AND d.`ptxmmc` LIKE CONCAT('%', #{q.ptxmmc}, '%')
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND d.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.currentHandler != null and q.currentHandler != ''">
+            AND d.`current_handler` = #{q.currentHandler}
+        </if>
+        <!-- 我的待办：当前处理人是我，且还没办结/归档 -->
+        <if test="q.onlyMine != null and q.onlyMine">
+            AND d.`current_handler` = #{q.currentHandler}
+            AND d.`status` NOT IN ('已办结', '已归档')
+        </if>
+        <if test="q.archived != null">
+            <choose>
+                <when test="q.archived">
+                    AND d.`archive_id` IS NOT NULL
+                </when>
+                <otherwise>
+                    AND d.`archive_id` IS NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="q.beginDate != null and q.beginDate != ''">
+            AND d.`receive_date` &gt;= #{q.beginDate}
+        </if>
+        <if test="q.endDate != null and q.endDate != ''">
+            AND d.`receive_date` &lt;= #{q.endDate}
+        </if>
+    </sql>
+
+    <select id="selectDocPage" resultType="org.jeecg.modules.land.archive.document.entity.DocReceive">
+        SELECT d.*,
+               (SELECT COUNT(1) FROM `t_doc_attachment` t
+                 WHERE t.`doc_type` = 'receive' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount
+        FROM `t_doc_receive` d
+        WHERE <include refid="queryWhere"/>
+        ORDER BY d.`create_time` DESC
+    </select>
+
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(d.`doc_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_doc_receive` d
+        WHERE d.`doc_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(d.`doc_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByDocNo" resultType="int">
+        SELECT COUNT(1) FROM `t_doc_receive` d
+        WHERE d.`del_flag` = 0 AND d.`doc_no` = #{docNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND d.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <select id="countGroupByStatus" resultType="java.util.Map">
+        SELECT d.`status` AS status, COUNT(1) AS cnt
+        FROM `t_doc_receive` d
+        WHERE d.`del_flag` = 0
+        GROUP BY d.`status`
+    </select>
+
+    <select id="countMyTodo" resultType="int">
+        SELECT COUNT(1) FROM `t_doc_receive` d
+        WHERE d.`del_flag` = 0
+          AND d.`current_handler` = #{username}
+          AND d.`status` NOT IN ('已办结', '已归档')
+    </select>
+
+</mapper>

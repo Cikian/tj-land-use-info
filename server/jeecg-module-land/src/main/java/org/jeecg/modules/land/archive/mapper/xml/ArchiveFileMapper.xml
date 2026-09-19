@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.mapper.ArchiveFileMapper">
+
+    <select id="selectByArchiveId" resultType="org.jeecg.modules.land.archive.entity.ArchiveFile">
+        SELECT f.*
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0 AND f.`archive_id` = #{archiveId}
+        ORDER BY f.`sort_no`, f.`seq_no`, f.`create_time`
+    </select>
+
+    <select id="selectByArchiveIds" resultType="org.jeecg.modules.land.archive.entity.ArchiveFile">
+        SELECT f.*
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0
+          AND f.`archive_id` IN
+        <foreach collection="archiveIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY f.`archive_id`, f.`sort_no`, f.`seq_no`
+    </select>
+
+    <select id="selectFileById" resultType="org.jeecg.modules.land.archive.entity.ArchiveFile">
+        SELECT f.*
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0 AND f.`id` = #{id}
+        LIMIT 1
+    </select>
+
+    <!-- 类别（含全部子类）下的文件数：path 用主键串，所以前缀匹配即可 -->
+    <select id="countByCategoryPath" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0
+          AND (f.`category_path` = #{categoryPath}
+               OR f.`category_path` LIKE CONCAT(#{categoryPath}, '/%'))
+    </select>
+
+    <select id="sumByArchiveId" resultType="java.util.Map">
+        SELECT COUNT(1) AS fileCount, COALESCE(SUM(f.`file_size`), 0) AS totalSize
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0 AND f.`archive_id` = #{archiveId}
+    </select>
+
+</mapper>

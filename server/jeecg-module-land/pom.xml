@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>jeecg-boot-parent</artifactId>
+        <groupId>org.jeecgframework.boot</groupId>
+        <version>3.4.3</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>jeecg-module-land</artifactId>
+    <name>jeecg-module-land</name>
+    <description>天津市经营性用地市政基础设施配套动态监管工作站 · 业务模块</description>
+
+    <!--
+      依赖说明：
+      jeecg-boot-base-core 已传递引入 web / MyBatis-Plus 3.5.1 / Shiro 1.10.0 /
+      knife4j 3.0.3 / autopoi-web 1.4.4 / Druid / dynamic-datasource / hutool 等，
+      因此本模块内可直接使用：
+        - org.jeecg.common.api.vo.Result        统一返回体
+        - org.jeecg.common.aspect.annotation.AutoLog
+        - org.jeecg.common.system.base.controller.JeecgController
+        - com.baomidou.mybatisplus.*            MyBatis-Plus
+        - org.apache.shiro.authz.annotation.*   权限注解
+        - org.jeecgframework.poi.excel.*        Excel 导入导出（AutoPoi）
+      无需在此重复声明。
+    -->
+    <dependencies>
+        <dependency>
+            <groupId>org.jeecgframework.boot</groupId>
+            <artifactId>jeecg-boot-base-core</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
