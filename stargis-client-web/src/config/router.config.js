@@ -8,7 +8,7 @@ export const asyncRouterMap = [
   {
     path: '/stargis',
     name: 'stargis',
-    component: () => import(/* webpackChunkName: "user" */ '@/views/maps/index')
+    component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
   },
   // {
   //   path: '/',
@@ -330,7 +330,7 @@ export const constantRouterMap = [
   {
     path: '/',
     name: 'home',
-    component: () => import(/* webpackChunkName: "user" */ '@/views/maps/index')
+    component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
   },
   // {
   //   path: '/',

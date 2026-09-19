@@ -86,7 +86,7 @@ export function generateIndexRouter(data) {
   let indexRouter = [{
     path: '/stargis',
     name: 'stargis',
-    component: () => import(/* webpackChunkName: "user" */ '@/views/maps/index')
+    component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
     // path: '/',
     // name: 'dashboard',
     // //component: () => import('@/components/layouts/BasicLayout'),
