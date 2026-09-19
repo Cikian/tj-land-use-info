@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>功能模块打包管理</title>
+  <style>
+    ul {
+      list-style-type: none;
+      /* 移除默认的列表样式 */
+    }
+
+    .tree ul {
+      margin-left: 20px;
+      /* 嵌套列表缩进 */
+    }
+
+    .tree li {
+      margin: 5px 0;
+      /* 列表项间距 */
+    }
+
+    .container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: left;
+      justify-content: left;
+    }
+
+    .txtsize {
+      font-size: 20px;
+      /* font-weight: bold; */
+      margin-bottom: 20px;
+    }
+
+    /* 调整checkbox的大小 */
+    input[type="checkbox"] {
+      transform: scale(1.5);
+      /* 1.5倍大小，可以根据需要调整 */
+    }
+
+    .parentnode {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .btnsize {
+      width: 120px;
+      height: 40px;
+      background: rgba(17, 123, 226, 0.50);
+      border: 0.5px solid #117be2;
+      border-radius: 22px;
+      box-shadow: 2px 4px 0px 0px rgba(17, 123, 226, 0.30), 0px 0px 4px 1px #117be2 inset;
+
+    }
+
+    .expand-btn {
+      background-color: #117be2;
+      /* Green */
+      border: none;
+      color: white;
+      padding: 0px 7px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>功能模块打包管理</h1>
+    <div>
+      <button class="btnsize" id="select-all">全选/取消全选</button>
+      <button class="btnsize" id="expand-all">展开全部</button>
+      <button class="btnsize" id="collapse-all">折叠全部</button>
+    </div>
+
+    <div class="tree txtsize" id="tree-container"></div>
+    <button class="btnsize" id="btn_OK">生成配置文件</button>
+
+  </div>
+  <script>
+    const treeData = [{
+        id: '1',
+        label: 'Common',
+        name: '常用功能',
+        children: [{
+            id: '1-1',
+            label: 'MeasureArea',
+            name: '面积测量',
+            children: [{
+              id: '1-1-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '1-2',
+            label: 'SplitScreen',
+            name: '多屏比选',
+            children: [{
+                id: '1-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-2-2',
+                label: 'SplitScreenPop',
+                name: 'SplitScreenPop'
+              },
+            ]
+          },
+          {
+            id: '1-3',
+            label: 'TransparentTerrain',
+            name: '地形透明',
+            children: [{
+                id: '1-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-3-2',
+                label: 'TransparentTerrainPop',
+                name: 'TransparentTerrainPop'
+              },
+            ]
+          },
+          {
+            id: '1-4',
+            label: 'CoordinateLabel',
+            name: '坐标标注',
+            children: [{
+                id: '1-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-4-2',
+                label: 'CoordinateLabelPop',
+                name: 'CoordinateLabelPop'
+              },
+            ]
+          },
+          {
+            id: '1-5',
+            label: 'AnimationNavigation',
+            name: '动画导航',
+            children: [{
+                id: '1-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-5-2',
+                label: 'AnimationNavigationPop',
+                name: 'AnimationNavigationPop'
+              },
+            ]
+          },
+          {
+            id: '1-6',
+            label: 'CoordinatePosition',
+            name: '坐标定位',
+            children: [{
+                id: '1-6-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-6-2',
+                label: 'CoordinatePositionPop',
+                name: 'CoordinatePositionPop'
+              },
+            ]
+          },
+          {
+            id: '1-7',
+            label: 'ElementHidden',
+            name: '要素隐藏',
+            children: [{
+              id: '1-7-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '1-8',
+            label: 'LineNavigation',
+            name: '定线巡航',
+            children: [{
+                id: '1-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-8-2',
+                label: 'LineNavigationPop',
+                name: 'LineNavigationPop'
+              },
+            ]
+          },
+          {
+            id: '1-9',
+            label: 'MeasureLine',
+            name: '直线测量',
+            children: [{
+              id: '1-9-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '1-10',
+            label: 'MeasureSpace',
+            name: '空间测量',
+            children: [{
+              id: '1-10-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '1-11',
+            label: 'TextLabel',
+            name: '文本标注',
+            children: [{
+                id: '1-11-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-11-2',
+                label: 'TextLabelPop',
+                name: 'TextLabelPop'
+              },
+            ]
+          },
+          {
+            id: '1-12',
+            label: 'TransparentGround',
+            name: '地面透明',
+            children: [{
+                id: '1-12-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-12-2',
+                label: 'TransparentGroundPop'
+              },
+            ]
+          },
+          ////////////////////////////////////////////////////////////////
+          {
+            id: '1-13',
+            label: 'ViewMode',
+            name: '二维地图',
+            children: [{
+              id: '1-13-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          ////////////////////////////////////////////////////////////////
+          {
+            id: '1-14',
+            label: 'TimelineDataContrast',
+            name: '时空数据对比',
+            children: [{
+                id: '1-14-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-14-2',
+                label: 'TimelineDataContrastPop',
+                name: 'TimelineDataContrastPop'
+              },
+            ]
+          },
+          {
+            id: '1-15',
+            label: 'DrawGraph',
+            name: '绘制点线面',
+            children: [{
+                id: '1-15-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-15-2',
+                label: 'DrawPLS',
+                name: 'DrawPLS'
+              },
+            ]
+          },
+          {
+            id: '1-16',
+            label: 'DrawGeometric',
+            name: '绘制几何体',
+            children: [{
+                id: '1-16-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '1-16-2',
+                label: 'GeometricPop',
+                name: 'GeometricPop'
+              },
+            ]
+          },
+
+        ]
+      },
+      {
+        id: '2',
+        label: 'SceneEffects',
+        name: '场景特效',
+        children: [{
+            id: '2-1',
+            label: 'Fire',
+            name: '火焰',
+            children: [{
+                id: '2-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-1-2',
+                label: 'FirePop',
+                name: 'FirePop'
+              },
+            ]
+          },
+          {
+            id: '2-2',
+            label: 'FlyLines',
+            name: '飞线',
+            children: [{
+              id: '2-2-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '2-3',
+            label: 'FountainEffect',
+            name: '喷泉特效',
+            children: [{
+                id: '2-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-3-2',
+                label: 'FountainEffectPop',
+                name: 'FountainEffectPop'
+              },
+            ]
+          },
+          {
+            id: '2-4',
+            label: 'IotPerception',
+            name: '物联感知',
+            children: [{
+                id: '2-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-4-2',
+                label: 'IotPerceptionPop',
+                name: 'IotPerceptionPop'
+              },
+            ]
+          },
+          {
+            id: '2-5',
+            label: 'MigrationMap',
+            name: '迁徙线',
+            children: [{
+              id: '2-5-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '2-6',
+            label: 'Rain',
+            name: '雨',
+            children: [{
+              id: '2-6-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '2-7',
+            label: 'RollerCompare',
+            name: '影像卷帘',
+            children: [{
+                id: '2-7-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-7-2',
+                label: 'RollerComparePop',
+                name: 'RollerComparePop'
+              },
+            ]
+          },
+          {
+            id: '2-8',
+            label: 'RollerModelCompare',
+            name: '模型卷帘',
+            children: [{
+                id: '2-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-8-2',
+                label: 'RollerModelComparePop',
+                name: 'RollerModelComparePop'
+              },
+            ]
+          },
+          {
+            id: '2-9',
+            label: 'ScanLines',
+            name: '扫描线',
+            children: [{
+                id: '2-9-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-9-2',
+                label: 'ScanLinesPop',
+                name: 'ScanLinesPop'
+              },
+            ]
+          },
+          {
+            id: '2-10',
+            label: 'Snow',
+            name: '雪',
+            children: [{
+              id: '2-10-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '2-11',
+            label: 'WindFarm',
+            name: '风场',
+            children: [{
+                id: '2-11-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '2-11-2',
+                label: 'WindFarmPop',
+                name: 'WindFarmPop'
+              },
+            ]
+          },
+
+        ]
+      },
+      {
+        id: '3',
+        label: 'Basic',
+        name: '快捷方式',
+        children: [{
+            id: '3-1',
+            label: 'Bookmarks',
+            name: '视图书签',
+            children: [{
+                id: '3-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '3-1-2',
+                label: 'BookmarksPop',
+                name: 'BookmarksPop'
+              },
+            ]
+          },
+          {
+            id: '3-2',
+            label: 'LayerTree',
+            name: '图层树',
+            children: [{
+                id: '3-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '3-2-2',
+                label: 'LayerTreePop',
+                name: 'LayerTreePop'
+              },
+            ]
+          },
+          {
+            id: '3-3',
+            label: 'ManagerApproval',
+            name: '方案树',
+            children: [{
+                id: '3-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '3-3-2',
+                label: 'ManagerApprovalPop',
+                name: 'ManagerApprovalPop'
+              },
+            ]
+          },
+          {
+            id: '3-4',
+            label: 'QueryPick',
+            name: '拾取查询',
+            children: [{
+                id: '3-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '3-4-2',
+                label: 'QueryPickPop',
+                name: 'QueryPickPop'
+              },
+            ]
+          },
+          {
+            id: '3-5',
+            label: 'ScenePlotting',
+            name: '场景出图',
+            children: [{
+              id: '3-5-1',
+              label: 'ScenePlottingPop',
+              name: 'ScenePlottingPop'
+            }, ]
+          },
+
+        ]
+      },
+      {
+        id: '4',
+        label: 'SpatialAnalysis',
+        name: '三维空间分析',
+        children: [{
+            id: '4-1',
+            label: 'BoxClip',
+            name: '盒子裁剪',
+            children: [{
+                id: '4-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-1-2',
+                label: 'BoxClipPop',
+                name: 'BoxClipPop'
+              },
+            ]
+          },
+          {
+            id: '4-2',
+            label: 'BuildingServicesScope',
+            name: '服务范围',
+            children: [{
+                id: '4-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-2-2',
+                label: 'BuildingServicesScopePop',
+                name: 'BuildingServicesScopePop'
+              },
+            ]
+          },
+          {
+            id: '4-3',
+            label: 'DrawerEffect',
+            name: '图层抽拉',
+            children: [{
+              id: '4-3-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '4-4',
+            label: 'FacadeAnalysis',
+            name: '沿街立面分析',
+            children: [{
+                id: '4-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-4-2',
+                label: 'FacadeAnalysisPop',
+                name: 'FacadeAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '4-5',
+            label: 'InundationAnalysis',
+            name: '淹没分析',
+            children: [{
+                id: '4-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-5-2',
+                label: 'InundationAnalysisPop',
+                name: 'InundationAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '4-6',
+            label: 'LayerAnimation',
+            name: '图层动画',
+            children: [{
+              id: '4-6-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '4-7',
+            label: 'MeasureSpear',
+            name: '地形表面积',
+            children: [{
+              id: '4-7-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '4-8',
+            label: 'ModelCut',
+            name: '模型剖切',
+            children: [{
+                id: '4-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-8-2',
+                label: 'ModelCutPop',
+                name: 'ModelCutPop'
+              },
+            ]
+          },
+          {
+            id: '4-9',
+            label: 'OpennessAnalysis',
+            name: '开敞度分析',
+            children: [{
+                id: '4-9-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-9-2',
+                label: 'OpennessAnalysisPop',
+                name: 'OpennessAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '4-10',
+            label: 'PolygonClip',
+            name: '多边形裁剪',
+            children: [{
+                id: '4-10-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-10-2',
+                label: 'PolygonClipPop',
+                name: 'PolygonClipPop'
+              },
+            ]
+          },
+          {
+            id: '4-11',
+            label: 'ProfileAnalysis',
+            name: '剖面分析',
+            children: [{
+                id: '4-11-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-11-2',
+                label: 'ProfileAnalysisPop',
+                name: 'ProfileAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '4-12',
+            label: 'TerrainExcavate',
+            name: '地形开挖',
+            children: [{
+                id: '4-12-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-12-2',
+                label: 'TerrainExcavatePop',
+                name: 'TerrainExcavatePop'
+              },
+            ]
+          },
+          {
+            id: '4-13',
+            label: 'TerrainFlatten',
+            name: '地形压平',
+            children: [{
+              id: '4-13-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            }, ]
+          },
+          {
+            id: '4-14',
+            label: 'TerrainInundation',
+            name: '地形淹没',
+            children: [{
+                id: '4-14-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-14-2',
+                label: 'TerrainInundationPop',
+                name: 'TerrainInundationPop'
+              },
+            ]
+          },
+          {
+            id: '4-15',
+            label: 'TerrainRelief',
+            name: '地形起伏',
+            children: [{
+                id: '4-15-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-15-2',
+                label: 'TerrainReliefPop',
+                name: 'TerrainReliefPop'
+              },
+            ]
+          },
+          {
+            id: '4-16',
+            label: 'VideoPut',
+            name: '视频投放',
+            children: [{
+                id: '4-16-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-16-2',
+                label: 'VideoPutPop',
+                name: 'VideoPutPop'
+              },
+            ]
+          },
+          {
+            id: '4-17',
+            label: 'VisualRangeAnalysis',
+            name: '可视域分析',
+            children: [{
+                id: '4-17-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '4-17-2',
+                label: 'VisualRangeAnalysisPop',
+                name: 'VisualRangeAnalysisPop'
+              },
+            ]
+          },
+
+        ]
+      },
+      {
+        id: '9',
+        label: 'PlanningProject',
+        name: '规划项目',
+        children: [{
+            id: '9-1',
+            label: 'ProjectAttribute',
+            name: '项目属性查询',
+            children: [{
+                id: '9-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '9-1-2',
+                label: 'ProjectAttributePop',
+                name: 'ProjectAttributePop'
+              },
+            ]
+          },
+          {
+            id: '9-2',
+            label: 'ProjectCode',
+            name: '项目编号查询',
+            children: [{
+                id: '9-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '9-2-2',
+                label: 'ProjectCodePop',
+                name: 'ProjectCodePop'
+              },
+            ]
+          },
+          {
+            id: '9-3',
+            label: 'ProjectContrast',
+            name: '项目阶段对比',
+            children: [{
+                id: '9-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '9-3-2',
+                label: 'ProjectContrastPop',
+                name: 'ProjectContrastPop'
+              },
+            ]
+          },
+          {
+            id: '9-4',
+            label: 'ProjectCycle',
+            name: '项目全生命周期查询',
+            children: [{
+                id: '9-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '9-4-2',
+                label: 'ProjectCyclePop',
+                name: 'ProjectCyclePop'
+              },
+            ]
+          },
+          {
+            id: '9-5',
+            label: 'ProjectLike',
+            name: '项目模糊查询',
+            children: [{
+                id: '9-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '9-5-2',
+                label: 'ProjectLikePop',
+                name: 'ProjectLikePop'
+              },
+            ]
+          },
+        ]
+      },
+      {
+        id: '5',
+        label: 'QueryStatistics',
+        name: '查询统计',
+        children: [{
+            id: '5-1',
+            label: 'AttributeHidden',
+            name: '属性消隐',
+            children: [{
+                id: '5-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-1-2',
+                label: 'AttributeHiddenPop',
+                name: 'AttributeHiddenPop'
+              },
+            ]
+          },
+          {
+            id: '5-2',
+            label: 'QueryAttribute',
+            name: '属性查询',
+            children: [{
+                id: '5-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-2-2',
+                label: 'QueryAttributePop',
+                name: 'QueryAttributePop'
+              },
+            ]
+          },
+          {
+            id: '5-3',
+            label: 'QueryComprehensive',
+            name: '综合查询',
+            children: [{
+                id: '5-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-3-2',
+                label: 'QueryComprehensivePop',
+                name: 'QueryComprehensivePop'
+              },
+            ]
+          },
+          {
+            id: '5-4',
+            label: 'QueryPlaceName',
+            name: '地名定位',
+            children: [{
+                id: '5-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-4-2',
+                label: 'QueryPlaceNamePop',
+                name: 'QueryPlaceNamePop'
+              },
+            ]
+          },
+          {
+            id: '5-5',
+            label: 'QueryRoad',
+            name: '道路定位',
+            children: [{
+                id: '5-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-5-2',
+                label: 'QueryRoadPop',
+                name: 'QueryRoadPop'
+              },
+            ]
+          },
+          {
+            id: '5-6',
+            label: 'QuerySpatial',
+            name: '空间查询',
+            children: [{
+                id: '5-6-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-6-2',
+                label: 'QuerySpatialPop',
+                name: 'QuerySpatialPop'
+              },
+            ]
+          },
+          {
+            id: '5-7',
+            label: 'QueryStatistic',
+            name: '统计查询',
+            children: [{
+                id: '5-7-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-7-2',
+                label: 'QueryStatisticPop',
+                name: 'QueryStatisticPop'
+              },
+            ]
+          },
+          {
+            id: '5-8',
+            label: 'SearchObject',
+            name: '实体索引',
+            children: [{
+                id: '5-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-8-2',
+                label: 'SearchObjectPop',
+                name: 'SearchObjectPop'
+              },
+            ]
+          },
+          /////////////////////////////////////
+          {
+            id: '5-9',
+            label: 'SearchVideo',
+            name: '视频监控（实时）',
+            children: [{
+                id: '5-9-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-9-2',
+                label: 'SearchVideoPop',
+                name: 'SearchVideoPop'
+              },
+            ]
+          },
+          {
+            id: '5-10',
+            label: 'SpaceHidden',
+            name: '空间消隐',
+            children: [{
+                id: '5-10-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-10-2',
+                label: 'SpaceHiddenPop',
+                name: 'SpaceHiddenPop'
+              },
+            ]
+          },
+          /////////////////////////////////////
+          {
+            id: '5-11',
+            label: 'SurveillanceVideo',
+            name: '视频监控',
+            children: [{
+                id: '5-11-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '5-11-2',
+                label: 'SurveillanceVideoPop',
+                name: 'SurveillanceVideoPop'
+              },
+            ]
+          },
+
+
+        ]
+      },
+      {
+        id: '6',
+        label: 'BuildingLand',
+        name: '建设用地',
+        children: [{
+            id: '6-1',
+            label: 'BuildingCheck',
+            name: '建筑查看',
+            children: [{
+                id: '6-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-1-2',
+                label: 'BuildingCheckPop',
+                name: 'BuildingCheckPop'
+              },
+            ]
+          },
+          {
+            id: '6-2',
+            label: 'BuildingScaleStatistic',
+            name: '建筑规模统计',
+            children: [{
+                id: '6-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-2-2',
+                label: 'BuildingScaleStatisticPop',
+                name: 'BuildingScaleStatisticPop'
+              },
+            ]
+          },
+          {
+            id: '6-3',
+            label: 'ComprehensiveCheck',
+            name: '综合信息查看',
+            children: [{
+                id: '6-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-3-2',
+                label: 'ComprehensiveCheckPop',
+                name: 'ComprehensiveCheckPop'
+              },
+            ]
+          },
+          {
+            id: '6-4',
+            label: 'KGCheck',
+            name: '控规查看',
+            children: [{
+                id: '6-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-4-2',
+                label: 'KGCheckPop',
+                name: 'KGCheckPop'
+              },
+            ]
+          },
+          {
+            id: '6-5',
+            label: 'LandCheck',
+            name: '用地查看',
+            children: [{
+                id: '6-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-5-2',
+                label: 'LandCheckPop',
+                name: 'LandCheckPop'
+              },
+            ]
+          },
+          {
+            id: '6-6',
+            label: 'LandStructure',
+            name: '用地结构分析',
+            children: [{
+                id: '6-6-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-6-2',
+                label: 'LandStructurePop',
+                name: 'LandStructurePop'
+              },
+            ]
+          },
+          {
+            id: '6-7',
+            label: 'RoadStatistic',
+            name: '道路统计',
+            children: [{
+                id: '6-7-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-7-2',
+                label: 'RoadStatisticPop',
+                name: 'RoadStatisticPop'
+              },
+            ]
+          },
+          {
+            id: '6-8',
+            label: 'SiteSelection',
+            name: '规划选址决策',
+            children: [{
+                id: '6-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-8-2',
+                label: 'SiteSelectionPop',
+                name: 'SiteSelectionPop'
+              },
+            ]
+          },
+          {
+            id: '6-9',
+            label: 'SpecialLandUse',
+            name: '专项用地统计',
+            children: [{
+                id: '6-9-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-9-2',
+                label: 'SpecialLandUsePop',
+                name: 'SpecialLandUsePop'
+              },
+            ]
+          },
+          {
+            id: '6-10',
+            label: 'StockLand',
+            name: '存量用地分析',
+            children: [{
+                id: '6-10-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '6-10-2',
+                label: 'StockLandPop',
+                name: 'StockLandPop'
+              },
+            ]
+          }
+
+        ]
+      },
+      {
+        id: '7',
+        label: 'PlanningApproval',
+        name: '规划审批',
+        children: [{
+            id: '7-1',
+            label: 'BuildingSetBack',
+            name: '建筑退线分析',
+            children: [{
+                id: '7-1-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-1-2',
+                label: 'BuildingSetBackPop',
+                name: 'BuildingSetBackPop'
+              },
+            ]
+          },
+          {
+            id: '7-2',
+            label: 'ContrastSkylineAnalysis',
+            name: '天际线对比',
+            children: [{
+                id: '7-2-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-2-2',
+                label: 'ContrastSkylineAnalysisPop',
+                name: 'ContrastSkylineAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '7-3',
+            label: 'HeightControl',
+            name: '控高分析',
+            children: [{
+                id: '7-3-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-3-2',
+                label: 'HeightControlPop',
+                name: 'HeightControlPop'
+              },
+            ]
+          },
+          {
+            id: '7-4',
+            label: 'MoveOutHouse',
+            name: '拆迁分析',
+            children: [{
+                id: '7-4-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-4-2',
+                label: 'MoveOutHousePop',
+                name: 'MoveOutHousePop'
+              },
+            ]
+          },
+          {
+            id: '7-5',
+            label: 'PlanAdjust',
+            name: '方案调整',
+            children: [{
+                id: '7-5-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-5-2',
+                label: 'PlanAdjustPop',
+                name: 'PlanAdjustPop'
+              },
+            ]
+          },
+          {
+            id: '7-6',
+            label: 'PlanSplitScreen',
+            name: '方案比选',
+            children: [{
+                id: '7-6-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-6-2',
+                label: 'PlanSplitScreenPop',
+                name: 'PlanSplitScreenPop'
+              },
+            ]
+          },
+          {
+            id: '7-7',
+            label: 'ShadowAnalysis',
+            name: '阴影分析',
+            children: [{
+                id: '7-7-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-7-2',
+                label: 'ShadowPop',
+                name: 'ShadowAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '7-8',
+            label: 'SkylineAnalysis',
+            name: '天际线分析',
+            children: [{
+                id: '7-8-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-8-2',
+                label: 'SkylineAnalysisPop',
+                name: 'SkylineAnalysisPop'
+              },
+            ]
+          },
+          {
+            id: '7-9',
+            label: 'VisibilityAnalysis',
+            name: '通视分析',
+            children: [{
+                id: '7-9-1',
+                label: 'index.vue',
+                name: 'index.vue'
+              },
+              {
+                id: '7-9-2',
+                label: 'VisibilityAnalysisPop',
+                name: 'VisibilityAnalysisPop'
+              },
+            ]
+          },
+
+        ]
+      },
+      {
+        id: '8',
+        label: 'GeologyManager',
+        name: '地质管理',
+        children: [{
+          id: '8-1',
+          label: 'LineSplit',
+          name: '剖切分析',
+          children: [{
+              id: '8-1-1',
+              label: 'index.vue',
+              name: 'index.vue'
+            },
+            {
+              id: '8-1-2',
+              label: 'LineSplitPop',
+              name: 'LineSplitPop'
+            },
+          ]
+        }, ]
+      },
+
+
+    ];
+
+    function createCheckboxTree(data, container) {
+      const ul = document.createElement('ul');
+      ul.style.display = 'block';
+
+      data.forEach(node => {
+        const li = document.createElement('li');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `checkbox-${node.id}`;
+
+        const label = document.createElement('label');
+        label.htmlFor = `checkbox-${node.id}`;
+        label.textContent = node.name;
+        // label.textContent = node.label;
+
+        // 添加展开按钮
+        const expandBtn = document.createElement('button');
+        expandBtn.type = 'button';
+        expandBtn.textContent = '-';
+        expandBtn.classList.add('expand-btn');
+
+        expandBtn.addEventListener('click', function () {
+          const childrenUL = li.querySelector('ul');
+
+          if (childrenUL.style.display === 'none' || childrenUL.style.display === '') {
+            childrenUL.style.display = 'block';
+            expandBtn.textContent = '-';
+          } else {
+
+            childrenUL.style.display = 'none';
+            expandBtn.textContent = '+';
+          }
+        });
+
+
+        if (node.children && node.children.length > 0) {
+          li.appendChild(expandBtn);
+        }
+
+        li.appendChild(checkbox);
+        li.appendChild(label);
+
+        if (node.children && node.children.length > 0) {
+          // 添加父节点样式
+          label.classList.add('parentnode');
+
+          createCheckboxTree(node.children, li);
+        }
+
+
+        ul.appendChild(li);
+      });
+
+      container.appendChild(ul);
+    }
+
+    const treeContainer = document.getElementById('tree-container');
+    createCheckboxTree(treeData, treeContainer);
+
+    // 生成JS代码
+    document.getElementById('btn_OK').addEventListener('click', function () {
+
+      //弹出提示框 提示是否生成JS代码
+      const isOK = window.confirm('是否生成JS代码');
+      if (isOK) {
+        // 生成JS代码
+
+        const jsCode = generateJSCode(treeData, '', '');
+
+        // 弹出提示框 提示JS代码
+        // alert(jsCode);
+        console.log(jsCode);
+
+        // 将数据转换为字符串
+        var dataString = `let coms=[];  \n${jsCode.join('')}`;
+
+        var str1 = `const install = function (Vue) {
+  coms.forEach((com) => {
+    Vue.component(com.name, com);
+  });
+};   \n export default  install ;`
+
+        dataString = dataString + str1;
+        // const dataString = `let coms=[]; ${JSON.stringify(jsCode, null, 2)};`;
+
+        // 创建一个Blob对象
+        const blob = new Blob([dataString], {
+          type: 'application/javascript'
+        });
+
+        // 创建一个临时的<a>元素
+        const a = document.createElement('a');
+
+        // 创建一个指向blob对象的URL
+        const url = URL.createObjectURL(blob);
+
+        // 设置下载属性
+        a.href = url;
+        a.download = 'index.js';
+
+        // 触发点击事件以下载文件
+        document.body.appendChild(a);
+        a.click();
+
+        // 移除临时的<a>元素并释放URL对象
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+
+      }
+
+    });
+
+
+    function generateJSCode(data, parent_label, gra_label) {
+      const jsCode = [];
+
+      data.forEach(node => {
+        const checkbox = document.getElementById(`checkbox-${node.id}`);
+
+        var condition = (node.children && node.children.length > 0);
+
+        if (node.label == 'LayerTree') {
+          console.log('node.label,parent_label,gra_label');
+          console.log(node.label, parent_label, gra_label);
+        }
+
+        //如果不再存在子节点
+        if (!condition) {
+          if (checkbox.checked) {
+            // 根据treedata数组内的节点信息，转换成相应的字符串
+            var componentPath = ``
+            var pushStatement = ``
+            var importStatement = ``
+            if (node.label.indexOf('index.vue') !== -1) {
+              // console.log("字符串包含 'index'");
+              componentPath = `../views/maps/components/${gra_label}/${parent_label}/index.vue`;
+              pushStatement = `coms.push(${parent_label});\n`;
+              importStatement = `import ${parent_label} from '${componentPath}';\n`;
+            } else {
+              // console.log("字符串不包含 'index.vue'");
+              componentPath = `../views/maps/components/${gra_label}/${parent_label}/${node.label}`;
+              pushStatement = `coms.push(${node.label});\n`;
+              importStatement = `import ${node.label} from '${componentPath}';\n`;
+            }
+
+
+            jsCode.push(importStatement, pushStatement);
+
+            // jsCode.push({ id: node.id, label: node.label });
+          }
+        }
+
+        //如果是父节点
+        if (condition) {
+          if (checkbox.checked) {
+
+            // 确定新的 parent_label 和 gra_label   避免多次递归数据混乱
+            var newParentLabel = '';
+            var newGraLabel = '';
+
+            // //第一次往下递归
+            if (gra_label === '' && parent_label === '') {
+              newParentLabel = node.label;
+            }
+            //第二次递归 如果父节点有值，祖父节点没有值  且还有子节点，则继续往下递归
+            if (parent_label !== '' && gra_label === '') {
+              newGraLabel = parent_label;
+              newParentLabel = node.label;
+            }
+
+            jsCode.push(...generateJSCode(node.children, newParentLabel, newGraLabel));
+            // jsCode.push(...generateJSCode(node.children, parent_label, gra_label));
+          }
+        }
+
+      });
+
+      return jsCode;
+    }
+
+
+
+    // 添加级联选择功能（可选）
+    const checkboxes = document.querySelectorAll('#tree-container input[type="checkbox"]');
+    checkboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', function () {
+        const isChecked = this.checked;
+        const childrenCheckboxes = findChildCheckboxes(this);
+        childrenCheckboxes.forEach(childCheckbox => {
+          childCheckbox.checked = isChecked;
+        });
+        // 添加对父复选框的更新逻辑 选中全部子节点的时候实现父节点的选中
+
+
+      });
+
+      function findChildCheckboxes(parentCheckbox) {
+        const result = [];
+        const parentLI = parentCheckbox.closest('li');
+        if (parentLI) {
+          const childrenUL = parentLI.querySelector('ul');
+          if (childrenUL) {
+            result.push(...childrenUL.querySelectorAll('input[type="checkbox"]'));
+          }
+        }
+        return result;
+      }
+    });
+
+    // 全选/取消全选按钮逻辑
+    document.getElementById('select-all').addEventListener('click', function () {
+      const checkboxes = document.querySelectorAll('#tree-container input[type="checkbox"]');
+      // console.log('checkboxes', checkboxes);
+      const isChecked = checkboxes[0].checked; // 假设所有复选框的初始状态一致
+      var isAllChecked = true;
+      checkboxes.forEach(checkbox => {
+        if (!checkbox.checked) {
+          isAllChecked = false;
+        }
+      });
+
+      if (isAllChecked) {
+        checkboxes.forEach(checkbox => {
+          checkbox.checked = !isChecked;
+        });
+      } else {
+        checkboxes.forEach(checkbox => {
+          checkbox.checked = true;
+        });
+      }
+
+    });
+
+    // 展开全部按钮逻辑
+    document.getElementById('expand-all').addEventListener('click', function () {
+      const expandButtons = document.querySelectorAll('.expand-btn');
+      expandButtons.forEach(button => {
+        button.textContent = '-';
+        const childrenUL = button.closest('li').querySelector('ul');
+        if (childrenUL) {
+          childrenUL.style.display = 'block';
+        }
+      });
+    });
+
+    // 折叠全部按钮逻辑
+    document.getElementById('collapse-all').addEventListener('click', function () {
+      const expandButtons = document.querySelectorAll('.expand-btn');
+      expandButtons.forEach(button => {
+        button.textContent = '+';
+        const childrenUL = button.closest('li').querySelector('ul');
+        if (childrenUL) {
+          childrenUL.style.display = 'none';
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>

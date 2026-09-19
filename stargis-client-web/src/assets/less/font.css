@@ -1,0 +1,28 @@
+/*font.css文件代码*/
+@font-face {
+  /*思源*/
+  font-family: 'sy';
+  /*引入字体文件*/
+  src: url('./sy.otf');
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  /*庞门正道标题黑*/
+  font-family: 'pmzdbtt';
+  /*引入字体文件*/
+  src: url('./pmzdbtt.ttf');
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  /*优设标题黑*/
+  font-family: 'ysbth';
+  /*引入字体文件*/
+  src: url('./ysbth.ttf');
+  font-weight: normal;
+  font-style: normal;
+}
+body,#app {
+  font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+}

@@ -1,0 +1,20 @@
+{
+   "options":{
+    "scale":1
+   },
+    "data":[
+    {
+        "title": "示意图例",
+        "images": [
+            "all1.png"
+        ],
+        "imgwidth": 200
+    },
+    {
+        "title": "示意图例2",
+        "images": [
+            "all1.png"
+        ],
+        "imgwidth": 120
+    }
+]}

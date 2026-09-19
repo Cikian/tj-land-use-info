@@ -1,0 +1,126 @@
+[
+  {
+    "id": 1,
+    "title": "方案名称",
+    "key": "方案名称",
+    "value": "ProjectName",
+    "nodetype": "group",
+    "isWeb": true,
+    "isProject":true,
+    "isPlan":false,
+    "checked": true,
+    "children":[
+      {
+        "title": "方案范围",
+        "nodetype": "node",
+        "checked": true,
+        "value": "Plan",
+        "isWeb": true,
+        "key":"方案名称_方案范围",
+        "id": 10,
+        "isProject":false,
+        "isPlan":false,
+        "url":"http://192.168.110.38:18080/FA.geojson"
+      },
+      {
+        "title": "方案红线",
+        "nodetype": "node",
+        "checked": true,
+        "value": "HX",
+        "isWeb": true,
+        "isProject":false,
+        "isPlan":false,
+        "key":"方案名称_方案红线",
+        "id": 11,
+        "url":"http://192.168.110.38:18080/HX.geojson",
+        "oldid": "4028ee008219042f0182198d6a240001"
+      },
+      {
+        "title": "方案控规",
+        "nodetype": "node",
+        "checked": true,
+        "isProject":false,
+        "isPlan":false,
+        "value": "KG",
+        "key":"方案名称_方案控规",
+        "isWeb": true,
+        "id": 12
+      },
+      {
+        "title": "方案1",
+        "nodetype": "group",
+        "checked": true,
+        "isProject":false,
+        "isPlan":true,
+        "value": "Plan1",
+        "id": 13,
+        "key":"方案名称_方案1",
+        "isWeb": true,
+        "children":[
+          {
+            "title": "绿化",
+            "nodetype": "node",
+            "checked": true,
+            "isProject":false,
+            "isPlan":false,
+            "value": "tree1",
+            "isWeb": true,
+            "key":"方案名称_方案1_绿化",
+            "id": 131,
+            "url":"http://192.168.110.38:18080/TBAPP_MPATCH%40FADK1/tileset.json"
+          },
+          {
+            "title": "建筑",
+            "nodetype": "node",
+            "checked": true,
+            "isProject":false,
+            "isPlan":false,
+            "value": "building1",
+            "isWeb": true,
+            "key":"方案名称_方案1_建筑",
+            "id": 132,
+            "url":"http://192.168.110.38:18080/TBAPP_MBUILDING%40FAJZ1/tileset.json",
+            "oldid": "4028eea181f564a50181f6b30ec30004"
+          }
+        ]
+      },
+      {
+        "title": "方案2",
+        "nodetype": "group",
+        "checked": true,
+        "isProject":false,
+        "isPlan":true,
+        "value": "Plan2",
+        "isWeb": true,
+        "id": 14,
+        "key":"方案名称_方案2",
+        "children":[
+          {
+            "title": "绿化",
+            "nodetype": "node",
+            "checked": true,
+            "isProject":false,
+            "isPlan":false,
+            "isWeb": true,
+            "value": "tree2",
+            "key":"方案名称_方案2_绿化",
+            "id": 141,
+            "url":"http://192.168.110.38:18080/TBAPP_MPATCH%40FADK2/tileset.json"
+          },
+          {
+            "title": "建筑",
+            "nodetype": "node",
+            "checked": true,
+            "isProject":false,
+            "isPlan":false,
+            "isWeb": true,
+            "value": "building2",
+            "key":"方案名称_方案2_建筑",
+            "id": 142,
+            "url":"http://192.168.110.38:18080/TBAPP_MBUILDING%40FAJZ2/tileset.json"
+          }
+        ]
+      }
+    ]
+  }
+]

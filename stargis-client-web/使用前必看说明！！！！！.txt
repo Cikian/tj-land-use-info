@@ -1,0 +1,1 @@
+下载完依赖后，将文件夹stargis-function拷贝至“node_modules”文件夹下即可

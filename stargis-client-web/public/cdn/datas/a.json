@@ -1,0 +1,118 @@
+{
+  "code": 200,
+  "ignoreStr": [
+    "hasapp",
+    "oldid"
+  ],
+  "includeStr": [],
+  "msg": "成功",
+  "result": [
+    {
+      "apporder": "0.0",
+      "checked": "false",
+      "children": [
+        {
+          "apporder": "0.0",
+          "checked": "false",
+          "children": [],
+          "datasourceid": "",
+          "descrition": "",
+          "featurcclassid": "11",
+          "id": "4028eea181a9529b0181a9546a0e0001",
+          "layertype": "三维图层",
+          "name": "白模",
+          "nodetype": "node",
+          "parentid": "4028eea181a9529b0181a95469ef0000",
+          "tiletype": "三维切片",
+          "url": "http://192.168.110.37:8083/stargis/rest/services/jianzhu_bm1/3DTileServer/tileset.json"
+        }
+      ],
+      "datasourceid": "",
+      "descrition": "",
+      "featurcclassid": "",
+      "id": "4028eea181a9529b0181a95469ef0000",
+      "layertype": "",
+      "name": "三维模型",
+      "nodetype": "group",
+      "parentid": "-1",
+      "tiletype": "",
+      "url": ""
+    },
+    {
+      "apporder": "1.0",
+      "checked": "false",
+      "children": [
+        {
+          "apporder": "0.0",
+          "checked": "false",
+          "children": [],
+          "datasourceid": "",
+          "descrition": "",
+          "featurcclassid": "2020",
+          "id": "4028eea181a9529b0181a95470020003",
+          "layertype": "二维图层",
+          "name": "影像图",
+          "nodetype": "node",
+          "parentid": "4028eea181a9529b0181a95470020002",
+          "tiletype": "二维切片",
+          "url": "http://192.168.110.37:8083/stargis/rest/services/tj_yx_2m_1/WMTSServer/1.0.0/Layers/default/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png"
+        },
+        {
+          "apporder": "0.0",
+          "checked": "false",
+          "children": [],
+          "datasourceid": "",
+          "descrition": "",
+          "featurcclassid": "http://192.168.110.103:8083/stargis/rest/services/XZFWDB/FeatureServer/0/0/featureclasses/0/Query",
+          "id": "4028eea181a9529b0181a95470030004",
+          "layertype": "三维图层",
+          "name": "中心城区建筑WMTSServer",
+          "nodetype": "node",
+          "parentid": "4028eea181a9529b0181a95470020002",
+          "tiletype": "三维切片",
+          "url": "http://192.168.110.37:8083/stargis/rest/services/zxcqjz_2d/WMTSServer/1.0.0/Layers/default/default028mm/{z}/{y}/{x}"
+        },
+        {
+          "apporder": "0.0",
+          "checked": "false",
+          "children": [],
+          "datasourceid": "",
+          "descrition": "",
+          "featurcclassid": "http://192.168.110.103:8083/stargis/rest/services/TJQSY/FeatureServer/0/0/featureclasses/0/Query",
+          "id": "4028eea181a9529b0181a95470030005",
+          "layertype": "二维图层",
+          "name": "全市建筑",
+          "nodetype": "node",
+          "parentid": "4028eea181a9529b0181a95470020002",
+          "tiletype": "二维切片",
+          "url": "http://192.168.110.103:8083/stargis/rest/services/TJQSY/WMTSServer/1.0.0/Layers/default/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png"
+        },
+        {
+          "apporder": "0.0",
+          "checked": "false",
+          "children": [],
+          "datasourceid": "",
+          "descrition": "",
+          "featurcclassid": "http://192.168.110.103:8083/stargis/rest/services/testDMX/FeatureServer/0/0/featureclasses/0/Query",
+          "id": "4028eea181a9529b0181a95470030006",
+          "layertype": "二维图层",
+          "name": "红线边线WMS",
+          "nodetype": "node",
+          "parentid": "4028eea181a9529b0181a95470020002",
+          "tiletype": "二维切片",
+          "url": "http://192.168.110.103:8083/stargis/rest/services/testDMX/WMSServer"
+        }
+      ],
+      "datasourceid": "",
+      "descrition": "",
+      "featurcclassid": "",
+      "id": "4028eea181a9529b0181a95470020002",
+      "layertype": "",
+      "name": "基础地图",
+      "nodetype": "group",
+      "parentid": "-1",
+      "tiletype": "",
+      "url": ""
+    }
+  ]
+}

@@ -1,0 +1,568 @@
+{
+  "scaleByMap": true,
+  "surroundLineWidth2D": 1,
+  "algoMaxEditPts": 1,
+  "libID": 421,
+  "code": 30301,
+  "anchorPoint": {
+    "x": 0.5,
+    "y": 0.5
+  },
+  "symbolIsCanFill": false,
+  "middleMarkBounds": {
+    "top": 0,
+    "left": 0,
+    "bottom": 0,
+    "leftBottom": {
+      "x": 0,
+      "y": 0
+    },
+    "right": 0,
+    "rightTop": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "annotationPosition": 4,
+  "algoMinEditPts": 1,
+  "type": "GRAPHICOBJECT",
+  "surroundLineColor": {
+    "red": 255,
+    "green": 255,
+    "blue": 0,
+    "alpha": 255
+  },
+  "scaleZ": 0,
+  "points": null,
+  "scaleX": 0,
+  "scaleY": 0,
+  "rotationX": 0,
+  "rotationY": 0,
+  "rotationZ": 0,
+  "symbolRanks": [],
+  "surroundLineType": 0,
+  "symbolName": "影剧院",
+  "prjCoordSys": null,
+  "id": 0,
+  "innerCells": [
+    {
+      "positionPoints": [
+        {
+          "x": -49.5075,
+          "y": 100.195
+        },
+        {
+          "x": -49.5075,
+          "y": 0
+        },
+        {
+          "x": 50.4925,
+          "y": 0
+        },
+        {
+          "x": 50.4925,
+          "y": 100.195
+        },
+        {
+          "x": -49.5075,
+          "y": 100.195
+        }
+      ],
+      "surroundLineWidth": 1,
+      "fontColorLimit": false,
+      "polybezierClose": false,
+      "textContent": "",
+      "type": 24,
+      "surroundLineColor": {
+        "red": 255,
+        "green": 255,
+        "blue": 0,
+        "alpha": 255
+      },
+      "lineWidthLimit": false,
+      "surroundLineFlag": false,
+      "lineColorLimit": false,
+      "fillColorLimit": false,
+      "surroundLineLimit": false,
+      "fillLimit": false,
+      "lineTypeLimit": false,
+      "surroundLineType": 0,
+      "style": {
+        "fillGradientOffsetRatioX": 0,
+        "markerSize": 2.4,
+        "fillForeColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientOffsetRatioY": 0,
+        "markerWidth": 0,
+        "markerAngle": 0,
+        "fillSymbolID": 1,
+        "lineColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "markerSymbolID": 0,
+        "lineWidth": 0.5,
+        "markerHeight": 0,
+        "fillOpaqueRate": 30,
+        "fillBackOpaque": true,
+        "fillBackColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientMode": "NONE",
+        "lineSymbolID": 0,
+        "fillGradientAngle": 0
+      },
+      "textStyle": {
+        "italicAngle": 0,
+        "shadow": false,
+        "sizeFixed": true,
+        "underline": false,
+        "rotation": 0,
+        "backOpaque": false,
+        "bold": false,
+        "align": "TOPLEFT",
+        "foreColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "italic": false,
+        "strikeout": false,
+        "fontName": "Microsoft YaHei",
+        "outline": false,
+        "borderSpacingWidth": 4,
+        "backColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "outlineWidth": 1,
+        "fontHeight": 7,
+        "fontWidth": 0,
+        "opaqueRate": 100,
+        "stringAlignment": "LEFT",
+        "fontScale": 1,
+        "fontWeight": 0
+      }
+    },
+    {
+      "positionPoints": [
+        {
+          "x": -28.25,
+          "y": 78.7425
+        },
+        {
+          "x": -28.25,
+          "y": 51.0675
+        },
+        {
+          "x": 27.9375,
+          "y": 51.0675
+        },
+        {
+          "x": 27.9375,
+          "y": 78.7425
+        },
+        {
+          "x": -28.25,
+          "y": 78.7425
+        }
+      ],
+      "surroundLineWidth": 1,
+      "fontColorLimit": false,
+      "polybezierClose": false,
+      "textContent": "",
+      "type": 24,
+      "surroundLineColor": {
+        "red": 255,
+        "green": 255,
+        "blue": 0,
+        "alpha": 255
+      },
+      "lineWidthLimit": false,
+      "surroundLineFlag": false,
+      "lineColorLimit": false,
+      "fillColorLimit": false,
+      "surroundLineLimit": false,
+      "fillLimit": false,
+      "lineTypeLimit": false,
+      "surroundLineType": 0,
+      "style": {
+        "fillGradientOffsetRatioX": 0,
+        "markerSize": 2.4,
+        "fillForeColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientOffsetRatioY": 0,
+        "markerWidth": 0,
+        "markerAngle": 0,
+        "fillSymbolID": 1,
+        "lineColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "markerSymbolID": 0,
+        "lineWidth": 0.5,
+        "markerHeight": 0,
+        "fillOpaqueRate": 30,
+        "fillBackOpaque": true,
+        "fillBackColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientMode": "NONE",
+        "lineSymbolID": 0,
+        "fillGradientAngle": 0
+      },
+      "textStyle": {
+        "italicAngle": 0,
+        "shadow": false,
+        "sizeFixed": true,
+        "underline": false,
+        "rotation": 0,
+        "backOpaque": false,
+        "bold": false,
+        "align": "TOPLEFT",
+        "foreColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "italic": false,
+        "strikeout": false,
+        "fontName": "Microsoft YaHei",
+        "outline": false,
+        "borderSpacingWidth": 4,
+        "backColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "outlineWidth": 1,
+        "fontHeight": 7,
+        "fontWidth": 0,
+        "opaqueRate": 100,
+        "stringAlignment": "LEFT",
+        "fontScale": 1,
+        "fontWeight": 0
+      }
+    },
+    {
+      "positionPoints": [
+        {
+          "x": 0.25,
+          "y": 50.5825
+        },
+        {
+          "x": 0.25,
+          "y": 16.2075
+        }
+      ],
+      "surroundLineWidth": 1,
+      "fontColorLimit": false,
+      "polybezierClose": false,
+      "textContent": "",
+      "type": 24,
+      "surroundLineColor": {
+        "red": 255,
+        "green": 255,
+        "blue": 0,
+        "alpha": 255
+      },
+      "lineWidthLimit": false,
+      "surroundLineFlag": false,
+      "lineColorLimit": false,
+      "fillColorLimit": false,
+      "surroundLineLimit": false,
+      "fillLimit": false,
+      "lineTypeLimit": false,
+      "surroundLineType": 0,
+      "style": {
+        "fillGradientOffsetRatioX": 0,
+        "markerSize": 2.4,
+        "fillForeColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientOffsetRatioY": 0,
+        "markerWidth": 0,
+        "markerAngle": 0,
+        "fillSymbolID": 1,
+        "lineColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "markerSymbolID": 0,
+        "lineWidth": 0.5,
+        "markerHeight": 0,
+        "fillOpaqueRate": 30,
+        "fillBackOpaque": true,
+        "fillBackColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientMode": "NONE",
+        "lineSymbolID": 0,
+        "fillGradientAngle": 0
+      },
+      "textStyle": {
+        "italicAngle": 0,
+        "shadow": false,
+        "sizeFixed": true,
+        "underline": false,
+        "rotation": 0,
+        "backOpaque": false,
+        "bold": false,
+        "align": "TOPLEFT",
+        "foreColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "italic": false,
+        "strikeout": false,
+        "fontName": "Microsoft YaHei",
+        "outline": false,
+        "borderSpacingWidth": 4,
+        "backColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "outlineWidth": 1,
+        "fontHeight": 7,
+        "fontWidth": 0,
+        "opaqueRate": 100,
+        "stringAlignment": "LEFT",
+        "fontScale": 1,
+        "fontWeight": 0
+      }
+    },
+    {
+      "positionPoints": [
+        {
+          "x": -18.5,
+          "y": 34.6175
+        },
+        {
+          "x": 0.25,
+          "y": 50.2425
+        },
+        {
+          "x": 19,
+          "y": 34.6175
+        }
+      ],
+      "surroundLineWidth": 1,
+      "fontColorLimit": false,
+      "polybezierClose": false,
+      "textContent": "",
+      "type": 24,
+      "surroundLineColor": {
+        "red": 255,
+        "green": 255,
+        "blue": 0,
+        "alpha": 255
+      },
+      "lineWidthLimit": false,
+      "surroundLineFlag": false,
+      "lineColorLimit": false,
+      "fillColorLimit": false,
+      "surroundLineLimit": false,
+      "fillLimit": false,
+      "lineTypeLimit": false,
+      "surroundLineType": 0,
+      "style": {
+        "fillGradientOffsetRatioX": 0,
+        "markerSize": 2.4,
+        "fillForeColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientOffsetRatioY": 0,
+        "markerWidth": 0,
+        "markerAngle": 0,
+        "fillSymbolID": 1,
+        "lineColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "markerSymbolID": 0,
+        "lineWidth": 0.5,
+        "markerHeight": 0,
+        "fillOpaqueRate": 30,
+        "fillBackOpaque": true,
+        "fillBackColor": {
+          "red": 255,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "fillGradientMode": "NONE",
+        "lineSymbolID": 0,
+        "fillGradientAngle": 0
+      },
+      "textStyle": {
+        "italicAngle": 0,
+        "shadow": false,
+        "sizeFixed": true,
+        "underline": false,
+        "rotation": 0,
+        "backOpaque": false,
+        "bold": false,
+        "align": "TOPLEFT",
+        "foreColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "italic": false,
+        "strikeout": false,
+        "fontName": "Microsoft YaHei",
+        "outline": false,
+        "borderSpacingWidth": 4,
+        "backColor": {
+          "red": 0,
+          "green": 0,
+          "blue": 0,
+          "alpha": 255
+        },
+        "outlineWidth": 1,
+        "fontHeight": 7,
+        "fontWidth": 0,
+        "opaqueRate": 100,
+        "stringAlignment": "LEFT",
+        "fontScale": 1,
+        "fontWeight": 0
+      }
+    }
+  ],
+  "partTopo": null,
+  "middleMarkExist": false,
+  "scaleValues": [],
+  "symbolSize": {
+    "x": 100,
+    "y": 100
+  },
+  "limitWidthHeight": true,
+  "center": null,
+  "textContent": "",
+  "symbolType": 1,
+  "negativeImage": false,
+  "rotate2D": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  },
+  "parts": null,
+  "scale2D": {
+    "x": 1,
+    "y": 1,
+    "z": 0
+  },
+  "style": {
+    "fillGradientOffsetRatioX": 0,
+    "markerSize": 2.4,
+    "fillForeColor": {
+      "red": 255,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "fillGradientOffsetRatioY": 0,
+    "markerWidth": 0,
+    "markerAngle": 0,
+    "fillSymbolID": 1,
+    "lineColor": {
+      "red": 255,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "markerSymbolID": 0,
+    "lineWidth": 0.5,
+    "markerHeight": 0,
+    "fillOpaqueRate": 30,
+    "fillBackOpaque": true,
+    "fillBackColor": {
+      "red": 255,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "fillGradientMode": "NONE",
+    "lineSymbolID": 0,
+    "fillGradientAngle": 0
+  },
+  "scalePoints": [],
+  "position": null,
+  "textStyle2D": {
+    "italicAngle": 0,
+    "shadow": false,
+    "sizeFixed": true,
+    "underline": false,
+    "rotation": 0,
+    "backOpaque": false,
+    "bold": false,
+    "align": "TOPLEFT",
+    "foreColor": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "italic": false,
+    "strikeout": false,
+    "fontName": "Microsoft YaHei",
+    "outline": false,
+    "borderSpacingWidth": 4,
+    "backColor": {
+      "red": 0,
+      "green": 0,
+      "blue": 0,
+      "alpha": 255
+    },
+    "outlineWidth": 1,
+    "fontHeight": 7,
+    "fontWidth": 0,
+    "opaqueRate": 100,
+    "stringAlignment": "LEFT",
+    "fontScale": 1,
+    "fontWeight": 0
+  },
+  "subSymbols": [],
+  "symbolRank": 0
+}

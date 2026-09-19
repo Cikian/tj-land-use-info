@@ -1,0 +1,546 @@
+[
+  {
+    "id": 1,
+    "name": "三维模型",
+    "parent": true,
+    "children":
+      [
+      {
+        "name": "白模",
+        "parent": false,
+        "url": "http://192.168.110.37:8083/stargis/rest/services/jianzhu_bm1/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "stype": 1,
+        "id": 110,
+        "max": 20000,
+        "changeColor": true,
+        "featureClassId": "11"
+      },
+      {
+        "name": "管线1",
+        "parent": false,
+        "url": "http://192.168.110.103:8083/stargis/rest/services/testDLX/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "stype": 1,
+        "id": 2612,
+        "max": 20000,
+        "changeColor": true,
+        "featureClassId": "2612"
+      },
+      {
+        "name": "管线2",
+        "parent": false,
+        "url": "http://192.168.110.103:8083/stargis/rest/services/testDLD/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "stype": 1,
+        "id": 2613,
+        "max": 20000,
+        "changeColor": true,
+        "featureClassId": "2613"
+      },
+      {
+        "name": "管线3",
+        "parent": false,
+        "url": "http://192.168.110.103:8083/stargis/rest/services/testRQX/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "stype": 1,
+        "id": 2614,
+        "max": 20000,
+        "changeColor": true,
+        "featureClassId": "2614"
+      },
+      {
+        "name": "高程",
+        "parent": false,
+        "url": "http://192.168.110.103:8084/stargis/rest/services/tjdx/3DTileServer",
+        "checked": false,
+        "type": "TerrainServer",
+        "stype": 1,
+        "id": 2611,
+        "max": 20000,
+        "changeColor": false,
+        "featureClassId": "22"
+      },
+      {
+        "name": "Arcgis",
+        "parent": false,
+        "url": "http://map.geoq.cn/arcgis/rest/services/ChinaOnlineStreetPurplishBlue/MapServer",
+        "checked": false,
+        "type": "MapImageLayer",
+        "stype": 1,
+        "id": 2611122222,
+        "max": 20000,
+        "changeColor": false,
+        "featureClassId": "2611122222"
+      },
+      {
+        "name": "Arcgis3",
+        "parent": false,
+        "url": "https://sampleserver6.arcgisonline.com/arcgis/rest/services/Census/MapServer",
+        "checked": false,
+        "type": "MapImageLayer",
+        "stype": 1,
+        "id": 261112226662,
+        "max": 20000,
+        "changeColor": false,
+        "featureClassId": "https://sampleserver6.arcgisonline.com/arcgis/rest/services/Census/MapServer"
+      },
+      {
+        "name": "建筑分层",
+        "parent": true,
+        "id": 115,
+        "children": [
+          {
+            "name": "建筑室内",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jianzhu_sn/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "id": 1151,
+            "max": 20000,
+            "changeColor": true,
+            "featureClassId": "13d878b1-8989-4a4b-b0bf-f0fdbd27ca80",
+            "camera": {
+              "position": {"x": -2261034.4301169743, "y": 4403232.01492663, "z": 4022517.0106708803},
+              "heading": 0.447800504614,
+              "pitch": -0.4520861919345931,
+              "roll": 0
+            }
+          },
+          {
+            "name": "建筑室外",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jianzhu_sw/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "id": 1152,
+            "max": 20000,
+            "changeColor": true,
+            "featureClassId": "33"
+          }
+        ]
+      },
+      {
+        "name": "精模",
+        "parent": true,
+        "id": 112,
+        "children": [
+          {
+            "name": "地面",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jzjm_patch/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 10000,
+            "changeColor": false,
+            "featureClassId": "44",
+            "id": 1114,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "水系",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jzjm_water/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 5000,
+            "changeColor": false,
+            "featureClassId": "55",
+            "id": 1113,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "建筑",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jzjm/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 2000,
+            "changeColor": false,
+            "featureClassId": "66",
+            "id": 1111,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "环境",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/jzjm_guidepost/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 500,
+            "changeColor": false,
+            "featureClassId": "77",
+            "id": 1112,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "西青开发区建筑",
+            "parent": false,
+            "url": "http://127.0.0.1:8083/stargis/rest/services/testSW/3DTileServer/tileset.json",
+            "checked": false,
+            "type": 1,
+            "stype": 1,
+            "max": 20000,
+            "changeColor": false,
+            "featureClassId": "6666",
+            "id": 1115,
+            "bottomAltitude": 0
+          }
+        ]
+        },
+      {
+        "name": "BIM模型",
+        "parent": true,
+        "id": 112,
+        "open": false,
+        "children": [
+          {
+            "name": "胸科医院-场景",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_cj/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 800,
+            "changeColor": false,
+            "featureClassId": "88",
+            "id": 1121,
+            "bottomAltitude": 330,
+            "camera": {
+              "position": {"x": -2261374.3163047046, "y": 4402162.6214515, "z": 4023711.361486532},
+              "heading": 0.16197907415,
+              "pitch": -0.49275611,
+              "roll": 0
+            }
+          },
+          {
+            "name": "胸科医院-建筑1F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz1f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 500,
+            "changeColor": false,
+            "featureClassId": "99",
+            "id": 1122,
+            "bottomAltitude": 330,
+            "camera": {
+              "position": {"x": -2261235.5881946683, "y": 4401952.87074587, "z": 4023830.85701503},
+              "heading": 0.7047509457,
+              "pitch": -0.4188231,
+              "roll": 6.28318530
+            }
+          },
+          {
+            "name": "胸科医院-建筑3F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz3f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 500,
+            "changeColor": false,
+            "featureClassId": "1010",
+            "id": 1123,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑7F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz7f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 500,
+            "changeColor": false,
+            "featureClassId": "1111",
+            "id": 1124,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑其他F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jzqita/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 500,
+            "changeColor": false,
+            "featureClassId": "1212",
+            "id": 1125,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑精装1F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_zx1f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 300,
+            "changeColor": false,
+            "featureClassId": "1313",
+            "id": 1126,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑结构1F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_jiegou1f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 100,
+            "changeColor": false,
+            "featureClassId": "1414",
+            "id": 1128,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑暖通1F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_nt1f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 50,
+            "changeColor": false,
+            "featureClassId": "1515",
+            "id": 1130,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑消防1F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_xf1f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 50,
+            "changeColor": false,
+            "featureClassId": "1616",
+            "id": 1131,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑精装3F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_zx3f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 50,
+            "changeColor": false,
+            "featureClassId": "1717",
+            "id": 1127,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑电力3F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_dian3f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 50,
+            "changeColor": false,
+            "featureClassId": "1818",
+            "id": 1129,
+            "bottomAltitude": 330
+          },
+          {
+            "name": "胸科医院-建筑给排水3F",
+            "parent": false,
+            "url": "http://192.168.110.37:8083/stargis/rest/services/xkyy_jz_jps3f/3DTileServer/tileset.json",
+            "checked": false,
+            "type": "3DTileServer",
+            "stype": 1,
+            "max": 50,
+            "changeColor": false,
+            "featureClassId": "1919",
+            "id": 1132,
+            "bottomAltitude": 330
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "基础地图",
+    "parent": true,
+    "checked": false,
+    "id": 4,
+    "children": [
+      {
+        "name":"影像图",
+        "parent": false,
+        "url": "http://192.168.110.37:8083/stargis/rest/services/tj_yx_2m_1/WMTSServer/1.0.0/Layers/default/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png",
+        "checked":false,
+        "type": "WMTS",
+        "id": 51,
+        "featureClassId":"2020"
+      },
+      {
+        "name":"中心城区建筑WMTSServer",
+        "parent": false,
+        "url": "http://192.168.110.37:8083/stargis/rest/services/zxcqjz_2d/WMTSServer/1.0.0/Layers/default/default028mm/{z}/{y}/{x}",
+        "checked":false,
+        "type": "WMTSServer",
+        "id": 555551,
+        "featureClassId":"http://192.168.110.103:8083/stargis/rest/services/XZFWDB/FeatureServer/0/0/featureclasses/0/Query"
+      },
+      {
+        "name":"全市建筑",
+        "parent": false,
+        "url": "http://192.168.110.103:8083/stargis/rest/services/TJQSY/WMTSServer/1.0.0/Layers/default/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png",
+        "checked":false,
+        "type": "WMTS",
+        "id": 55555767,
+        "featureClassId":"http://192.168.110.103:8083/stargis/rest/services/TJQSY/FeatureServer/0/0/featureclasses/0/Query"
+      },
+      {
+        "name":"红线",
+        "parent": false,
+        "url": "http://192.168.110.37:18080/datas/HONGXIANZXX.geojson",
+        "checked":false,
+        "type": "GeoJSON",
+        "id": 5555576711,
+        "featureClassId":"5555576711"
+      },
+      {
+        "name":"红线边线WMS",
+        "parent": false,
+        "url": "http://192.168.110.103:8083/stargis/rest/services/testDMX/WMSServer",
+        "checked":false,
+        "type": "WMSServer",
+        "id": 666666,
+        "featureClassId":"http://192.168.110.103:8083/stargis/rest/services/testDMX/FeatureServer/0/0/featureclasses/0/Query"
+      }
+    ]
+  },
+  {
+    "name": "建筑",
+    "parent": true,
+    "checked": false,
+    "id": 3,
+    "children": [
+      {
+        "name": "中心城区建筑",
+        "parent": false,
+        "url": "http://192.168.110.37:8083/stargis/rest/services/zxcqjz_2d/WMTSServer/1.0.0/Layers/default/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png",
+        "checked": false,
+        "type": "WMTS",
+        "id": 310,
+        "featureClassId": "1111111111111"
+      },
+      {
+        "name": "医院点位",
+        "parent": false,
+        "url": "http://127.0.0.1:18080/datas/hospital.geojson",
+        "checked": false,
+        "type": "GeoJSON",
+        "id": 311,
+        "lt": false,
+        "featureClassId": "fed31e84-a66c-4c97-b3f3-cbd75e15e461"
+      },
+      {
+        "name": "铁路线",
+        "parent": false,
+        "url": "http://127.0.0.1:18080/datas/xian.geojson",
+        "checked": false,
+        "type": "GeoJSON",
+        "id": 3121111,
+        "lt": false,
+        "featureClassId": "3121111"
+      },
+      {
+        "name": "面",
+        "parent": false,
+        "url": "http://127.0.0.1:18080/datas/mian.geojson",
+        "checked": false,
+        "type": "GeoJSON",
+        "id": 312222222,
+        "lt": false,
+        "featureClassId": "312222222"
+      },
+      {
+        "name": "行政区划测试",
+        "parent": false,
+        "url": "http://192.168.110.37:8083/stargis/rest/services/xzqh_test/WMSServer",
+        "checked": false,
+        "type": "WMSServer",
+        "id": 312,
+        "lt": false,
+        "featureClassId": "2121"
+      }
+    ]
+  },
+  {
+    "name": "管线",
+    "parent": true,
+    "checked": false,
+    "id": 4,
+    "children":[
+      {
+        "name": "燃气管线",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testRQX/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 410,
+        "featureClassId": "1111111111111234"
+      },{
+        "name": "燃气管点",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testRQD/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 411,
+        "featureClassId": "111111421111111"
+      },{
+        "name": "电力管线",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testDLX/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 412,
+        "featureClassId": "1111115781111111"
+      },{
+        "name": "电力管点",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testDLD/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 413,
+        "featureClassId": "1111164311111111"
+      },{
+        "name": "psLine1",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testPSX1/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 414,
+        "featureClassId": "psLine1"
+      },{
+        "name": "psLine",
+        "parent": false,
+        "url": "http://127.0.0.1:8083/stargis/rest/services/testPSX/3DTileServer/tileset.json",
+        "checked": false,
+        "type": "3DTileServer",
+        "id": 415,
+        "featureClassId": "psLine"
+      }
+    ]
+  }
+]
