@@ -8,6 +8,3 @@
 
 ## front
 **/*.lock
-
-
-echo -e "\n## middle\nmiiddle/*.jar\nmiiddle/*.war" >> .gitignore
