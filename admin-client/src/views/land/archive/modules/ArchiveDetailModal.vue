@@ -70,7 +70,16 @@
                   {{ fileCount }} 个 / {{ totalSizeText }}
                 </a-descriptions-item>
                 <a-descriptions-item label="创建信息">{{ joinInfo(detail.createBy, detail.createTime) }}</a-descriptions-item>
-                <a-descriptions-item label="备注" :span="3">{{ detail.remark || '—' }}</a-descriptions-item>
+                <!--
+                  这一项是**最后一项**，不要再写 :span="3"：
+                  antd 对最后一个 item 会把 span 强制改写成「本行剩余列数」
+                  （descriptions/index.js: itemNode = cloneElement(itemNode, { props: { span: leftSpans } })），
+                  所以写不写 :span 渲染结果完全一样；但它的**记账**仍按原始 span 扣减，
+                  列数一变（本表在 lg/md 是 2 列、sm/xs 是 1 列）就会 1-3 = -2 溢出，
+                  控制台报 “Sum of column `span` in a line exceeds `column` of Descriptions”。
+                  去掉 :span 后渲染不变、告警消失（实测见 docs 7.6）。
+                -->
+                <a-descriptions-item label="备注">{{ detail.remark || '—' }}</a-descriptions-item>
               </a-descriptions>
             </div>
           </a-tab-pane>

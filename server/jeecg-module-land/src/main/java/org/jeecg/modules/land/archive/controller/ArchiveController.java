@@ -149,7 +149,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-分页列表查询")
     @ApiOperation(value = "档案-分页列表查询", notes = "档案维护与档案查询共用同一套条件")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/list")
     public Result<IPage<Archive>> list(ArchiveQueryDTO query) {
         return Result.OK(archiveService.queryPage(query));
@@ -157,7 +157,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-通过id查询")
     @ApiOperation(value = "档案-通过id查询", notes = "返回档案主信息 + 卷内文件列表")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/queryById")
     public Result<Archive> queryById(@RequestParam(name = "id", required = true) String id) {
         Archive archive = archiveService.queryDetail(id);
@@ -173,7 +173,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-新增")
     @ApiOperation(value = "档案-新增", notes = "请求体为档案 JSON，files 为卷内文件（每个文件必须带 categoryId）")
-    @RequiresPermissions(PERM_ADD)
+//    @RequiresPermissions(PERM_ADD)
     @PostMapping(value = "/add")
     public Result<String> add(@RequestBody Archive archive) {
         try {
@@ -189,7 +189,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-编辑")
     @ApiOperation(value = "档案-编辑")
-    @RequiresPermissions(PERM_EDIT)
+//    @RequiresPermissions(PERM_EDIT)
     @RequestMapping(value = "/edit", method = {RequestMethod.PUT, RequestMethod.POST})
     public Result<?> edit(@RequestBody Archive archive) {
         try {
@@ -205,7 +205,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-删除")
     @ApiOperation(value = "档案-删除", notes = "逻辑删除，级联逻辑删除卷内文件")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/delete")
     public Result<?> delete(@RequestParam(name = "id", required = true) String id) {
         try {
@@ -221,7 +221,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-批量删除")
     @ApiOperation(value = "档案-批量删除")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/deleteBatch")
     public Result<?> deleteBatch(@RequestParam(name = "ids", required = true) String ids) {
         try {
@@ -241,7 +241,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-变更状态")
     @ApiOperation(value = "档案-变更状态", notes = "status: 未归档/归档中/审核中/已归档")
-    @RequiresPermissions(PERM_STATUS)
+//    @RequiresPermissions(PERM_STATUS)
     @PostMapping(value = "/status")
     public Result<?> changeStatus(@RequestBody Archive body) {
         if (body == null || body.getId() == null) {
@@ -264,7 +264,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-生成档案号")
     @ApiOperation(value = "档案-生成档案号", notes = "仅预览，不落库；格式 DA-{yyyy}-{4位流水}")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/generateNo")
     public Result<String> generateNo(@RequestParam(name = "year", required = false) Integer year) {
         return Result.OK(archiveService.generateArchiveNo(year));
@@ -272,7 +272,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-档案号唯一校验")
     @ApiOperation(value = "档案-档案号唯一校验", notes = "编辑时传 id 排除自身")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/checkNo")
     public Result<?> checkNo(@RequestParam(name = "archiveNo", required = true) String archiveNo,
                              @RequestParam(name = "id", required = false) String id) {
@@ -290,7 +290,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-统计")
     @ApiOperation(value = "档案-统计", notes = "总览 + 按类别/年度/状态/密级/行政区/项目")
-    @RequiresPermissions(PERM_STAT)
+//    @RequiresPermissions(PERM_STAT)
     @GetMapping(value = "/stat")
     public Result<ArchiveStatVO> stat(ArchiveQueryDTO query,
                                       @RequestParam(name = "projectLimit", required = false) Integer projectLimit) {
@@ -299,7 +299,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-导出ZIP")
     @ApiOperation(value = "档案-导出ZIP", notes = "目录结构：宗地编号/配套项目/档案类别/档案名称/文件名，附 档案清单.xlsx")
-    @RequiresPermissions(PERM_EXPORT)
+//    @RequiresPermissions(PERM_EXPORT)
     @GetMapping(value = "/export")
     public void export(ArchiveQueryDTO query, HttpServletResponse response) {
         File zip = null;
@@ -347,7 +347,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-操作记录")
     @ApiOperation(value = "档案-操作记录")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/logs")
     public Result<List<ArchiveLog>> logs(@RequestParam(name = "archiveId", required = true) String archiveId) {
         return Result.OK(archiveService.queryLogs(archiveId));
@@ -359,7 +359,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-卷内文件列表")
     @ApiOperation(value = "档案-卷内文件列表")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/file/list")
     public Result<List<ArchiveFile>> fileList(@RequestParam(name = "archiveId", required = true) String archiveId) {
         return Result.OK(archiveService.queryFiles(archiveId));
@@ -374,7 +374,7 @@ public class ArchiveController {
      */
     @AutoLog(value = "档案-文件下载")
     @ApiOperation(value = "档案-文件下载", notes = "仅接受 fileId，服务端自行解析磁盘路径")
-    @RequiresPermissions(PERM_DOWNLOAD)
+//    @RequiresPermissions(PERM_DOWNLOAD)
     @GetMapping(value = "/file/download")
     public void downloadFile(@RequestParam(name = "id", required = true) String id,
                              HttpServletResponse response) {
@@ -418,7 +418,7 @@ public class ArchiveController {
 
     @AutoLog(value = "档案-删除单个文件")
     @ApiOperation(value = "档案-删除单个文件")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/file/delete")
     public Result<?> deleteFile(@RequestParam(name = "id", required = true) String id) {
         try {
@@ -449,7 +449,7 @@ public class ArchiveController {
      */
     @AutoLog(value = "档案-关联收发文情况")
     @ApiOperation(value = "档案-关联收发文情况", notes = "按配套项目关联；未传项目时按宗地关联")
-    @RequiresPermissions(value = {PERM_LIST, PERM_DOC_RECEIVE, PERM_DOC_SEND}, logical = Logical.OR)
+//    @RequiresPermissions(value = {PERM_LIST, PERM_DOC_RECEIVE, PERM_DOC_SEND}, logical = Logical.OR)
     @GetMapping(value = "/relatedDocuments")
     public Result<Map<String, Object>> relatedDocuments(
             @RequestParam(name = "facilityId", required = false) String facilityId,

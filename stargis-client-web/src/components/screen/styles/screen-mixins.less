@@ -1,0 +1,191 @@
+/**
+ * 大屏基础组件 —— Less 混入（只输出被调用的规则，本身不产生 CSS）
+ * 组件内使用：@import './styles/screen-mixins.less';（按组件所在层级使用相对路径）
+ */
+
+/* 单行省略 */
+.screen-ellipsis() {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 多行省略 */
+.screen-ellipsis-multi(@lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: @lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 玻璃面板：暗色半透明 + 轻微内辉光 + 1px 青色描边 */
+.screen-glass(@blur: var(--screen-blur)) {
+  background: var(--screen-panel-bg);
+  border: 1px solid var(--screen-border);
+  border-radius: var(--screen-radius);
+  box-shadow: var(--screen-shadow), var(--screen-shadow-inset);
+  -webkit-backdrop-filter: blur(@blur);
+  backdrop-filter: blur(@blur);
+}
+
+/* 数字排版：等宽 + 紧凑字距，保证多行数值右对齐 */
+.screen-number-font(@size: var(--screen-font-number), @weight: 700) {
+  font-family: var(--screen-font-number-family);
+  font-size: @size;
+  font-weight: @weight;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* 横向渐变进度条（轨道 + 填充由调用方给出宽度百分比） */
+.screen-bar-fill(@from: var(--screen-bar-from), @to: var(--screen-bar-to)) {
+  background-image: linear-gradient(90deg, @from 0%, @to 100%);
+  border-radius: var(--screen-radius-pill);
+}
+
+/* 键盘可达的可见焦点环（不依赖颜色单独传达） */
+.screen-focus-ring() {
+  &:focus-visible {
+    outline: 2px solid var(--screen-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* 面板四角科技感角标 */
+.screen-corner(@size: 10px, @width: 1px, @color: var(--screen-border-strong)) {
+  position: absolute;
+  width: @size;
+  height: @size;
+  border: 0 solid @color;
+  pointer-events: none;
+}
+
+/* ===================================================================
+   交互控件（表单 / 按钮 / 下拉 / 弹窗）共用外观
+   -------------------------------------------------------------------
+   档案管理模块需要输入框、选择器、弹窗等展示类以外的控件。
+   为保持「青绿暗色」观感统一，这些控件全部复用下面这组混入，
+   不要在组件里各写一套 border / hover / focus 规则。
+
+   统一尺寸契约（保证对齐与触控可达）：
+     控件高度 sm 28px / md 32px / lg 36px；
+     控件内水平内边距 10px；圆角 --screen-radius-sm。
+   =================================================================== */
+
+/* 控件基础外观：暗色玻璃底 + 1px 青绿描边 */
+.screen-control(@height: 32px) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--screen-space-2);
+  width: 100%;
+  min-height: @height;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: var(--screen-font-sm);
+  line-height: 1.4;
+  color: var(--screen-text);
+  background: rgba(2, 24, 28, 0.72);
+  border: 1px solid var(--screen-border);
+  border-radius: var(--screen-radius-sm);
+  transition: border-color var(--screen-duration) var(--screen-ease),
+    background-color var(--screen-duration) var(--screen-ease),
+    box-shadow var(--screen-duration) var(--screen-ease);
+}
+
+/* 悬停：只提亮描边，不改变尺寸，避免布局抖动 */
+.screen-control-hover() {
+  border-color: var(--screen-border-strong);
+}
+
+/* 聚焦：2px 辉光焦点环，键盘可见（配合 .screen-focus-ring 使用） */
+.screen-control-focus() {
+  border-color: var(--screen-accent);
+  box-shadow: 0 0 0 2px var(--screen-accent-glow);
+  outline: none;
+}
+
+/* 只读 / 禁用：降一级对比度，并明确禁用光标 */
+.screen-control-disabled() {
+  color: var(--screen-text-mute);
+  background: rgba(2, 24, 28, 0.38);
+  border-color: var(--screen-border-soft);
+  cursor: not-allowed;
+}
+
+/* 校验失败：仅用描边不足以传达，调用方必须同时渲染错误文案 */
+.screen-control-invalid() {
+  border-color: var(--screen-danger);
+  box-shadow: 0 0 0 2px rgba(255, 122, 107, 0.18);
+}
+
+/* 占位符 / 空值文案 */
+.screen-placeholder() {
+  color: var(--screen-text-mute);
+}
+
+/* 下拉浮层外观（与面板同族的更实底色，保证压在表格上也读得清） */
+.screen-popover-surface() {
+  background: var(--screen-panel-bg-solid);
+  border: 1px solid var(--screen-border);
+  border-radius: var(--screen-radius);
+  box-shadow: var(--screen-shadow);
+}
+
+/* 细滚动条：用于下拉浮层、可滚动面板、树、弹窗正文 */
+.screen-scrollbar(@size: 4px) {
+  &::-webkit-scrollbar {
+    width: @size;
+    height: @size;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--screen-border);
+    border-radius: var(--screen-radius-pill);
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 表格单元格里的文字操作按钮（比 ScreenButton 更轻，不进按钮体系） */
+.screen-link-action() {
+  padding: 0;
+  font-family: inherit;
+  font-size: var(--screen-font-xs);
+  line-height: 1.4;
+  color: var(--screen-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--screen-duration) var(--screen-ease),
+    opacity var(--screen-duration) var(--screen-ease);
+  .screen-focus-ring();
+
+  &:hover {
+    color: var(--screen-accent-bright);
+  }
+
+  &.is-danger {
+    color: var(--screen-danger);
+
+    &:hover {
+      color: #ffab9f;
+    }
+  }
+
+  &.is-muted {
+    color: var(--screen-text-sub);
+
+    &:hover {
+      color: var(--screen-text);
+    }
+  }
+
+  &:disabled,
+  &.is-disabled {
+    color: var(--screen-text-mute);
+    cursor: not-allowed;
+  }
+}

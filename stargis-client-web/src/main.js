@@ -45,6 +45,10 @@ import hasPermission from '@/utils/hasPermission'
 import vueBus from '@/utils/vueBus'
 import JeecgComponents from '@/components/jeecg/index'
 import '@/assets/less/JAreaLinkage.less'
+// 大屏基础组件设计令牌（青绿暗色主题，CSS 变量，全局引入一次）
+import '@/components/screen/styles/screen-tokens.less'
+// 大屏消息提示（命令式，替代浅色的 antd $message）：注册 this.$screenToast
+import ScreenToast from '@/components/screen/toast'
 import VueAreaLinkage from 'vue-area-linkage'
 import '@/components/jeecg/JVxeTable/install'
 import '@/components/JVxeCells/install'
@@ -64,6 +68,7 @@ Vue.use(preview)
 Vue.use(vueBus)
 Vue.use(JeecgComponents)
 Vue.use(VueAreaLinkage)
+Vue.use(ScreenToast)
 
 //依据样式返回不同样式下的图片路径 zbs
 Vue.prototype.GlobalImgFolderSelect = function(imgpath) {

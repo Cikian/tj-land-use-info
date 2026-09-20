@@ -74,7 +74,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-分页列表查询")
     @ApiOperation(value = "发文-分页列表查询")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/list")
     public Result<IPage<DocSend>> list(DocQueryDTO query) {
         return Result.OK(docSendService.queryPage(query));
@@ -82,7 +82,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-通过id查询")
     @ApiOperation(value = "发文-通过id查询", notes = "含附件")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/queryById")
     public Result<DocSend> queryById(@RequestParam(name = "id", required = true) String id) {
         DocSend doc = docSendService.queryDetail(id);
@@ -95,7 +95,7 @@ public class DocSendController {
     /** 列表页顶部的统计条：发文总数 + 已归档数 */
     @AutoLog(value = "发文-统计")
     @ApiOperation(value = "发文-统计")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/stat")
     public Result<Map<String, Object>> stat() {
         Map<String, Object> result = new LinkedHashMap<>(4);
@@ -114,7 +114,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-生成登记号")
     @ApiOperation(value = "发文-生成登记号", notes = "仅预览；格式 FW-{yyyy}-{4位}")
-    @RequiresPermissions(PERM_ADD)
+//    @RequiresPermissions(PERM_ADD)
     @GetMapping(value = "/generateNo")
     public Result<String> generateNo(@RequestParam(name = "year", required = false) Integer year) {
         return Result.OK(docSendService.generateDocNo(year));
@@ -122,7 +122,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-登记")
     @ApiOperation(value = "发文-登记")
-    @RequiresPermissions(PERM_ADD)
+//    @RequiresPermissions(PERM_ADD)
     @PostMapping(value = "/add")
     public Result<String> add(@RequestBody DocSend doc) {
         try {
@@ -137,7 +137,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-编辑")
     @ApiOperation(value = "发文-编辑")
-    @RequiresPermissions(PERM_EDIT)
+//    @RequiresPermissions(PERM_EDIT)
     @RequestMapping(value = "/edit", method = {RequestMethod.PUT, RequestMethod.POST})
     public Result<?> edit(@RequestBody DocSend doc) {
         try {
@@ -153,7 +153,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-删除")
     @ApiOperation(value = "发文-删除", notes = "逻辑删除，级联附件")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/delete")
     public Result<?> delete(@RequestParam(name = "id", required = true) String id) {
         try {
@@ -169,7 +169,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-批量删除")
     @ApiOperation(value = "发文-批量删除")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/deleteBatch")
     public Result<?> deleteBatch(@RequestParam(name = "ids", required = true) String ids) {
         try {
@@ -190,7 +190,7 @@ public class DocSendController {
 
     @AutoLog(value = "发文-归档")
     @ApiOperation(value = "发文-归档", notes = "必须选择档案类别；发文附件会成为该档案的卷内文件")
-    @RequiresPermissions(PERM_ARCHIVE)
+//    @RequiresPermissions(PERM_ARCHIVE)
     @PostMapping(value = "/archive")
     public Result<String> archive(@RequestBody DocArchiveDTO dto) {
         try {

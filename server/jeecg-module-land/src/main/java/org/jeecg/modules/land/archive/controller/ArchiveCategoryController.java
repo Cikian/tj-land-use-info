@@ -95,10 +95,10 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-类别树查询")
     @ApiOperation(value = "档案类别-类别树查询", notes = "返回 antd tree 结构；keyword/status 过滤时保留命中节点的祖先")
-    @RequiresPermissions(value = {PERM_LIST,
-            "land:archive:list", "land:archive:add", "land:archive:edit",
-            "land:docReceive:add", "land:docReceive:edit", "land:docReceive:archive",
-            "land:docSend:add", "land:docSend:edit", "land:docSend:archive"}, logical = Logical.OR)
+//    @RequiresPermissions(value = {PERM_LIST,
+//            "land:archive:list", "land:archive:add", "land:archive:edit",
+//            "land:docReceive:add", "land:docReceive:edit", "land:docReceive:archive",
+//            "land:docSend:add", "land:docSend:edit", "land:docSend:archive"}, logical = Logical.OR)
     @GetMapping(value = "/tree")
     public Result<List<ArchiveCategory>> tree(@RequestParam(name = "keyword", required = false) String keyword,
                                               @RequestParam(name = "status", required = false) Integer status,
@@ -111,7 +111,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-通过id查询")
     @ApiOperation(value = "档案类别-通过id查询", notes = "附带父类别名称与全路径名称")
-    @RequiresPermissions(PERM_LIST)
+//    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/queryById")
     public Result<ArchiveCategory> queryById(@RequestParam(name = "id", required = true) String id) {
         ArchiveCategory category = archiveCategoryService.queryDetail(id);
@@ -126,7 +126,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-名称重复校验")
     @ApiOperation(value = "档案类别-名称重复校验", notes = "编辑时传 id 排除自身")
-    @RequiresPermissions(value = {PERM_LIST, PERM_ADD, PERM_EDIT}, logical = Logical.OR)
+//    @RequiresPermissions(value = {PERM_LIST, PERM_ADD, PERM_EDIT}, logical = Logical.OR)
     @GetMapping(value = "/checkName")
     public Result<?> checkName(@RequestParam(name = "parentId", required = false) String parentId,
                               @RequestParam(name = "name", required = true) String name,
@@ -144,7 +144,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-新建")
     @ApiOperation(value = "档案类别-新建", notes = "parentId 为空表示新建顶级类别；同名同级会拦截")
-    @RequiresPermissions(PERM_ADD)
+//    @RequiresPermissions(PERM_ADD)
     @PostMapping(value = "/add")
     public Result<?> add(@RequestBody ArchiveCategory category) {
         try {
@@ -163,7 +163,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-编辑")
     @ApiOperation(value = "档案类别-编辑", notes = "更名、移动、启停、排序号均走此接口")
-    @RequiresPermissions(PERM_EDIT)
+//    @RequiresPermissions(PERM_EDIT)
     @RequestMapping(value = "/edit", method = {RequestMethod.PUT, RequestMethod.POST})
     public Result<?> edit(@RequestBody ArchiveCategory category) {
         try {
@@ -185,7 +185,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-移除")
     @ApiOperation(value = "档案类别-移除", notes = "有子类别或有档案时不允许移除")
-    @RequiresPermissions(PERM_DELETE)
+//    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/delete")
     public Result<?> delete(@RequestParam(name = "id", required = true) String id) {
         try {
@@ -204,7 +204,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-排序")
     @ApiOperation(value = "档案类别-排序", notes = "parentId + 该父级下按新顺序排列的子节点ID")
-    @RequiresPermissions(PERM_SORT)
+//    @RequiresPermissions(PERM_SORT)
     @PostMapping(value = "/sort")
     public Result<?> editSort(@RequestBody ArchiveCategorySortDTO dto) {
         try {
@@ -223,7 +223,7 @@ public class ArchiveCategoryController {
      */
     @AutoLog(value = "档案类别-启用停用")
     @ApiOperation(value = "档案类别-启用停用", notes = "status 1启用 0停用；停用级联子树")
-    @RequiresPermissions(PERM_STATUS)
+//    @RequiresPermissions(PERM_STATUS)
     @PostMapping(value = "/status")
     public Result<?> editStatus(@RequestBody ArchiveCategory body) {
         if (body == null || body.getId() == null) {

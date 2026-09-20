@@ -1,0 +1,113 @@
+/**
+ * 大屏基础组件 —— 设计令牌（Design Tokens）
+ * ---------------------------------------------------------------
+ * 取值来源：UI 设计稿《天津市经营性用地市政基础设施配套动态监管工作站》
+ *          （saved-images/20260911-150021-gis-ui-*.png）实际取色。
+ * 主题：固化「青绿暗色」主题，不随系统 blue/green 主题切换。
+ *
+ * 使用方式：本文件只声明 CSS 自定义属性（:root），全局引入一次即可。
+ *   已在 src/main.js 中 import '@/components/screen/styles/screen-tokens.less'
+ *   组件内部统一使用 var(--screen-xxx)，不要写死颜色值。
+ */
+
+:root {
+  /* ---------- 底色 / 层级 ---------- */
+  --screen-bg-deep: #011316; /* 页面最底层（地图未加载时的兜底底色） */
+  --screen-bg: #021a1e; /* 面板之间的空隙底色 */
+  --screen-panel-bg: rgba(3, 27, 32, 0.72); /* 玻璃面板底色 */
+  --screen-panel-bg-solid: #031c21; /* 不透明面板底色（用于表格行等） */
+  --screen-panel-head-bg: rgba(6, 42, 48, 0.72); /* 面板标题栏底色 */
+  --screen-elevate: rgba(9, 52, 58, 0.55); /* 悬浮 / hover 态底色 */
+  --screen-row-alt: rgba(9, 48, 54, 0.34); /* 表格斑马纹 */
+
+  /* ---------- 描边 / 分隔 ---------- */
+  --screen-border: rgba(20, 168, 158, 0.26); /* 面板常规描边 */
+  --screen-border-soft: rgba(20, 168, 158, 0.14); /* 更弱的分隔线 */
+  --screen-border-strong: rgba(47, 227, 192, 0.5); /* 高亮描边 */
+  --screen-divider: rgba(20, 150, 145, 0.2); /* 表格 / 列表分隔线 */
+
+  /* ---------- 主色（青绿） ---------- */
+  --screen-accent: #2fe3c0; /* 主强调色：激活态、描边、图标 */
+  --screen-accent-bright: #7affff; /* 最亮青，用于环形图高光 */
+  --screen-accent-soft: #35d9b6; /* 次强调色：百分比 / 单位数值 */
+  --screen-accent-deep: #0b7f8c; /* 深青绿，用于渐变收尾 */
+  --screen-accent-glow: rgba(47, 227, 192, 0.32); /* 辉光 */
+
+  /* ---------- 数值 / 文本 ---------- */
+  --screen-number: #62f0c4; /* 大号统计数字（薄荷绿，取自设计稿 #60F0C0） */
+  --screen-text: #dcedee; /* 主文本 */
+  --screen-text-sub: #8fb6b8; /* 次级文本 */
+  --screen-text-mute: #5e8285; /* 弱化文本 / 单位 / 排名序号 */
+  --screen-text-on-accent: #04211f; /* 强调底色之上的文字 */
+
+  /* ---------- 数据可视化（设计稿实测取色） ---------- */
+  --screen-viz-green: #22c795; /* 市级占比条 / 表格常规项（#20C090） */
+  --screen-viz-cyan: #0fc3ce; /* 区级占比条（#09C6D0） */
+  --screen-viz-mint: #14d2a2; /* 环形图 市级 / 表盘填充 */
+  --screen-viz-blue: #1fa3e8; /* 环形图 区级（#20A0E0） */
+  --screen-viz-amber: #f0a83c; /* 预警橙：资金 / 未开工 / 未竣工 / 未移交 */
+
+  /* ---------- 条形 / 环形基础 ---------- */
+  --screen-bar-from: #21d2b4; /* 排行条渐变头（青绿） */
+  --screen-bar-to: #0a93ae; /* 排行条渐变尾（青蓝） */
+  --screen-bar-track: rgba(150, 180, 186, 0.26); /* 进度条轨道 */
+  --screen-bar-muted-from: #7fa9ab; /* 次要条 */
+  --screen-bar-muted-to: #3c6669;
+
+  /* ---------- 语义状态色 ---------- */
+  --screen-success: #22c795;
+  --screen-warning: #f0a83c;
+  --screen-danger: #ff7a6b;
+  --screen-info: #1fa3e8;
+
+  /* ---------- 圆角 ---------- */
+  --screen-radius-sm: 4px;
+  --screen-radius: 8px;
+  --screen-radius-lg: 12px;
+  --screen-radius-pill: 999px;
+
+  /* ---------- 间距（4/8 节奏） ---------- */
+  --screen-space-1: 4px;
+  --screen-space-2: 8px;
+  --screen-space-3: 12px;
+  --screen-space-4: 16px;
+  --screen-space-5: 20px;
+  --screen-space-6: 24px;
+
+  /* ---------- 字号 ---------- */
+  --screen-font-xs: 12px;
+  --screen-font-sm: 13px;
+  --screen-font-md: 14px;
+  --screen-font-lg: 16px;
+  --screen-font-xl: 20px;
+  --screen-font-number: 44px; /* 面板大数字 */
+  --screen-font-number-sm: 28px; /* 卡片内中号数字 */
+
+  /* ---------- 阴影 / 模糊 ---------- */
+  --screen-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --screen-shadow-inset: inset 0 0 24px rgba(47, 227, 192, 0.06);
+  --screen-blur: 12px;
+
+  /* ---------- 字体族 ---------- */
+  /* 与项目全局字体保持一致（'sy' = 内置思源黑体，见 assets/less/font.css），
+     避免依赖操作系统不一定存在的字体；数字统一启用等宽数位以保证纵向对齐 */
+  --screen-font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
+    'Microsoft YaHei', 'Hiragino Sans GB', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --screen-font-number-family: 'sy', 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
+    'Microsoft YaHei', 'Hiragino Sans GB', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ---------- 动效 ---------- */
+  --screen-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --screen-duration-fast: 120ms;
+  --screen-duration: 200ms;
+  --screen-duration-slow: 320ms;
+}
+
+/* 尊重「减少动态效果」的系统偏好：全局关闭过渡与动画 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --screen-duration-fast: 0ms;
+    --screen-duration: 0ms;
+    --screen-duration-slow: 0ms;
+  }
+}

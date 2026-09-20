@@ -5,6 +5,9 @@ import { UserLayout, TabLayout, RouteView, BlankLayout, PageView } from '@/compo
  * @type {[null,null]}
  */
 export const asyncRouterMap = [
+  // ⚠️ 该数组当前不会被注册：store/modules/permission.js 的 GenerateRoutes 从未被 dispatch，
+  //    实际路由 = constantRouterMap（见文件末尾）+ 后端菜单生成的动态路由。
+  //    新增独立页面请加到 constantRouterMap。
   {
     path: '/stargis',
     name: 'stargis',
@@ -327,10 +330,38 @@ export const constantRouterMap = [
       // },
     ]
   },
+  // 首页 = 地图大屏（青绿暗色主题），基础组件见 @/components/screen
+  // 注意：必须放在 constantRouterMap 里。asyncRouterMap 是死配置（GenerateRoutes 从未被 dispatch），
+  // 运行时路由 = constantRouterMap + 后端菜单动态路由，放进 asyncRouterMap 的页面永远访问不到。
   {
     path: '/',
     name: 'home',
+    component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
+  },
+  // 原「裸 Cesium 地图」页（无大屏浮层），保留备用
+  {
+    path: '/map',
+    name: 'stargisMap',
+    hidden: true,
     component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
+  },
+  // 大屏别名路径
+  {
+    path: '/screen',
+    name: 'landUseScreen',
+    hidden: true,
+    component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
+  },
+  // 档案管理深链：直接落到大屏的「档案管理」整页模块。
+  // 支持 ?tab=maintain|query|statistics|category 指定初始页签，
+  // 也支持 ?map=0 关闭 Cesium 便于无地图服务时预览界面。
+  // 说明：这里与 /screen 共用同一个组件，页面内部按 path 判断要高亮哪个顶栏导航项，
+  //       因此不需要额外维护一份布局。
+  {
+    path: '/screen/archive',
+    name: 'landArchiveScreen',
+    hidden: true,
+    component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
   },
   // {
   //   path: '/',
