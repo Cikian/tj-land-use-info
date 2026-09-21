@@ -98,7 +98,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-分页列表查询")
     @ApiOperation(value = "收文-分页列表查询", notes = "onlyMine=true 时只看我的待办")
-//    @RequiresPermissions(PERM_LIST)
+    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/list")
     public Result<IPage<DocReceive>> list(DocQueryDTO query) {
         return Result.OK(docReceiveService.queryPage(query));
@@ -106,7 +106,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-通过id查询")
     @ApiOperation(value = "收文-通过id查询", notes = "含附件与流转记录")
-//    @RequiresPermissions(PERM_LIST)
+    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/queryById")
     public Result<DocReceive> queryById(@RequestParam(name = "id", required = true) String id) {
         DocReceive doc = docReceiveService.queryDetail(id);
@@ -118,7 +118,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-流转记录")
     @ApiOperation(value = "收文-流转记录", notes = "按时间正序，供时间轴展示")
-//    @RequiresPermissions(PERM_LIST)
+    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/flowList")
     public Result<List<DocReceiveFlow>> flowList(@RequestParam(name = "docId", required = true) String docId) {
         return Result.OK(docReceiveFlowService.queryByDocId(docId));
@@ -126,7 +126,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-统计")
     @ApiOperation(value = "收文-统计")
-//    @RequiresPermissions(PERM_LIST)
+    @RequiresPermissions(PERM_LIST)
     @GetMapping(value = "/stat")
     public Result<DocStatVO> stat() {
         return Result.OK(docReceiveService.queryStat());
@@ -138,7 +138,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-生成登记号")
     @ApiOperation(value = "收文-生成登记号", notes = "仅预览；格式 SW-{yyyy}-{4位}")
-//    @RequiresPermissions(PERM_ADD)
+    @RequiresPermissions(PERM_ADD)
     @GetMapping(value = "/generateNo")
     public Result<String> generateNo(@RequestParam(name = "year", required = false) Integer year) {
         return Result.OK(docReceiveService.generateDocNo(year));
@@ -146,7 +146,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-登记")
     @ApiOperation(value = "收文-登记", notes = "写主表 + 附件 + 第一条流转记录；currentHandler 为承办人（可空）")
-//    @RequiresPermissions(PERM_ADD)
+    @RequiresPermissions(PERM_ADD)
     @PostMapping(value = "/add")
     public Result<String> add(@RequestBody DocReceive doc) {
         try {
@@ -161,7 +161,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-编辑")
     @ApiOperation(value = "收文-编辑", notes = "只改信息与附件，不推进流转")
-//    @RequiresPermissions(PERM_EDIT)
+    @RequiresPermissions(PERM_EDIT)
     @RequestMapping(value = "/edit", method = {RequestMethod.PUT, RequestMethod.POST})
     public Result<?> edit(@RequestBody DocReceive doc) {
         try {
@@ -177,7 +177,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-删除")
     @ApiOperation(value = "收文-删除", notes = "逻辑删除，级联附件与流转记录")
-//    @RequiresPermissions(PERM_DELETE)
+    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/delete")
     public Result<?> delete(@RequestParam(name = "id", required = true) String id) {
         try {
@@ -193,7 +193,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-批量删除")
     @ApiOperation(value = "收文-批量删除")
-//    @RequiresPermissions(PERM_DELETE)
+    @RequiresPermissions(PERM_DELETE)
     @DeleteMapping(value = "/deleteBatch")
     public Result<?> deleteBatch(@RequestParam(name = "ids", required = true) String ids) {
         try {
@@ -214,7 +214,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-转办")
     @ApiOperation(value = "收文-转办", notes = "把待办交给 toUsername；当前待办人才能操作")
-//    @RequiresPermissions(PERM_TRANSFER)
+    @RequiresPermissions(PERM_TRANSFER)
     @PostMapping(value = "/transfer")
     public Result<?> transfer(@RequestBody DocHandleDTO dto) {
         try {
@@ -230,7 +230,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-退回")
     @ApiOperation(value = "收文-退回", notes = "必须填写退回原因；退回到上一位处理人")
-//    @RequiresPermissions(PERM_REJECT)
+    @RequiresPermissions(PERM_REJECT)
     @PostMapping(value = "/reject")
     public Result<?> reject(@RequestBody DocHandleDTO dto) {
         try {
@@ -246,7 +246,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-办结")
     @ApiOperation(value = "收文-办结", notes = "办结后前端提示「是否归档」")
-//    @RequiresPermissions(PERM_FINISH)
+    @RequiresPermissions(PERM_FINISH)
     @PostMapping(value = "/finish")
     public Result<?> finish(@RequestBody DocHandleDTO dto) {
         try {
@@ -266,7 +266,7 @@ public class DocReceiveController {
 
     @AutoLog(value = "收文-归档")
     @ApiOperation(value = "收文-归档", notes = "必须选择档案类别；公文附件会成为该档案的卷内文件")
-//    @RequiresPermissions(PERM_ARCHIVE)
+    @RequiresPermissions(PERM_ARCHIVE)
     @PostMapping(value = "/archive")
     public Result<String> archive(@RequestBody DocArchiveDTO dto) {
         try {

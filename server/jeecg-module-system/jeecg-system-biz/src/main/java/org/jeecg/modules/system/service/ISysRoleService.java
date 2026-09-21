@@ -40,4 +40,21 @@ public interface ISysRoleService extends IService<SysRole> {
      */
     public boolean deleteBatchRole(String[] roleids);
 
+    //update-begin---author:stargis ---date:20260101  for：角色同步至中台（ZK-SERVER）
+    /**
+     * 新增角色，并同步到中台（同事务：中台失败时整体回滚）。
+     *
+     * @param role 角色（id/角色编码/名称/描述）
+     */
+    void saveRoleWithZkSync(SysRole role);
+
+    /**
+     * 修改角色，并同步到中台（同事务：中台失败时整体回滚）。
+     *
+     * @param role 角色（至少要有 id）
+     * @return 是否更新成功
+     */
+    boolean updateRoleWithZkSync(SysRole role);
+    //update-end---author:stargis ---date:20260101  for：角色同步至中台（ZK-SERVER）
+
 }

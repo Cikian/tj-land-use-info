@@ -43,8 +43,10 @@
           password:{
             rules: [{
               required: true,
-              pattern:/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[~!@#$%^&*()_+`\-={}:";'<>?,./]).{8,}$/,
-              message: '密码由8位数字、大小写字母和特殊符号组成!'
+              //update-begin---author:stargis---date:20260101  for：密码强度与中台同一策略（原规则过松，会通过但中台同步失败）
+              pattern:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@#!%^*?&+-])[A-Za-z\d$@#!%^*?&+-]{8,20}$/,
+              message: '密码必须为8-20位，且同时包含数字、小写字母、大写字母和特殊字符（允许的特殊字符只有：$ @ # ! % ^ * ? & + -；下划线 _ 、点 . 、波浪号 ~ 、空格、中文都不允许）'
+              //update-end---author:stargis---date:20260101  for：密码强度与中台同一策略
             }, {
               validator: this.validateToNextPassword,
             }],

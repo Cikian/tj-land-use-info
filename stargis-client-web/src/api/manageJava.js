@@ -1,7 +1,7 @@
 import Vue from 'vue'
 import { axios } from '@/utils/request'
 import signMd5Utils from '@/utils/encryption/signMd5Utils'
-import { ACCESS_TOKEN } from '@/store/mutation-types'
+import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
 
 /**
  * Java 业务后端请求层
@@ -32,12 +32,27 @@ import { ACCESS_TOKEN } from '@/store/mutation-types'
  * 失败时还会清 token + 整页 reload。业务请求不需要这套中台机制，
  * 这里改为只带 `X-Access-Token` 请求头（Java 端 JwtFilter 的首选来源，
  * 也是 admin-client 一直采用的方式），从而跳过那次多余的中台往返。
+ *
+ * 【stargis 改造】令牌从哪来：
+ * 用 `JEECG_ACCESS_TOKEN`（localStorage 键 'Jeecg-Access-Token'），由登录时
+ * `store/modules/user.js` 的 JeecgLogin 动作写入；**不能**用中台的 ACCESS_TOKEN，
+ * 两者是两套独立会话（详见 mutation-types.js 的注释）。
+ * 需要取当前 jeecg 令牌时统一用下面的 javaAccessToken()。
  */
 
 /** Java 业务后端基址；缺配置时退回中台地址，再缺就退回 jeecg 默认前缀 */
 export function javaBaseUrl () {
   const config = window._CONFIG || {}
   return config.VUE_DATA_JAVA_URL || config.domianURL || '/jeecg-boot'
+}
+
+/**
+ * 当前 Java 业务后端（jeecg）令牌。
+ * 全局唯一来源：localStorage 的 JEECG_ACCESS_TOKEN（登录成功后写入，登出清空）。
+ * @returns {string|undefined}
+ */
+export function javaAccessToken () {
+  return Vue.ls.get(JEECG_ACCESS_TOKEN)
 }
 
 /**
@@ -66,7 +81,7 @@ export function getJavaFileAccessHttpUrl (path) {
  * 业务接口公共请求头。
  *
  * 三件套缺一不可：
- *   X-Access-Token  Java 端 JwtFilter 鉴权的首选来源
+ *   X-Access-Token  Java 端 JwtFilter 鉴权的首选来源，取 jeecg 自己的令牌
  *                   （本项目的 request.js 请求拦截器是注释掉的，
  *                    所以不像 admin-client 那样能自动带上，必须显式设置）
  *   X-Sign          jeecg 的签名校验头，与 admin-client 保持一致
@@ -74,9 +89,12 @@ export function getJavaFileAccessHttpUrl (path) {
  *                   这里统一用毫秒（与 admin-client 的 getTimestamp() 等价）。
  *                   注意 stargis 的 signMd5Utils 只有 getDateTimeToString()，
  *                   没有 getTimestamp()，所以直接用 Date.now()。
+ *
+ * 说明：jeecg 后端的签名拦截器只对 application-*.yml 里 `jeecg.signUrls`
+ * 配置的字典类接口生效（/sys/dict/**、/sys/api/**），其余接口带上也无副作用。
  */
 function buildHeaders (url, parameter, extraHeaders) {
-  const token = Vue.ls.get(ACCESS_TOKEN)
+  const token = javaAccessToken()
   const headers = {
     'X-Sign': signMd5Utils.getSign(url, parameter),
     'X-TIMESTAMP': String(Date.now()),
@@ -170,7 +188,7 @@ export function buildJavaDownloadUrl (path, params) {
       query.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     }
   })
-  const token = Vue.ls.get(ACCESS_TOKEN)
+  const token = javaAccessToken()
   if (token) {
     query.push(`token=${encodeURIComponent(token)}`)
   }
@@ -185,6 +203,7 @@ export function javaUploadUrl () {
 
 export default {
   javaBaseUrl,
+  javaAccessToken,
   javaStaticBaseUrl,
   getJavaFileAccessHttpUrl,
   javaGetAction,

@@ -288,6 +288,40 @@ public interface ISysUserService extends IService<SysUser> {
 	 */
 	void editUser(SysUser user, String roles, String departs);
 
+	//update-begin---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+	/**
+	 * 新增用户，并同步到中台。
+	 *
+	 * <p>本系统按中台口径约束为「一个用户只能有一个机构、一个角色」：
+	 * {@code selectedRoles} 与 {@code selectedDeparts} <b>必填且只能各有一个</b>，否则直接报错。
+	 *
+	 * <p>事务内先写本地（用户 + 角色关系 + 机构关系 + org_code），再调中台建号并置为已审批；
+	 * 中台失败时（严格模式）整体回滚。
+	 *
+	 * @param user            用户
+	 * @param selectedRoles   角色 id（必须且只能一个）
+	 * @param selectedDeparts 机构 id（必须且只能一个）
+	 * @param plainPassword   明文口令（中台建号必需，本地落库仍为哈希）
+	 */
+	void saveUserWithZkSync(SysUser user, String selectedRoles, String selectedDeparts, String plainPassword);
+
+	/**
+	 * 编辑用户，并同步到中台。
+	 *
+	 * <p>同样要求 {@code roles} 与 {@code departs} 必填且各只有一个。
+	 * 注意：中台接口不支持修改用户所属机构，若本次改动涉及机构且该用户已映射到中台，会直接报错阻止。
+	 */
+	void editUserWithZkSync(SysUser user, String roles, String departs);
+
+	/**
+	 * 冻结/解冻用户（status 1 正常 / 2 冻结），并把状态同步到中台。
+	 *
+	 * @param userIds 用户 id 集合
+	 * @param status  1 正常 / 2 冻结
+	 */
+	void updateUserStatusWithZkSync(List<String> userIds, Integer status);
+	//update-end---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+
 	/**
      * userId转为username
      * @param userIdList

@@ -2,6 +2,9 @@ package org.jeecg.modules.system.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+//update-begin---author:stargis ---date:20260101  for：冻结/解冻用户同步中台（ZK-SERVER）
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+//update-end---author:stargis ---date:20260101  for：冻结/解冻用户同步中台（ZK-SERVER）
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -11,6 +14,12 @@ import org.jeecg.common.constant.CacheConstant;
 import org.jeecg.common.constant.CommonConstant;
 import org.jeecg.common.constant.enums.RoleIndexConfigEnum;
 import org.jeecg.common.desensitization.annotation.SensitiveEncode;
+//update-begin---author:stargis ---date:20260101  for：单机构单角色校验失败时向前端透出原因（ZK-SERVER）
+import org.jeecg.common.exception.JeecgBootException;
+//update-end---author:stargis ---date:20260101  for：单机构单角色校验失败时向前端透出原因（ZK-SERVER）
+//update-begin---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
+import com.stargis.zk.sdk.common.ZkPasswordPolicy;
+//update-end---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
 import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.common.system.vo.SysUserCacheInfo;
 import org.jeecg.common.util.PasswordUtil;
@@ -21,6 +30,9 @@ import org.jeecg.modules.system.entity.*;
 import org.jeecg.modules.system.mapper.*;
 import org.jeecg.modules.system.model.SysUserSysDepartModel;
 import org.jeecg.modules.system.service.ISysUserService;
+//update-begin---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+import org.jeecg.modules.system.zk.ZkUserSyncService;
+//update-end---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
 import org.jeecg.modules.system.vo.SysUserDepVo;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,9 +83,129 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 	ThirdAppDingtalkServiceImpl dingtalkService;
 	@Autowired
 	SysRoleIndexMapper sysRoleIndexMapper;
+	//update-begin---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+	@Autowired
+	private ZkUserSyncService zkUserSyncService;
+	//update-end---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+
+	//update-begin---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
+	/**
+	 * 新增用户 + 单机构单角色校验 + 中台同步（同一事务）。
+	 */
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	@CacheEvict(value = {CacheConstant.SYS_USERS_CACHE}, allEntries = true)
+	public void saveUserWithZkSync(SysUser user, String selectedRoles, String selectedDeparts, String plainPassword) {
+		// 0. 密码强度校验（与中台同一份策略）：本地先拦，避免"本地建成功、中台 20003 失败"
+		checkPasswordPolicy(plainPassword);
+		// 1. 口径校验：必须且只能一个机构、一个角色（对应中台的逻辑）
+		checkSingleRelation(selectedRoles, selectedDeparts);
+		// 2. 本地写入（用户 + 角色关系 + 机构关系）
+		this.saveUser(user, selectedRoles, selectedDeparts);
+		// 3. 同步 org_code，保证 jeecg 自身的数据权限/登录部门与所选机构一致
+		syncOrgCode(user, selectedDeparts);
+		// 4. 同步中台（失败在严格模式下抛异常 → 上面所有本地写入一起回滚）
+		zkUserSyncService.syncOnCreate(user, plainPassword);
+	}
+
+	/**
+	 * 编辑用户 + 单机构单角色校验 + 中台同步（同一事务）。
+	 */
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	@CacheEvict(value = {CacheConstant.SYS_USERS_CACHE}, allEntries = true)
+	public void editUserWithZkSync(SysUser user, String roles, String departs) {
+		checkSingleRelation(roles, departs);
+		this.editUser(user, roles, departs);
+		syncOrgCode(user, departs);
+		zkUserSyncService.syncOnUpdate(user);
+	}
+
+	/**
+	 * 冻结/解冻用户 + 中台状态同步（同一事务）。
+	 */
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	@CacheEvict(value = {CacheConstant.SYS_USERS_CACHE}, allEntries = true)
+	public void updateUserStatusWithZkSync(List<String> userIds, Integer status) {
+		for (String id : userIds) {
+			if (oConvertUtils.isEmpty(id)) {
+				continue;
+			}
+			this.update(new SysUser().setStatus(status),
+					new UpdateWrapper<SysUser>().lambda().eq(SysUser::getId, id));
+		}
+		zkUserSyncService.syncOnStatusChange(userIds);
+	}
+
+	/**
+	 * 密码强度校验：<b>与中台使用同一份策略</b>（{@link ZkPasswordPolicy}，取自中台
+	 * {@code ZKStringUtils.checkPassword} 的原文正则）。
+	 *
+	 * <p>为什么必须在本地先拦：jeecg 原本对密码强度没有硬约束（前端规则也偏松），
+	 * 会出现"本系统改密成功、中台同步失败（code=20003）"，导致两边口令不一致——
+	 * 用户以为改了密码，中台侧还是旧口令。
+	 *
+	 * <p>规则：<b>8-20 位</b>，且同时包含<b>小写字母、大写字母、数字、特殊字符</b>；
+	 * 特殊字符是中台的白名单 {@code $ @ # ! % ^ * ? & + -}（下划线 {@code _}、点 {@code .}、
+	 * 波浪 {@code ~}、空格、中文都不允许）。
+	 */
+	private void checkPasswordPolicy(String plainPassword) {
+		if (oConvertUtils.isEmpty(plainPassword)) {
+			throw new JeecgBootException("密码不能为空");
+		}
+		String err = ZkPasswordPolicy.validate(plainPassword);
+		if (err != null) {
+			throw new JeecgBootException(err);
+		}
+	}
+
+	/**
+	 * 单机构单角色校验：本系统按中台口径限制，一个用户只能有一个机构和一个角色。
+	 */
+	private void checkSingleRelation(String roles, String departs) {
+		if (oConvertUtils.isEmpty(departs)) {
+			throw new JeecgBootException("必须选择所属机构：本系统与中台一致，一个用户只能有一个机构");
+		}
+		if (departs.split(",").length > 1) {
+			throw new JeecgBootException("只能选择一个所属机构：本系统与中台一致，一个用户只能有一个机构");
+		}
+		if (oConvertUtils.isEmpty(roles)) {
+			throw new JeecgBootException("必须选择角色：本系统与中台一致，一个用户只能有一个角色");
+		}
+		if (roles.split(",").length > 1) {
+			throw new JeecgBootException("只能选择一个角色：本系统与中台一致，一个用户只能有一个角色");
+		}
+	}
+
+	/**
+	 * 把所选机构的 org_code 写到用户上。
+	 *
+	 * <p>jeecg 的用户-机构关系其实有两处：{@code sys_user_depart}（多对多）与
+	 * {@code sys_user.org_code}（登录/数据权限用的当前部门）。既然已限制为单机构，
+	 * 这里让两者保持一致，避免出现"关系表是 A 部门、org_code 还是旧部门"的错乱。
+	 */
+	private void syncOrgCode(SysUser user, String departs) {
+		if (oConvertUtils.isEmpty(departs) || user == null || oConvertUtils.isEmpty(user.getId())) {
+			return;
+		}
+		SysDepart depart = sysDepartMapper.selectById(departs.split(",")[0]);
+		if (depart == null || oConvertUtils.isEmpty(depart.getOrgCode())) {
+			return;
+		}
+		if (!depart.getOrgCode().equals(user.getOrgCode())) {
+			userMapper.update(new SysUser().setOrgCode(depart.getOrgCode()),
+					new UpdateWrapper<SysUser>().lambda().eq(SysUser::getId, user.getId()));
+			user.setOrgCode(depart.getOrgCode());
+		}
+	}
+	//update-end---author:stargis ---date:20260101  for：用户/机构/角色关系同步至中台（ZK-SERVER）
 
     @Override
     @CacheEvict(value = {CacheConstant.SYS_USERS_CACHE}, allEntries = true)
+    //update-begin---author:stargis ---date:20260101  for：改密与中台同步必须同事务（ZK-SERVER）
+    @Transactional(rollbackFor = Exception.class)
+    //update-end---author:stargis ---date:20260101  for：改密与中台同步必须同事务（ZK-SERVER）
     public Result<?> resetPassword(String username, String oldpassword, String newpassword, String confirmpassword) {
         SysUser user = userMapper.getUserByName(username);
         String passwordEncode = PasswordUtil.encrypt(username, oldpassword, user.getSalt());
@@ -86,20 +218,43 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         if (!newpassword.equals(confirmpassword)) {
             return Result.error("两次输入密码不一致!");
         }
+        //update-begin---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
+        // 本地先按中台策略校验：不通过就直接拒绝，避免"本系统改成功、中台 20003 失败"造成两边口令不一致
+        String policyErr = ZkPasswordPolicy.validate(newpassword);
+        if (policyErr != null) {
+            return Result.error(policyErr);
+        }
+        //update-end---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
         String password = PasswordUtil.encrypt(username, newpassword, user.getSalt());
         this.userMapper.update(new SysUser().setPassword(password), new LambdaQueryWrapper<SysUser>().eq(SysUser::getId, user.getId()));
+        //update-begin---author:stargis ---date:20260101  for：改密时同步中台口令（ZK-SERVER）
+        // 中台口令必须与本地一致；若该用户还没映射到中台，会借这次明文顺势建号
+        zkUserSyncService.syncOnPasswordChange(user.getId(), newpassword);
+        //update-end---author:stargis ---date:20260101  for：改密时同步中台口令（ZK-SERVER）
         return Result.ok("密码重置成功!");
     }
 
     @Override
     @CacheEvict(value = {CacheConstant.SYS_USERS_CACHE}, allEntries = true)
+    //update-begin---author:stargis ---date:20260101  for：改密与中台同步必须同事务（ZK-SERVER）
+    @Transactional(rollbackFor = Exception.class)
+    //update-end---author:stargis ---date:20260101  for：改密与中台同步必须同事务（ZK-SERVER）
     public Result<?> changePassword(SysUser sysUser) {
         String salt = oConvertUtils.randomGen(8);
         sysUser.setSalt(salt);
         String password = sysUser.getPassword();
+        //update-begin---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
+        String policyErr = ZkPasswordPolicy.validate(password);
+        if (policyErr != null) {
+            return Result.error(policyErr);
+        }
+        //update-end---author:stargis ---date:20260101  for：密码强度与中台同一策略（ZK-SERVER）
         String passwordEncode = PasswordUtil.encrypt(sysUser.getUsername(), password, salt);
         sysUser.setPassword(passwordEncode);
         this.userMapper.updateById(sysUser);
+        //update-begin---author:stargis ---date:20260101  for：改密时同步中台口令（ZK-SERVER）
+        zkUserSyncService.syncOnPasswordChange(sysUser.getId(), password);
+        //update-end---author:stargis ---date:20260101  for：改密时同步中台口令（ZK-SERVER）
         return Result.ok("密码修改成功!");
     }
 
@@ -107,6 +262,10 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @CacheEvict(value={CacheConstant.SYS_USERS_CACHE}, allEntries=true)
 	@Transactional(rollbackFor = Exception.class)
 	public boolean deleteUser(String userId) {
+		//update-begin---author:stargis ---date:20260101  for：删除用户时同步中台（ZK-SERVER）
+		// 先同步中台：中台失败（严格模式）则整体回滚，本地用户保留
+		zkUserSyncService.syncOnDelete(Collections.singletonList(userId));
+		//update-end---author:stargis ---date:20260101  for：删除用户时同步中台（ZK-SERVER）
 		//1.删除用户
 		this.removeById(userId);
 		return false;
@@ -116,6 +275,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     @CacheEvict(value={CacheConstant.SYS_USERS_CACHE}, allEntries=true)
 	@Transactional(rollbackFor = Exception.class)
 	public boolean deleteBatchUsers(String userIds) {
+		//update-begin---author:stargis ---date:20260101  for：删除用户时同步中台（ZK-SERVER）
+		zkUserSyncService.syncOnDelete(Arrays.asList(userIds.split(",")));
+		//update-end---author:stargis ---date:20260101  for：删除用户时同步中台（ZK-SERVER）
 		//1.删除用户
 		this.removeByIds(Arrays.asList(userIds.split(",")));
 		return false;
@@ -130,6 +292,12 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 	@Override
 	@Transactional(rollbackFor = Exception.class)
 	public void addUserWithRole(SysUser user, String roles) {
+		//update-begin---author:stargis ---date:20260101  for：注册建号也按中台策略校验密码（ZK-SERVER）
+		// 注意：注册路径不经过中台建号（没有机构/角色），因此这里只做强度校验，保证"全系统一套密码规则"
+		if (oConvertUtils.isNotEmpty(user.getPassword()) && !user.getPassword().startsWith("$")) {
+			checkPasswordPolicy(user.getPassword());
+		}
+		//update-end---author:stargis ---date:20260101  for：注册建号也按中台策略校验密码（ZK-SERVER）
 		this.save(user);
 		if(oConvertUtils.isNotEmpty(roles)) {
 			String[] arr = roles.split(",");

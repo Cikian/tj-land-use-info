@@ -74,6 +74,21 @@ public class SysDepart implements Serializable {
 	private String delFlag;
 	/**对接企业微信的ID*/
 	private String qywxIdentifier;
+	//update-begin---author:stargis ---date:20260101  for：机构数据同步至中台（ZK-SERVER），镜像字段
+	/**中台机构ID(estar_department_system.id)*/
+	@Excel(name="中台机构ID",width=20)
+	private String zkDeptId;
+	/**中台同步状态：not_synced未同步 / synced已同步 / failed同步失败*/
+	@Dict(dicCode = "zk_sync_status")
+	private String zkSyncStatus;
+	/**中台同步时间*/
+	@JsonFormat(timezone = "GMT+8",pattern = "yyyy-MM-dd HH:mm:ss")
+	@DateTimeFormat(pattern="yyyy-MM-dd HH:mm:ss")
+	private Date zkSyncTime;
+	/**中台同步失败原因*/
+	private String zkSyncMsg;
+	//update-end---author:stargis ---date:20260101  for：机构数据同步至中台（ZK-SERVER）
+
 	/**创建人*/
 	private String createBy;
 	/**创建日期*/

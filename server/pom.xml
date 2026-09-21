@@ -17,6 +17,8 @@
 		<jeecgboot.version>3.4.3</jeecgboot.version>
 		<java.version>1.8</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<!-- 中台（ZK-SERVER）客户端 SDK 版本：独立于 jeecgboot.version -->
+		<stargis.zk.sdk.version>1.0.0</stargis.zk.sdk.version>
 
 		<!-- 微服务 -->
 		<spring-cloud.version>2021.0.3</spring-cloud.version>
@@ -62,6 +64,8 @@
 	</properties>
 
 	<modules>
+		<!-- 中台（ZK-SERVER）客户端 SDK：不依赖 jeecg，供多项目复用。
+		     必须排在 jeecg-module-system 之前——jeecg-system-biz 依赖它。 -->
         <module>jeecg-boot-base-core</module>
         <module>jeecg-module-system</module>
         <!-- 土地市政配套设施动态监管工作站 业务模块 -->
@@ -130,6 +134,13 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- 中台（ZK-SERVER）客户端 SDK：用户/角色/机构同步，多项目复用 -->
+			<dependency>
+				<groupId>cn.cikian</groupId>
+				<artifactId>stargis-zk-sdk</artifactId>
+				<version>${stargis.zk.sdk.version}</version>
+			</dependency>
+
 			<!-- spring-cloud-->
 			<dependency>
 				<groupId>org.springframework.cloud</groupId>

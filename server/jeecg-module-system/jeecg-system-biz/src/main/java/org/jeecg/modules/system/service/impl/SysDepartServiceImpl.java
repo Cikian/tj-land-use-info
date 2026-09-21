@@ -21,6 +21,9 @@ import org.jeecg.modules.system.model.DepartIdModel;
 import org.jeecg.modules.system.model.SysDepartTreeModel;
 import org.jeecg.modules.system.service.ISysDepartService;
 import org.jeecg.modules.system.util.FindsDepartsChildrenUtil;
+//update-begin---author:stargis ---date:20260101  for：机构同步至中台（ZK-SERVER）
+import org.jeecg.modules.system.zk.ZkDepartSyncService;
+//update-end---author:stargis ---date:20260101  for：机构同步至中台（ZK-SERVER）
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -53,6 +56,10 @@ public class SysDepartServiceImpl extends ServiceImpl<SysDepartMapper, SysDepart
 	private SysDepartRoleUserMapper departRoleUserMapper;
 	@Autowired
 	private SysUserMapper sysUserMapper;
+	//update-begin---author:stargis ---date:20260101  for：机构增删改同步至中台（ZK-SERVER）
+	@Autowired
+	private ZkDepartSyncService zkDepartSyncService;
+	//update-end---author:stargis ---date:20260101  for：机构增删改同步至中台（ZK-SERVER）
 
 	@Override
 	public List<SysDepartTreeModel> queryMyDeptTreeList(String departIds) {
@@ -161,6 +168,10 @@ public class SysDepartServiceImpl extends ServiceImpl<SysDepartMapper, SysDepart
 			    this.addDepartByUserIds(sysDepart,sysDepart.getDirectorUserIds());
             }
             //update-end---author:wangshuai ---date:20220307  for：[JTC-119]在部门管理菜单下设置部门负责人 创建用户的时候不需要处理
+			//update-begin---author:stargis ---date:20260101  for：新增机构同步至中台（ZK-SERVER）
+			// 中台失败时（严格模式）抛异常，整个方法的事务回滚，保证两边一致
+			zkDepartSyncService.syncOnCreate(sysDepart);
+			//update-end---author:stargis ---date:20260101  for：新增机构同步至中台（ZK-SERVER）
          }
 
 	}
@@ -258,6 +269,10 @@ public class SysDepartServiceImpl extends ServiceImpl<SysDepartMapper, SysDepart
 			//修改部门管理的时候，修改负责部门
             this.updateChargeDepart(sysDepart);
             //update-begin---author:wangshuai ---date:20220307  for：[JTC-119]在部门管理菜单下设置部门负责人 创建用户的时候不需要处理
+			//update-begin---author:stargis ---date:20260101  for：修改机构同步至中台（ZK-SERVER）
+			// 同步内部会按 id 重新加载完整记录，避免用前端只带部分字段的对象覆盖中台数据
+			zkDepartSyncService.syncOnUpdate(sysDepart);
+			//update-end---author:stargis ---date:20260101  for：修改机构同步至中台（ZK-SERVER）
 			return true;
 		} else {
 			return false;
@@ -273,6 +288,9 @@ public class SysDepartServiceImpl extends ServiceImpl<SysDepartMapper, SysDepart
 			idList.add(id);
 			this.checkChildrenExists(id, idList);
 		}
+		//update-begin---author:stargis ---date:20260101  for：删除机构前先删除中台机构（ZK-SERVER）
+		zkDepartSyncService.syncOnDelete(idList);
+		//update-end---author:stargis ---date:20260101  for：删除机构前先删除中台机构（ZK-SERVER）
 		this.removeByIds(idList);
 		//根据部门id获取部门角色id
 		List<String> roleIdList = new ArrayList<>();
@@ -366,6 +384,9 @@ public class SysDepartServiceImpl extends ServiceImpl<SysDepartMapper, SysDepart
 		this.checkChildrenExists(id, idList);
 		//清空部门树内存
 		//FindsDepartsChildrenUtil.clearDepartIdModel();
+		//update-begin---author:stargis ---date:20260101  for：删除机构前先删除中台机构（ZK-SERVER）
+		zkDepartSyncService.syncOnDelete(idList);
+		//update-end---author:stargis ---date:20260101  for：删除机构前先删除中台机构（ZK-SERVER）
 		boolean ok = this.removeByIds(idList);
 		//根据部门id获取部门角色id
 		List<String> roleIdList = new ArrayList<>();
