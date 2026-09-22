@@ -180,11 +180,13 @@ export default {
 
 .home-plot {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 1920px;
-  height: 1080px;
+  // 铺满整个设计画布（宽度会随屏幕比例变化，不能写死 1920×1080，
+  // 否则遮罩会盖不住右边/下边，出现一条没被压暗的亮边）
+  inset: 0;
   z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   &__mask {
     position: absolute;
@@ -194,9 +196,8 @@ export default {
   }
 
   &__dialog {
-    position: absolute;
-    left: 325px;
-    top: 208px;
+    // 跟着画布居中，而不是按 1920×1080 写死 left/top
+    position: relative;
     width: 1270px;
     height: 663px;
   }
