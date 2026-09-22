@@ -313,9 +313,11 @@ export default {
   &__panel {
     position: absolute;
     left: 30px;
+    // 上贴 149、下贴 50：正文区随设计画布高度伸展。
+    // 设计比例（1080 高）下高度正好是 881，与设计稿一致；
+    // 比 16:9 窄的窗口画布会更高，面板跟着长高，底部不会空出一片。
     top: 149px;
-    // 定尺高度：纵向多出来的空间留给地图，避免切图被拉伸变形
-    height: 881px;
+    bottom: 50px;
     width: 400px;
     background-image: url('~@/assets/screen-blue/panel-left-bg.png');
     background-repeat: no-repeat;
