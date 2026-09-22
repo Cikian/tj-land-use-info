@@ -437,7 +437,7 @@ export default {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--screen-space-3);
-    flex: 1 1 42%;
+    flex: 42 1 0;  // 42:58 的高度比例，basis 归零避免撑爆容器
     min-height: 240px;
   }
 
@@ -447,7 +447,7 @@ export default {
 
   // ---------- 按项目明细 ----------
   &__projects {
-    flex: 1 1 58%;
+    flex: 58 1 0;  // 42:58 的高度比例，basis 归零避免撑爆容器
     min-height: 220px;
   }
 

@@ -183,7 +183,8 @@ export default {
   }
 
   &__list {
-    flex: 1 1 auto;
+    // flex-basis 必须是 0：用 auto 会按内容撑开，导致正文超出模块高度、分页被挤出可见区
+    flex: 1 1 0;
     min-height: 0;
   }
 

@@ -715,7 +715,7 @@ export default {
 
   /* ---------------- 列表 ---------------- */
   &__list {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
   }
 

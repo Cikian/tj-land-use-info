@@ -793,7 +793,7 @@ export default {
   &__tree-wrap {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     overflow: auto;
     .screen-scrollbar();
