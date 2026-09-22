@@ -221,8 +221,10 @@
       color: #222222;
     }
     #loader-wrapper .load_title {
-      /* font-family: 'Open Sans'; */
-      font-family:  'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+      /* 注意：这里不要用 'sy' —— 它指向 stargis-function 包内置的思源黑体
+         （单文件 15.65MB）。加载动画一出现就会立刻触发这 15.65MB 下载，
+         白白占用首屏带宽，所以改用系统字体栈。 */
+      font-family: 'Source Han Sans CN', 'Microsoft YaHei', 'PingFang SC', sans-serif;
       color: #FFF;
       font-size: 14px;
       width: 100%;

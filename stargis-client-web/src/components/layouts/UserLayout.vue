@@ -193,7 +193,7 @@ export default {
           // font-family: 'Chinese Quote', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
           //   'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
           //   'Segoe UI Symbol';
-          font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+          font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
           font-weight: 600;
           position: relative;
           top: 2px;

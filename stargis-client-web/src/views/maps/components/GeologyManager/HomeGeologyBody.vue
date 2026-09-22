@@ -39,8 +39,7 @@
 </script>
 
 <style scoped lang="less">
-  @import '~@/assets/less/common_btn.less';
-  @import '~@/assets/less/common_pop.less';
+  /* common_btn.less / common_pop.less 已改为 main.js 全局引入一次，此处不再重复 @import */
 
   .home-body {
     position: absolute;

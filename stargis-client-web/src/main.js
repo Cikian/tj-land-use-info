@@ -47,6 +47,17 @@ import hasPermission from '@/utils/hasPermission'
 import vueBus from '@/utils/vueBus'
 import JeecgComponents from '@/components/jeecg/index'
 import '@/assets/less/JAreaLinkage.less'
+// 【性能】地图/大屏公共样式由「每个组件各自 @import」改为「全局只引入一次」。
+// 原先 common_btn.less(76KB) + common_pop.less(170KB) 被 12 个组件的 <style scoped> 各引一遍，
+// 经 less-loader 编译后被 vue-style-loader 重复注入到 <head>，实测样式表 90 个、
+// CSS 规则 1.78 万条，每次重排/重绘的样式匹配成本被成倍放大。
+// 注意：这两个文件内的选择器都是全局类名（.spatial-pop、.query-dropdown 等），
+// 本身不依赖 scoped 作用域，提升为全局引入后渲染效果一致。
+import '@/assets/less/common_btn.less'
+import '@/assets/less/common_pop.less'
+// 列表页通用样式（ant 表格/弹窗/按钮微调）原先被 23 个列表组件各自 @import，
+// 这里同样是全局选择器，改为全局引入一次即可，避免 23 份重复规则。
+import '@/assets/less/common.less'
 // 大屏基础组件设计令牌（青绿暗色主题，CSS 变量，全局引入一次）
 import '@/components/screen/styles/screen-tokens.less'
 // 大屏消息提示（命令式，替代浅色的 antd $message）：注册 this.$screenToast
@@ -134,6 +145,9 @@ SSO.init(() => {
 
  import StargisFunction from "stargis-function";
  import "../node_modules/stargis-function/stargis-function.css";
+// 必须紧跟在上面的 stargis-function.css 之后：用同名 @font-face 覆盖掉
+// 包内 15.65MB 的 'sy' 字体声明，改为按需（永不）加载，详见文件内注释
+import '@/assets/less/font-override.less'
  Vue.use(StargisFunction);
 
 import localDataManager from '@/utils/localDataManager.js'

@@ -1,28 +1,31 @@
 /*font.css文件代码*/
+/**
+ * 正文字体不再内置 sy.otf（思源黑体，单文件 15.7MB）。
+ * 原因：body 首屏立刻使用该字体，浏览器必须下载并解析整份 15.7MB 字体文件，
+ * 在本地开发环境（dev-server 单进程同时响应 300+ 个分包请求）会明显抢占
+ * 带宽与主线程，表现为整个页面交互迟钝。
+ * 现改为「本机已装思源黑体 → 系统无衬线」字体栈，视觉等价，首屏无字体下载开销。
+ *
+ * 如需恢复内置字体：把 sy.otf 放回本目录，恢复下面的 @font-face，
+ * 并把 'sy' 放回字体栈首位即可。
+ */
 @font-face {
-  /*思源*/
-  font-family: 'sy';
-  /*引入字体文件*/
-  src: url('./sy.otf');
-  font-weight: normal;
-  font-style: normal;
-}
-@font-face {
-  /*庞门正道标题黑*/
+  /*庞门正道标题黑 —— 仅用于少量标题文字，1.1MB*/
   font-family: 'pmzdbtt';
-  /*引入字体文件*/
   src: url('./pmzdbtt.ttf');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 @font-face {
-  /*优设标题黑*/
+  /*优设标题黑 —— 仅用于少量标题文字，1.3MB*/
   font-family: 'ysbth';
-  /*引入字体文件*/
   src: url('./ysbth.ttf');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 body,#app {
-  font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+  font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC',
+    'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
 }

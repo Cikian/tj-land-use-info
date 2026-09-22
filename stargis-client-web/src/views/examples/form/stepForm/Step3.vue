@@ -62,7 +62,7 @@
   }
   .money {
     // font-family: "Helvetica Neue",sans-serif;
-    font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+    font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
     font-weight: 500;
     font-size: 20px;
     line-height: 14px;

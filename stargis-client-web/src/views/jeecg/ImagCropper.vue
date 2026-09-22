@@ -494,7 +494,7 @@
     overflow-x: auto;
     /* font-family: Consolas, Monaco, Droid, Sans, Mono, Source, Code, Pro, Menlo,
     Lucida, Sans, Type, Writer, Ubuntu, Mono; */
-    font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+    font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
     border-radius: 5px;
     white-space: pre;
   }

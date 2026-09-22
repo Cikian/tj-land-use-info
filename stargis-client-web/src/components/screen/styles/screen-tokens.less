@@ -94,11 +94,13 @@
   --screen-blur: 12px;
 
   /* ---------- 字体族 ---------- */
-  /* 与项目全局字体保持一致（'sy' = 内置思源黑体，见 assets/less/font.css），
-     高保真使用「思源黑体 CN」，两者同源；数字统一启用等宽数位以保证纵向对齐 */
-  --screen-font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
+  /* 与项目全局字体保持一致：正文使用「本机思源黑体 → 系统无衬线」字体栈。
+     原先的 'sy' 指向内置 sy.otf（单文件 15.7MB，由 stargis-function 包提供），
+     首屏会为此下载整份字体，现已移除该内置字体，见 assets/less/font.css 的说明。
+     数字统一启用等宽数位以保证纵向对齐 */
+  --screen-font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
     'Microsoft YaHei', 'Hiragino Sans GB', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --screen-font-number-family: 'sy', 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
+  --screen-font-number-family: 'Source Han Sans CN', 'Source Han Sans SC', 'PingFang SC',
     'Microsoft YaHei', 'Hiragino Sans GB', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   /* ---------- 动效 ---------- */

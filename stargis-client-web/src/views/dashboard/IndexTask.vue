@@ -333,7 +333,7 @@
     color: #fff;
     font-size: 21px;
     /* font-family: cursive; */
-    font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+    font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
   }
   .index-md-title img{
     position: absolute;

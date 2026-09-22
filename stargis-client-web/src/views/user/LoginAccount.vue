@@ -408,6 +408,6 @@ export default {
   /* color: #799dc8 !important;       */
   font-size: 20px !important;     /* 设置字体大小 */
   opacity: 0.8;                     /* 保证颜色不透明 */
-  font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular' !important;
+  font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif !important;
 }
 </style>

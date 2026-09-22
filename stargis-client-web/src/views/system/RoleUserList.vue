@@ -538,7 +538,7 @@
   }
 </script>
 <style scoped>
-@import '~@assets/less/common.less';
+  /* common.less 已改为 main.js 全局引入一次，此处不再重复 @import */
   /** Button按钮间距 */
   .ant-btn {
     margin-left: 8px

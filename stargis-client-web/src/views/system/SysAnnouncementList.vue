@@ -300,7 +300,7 @@
   }
 </script>
 <style scoped lang="less">
-  @import '~@assets/less/common.less';
+  /* common.less 已改为 main.js 全局引入一次，此处不再重复 @import */
 
   /** 查看详情弹窗的样式 */
   .detail-modal {

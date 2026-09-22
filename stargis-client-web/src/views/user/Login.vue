@@ -11,7 +11,7 @@
       <div style="width: 400px; position: relative; top: -400px; left: 95px">
         <!-- <img src="~@/assets/logocim.png" alt="" style="margin-top: -170px; margin-left: 90px" /> -->
         <div style="width: 224px;position: relative; top: -55px; left: 120px">
-          <span style="color: white;font-family: sy;
+          <span style="color: white;font-family: 'Microsoft YaHei', 'Source Han Sans CN', sans-serif;
           font-weight: bold;font-size: 34px; ">欢迎登录</span>
         </div>
         <a-form-model class="user-layout-login" @keyup.enter.native="handleSubmit">
@@ -187,7 +187,7 @@ export default {
   top: 40px;
   left: 60px;
   font-size: 38px;
-  font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+  font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
   font-weight: bold;
   background: linear-gradient(90deg, #009df4 0%, #00e9d0 100%);
   -webkit-background-clip: text;
@@ -235,7 +235,7 @@ export default {
     color: white;
     font-size: 14px;
     // font-family: SimSun, sans-serif;
-    font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+    font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
     line-height: 1;
     content: '';
   }
@@ -253,7 +253,7 @@ export default {
       color: #1072ff;
       font-size: 22px;
       // font-family: SimHei;
-      font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular';
+      font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif;
     }
   }
 
@@ -281,7 +281,7 @@ export default {
     font-size: 24px !important;
     font-weight: bold !important;
     // font-family: SimSun !important;
-    font-family: 'sy', 'Source Han Sans CN', 'Source Han Sans CN-Regular' !important;
+    font-family: 'Source Han Sans CN', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Heiti SC', sans-serif !important;
     // background-color: #126ae2; 
     background-image: url(~@/assets/loginbtn.png);
   }
