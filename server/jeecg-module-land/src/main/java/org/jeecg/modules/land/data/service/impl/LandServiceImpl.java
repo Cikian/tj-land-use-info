@@ -8,6 +8,7 @@ import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.mapper.LandMapper;
 import org.jeecg.modules.land.data.service.ILandService;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
+import org.jeecg.modules.land.data.vo.LandDashboardVO;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -72,11 +73,54 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         return options;
     }
 
+    @Override
+    public LandDashboardVO queryDashboard() {
+        Map<String, Object> overview = baseMapper.selectDashboardOverview();
+        LandDashboardVO result = new LandDashboardVO();
+        result.setTotal(toLong(overview, "total"));
+        result.setCityCount(toLong(overview, "cityCount"));
+        result.setDistrictCount(toLong(overview, "districtCount"));
+        result.setRoadCount(toLong(overview, "roadCount"));
+
+        List<LandDashboardVO.RankItem> ranks = new ArrayList<>();
+        for (Map<String, Object> row : baseMapper.selectDashboardRanks()) {
+            LandDashboardVO.RankItem item = new LandDashboardVO.RankItem();
+            item.setName(valueOf(row, "name"));
+            item.setValue(toLong(row, "value"));
+            item.setRoadCount(toLong(row, "roadCount"));
+            ranks.add(item);
+        }
+        result.setRanks(ranks);
+        return result;
+    }
+
     private static String trimToNull(String value) {
         if (value == null) {
             return null;
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static long toLong(Map<String, Object> row, String key) {
+        Object value = findValue(row, key);
+        return value instanceof Number ? ((Number) value).longValue() : 0L;
+    }
+
+    private static String valueOf(Map<String, Object> row, String key) {
+        Object value = findValue(row, key);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static Object findValue(Map<String, Object> row, String key) {
+        if (row == null) {
+            return null;
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(key)) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 }

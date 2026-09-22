@@ -88,12 +88,12 @@ function buildHeaders (url, parameter, extraHeaders) {
 }
 
 /** GET：参数拼在 query string 上 */
-export function javaGetAction (url, parameter) {
+export function javaGetAction (url, parameter, explicitBaseUrl) {
   const params = parameter || {}
   return axios({
     url,
     method: 'get',
-    baseURL: javaBaseUrl(),
+    baseURL: explicitBaseUrl || javaBaseUrl(),
     params,
     headers: buildHeaders(url, params),
   })

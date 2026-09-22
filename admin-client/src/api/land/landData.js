@@ -8,7 +8,7 @@ import { getAction } from '@/api/manage'
  *
  * 用途：档案管理与收发文管理的「两级联动下拉」——
  *   第一步 选出让宗地（t_land）
- *   第二步 联动选该宗地下的配套项目（xj_kjkfb_supporting_facilities）
+ *   第二步 联动选该宗地下的配套项目（t_supporting_facilities）
  */
 export const landDataUrl = {
   landOptions: '/land/data/land/options',

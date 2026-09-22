@@ -76,6 +76,8 @@ public class ShiroConfig {
             }
         }
         // 配置不会被拦截的链接 顺序判断
+        filterChainDefinitionMap.put("/land/data/dashboard", "anon");
+        filterChainDefinitionMap.put("/land/supporting-facilities/dashboard", "anon");
         filterChainDefinitionMap.put("/land/**", "anon");
 
         filterChainDefinitionMap.put("/sys/cas/client/validateLogin", "anon"); //cas验证登录

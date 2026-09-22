@@ -116,6 +116,7 @@
               <screen-data-table
                 :columns="warningColumns"
                 :data="warningRows"
+                :loading="dashboardLoading"
                 row-key="id"
                 :min-width="1180"
                 @action="handleWarningAction"
@@ -131,6 +132,7 @@
 <script>
 import S3dmViewer from '@/views/maps/S3dmViewer.vue'
 import ArchiveScreen from './archive/index.vue'
+import { queryFacilityDashboard, queryLandDashboard } from '@/api/land/landData'
 import {
   ScreenHeader,
   ScreenMapStage,
@@ -145,17 +147,44 @@ import {
 } from '@/components/screen'
 
 import {
-  currentUser,
   headerMenus,
-  supportingRank,
-  supportingStat,
   systemTitle,
-  transferRank,
-  transferStat,
   warningColumns,
-  warningData,
   warningTabs,
-} from './mock'
+} from './config'
+
+function percent (value, total) {
+  return total > 0 ? Number(((Number(value || 0) / total) * 100).toFixed(2)) : 0
+}
+
+function emptyTransferStat () {
+  return {
+    total: 0,
+    unit: '宗',
+    split: [
+      { label: '市级', value: 0, percent: 0, tone: 'green' },
+      { label: '区级', value: 0, percent: 0, tone: 'cyan' },
+    ],
+    donut: [
+      { name: '市级', value: 0 },
+      { name: '区级', value: 0 },
+    ],
+    donutCenterLabel: '市级',
+    footer: { total: 0, road: 0 },
+  }
+}
+
+function emptySupportingStat () {
+  return {
+    total: 0,
+    unit: '宗',
+    split: [
+      { label: '市级', value: 0, percent: 0, tone: 'green' },
+      { label: '区级', value: 0, percent: 0, tone: 'cyan' },
+    ],
+    gauge: { percent: 0, label: '全部配套完成率' },
+  }
+}
 
 /** 已经实现为大屏子页面的菜单项；其余仍是「待接入」状态 */
 const IMPLEMENTED_MENUS = ['home', 'archive']
@@ -191,20 +220,25 @@ export default {
       title: systemTitle,
       menus: headerMenus,
       activeMenu: initialMenu,
-      user: currentUser,
+      user: {
+        name: (this.$store && this.$store.getters.userInfo &&
+          (this.$store.getters.userInfo.realname || this.$store.getters.userInfo.username)) || '普通用户',
+        online: true,
+      },
 
       /** 档案页初始页签（?tab=statistics 之类的深链） */
       archiveTab: ARCHIVE_TABS.indexOf(routeQuery.tab) > -1 ? routeQuery.tab : 'maintain',
 
-      transferStat,
-      transferRank,
-      supportingStat,
-      supportingRank,
+      transferStat: emptyTransferStat(),
+      transferRank: [],
+      supportingStat: emptySupportingStat(),
+      supportingRank: [],
 
       warningTabs,
       warningColumns,
-      warningData,
+      warningData: { city: [], district: [], plot: [] },
       activeWarning: warningTabs[0].key,
+      dashboardLoading: false,
 
       /** 是否挂载真实 Cesium 地图：可通过 ?map=0 关闭（便于无地图服务时预览界面） */
       mapEnabled: this.$route.query.map !== '0',
@@ -227,12 +261,80 @@ export default {
   },
   mounted () {
     this.syncViewport()
+    this.loadDashboard()
     window.addEventListener('resize', this.syncViewport)
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.syncViewport)
   },
   methods: {
+    loadDashboard () {
+      this.dashboardLoading = true
+      return Promise.all([queryLandDashboard(), queryFacilityDashboard()])
+        .then(([landResponse, facilityResponse]) => {
+          if (!landResponse || !landResponse.success) {
+            throw new Error((landResponse && landResponse.message) || '宗地统计加载失败')
+          }
+          if (!facilityResponse || !facilityResponse.success) {
+            throw new Error((facilityResponse && facilityResponse.message) || '配套统计加载失败')
+          }
+          this.applyLandDashboard(landResponse.result || {})
+          this.applyFacilityDashboard(facilityResponse.result || {})
+        })
+        .catch((error) => {
+          this.$screenToast.error((error && error.message) || '首页数据加载失败')
+        })
+        .finally(() => {
+          this.dashboardLoading = false
+        })
+    },
+    applyLandDashboard (data) {
+      const total = Number(data.total || 0)
+      const city = Number(data.cityCount || 0)
+      const district = Number(data.districtCount || 0)
+      this.transferStat = {
+        total,
+        unit: '宗',
+        split: [
+          { label: '市级', value: city, percent: percent(city, total), tone: 'green' },
+          { label: '区级', value: district, percent: percent(district, total), tone: 'cyan' },
+        ],
+        donut: [
+          { name: '市级', value: city },
+          { name: '区级', value: district },
+        ],
+        donutCenterLabel: '市级',
+        footer: { total, road: Number(data.roadCount || 0) },
+      }
+      this.transferRank = (data.ranks || []).map((item) => ({
+        name: item.name,
+        value: Number(item.value || 0),
+        unit: '宗',
+      }))
+    },
+    applyFacilityDashboard (data) {
+      const total = Number(data.landTotal || 0)
+      const city = Number(data.cityLandCount || 0)
+      const district = Number(data.districtLandCount || 0)
+      this.supportingStat = {
+        total,
+        unit: '宗',
+        split: [
+          { label: '市级', value: city, percent: percent(city, total), tone: 'green' },
+          { label: '区级', value: district, percent: percent(district, total), tone: 'cyan' },
+        ],
+        gauge: {
+          percent: Number(data.completionRate || 0),
+          label: '全部配套完成率',
+        },
+      }
+      this.supportingRank = (data.ranks || []).map((item) => ({
+        name: item.name,
+        value: Number(item.value || 0),
+        unit: '宗',
+      }))
+      this.warningData = Object.assign({ city: [], district: [], plot: [] }, data.warnings || {})
+    },
     syncViewport () {
       this.viewportHeight = window.innerHeight || 1080
     },

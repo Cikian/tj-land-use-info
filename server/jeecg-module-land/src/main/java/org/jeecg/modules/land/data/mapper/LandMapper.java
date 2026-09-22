@@ -6,6 +6,7 @@ import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @Description: 经营性用地（宗地）Mapper
@@ -37,4 +38,10 @@ public interface LandMapper extends BaseMapper<Land> {
      * @return 宗地，可能为 null
      */
     Land selectByCrzdbh(@Param("crzdbh") String crzdbh);
+
+    /** 首页宗地总览。 */
+    Map<String, Object> selectDashboardOverview();
+
+    /** 首页各行政区宗地排行。 */
+    List<Map<String, Object>> selectDashboardRanks();
 }

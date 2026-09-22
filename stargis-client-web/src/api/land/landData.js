@@ -11,7 +11,7 @@ import { javaGetAction } from '@/api/manageJava'
  *
  * 用途：档案管理与收发文管理的「两级联动下拉」——
  *   第一步 选出让宗地（t_land）
- *   第二步 联动选该宗地下的配套项目（xj_kjkfb_supporting_facilities）
+ *   第二步 联动选该宗地下的配套项目（t_supporting_facilities）
  *
  * 与 admin-client/src/api/land/landData.js 一一对应（共用同一套后端）。
  */
@@ -21,7 +21,9 @@ export const landDataUrl = {
   xzqhOptions: '/land/data/land/xzqhOptions',
   facilityOptions: '/land/data/facility/options',
   facilitySearch: '/land/data/facility/search',
-  facilityById: '/land/data/facility/queryById'
+  facilityById: '/land/data/facility/queryById',
+  landDashboard: '/land/data/dashboard',
+  facilityDashboard: '/land/supporting-facilities/dashboard'
 }
 
 /**
@@ -66,6 +68,16 @@ export function queryFacilityById (id) {
   return javaGetAction(landDataUrl.facilityById, { id })
 }
 
+/** 首页宗地统计与行政区排行。 */
+export function queryLandDashboard () {
+  return javaGetAction(landDataUrl.landDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
+}
+
+/** 首页配套统计、行政区排行与预警。 */
+export function queryFacilityDashboard () {
+  return javaGetAction(landDataUrl.facilityDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
+}
+
 export default {
   landDataUrl,
   queryLandOptions,
@@ -73,5 +85,7 @@ export default {
   queryXzqhOptions,
   queryFacilityOptions,
   searchFacilityOptions,
-  queryFacilityById
+  queryFacilityById,
+  queryLandDashboard,
+  queryFacilityDashboard
 }
