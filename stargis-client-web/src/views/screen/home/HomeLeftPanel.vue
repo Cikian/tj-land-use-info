@@ -542,8 +542,9 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    // 设计稿里表头切图 357 宽，占 359 的表头区、右边留 2px
-    right: 2px;
+    // 设计稿里表头切图 357 宽，占 359 的表头区、右边留 2px。
+    // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
+    width: calc(100% - 2px);
     height: 36px;
     display: block;
   }

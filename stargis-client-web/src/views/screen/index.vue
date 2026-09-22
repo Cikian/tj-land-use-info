@@ -355,7 +355,13 @@ export default {
 
 <style scoped lang="less">
 .land-screen {
-  /* 四张氛围蒙版：上下铺满宽度、左右贴边并纵向铺满，随设计画布拉伸 */
+  /*
+     * 四张氛围蒙版：随设计画布拉伸铺满。
+     * ⚠ 这些是 <img>（替换元素）：绝对定位下只写 left/right（或 top/bottom）
+     *   而 width/height 留 auto 时，浏览器会用图片的**原始尺寸**，
+     *   right/bottom 被忽略 —— 表现为蒙版盖不到屏幕右边缘/下边缘，
+     *   露出没被压暗的一条亮边。所以宽高必须显式写出来。
+     */
   &__vignette {
     position: absolute;
     display: block;
@@ -363,30 +369,30 @@ export default {
 
     &.is-top {
       left: 0;
-      right: 0;
       top: 0;
+      width: 100%;
       height: 223px;
     }
 
     &.is-bottom {
       left: 0;
-      right: 0;
       bottom: 0;
+      width: 100%;
       height: 286px;
     }
 
     &.is-left {
       left: 0;
       top: 0;
-      bottom: 0;
       width: 560px;
+      height: 100%;
     }
 
     &.is-right {
       right: 0;
       top: 0;
-      bottom: 0;
       width: 560px;
+      height: 100%;
     }
   }
 

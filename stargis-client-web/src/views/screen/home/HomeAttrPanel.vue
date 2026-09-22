@@ -332,8 +332,10 @@ export default {
   &__head-bg {
     position: absolute;
     left: 2px;
-    right: 1px;
     top: 0;
+    // 设计稿里表头切图 957 宽，占 960 的表头区、左右各留 2px/1px。
+    // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
+    width: calc(100% - 3px);
     height: 36px;
     display: block;
     pointer-events: none;
@@ -342,8 +344,9 @@ export default {
   &__body-bg {
     position: absolute;
     left: 0;
-    right: 0;
     top: 48px;
+    // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
+    width: 100%;
     height: 183px;
     display: block;
     pointer-events: none;
@@ -364,6 +367,7 @@ export default {
     width: 100%;
     height: 46px;
 
+    // ::before 是普通元素（非替换元素），left+right 可以正常拉伸
     &:hover::before {
       content: '';
       position: absolute;
@@ -381,8 +385,9 @@ export default {
   &__tr-bg {
     position: absolute;
     left: 0;
-    right: 0;
     top: 0;
+    // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
+    width: 100%;
     height: 46px;
     display: block;
     pointer-events: none;
