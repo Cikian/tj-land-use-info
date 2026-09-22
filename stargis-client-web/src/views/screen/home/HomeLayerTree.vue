@@ -147,8 +147,9 @@ export default {
 .home-tree {
   &__title-deco {
     position: absolute;
-    // 设计稿 x=1491，即距右边界 429px（自适应：右侧锚定）
-    right: 429px;
+    // 设计稿 x=1491..1911（420 宽），即**距右边界 9px**；
+    // 之前误写成 right:429px（那是左边缘到右边界的距离），导致整条装饰条跑到中间
+    right: 9px;
     top: 95px;
     width: 420px;
     height: 46px;

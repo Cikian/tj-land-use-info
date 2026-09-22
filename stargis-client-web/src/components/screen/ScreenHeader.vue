@@ -59,12 +59,19 @@
       <img class="screen-header__caret" :src="hf.caretDown" alt="" aria-hidden="true" />
     </div>
 
-    <!-- 实时时钟（高保真：大号时间 + 右侧星期 / 日期两行小字） -->
-    <template v-if="showClock">
+    <!--
+      实时时钟（高保真：大号时间 + 右侧星期 / 日期两行小字）
+      ⚠ 星期/日期不能按设计稿写死 left:597 —— 设计稿用的 D-DIN-PRO 数字更窄，
+        实际字体下 "15:42" 比设计稿预留的 104px 宽，写死 left 会和时间挤在一起。
+        改成 flex：时间 + 「星期/日期」两行小字列，间距 16px（设计稿的 581→597）。
+    -->
+    <div v-if="showClock" class="screen-header__clock-wrap">
       <time class="screen-header__clock" :datetime="clockISO">{{ clockTime }}</time>
-      <span v-if="showWeekday" class="screen-header__weekday">{{ weekText }}</span>
-      <span class="screen-header__date">{{ clockDate }}</span>
-    </template>
+      <span class="screen-header__clock-meta">
+        <span v-if="showWeekday" class="screen-header__weekday">{{ weekText }}</span>
+        <span class="screen-header__date">{{ clockDate }}</span>
+      </span>
+    </div>
 
     <!-- 在线状态（高保真未出现，保留能力，默认不渲染） -->
     <span
@@ -332,24 +339,46 @@ export default {
   }
 
   /* ---------- 时钟 ---------- */
-  &__clock {
+  /* 设计稿：时间左上角 (477, 115)，星期 (597, 117)，日期 (597, 141) */
+  &__clock-wrap {
     position: absolute;
     left: 477px;
     top: 115px;
-    font-family: var(--screen-font-number-family);
+    display: flex;
+    align-items: flex-start;
+    white-space: nowrap;
+  }
+
+  &__clock {
+    /*
+     * 高保真用 D-DIN-PRO（窄体数字），52px 的 "15:36" 只有约 104px 宽；
+     * 项目内置的思源黑体数字偏宽（同样字号约 205px），会把右侧的星期/日期
+     * 顶出去近百像素。这里给时钟单独指定窄体数字字体栈：
+     * DIN Alternate（macOS）→ Bahnschrift（Windows 自带的 DIN 风格可变字体）
+     * → Arial Narrow → 最后才回退到项目字体。只影响时钟，不动全局数字字体。
+     */
+    font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', var(--screen-font-number-family);
+    // Bahnschrift 是可变字体，默认落在 Normal 字宽（并不窄），要显式取窄体实例
+    font-stretch: 75%;
     font-size: 52px;
     font-weight: 400;
     line-height: 39px;
     color: #ffffff;
-    letter-spacing: 0.01em;
+    letter-spacing: 0;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
+  /* 星期 / 日期两行小字：跟在时间右侧，间距固定，不依赖时间的实际宽度 */
+  &__clock-meta {
+    display: flex;
+    flex-direction: column;
+    margin-left: 16px;
+    // 设计稿里星期比时间顶端低 2px（115 → 117）
+    padding-top: 2px;
+  }
+
   &__weekday {
-    position: absolute;
-    left: 597px;
-    top: 116px;
     font-size: 16px;
     line-height: 16px;
     color: #66afd4;
@@ -357,9 +386,8 @@ export default {
   }
 
   &__date {
-    position: absolute;
-    left: 597px;
-    top: 140px;
+    // 设计稿：星期 117..133，日期 141 起，间隔 8px
+    margin-top: 8px;
     font-size: 16px;
     line-height: 16px;
     color: #66afd4;
