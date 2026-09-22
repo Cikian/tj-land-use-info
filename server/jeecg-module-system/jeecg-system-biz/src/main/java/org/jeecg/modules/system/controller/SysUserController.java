@@ -19,6 +19,9 @@ import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.PermissionData;
 import org.jeecg.common.constant.CommonConstant;
 import org.jeecg.common.constant.SymbolConstant;
+//update-begin---author:stargis ---date:20260101  for：单机构单角色校验/同步中台失败时向前端透出原因（ZK-SERVER）
+import org.jeecg.common.exception.JeecgBootException;
+//update-end---author:stargis ---date:20260101  for：单机构单角色校验/同步中台失败时向前端透出原因（ZK-SERVER）
 import org.jeecg.common.system.api.ISysBaseAPI;
 import org.jeecg.modules.base.service.BaseCommonService;
 import org.jeecg.common.system.query.QueryGenerator;
@@ -169,6 +172,9 @@ public class SysUserController {
 		try {
 			SysUser user = JSON.parseObject(jsonObject.toJSONString(), SysUser.class);
 			user.setCreateTime(new Date());//设置创建时间
+			//update-begin---author:stargis ---date:20260101  for：中台建号需要明文口令，先留存再加密（ZK-SERVER）
+			String plainPassword = user.getPassword();
+			//update-end---author:stargis ---date:20260101  for：中台建号需要明文口令，先留存再加密（ZK-SERVER）
 			String salt = oConvertUtils.randomGen(8);
 			user.setSalt(salt);
 			String passwordEncode = PasswordUtil.encrypt(user.getUsername(), user.getPassword(), salt);
@@ -178,12 +184,16 @@ public class SysUserController {
 			//用户表字段org_code不能在这里设置他的值
             user.setOrgCode(null);
 			// 保存用户走一个service 保证事务
-			sysUserService.saveUser(user, selectedRoles, selectedDeparts);
+			//update-begin---author:stargis ---date:20260101  for：建用户时同步中台，并强制选择唯一机构与角色（ZK-SERVER）
+			sysUserService.saveUserWithZkSync(user, selectedRoles, selectedDeparts, plainPassword);
+			//update-end---author:stargis ---date:20260101  for：建用户时同步中台，并强制选择唯一机构与角色（ZK-SERVER）
             baseCommonService.addLog("添加用户，username： " +user.getUsername() ,CommonConstant.LOG_TYPE_2, 2);
 			result.success("添加成功！");
 		} catch (Exception e) {
 			log.error(e.getMessage(), e);
-			result.error500("操作失败");
+			//update-begin---author:stargis ---date:20260101  for：同步中台/校验失败时向前端透出原因（ZK-SERVER）
+			result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
+			//update-end---author:stargis ---date:20260101  for：同步中台/校验失败时向前端透出原因（ZK-SERVER）
 		}
 		return result;
 	}
@@ -212,12 +222,16 @@ public class SysUserController {
                 //用户表字段org_code不能在这里设置他的值
                 user.setOrgCode(null);
                 // 修改用户走一个service 保证事务
-				sysUserService.editUser(user, roles, departs);
+				//update-begin---author:stargis ---date:20260101  for：改用户时同步中台，并强制唯一机构与角色（ZK-SERVER）
+				sysUserService.editUserWithZkSync(user, roles, departs);
+				//update-end---author:stargis ---date:20260101  for：改用户时同步中台，并强制唯一机构与角色（ZK-SERVER）
 				result.success("修改成功!");
 			}
 		} catch (Exception e) {
 			log.error(e.getMessage(), e);
-			result.error500("操作失败");
+			//update-begin---author:stargis ---date:20260101  for：同步中台/校验失败时向前端透出原因（ZK-SERVER）
+			result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
+			//update-end---author:stargis ---date:20260101  for：同步中台/校验失败时向前端透出原因（ZK-SERVER）
 		}
 		return result;
 	}
@@ -257,15 +271,15 @@ public class SysUserController {
 			String ids = jsonObject.getString("ids");
 			String status = jsonObject.getString("status");
 			String[] arr = ids.split(",");
-			for (String id : arr) {
-				if(oConvertUtils.isNotEmpty(id)) {
-					this.sysUserService.update(new SysUser().setStatus(Integer.parseInt(status)),
-							new UpdateWrapper<SysUser>().lambda().eq(SysUser::getId,id));
-				}
-			}
+			//update-begin---author:stargis ---date:20260101  for：冻结/解冻同步中台（ZK-SERVER）
+			// 改成一个事务方法：本地批量改状态 + 同步中台状态
+			this.sysUserService.updateUserStatusWithZkSync(Arrays.asList(arr), Integer.parseInt(status));
+			//update-end---author:stargis ---date:20260101  for：冻结/解冻同步中台（ZK-SERVER）
 		} catch (Exception e) {
 			log.error(e.getMessage(), e);
-			result.error500("操作失败"+e.getMessage());
+			//update-begin---author:stargis ---date:20260101  for：同步中台失败时向前端透出原因（ZK-SERVER）
+			result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败" + e.getMessage());
+			//update-end---author:stargis ---date:20260101  for：同步中台失败时向前端透出原因（ZK-SERVER）
 		}
 		result.success("操作成功!");
 		return result;
@@ -639,6 +653,9 @@ public class SysUserController {
         try {
             String sysRoleId = sysUserRoleVO.getRoleId();
             for(String sysUserId:sysUserRoleVO.getUserIdList()) {
+                //update-begin---author:stargis ---date:20260101  for：一个用户只能有一个角色（对应中台口径）
+                checkUserHasNoRole(sysUserId);
+                //update-end---author:stargis ---date:20260101  for：一个用户只能有一个角色（对应中台口径）
                 SysUserRole sysUserRole = new SysUserRole(sysUserId,sysRoleId);
                 QueryWrapper<SysUserRole> queryWrapper = new QueryWrapper<SysUserRole>();
                 queryWrapper.eq("role_id", sysRoleId).eq("user_id",sysUserId);
@@ -670,13 +687,16 @@ public class SysUserController {
     ) {
         Result<SysUserRole> result = new Result<SysUserRole>();
         try {
+            //update-begin---author:stargis ---date:20260101  for：一个用户必须保留一个角色（对应中台口径）
+            checkUserKeepOneRole(Collections.singletonList(userId));
+            //update-end---author:stargis ---date:20260101  for：一个用户必须保留一个角色（对应中台口径）
             QueryWrapper<SysUserRole> queryWrapper = new QueryWrapper<SysUserRole>();
             queryWrapper.eq("role_id", roleId).eq("user_id",userId);
             sysUserRoleService.remove(queryWrapper);
             result.success("删除成功!");
         }catch(Exception e) {
             log.error(e.getMessage(), e);
-            result.error500("删除失败！");
+            result.error500(e instanceof JeecgBootException ? e.getMessage() : "删除失败！");
         }
         return result;
     }
@@ -694,13 +714,16 @@ public class SysUserController {
             @RequestParam(name="userIds",required=true) String userIds) {
         Result<SysUserRole> result = new Result<SysUserRole>();
         try {
+            //update-begin---author:stargis ---date:20260101  for：一个用户必须保留一个角色（对应中台口径）
+            checkUserKeepOneRole(Arrays.asList(userIds.split(",")));
+            //update-end---author:stargis ---date:20260101  for：一个用户必须保留一个角色（对应中台口径）
             QueryWrapper<SysUserRole> queryWrapper = new QueryWrapper<SysUserRole>();
             queryWrapper.eq("role_id", roleId).in("user_id",Arrays.asList(userIds.split(",")));
             sysUserRoleService.remove(queryWrapper);
             result.success("删除成功!");
         }catch(Exception e) {
             log.error(e.getMessage(), e);
-            result.error500("删除失败！");
+            result.error500(e instanceof JeecgBootException ? e.getMessage() : "删除失败！");
         }
         return result;
     }
@@ -821,6 +844,9 @@ public class SysUserController {
         try {
             String sysDepId = sysDepartUsersVO.getDepId();
             for(String sysUserId:sysDepartUsersVO.getUserIdList()) {
+                //update-begin---author:stargis ---date:20260101  for：一个用户只能有一个机构（对应中台口径）
+                checkUserHasNoDepart(sysUserId);
+                //update-end---author:stargis ---date:20260101  for：一个用户只能有一个机构（对应中台口径）
                 SysUserDepart sysUserDepart = new SysUserDepart(null,sysUserId,sysDepId);
                 QueryWrapper<SysUserDepart> queryWrapper = new QueryWrapper<SysUserDepart>();
                 queryWrapper.eq("dep_id", sysDepId).eq("user_id",sysUserId);
@@ -850,6 +876,9 @@ public class SysUserController {
     ) {
         Result<SysUserDepart> result = new Result<SysUserDepart>();
         try {
+            //update-begin---author:stargis ---date:20260101  for：一个用户必须保留一个机构（对应中台口径）
+            checkUserKeepOneDepart(Collections.singletonList(userId));
+            //update-end---author:stargis ---date:20260101  for：一个用户必须保留一个机构（对应中台口径）
             QueryWrapper<SysUserDepart> queryWrapper = new QueryWrapper<SysUserDepart>();
             queryWrapper.eq("dep_id", depId).eq("user_id",userId);
             boolean b = sysUserDepartService.remove(queryWrapper);
@@ -867,7 +896,7 @@ public class SysUserController {
             }
         }catch(Exception e) {
             log.error(e.getMessage(), e);
-            result.error500("删除失败！");
+            result.error500(e instanceof JeecgBootException ? e.getMessage() : "删除失败！");
         }
         return result;
     }
@@ -882,6 +911,9 @@ public class SysUserController {
             @RequestParam(name="userIds",required=true) String userIds) {
         Result<SysUserDepart> result = new Result<SysUserDepart>();
         try {
+            //update-begin---author:stargis ---date:20260101  for：一个用户必须保留一个机构（对应中台口径）
+            checkUserKeepOneDepart(Arrays.asList(userIds.split(",")));
+            //update-end---author:stargis ---date:20260101  for：一个用户必须保留一个机构（对应中台口径）
             QueryWrapper<SysUserDepart> queryWrapper = new QueryWrapper<SysUserDepart>();
             queryWrapper.eq("dep_id", depId).in("user_id",Arrays.asList(userIds.split(",")));
             boolean b = sysUserDepartService.remove(queryWrapper);
@@ -891,10 +923,76 @@ public class SysUserController {
             result.success("删除成功!");
         }catch(Exception e) {
             log.error(e.getMessage(), e);
-            result.error500("删除失败！");
+            result.error500(e instanceof JeecgBootException ? e.getMessage() : "删除失败！");
         }
         return result;
     }
+
+    //update-begin---author:stargis ---date:20260101  for：单机构单角色不变式（对应中台口径）
+    /**
+     * 校验用户当前没有角色——用于"给角色添加用户"时防止一个用户挂多个角色。
+     */
+    private void checkUserHasNoRole(String userId) {
+        if (oConvertUtils.isEmpty(userId)) {
+            return;
+        }
+        long count = sysUserRoleService.count(new QueryWrapper<SysUserRole>().eq("user_id", userId));
+        if (count > 0) {
+            SysUser u = sysUserService.getById(userId);
+            throw new JeecgBootException("用户【" + (u == null ? userId : u.getRealname())
+                    + "】已有角色：本系统与中台一致，一个用户只能有一个角色。如需更换请到【用户管理】编辑该用户。");
+        }
+    }
+
+    /**
+     * 校验移除角色后用户仍保留至少一个角色。
+     */
+    private void checkUserKeepOneRole(List<String> userIds) {
+        for (String userId : userIds) {
+            if (oConvertUtils.isEmpty(userId)) {
+                continue;
+            }
+            long count = sysUserRoleService.count(new QueryWrapper<SysUserRole>().eq("user_id", userId));
+            if (count <= 1) {
+                SysUser u = sysUserService.getById(userId);
+                throw new JeecgBootException("用户【" + (u == null ? userId : u.getRealname())
+                        + "】只剩这一个角色：本系统与中台一致，一个用户必须保留一个角色，不能删空。");
+            }
+        }
+    }
+
+    /**
+     * 校验用户当前没有机构——用于"给机构添加用户"时防止一个用户挂多个机构。
+     */
+    private void checkUserHasNoDepart(String userId) {
+        if (oConvertUtils.isEmpty(userId)) {
+            return;
+        }
+        long count = sysUserDepartService.count(new QueryWrapper<SysUserDepart>().eq("user_id", userId));
+        if (count > 0) {
+            SysUser u = sysUserService.getById(userId);
+            throw new JeecgBootException("用户【" + (u == null ? userId : u.getRealname())
+                    + "】已有所属机构：本系统与中台一致，一个用户只能有一个机构。如需更换请到【用户管理】编辑该用户。");
+        }
+    }
+
+    /**
+     * 校验移除机构后用户仍保留至少一个机构。
+     */
+    private void checkUserKeepOneDepart(List<String> userIds) {
+        for (String userId : userIds) {
+            if (oConvertUtils.isEmpty(userId)) {
+                continue;
+            }
+            long count = sysUserDepartService.count(new QueryWrapper<SysUserDepart>().eq("user_id", userId));
+            if (count <= 1) {
+                SysUser u = sysUserService.getById(userId);
+                throw new JeecgBootException("用户【" + (u == null ? userId : u.getRealname())
+                        + "】只剩这一个机构：本系统与中台一致，一个用户必须保留一个机构，不能删空。");
+            }
+        }
+    }
+    //update-end---author:stargis ---date:20260101  for：单机构单角色不变式（对应中台口径）
     
     /**
          *  查询当前用户的所有部门/当前部门编码
@@ -1107,11 +1205,16 @@ public class SysUserController {
             result.setSuccess(false);
             return result;
         } else {
-            String salt = oConvertUtils.randomGen(8);
-            sysUser.setSalt(salt);
-            String passwordEncode = PasswordUtil.encrypt(sysUser.getUsername(), password, salt);
-            sysUser.setPassword(passwordEncode);
-            this.sysUserService.updateById(sysUser);
+            //update-begin---author:stargis ---date:20260101  for：短信重置密码也走统一策略与中台同步（ZK-SERVER）
+            // 复用 changePassword：它已按中台策略校验明文、并在同一事务内同步中台口令
+            sysUser.setPassword(password);
+            Result<?> changeResult = this.sysUserService.changePassword(sysUser);
+            if (!changeResult.isSuccess()) {
+                result.setSuccess(false);
+                result.setMessage(changeResult.getMessage());
+                return result;
+            }
+            //update-end---author:stargis ---date:20260101  for：短信重置密码也走统一策略与中台同步（ZK-SERVER）
             //update-begin---author:wangshuai ---date:20220316  for：[VUEN-234]密码重置添加敏感日志------------
             baseCommonService.addLog("重置 "+username+" 的密码，操作人： " +sysUser.getUsername() ,CommonConstant.LOG_TYPE_2, 2);
             //update-end---author:wangshuai ---date:20220316  for：[VUEN-234]密码重置添加敏感日志------------

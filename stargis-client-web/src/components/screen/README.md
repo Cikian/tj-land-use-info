@@ -253,7 +253,8 @@ const columns = [
     `grid-template-columns: v-bind(x)`。
 13. **业务模块不做前端按钮鉴权，不要再加回 `v-has`**。
     原因是本项目有**两套互相独立的角色体系**：一套在中台，一套在业务（Java）后端。
-    登录走的是中台用户体系，业务后端的角色数据与当前登录用户对不上，
+    登录时会用同一套账号口令同时登录中台与业务后端（jeecg），
+    但前端按钮权限清单仍由中台下发，业务后端的角色权限对不上，
     因此业务后端下发的按钮权限清单没有意义。
 
     而 `v-has`（`utils/hasPermission.js`）的行为是
@@ -405,6 +406,7 @@ src/views/screen/archive/
 ```
 src/api/manageJava.js     # Java 业务后端请求层
   javaBaseUrl()                  业务后端基址
+  javaAccessToken()              当前 jeecg 令牌（JEECG_ACCESS_TOKEN）
   javaStaticBaseUrl()            /sys/common/static 基址
   getJavaFileAccessHttpUrl()     临时文件预览地址
   javaGetAction / javaPostAction / javaPutAction / javaDeleteAction / javaHttpAction
@@ -422,22 +424,38 @@ src/api/manageJava.js     # Java 业务后端请求层
    `params.access_token`，就会额外往**中台**发一次 `/app/sceneCreateApi/dataList` 做刷新判断；
    失败时会清 token 并整页 reload。业务请求不需要这套机制。
    `manageJava.js` 改为只带 `X-Access-Token` 请求头，从而跳过那次多余的中台往返。
-2. **令牌要靠请求头传**。本项目的 `request.js` 请求拦截器是被注释掉的
+2. **令牌要靠请求头传，而且必须是 jeecg 自己的令牌**。本项目的 `request.js` 请求拦截器是被注释掉的
    （不像 admin-client 那样自动加 `X-Access-Token`），所以 `manageJava.js`
    显式设置 `X-Access-Token`；同时按 admin-client 的做法带上
    `X-Sign` / `X-TIMESTAMP`（`X-TIMESTAMP` 用毫秒，与后端 `SignAuthInterceptor` 兼容）。
    原生上传（XHR）与原生下载（`window.open`）绕过 axios，因此分别手动带
    `X-Access-Token` 头和 `?token=` 查询参数。
 
+   > **两套令牌**：中台令牌存在 `ACCESS_TOKEN`（`Access-Token`，走 query/body 的
+   > `access_token`），jeecg 令牌存在 `JEECG_ACCESS_TOKEN`（`Jeecg-Access-Token`，
+   > 走请求头 `X-Access-Token`），由登录时 `store/modules/user.js` 的 `JeecgLogin`
+   > 动作写入。**两者绝不能互相覆盖**：`manageJava.js`、档案上传/预览一律取
+   > `JEECG_ACCESS_TOKEN`，`@/api/manage`、`utils/request.js` 一律取 `ACCESS_TOKEN`。
+   >
+   > jeecg **没有** `/sys/refreshToken` 之类的刷新接口，它的“无感刷新”是后端滑动续期
+   > （`ShiroRealm.jwtTokenRefresh`：登录写 Redis、有效期 2 小时，JWT 自身 1 小时过期后
+   > 只要 Redis 里还有 key 就重新签发并重置 2 小时），前端只要每次请求都带同一个
+   > `X-Access-Token` 即可。令牌最终失效时后端返回 HTTP 401 + “Token失效”，
+   > `utils/request.js` 会按“业务后端登录已过期”提示**且不会注销中台会话**。
+
 ### 业务接口不再做前端鉴权
 
 业务后端（Java 端）的接口目前**已放开**，前端也不做按钮级鉴权：
 档案模块的所有操作按钮都直接渲染，没有 `v-if` 权限判断，也没有 `v-has`。
 
+原来是「中台一套用户/角色、业务后端另一套」导致登录身份对不上；
+现在登录时会用同一套账号口令再登录一次业务后端（jeecg），
+`X-Access-Token` 是业务后端真实有效的令牌，但**授权**仍按下一条处理：
+
 原因是本项目有**两套互相独立的角色体系**（中台一套、业务后端一套），
-登录走的是中台用户体系，业务后端的角色与登录用户对不上，
-下发的按钮权限清单没有参考价值 —— 而 `v-has` 在清单为空时会把元素从 DOM 删掉，
-只会导致「功能写了但按钮不出现」。详见第 6 节第 13 条。
+虽然用户/机构/角色已经同步（业务后端侧能看到与中台一致的用户和部门），
+但前端按钮级权限清单仍由中台下发，业务后端的角色权限对不上时
+`v-has` 会把元素从 DOM 删掉，只会导致「功能写了但按钮不出现」。详见第 6 节第 13 条。
 
 `manageJava.js` 仍然带着 `X-Access-Token`：鉴权（这个请求是谁发的）与授权
 （这个用户能不能调这个接口）是两件事，token 留着既不影响放开后的接口，

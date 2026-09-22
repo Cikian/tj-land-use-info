@@ -184,7 +184,15 @@ export default {
           loginParams.append('refreshTokenValidityMinute', window._CONFIG.RETIME || 24 * 60)
           // console.log('登录参数', loginParams)
 
-          this.Login(loginParams)
+          // 【stargis 改造】除了发给中台的表单参数（三重 Base64 后的账号口令），
+          // 还要把**明文**账号口令一起交给 store：中台登录成功后 store 会用这份明文
+          // 去登录 Java 业务后端（jeecg）的 /sys/login（那边后端自己加盐校验，不能传密文）。
+          // 明文只在内存里传递，不写入 localStorage/sessionStorage。
+          this.Login({
+            form: loginParams,
+            username: this.model.username,
+            password: this.model.password
+          })
             .then((res) => {
               console.log(res);
               // if (res.code == 20004) {
@@ -229,6 +237,10 @@ export default {
         access_token: addstr, //"96331968ad5f3d59e63cea06ad42cb793363aa4b8c3cd7c04d530596d946a640"
       }
       console.log('登录参数', loginParams)
+      // 【stargis 改造】单点登录路径只有中台令牌、没有明文口令，
+      // 因此**不会**登录 Java 业务后端（jeecg）——store 只在收到 { form, username, password }
+      // 时才做第二步 jeecg 登录。后续 jeecg 侧接口（/land/**、/sys/**）会返回 401，
+      // 由 utils/request.js 按“未登录业务后端”提示，不会影响中台会话。
       this.Login(loginParams)
         .then((res) => {
           this.$emit('success', res.result)

@@ -3,7 +3,9 @@ import {
   login,
   logout,
   phoneLogin,
-  thirdLogin
+  thirdLogin,
+  jeecgLogin,
+  jeecgLogout
 } from "@/api/login"
 import {
   notification
@@ -16,7 +18,10 @@ import {
   SYS_BUTTON_AUTH,
   UI_CACHE_DB_DICT_DATA,
   TENANT_ID,
-  CACHE_INCLUDED_ROUTES
+  CACHE_INCLUDED_ROUTES,
+  JEECG_ACCESS_TOKEN,
+  JEECG_USER_INFO,
+  JEECG_DICT_ITEMS
 } from "@/store/mutation-types"
 import {
   welcome
@@ -42,6 +47,20 @@ function getSystemName({
   })
 }
 
+/**
+ * 【stargis 改造】清空 Java 业务后端（jeecg）的本地登录态。
+ * 只动本地（Vuex + localStorage），不发任何请求，重复调用安全。
+ * @param {Function} commit vuex commit
+ */
+function resetJeecgState(commit) {
+  commit('SET_JEECG_TOKEN', '')
+  commit('SET_JEECG_INFO', {})
+  commit('SET_JEECG_DICT_ITEMS', {})
+  Vue.ls.remove(JEECG_ACCESS_TOKEN)
+  Vue.ls.remove(JEECG_USER_INFO)
+  Vue.ls.remove(JEECG_DICT_ITEMS)
+}
+
 const user = {
   state: {
     token: '',
@@ -55,7 +74,11 @@ const user = {
     // 系统安全模式
     sysSafeMode: null,
     layer: [],
-    sysConfig: []
+    sysConfig: [],
+    // 【stargis 改造】Java 业务后端（jeecg）登录态，与上面的中台登录态并存
+    jeecgToken: '',
+    jeecgInfo: {},
+    jeecgDictItems: {}
   },
 
   mutations: {
@@ -98,6 +121,16 @@ const user = {
     },
     SET_SYS_NAME: (state, info) => {
       state.sysName = info
+    },
+    // 【stargis 改造】Java 业务后端（jeecg）登录态
+    SET_JEECG_TOKEN: (state, token) => {
+      state.jeecgToken = token
+    },
+    SET_JEECG_INFO: (state, info) => {
+      state.jeecgInfo = info
+    },
+    SET_JEECG_DICT_ITEMS: (state, items) => {
+      state.jeecgDictItems = items
     }
   },
 
@@ -132,12 +165,33 @@ const user = {
         })
       })
     },
-    // 登录
+    /**
+     * 登录（【stargis 改造】中台 + Java 业务后端 jeecg 双登录）
+     *
+     * payload 两种形态：
+     *   1. 账号口令登录（登录页）：{ form: FormData, username: '明文账号', password: '明文口令' }
+     *      - form    发给中台 /app/oauth/tokenapply（三重 Base64 后的账号口令 + 有效期）
+     *      - username/password 是**明文**，只用于紧接着登录 jeecg，不落任何持久化存储
+     *   2. 单点登录（?token=xxx）：{ access_token: '中台令牌' }
+     *      这条路径手上没有明文口令，按约定**跳过** jeecg 登录
+     *      （jeecg 侧接口 401 时由 utils/request.js 按“未登录”提示，不影响中台会话）
+     *
+     * 执行顺序：先中台，中台返回成功后马上登录 jeecg；jeecg 失败则整体判定为登录失败，
+     * 并把已经建立的中台会话回滚掉，避免出现“中台登录了、jeecg 没登录”的半登录状态。
+     */
     Login({
-      commit
-    }, userInfo) {
+      commit,
+      dispatch
+    }, payload) {
       return new Promise((resolve, reject) => {
-        login(userInfo).then(response => {
+        // 兼容单点登录/历史调用：整个 payload 就是中台 login() 的入参
+        const isAccountLogin = !!(payload && payload.form)
+        const loginParams = isAccountLogin ? payload.form : payload
+        const plainAccount = isAccountLogin ? {
+          username: payload.username,
+          password: payload.password
+        } : null
+        login(loginParams).then(async response => {
           let res = response
 
           if (res.code == 20004) {
@@ -182,6 +236,20 @@ const user = {
               welcome: welcome()
             })
             // commit('SET_AVATAR', userInfo.avatar)
+
+            // 【stargis 改造】第 2 步：中台登录成功后登录 Java 业务后端（jeecg）
+            if (plainAccount) {
+              try {
+                await dispatch('JeecgLogin', plainAccount)
+              } catch (err) {
+                // jeecg 登录失败 → 回滚中台登录态，整体按登录失败处理
+                // （此时用户还没进系统，但中台已经发了令牌，不清理会留下半登录态）
+                await dispatch('Logout')
+                reject(err)
+                return
+              }
+            }
+
             getSystemName({
               commit
             }).then((res) => {
@@ -195,6 +263,94 @@ const user = {
           }
         }).catch(error => {
           reject(error)
+        })
+      })
+    },
+    /**
+     * 【stargis 改造】登录 Java 业务后端（jeecg）：POST {VUE_DATA_JAVA_URL}/sys/login
+     *
+     * 要点：
+     *   - 明文账号口令（中台与 jeecg 是同一套账号口令：用户同步时同一份明文同时写入两端）；
+     *   - 中台与 jeecg 的令牌分开存（JEECG_ACCESS_TOKEN / JEECG_USER_INFO），
+     *     绝不覆盖中台的 ACCESS_TOKEN，否则 /app/** 接口会立刻 401；
+     *   - jeecg 的“无感刷新”在后端（ShiroRealm.jwtTokenRefresh 滑动续期，闲置约 2 小时失效），
+     *     前端只需保证每个请求都带同一个 X-Access-Token，这里不发任何刷新请求；
+     *   - 失败时 reject 一个带 message 的对象，登录页会直接把 message 弹给用户。
+     */
+    JeecgLogin({
+      commit
+    }, payload) {
+      return new Promise((resolve, reject) => {
+        const username = payload && payload.username
+        const password = payload && payload.password
+        if (!username || !password) {
+          reject({
+            code: 500,
+            jeecgLogin: true,
+            message: '缺少用户名或密码，无法登录业务后端'
+          })
+          return
+        }
+        jeecgLogin({
+          username,
+          password
+        }).then(response => {
+          if (response && response.success && response.result && response.result.token) {
+            const result = response.result
+            const info = result.userInfo || {}
+            Vue.ls.set(JEECG_ACCESS_TOKEN, result.token)
+            Vue.ls.set(JEECG_USER_INFO, info, 7 * 24 * 60 * 60 * 1000)
+            if (result.sysAllDictItems) {
+              Vue.ls.set(JEECG_DICT_ITEMS, result.sysAllDictItems, 7 * 24 * 60 * 60 * 1000)
+            }
+            commit('SET_JEECG_TOKEN', result.token)
+            commit('SET_JEECG_INFO', info)
+            commit('SET_JEECG_DICT_ITEMS', result.sysAllDictItems || {})
+            // multi_depart: 0=无部门 1=一个部门 2=多个部门
+            // 同步过来的用户必然只属于一个部门，出现 2 说明数据不符合约定，仅告警不阻断
+            if (result.multi_depart === 2) {
+              console.warn('[stargis] 业务后端返回 multi_depart=2（用户属于多个部门），' +
+                '本系统约定一个用户只对应一个部门，请检查同步数据')
+            }
+            resolve(result)
+          } else {
+            reject({
+              code: (response && response.code) || 500,
+              jeecgLogin: true,
+              message: '业务后端登录失败：' + ((response && (response.message || response.msg)) || '未知错误')
+            })
+          }
+        }).catch(error => {
+          // 网络异常 / 4xx / 5xx：utils/request.js 的 err 已经弹过提示，这里只把信息往上抛
+          const body = (error && error.response && error.response.data) || {}
+          reject({
+            code: (error && error.response && error.response.status) || 500,
+            jeecgLogin: true,
+            message: '业务后端登录失败：' + (body.message || (error && error.message) || '请求异常')
+          })
+        })
+      })
+    },
+    /**
+     * 【stargis 改造】退出 Java 业务后端（jeecg）并清空本地 jeecg 登录态。
+     * 无论后端调用成功与否，本地都会清理干净。
+     */
+    JeecgLogout({
+      commit
+    }) {
+      return new Promise((resolve) => {
+        const token = Vue.ls.get(JEECG_ACCESS_TOKEN)
+        if (!token) {
+          resetJeecgState(commit)
+          resolve()
+          return
+        }
+        jeecgLogout(token).then(() => {
+          resetJeecgState(commit)
+          resolve()
+        }).catch(() => {
+          resetJeecgState(commit)
+          resolve()
         })
       })
     },
@@ -459,10 +615,11 @@ const user = {
         })
       })
     },
-    // 登出
+    // 登出（【stargis 改造】中台 + Java 业务后端 jeecg 一起登出）
     Logout({
       commit,
-      state
+      state,
+      dispatch
     }) {
       return new Promise((resolve) => {
         let logoutToken = state.token;
@@ -475,6 +632,9 @@ const user = {
         Vue.ls.remove(UI_CACHE_DB_DICT_DATA)
         Vue.ls.remove(CACHE_INCLUDED_ROUTES)
         Vue.ls.remove(TENANT_ID)
+        // 【stargis 改造】同步注销 jeecg 会话（清 Redis 里的 token/权限缓存），
+        // 并清掉本地 jeecg 登录态；失败也不阻断中台登出流程
+        dispatch('JeecgLogout')
         //console.log('logoutToken: '+ logoutToken)                                                                                                                   
         logout(logoutToken).then(() => {
           if (process.env.VUE_APP_SSO == 'true') {

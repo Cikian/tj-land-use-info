@@ -11,6 +11,13 @@
 	<artifactId>jeecg-system-biz</artifactId>
 
 	<dependencies>
+		<!-- 中台（ZK-SERVER）客户端 SDK：用户/角色/机构 与中台的双向同步 -->
+		<dependency>
+			<groupId>cn.cikian</groupId>
+			<artifactId>stargis-zk-sdk</artifactId>
+			<version>1.0.0</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.jeecgframework.boot</groupId>
 			<artifactId>jeecg-system-local-api</artifactId>

@@ -7,7 +7,10 @@ import {
 import router from '@/router/index'
 import {
   ACCESS_TOKEN,
-  TENANT_ID
+  TENANT_ID,
+  JEECG_ACCESS_TOKEN,
+  JEECG_USER_INFO,
+  JEECG_DICT_ITEMS
 } from "@/store/mutation-types"
 
 /**
@@ -25,7 +28,107 @@ const service = axios.create({
   timeout: 60000 // 请求超时时间
 })
 
+/**
+ * 【stargis 改造】这次失败的请求是不是打到 Java 业务后端（jeecg）的？
+ *
+ * 业务请求统一走 src/api/manageJava.js，它显式传 baseURL = window._CONFIG.VUE_DATA_JAVA_URL；
+ * 而本 axios 实例的默认 baseURL 是中台的 domianURL（VUE_APP_API_BASE_URL），
+ * 两个后端地址不同，据此区分即可。
+ *
+ * @param {object} error axios 错误对象
+ * @returns {boolean}
+ */
+function isJeecgRequest (error) {
+  const jeecgBase = (window._CONFIG || {}).VUE_DATA_JAVA_URL
+  if (!jeecgBase) {
+    return false
+  }
+  const config = (error && error.config) || {}
+  const base = config.baseURL || ''
+  if (base && base.indexOf(jeecgBase) === 0) {
+    return true
+  }
+  return (config.url || '').indexOf(jeecgBase) === 0
+}
+
+/**
+ * 【stargis 改造】是否 jeecg 的鉴权失败（令牌无效/过期/根本没带）。
+ * jeecg 的 JwtFilter 统一返回 HTTP 401 + { success:false, code:401, message:'Token失效，请重新登录' }，
+ * 这里把 401 与文案两种特征都覆盖上。
+ */
+function isJeecgAuthFailure (error) {
+  const response = (error && error.response) || {}
+  const data = response.data || {}
+  if (response.status === 401) {
+    return true
+  }
+  if (data.code === 401) {
+    return true
+  }
+  return typeof data.message === 'string' && data.message.indexOf('Token失效') > -1
+}
+
+/** 清空本地 jeecg 登录态（只动本地，不注销中台会话，也不发请求） */
+function clearJeecgLoginState () {
+  try {
+    Vue.ls.remove(JEECG_ACCESS_TOKEN)
+    Vue.ls.remove(JEECG_USER_INFO)
+    Vue.ls.remove(JEECG_DICT_ITEMS)
+  } catch (e) {
+    // ignore
+  }
+  try {
+    store.commit('SET_JEECG_TOKEN', '')
+    store.commit('SET_JEECG_INFO', {})
+    store.commit('SET_JEECG_DICT_ITEMS', {})
+  } catch (e) {
+    // ignore
+  }
+}
+
+// 一个页面常常并发多个业务请求，令牌失效时会一起失败，做 3 秒节流只提示一次
+let jeecgTokenInvalidNotifiedAt = 0
+
+/**
+ * 提示 jeecg 登录态失效
+ * @param {boolean} hadToken true=令牌过期；false=本来就没登录过 jeecg
+ */
+function notifyJeecgTokenInvalid (hadToken) {
+  const now = Date.now()
+  if (now - jeecgTokenInvalidNotifiedAt < 3000) {
+    return
+  }
+  jeecgTokenInvalidNotifiedAt = now
+  Vue.prototype.$Jnotification.error({
+    message: '系统提示',
+    description: hadToken ? '业务后端登录已过期，请重新登录' : '尚未登录业务后端，请重新登录后再试',
+    duration: 4
+  })
+}
+
 const err = (error) => {
+  // ==========================================================================
+  // 【stargis 改造】Java 业务后端（jeecg）的鉴权失效，不能走下面的中台流程。
+  //
+  // 背景：下面 case 401 会 dispatch('Logout') 去注销**中台**会话并刷新页面。
+  // 但 jeecg 令牌（X-Access-Token）与中台令牌是两套独立会话，
+  // jeecg 的 JwtFilter 在任何校验不通过时都会返回 HTTP 401 + “Token失效，请重新登录”，
+  // 典型场景：
+  //   1. 用户闲置超过约 2 小时，jeecg 侧滑动续期的 Redis key 已过期；
+  //   2. `?token=` 单点登录路径按约定不登录 jeecg（没有明文口令），jeecg 侧接口必然 401。
+  // 若沿用中台流程，会把好好的中台会话一起注销掉，所以这里单独处理：
+  // 只清掉本地 jeecg 令牌并提示“未登录/登录已过期”，中台会话原样保留。
+  // ==========================================================================
+  if (isJeecgRequest(error) && isJeecgAuthFailure(error)) {
+    const url = ((error.config || {}).url) || ''
+    // 主动登出 jeecg 时令牌本来就可能已失效，不必再打扰用户
+    if (url.indexOf('/sys/logout') < 0) {
+      const hadToken = !!Vue.ls.get(JEECG_ACCESS_TOKEN)
+      clearJeecgLoginState()
+      notifyJeecgTokenInvalid(hadToken)
+    }
+    return Promise.reject(error)
+  }
   if (error.response) {
     let data = error.response.data
     const token = Vue.ls.get(ACCESS_TOKEN)

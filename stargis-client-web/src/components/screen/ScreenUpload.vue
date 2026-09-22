@@ -11,10 +11,17 @@
       2. 大屏需要把「校验失败」长期留在界面上（用户必须处理），而不是一闪而过的提示；
       3. 批量上传要按整批字节数聚合进度，antd 的进度粒度是单文件。
 
-    上传位置由调用方决定（本组件不读 token、不拼域名）：
-      action  = window._CONFIG['domianURL'] + '/sys/common/upload'
-      headers = { 'X-Access-Token': Vue.ls.get(ACCESS_TOKEN) }
+    上传位置由调用方决定（调用方通常直接传 Java 业务后端的地址与令牌）：
+      action  = window._CONFIG['VUE_DATA_JAVA_URL'] + '/sys/common/upload'
+      headers = { 'X-Access-Token': Vue.ls.get(JEECG_ACCESS_TOKEN) }
       data    = { biz: '/archive/2026/09' }   （可选的上传子目录）
+
+    【stargis 改造】注意两点：
+      1. 上传接口 /sys/common/upload 在 **Java 业务后端**（VUE_DATA_JAVA_URL），
+         不要在默认值里用 domianURL（那是中台地址，会 404）；
+         档案页面统一用 src/api/manageJava.js 的 javaUploadUrl() 构造 action。
+      2. 令牌必须用 **jeecg 自己的** JEECG_ACCESS_TOKEN（登录时由 store 写入），
+         中台的 ACCESS_TOKEN 在 Java 端是无效令牌（会 401）。
 
     用法：
       <screen-upload
@@ -132,7 +139,7 @@ export default {
   props: {
     /**
      * 上传地址（完整 URL）。
-     * 调用方传 window._CONFIG['domianURL'] + '/sys/common/upload'，
+     * 调用方传 Java 业务后端的地址，例如 src/api/manageJava.js 的 javaUploadUrl()，
      * 组件内部不拼域名、不读 token，保证可测试与可复用。
      */
     action: { type: String, required: true },

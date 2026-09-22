@@ -10,6 +10,9 @@ import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.constant.CacheConstant;
 import org.jeecg.common.constant.CommonConstant;
+//update-begin---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
+import org.jeecg.common.exception.JeecgBootException;
+//update-end---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.system.util.JwtUtil;
 import org.jeecg.common.system.vo.LoginUser;
@@ -187,7 +190,9 @@ public class SysDepartController {
 			result.success("添加成功！");
 		} catch (Exception e) {
 			log.error(e.getMessage(),e);
-			result.error500("操作失败");
+			//update-begin---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
+			result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
+			//update-end---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
 		}
 		return result;
 	}
@@ -209,14 +214,21 @@ public class SysDepartController {
 		if (sysDepartEntity == null) {
 			result.error500("未找到对应实体");
 		} else {
-			boolean ok = sysDepartService.updateDepartDataById(sysDepart, username);
-			// TODO 返回false说明什么？
-			if (ok) {
-				//清除部门树内存
-				//FindsDepartsChildrenUtil.clearSysDepartTreeList();
-				//FindsDepartsChildrenUtil.clearDepartIdModel();
-				result.success("修改成功!");
+			//update-begin---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
+			try {
+				boolean ok = sysDepartService.updateDepartDataById(sysDepart, username);
+				// TODO 返回false说明什么？
+				if (ok) {
+					//清除部门树内存
+					//FindsDepartsChildrenUtil.clearSysDepartTreeList();
+					//FindsDepartsChildrenUtil.clearDepartIdModel();
+					result.success("修改成功!");
+				}
+			} catch (Exception e) {
+				log.error(e.getMessage(), e);
+				result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
 			}
+			//update-end---author:stargis ---date:20260101  for：机构同步中台失败时向前端透出原因
 		}
 		return result;
 	}

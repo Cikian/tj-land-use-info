@@ -79,10 +79,10 @@ public class LandDataController {
      */
     @AutoLog(value = "数据管理-宗地下拉")
     @ApiOperation(value = "宗地下拉", notes = "按出让宗地编号/地块名称模糊搜索，返回时附带该宗地下的配套项目数量")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/options")
     public Result<List<LandOptionVO>> landOptions(@RequestParam(name = "keyword", required = false) String keyword,
                                                   @RequestParam(name = "xzqh", required = false) String xzqh,
@@ -93,10 +93,10 @@ public class LandDataController {
     /** 宗地详情（选中后自动带出地块名称、行政区划等） */
     @AutoLog(value = "数据管理-宗地详情")
     @ApiOperation(value = "宗地详情")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/queryById")
     public Result<Land> landById(@RequestParam(name = "id", required = false) String id,
                                  @RequestParam(name = "crzdbh", required = false) String crzdbh) {
@@ -110,10 +110,10 @@ public class LandDataController {
     /** 行政区划下拉（从已有宗地数据聚合） */
     @AutoLog(value = "数据管理-行政区划下拉")
     @ApiOperation(value = "行政区划下拉")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/xzqhOptions")
     public Result<List<Map<String, Object>>> xzqhOptions() {
         return Result.OK(landService.queryXzqhOptions());
@@ -128,10 +128,10 @@ public class LandDataController {
      */
     @AutoLog(value = "数据管理-配套项目下拉")
     @ApiOperation(value = "配套项目下拉", notes = "必须先选宗地；只返回该宗地下的配套项目")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/options")
     public Result<List<FacilityOptionVO>> facilityOptions(@RequestParam(name = "crzdbh", required = false) String crzdbh,
                                                           @RequestParam(name = "keyword", required = false) String keyword,
@@ -142,10 +142,10 @@ public class LandDataController {
     /** 跨宗地的配套项目搜索（档案查询页的项目名称条件用） */
     @AutoLog(value = "数据管理-配套项目全局搜索")
     @ApiOperation(value = "配套项目全局搜索", notes = "不限宗地，供查询条件使用")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/search")
     public Result<List<FacilityOptionVO>> facilitySearch(@RequestParam(name = "keyword", required = false) String keyword,
                                                          @RequestParam(name = "limit", required = false) Integer limit) {
@@ -155,10 +155,10 @@ public class LandDataController {
     /** 配套项目详情 */
     @AutoLog(value = "数据管理-配套项目详情")
     @ApiOperation(value = "配套项目详情")
-//    @RequiresPermissions(value = {
-//            "land:archive:list", "land:archive:add", "land:archive:edit",
-//            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-//            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+    @RequiresPermissions(value = {
+            "land:archive:list", "land:archive:add", "land:archive:edit",
+            "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/queryById")
     public Result<Facility> facilityById(@RequestParam(name = "id", required = true) String id) {
         Facility facility = facilityService.queryById(id);

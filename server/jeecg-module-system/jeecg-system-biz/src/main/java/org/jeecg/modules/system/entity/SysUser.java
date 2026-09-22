@@ -184,6 +184,24 @@ public class SysUser implements Serializable {
     /**设备id uniapp推送用*/
     private String clientId;
 
+    //update-begin---author:stargis ---date:20260101  for：用户数据同步至中台（ZK-SERVER），镜像字段
+    /**中台用户ID(estar_user_system.id)*/
+    @Excel(name = "中台用户ID", width = 20)
+    private String zkUserId;
+    /**中台登录名（中台 userInfo.loginname）*/
+    @Excel(name = "中台登录名", width = 15)
+    private String zkLoginname;
+    /**中台同步状态：not_synced未同步 / synced已同步 / failed同步失败*/
+    @Dict(dicCode = "zk_sync_status")
+    private String zkSyncStatus;
+    /**中台同步时间*/
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date zkSyncTime;
+    /**中台同步失败原因*/
+    private String zkSyncMsg;
+    //update-end---author:stargis ---date:20260101  for：用户数据同步至中台（ZK-SERVER）
+
     /**
      * 登录首页地址
      */

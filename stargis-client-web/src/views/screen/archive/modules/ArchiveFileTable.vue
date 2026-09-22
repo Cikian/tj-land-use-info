@@ -145,7 +145,7 @@ import {
   ScreenIcon,
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
-import { ACCESS_TOKEN } from '@/store/mutation-types'
+import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
 import { archiveUrl, buildJavaDownloadUrl } from '@/api/land/archive'
 import { javaUploadUrl, getJavaFileAccessHttpUrl } from '@/api/manageJava'
 import CategoryPicker from './CategoryPicker.vue'
@@ -184,8 +184,12 @@ export default {
        * 用中台地址（domianURL / VUE_APP_API_BASE_URL）会 404。
        */
       uploadAction: javaUploadUrl(),
-      /** 原生上传不走 axios，没有拦截器加令牌，需要手动带上（Java 端 JwtFilter 的首选来源） */
-      uploadHeaders: { 'X-Access-Token': Vue.ls.get(ACCESS_TOKEN) },
+      /**
+       * 原生上传不走 axios，没有拦截器加令牌，需要手动带上（Java 端 JwtFilter 的首选来源）。
+       * 【stargis 改造】必须用 **jeecg 自己的令牌** JEECG_ACCESS_TOKEN：
+       * 中台的 ACCESS_TOKEN 在 Java 端是无效令牌，带上会直接 401。
+       */
+      uploadHeaders: { 'X-Access-Token': Vue.ls.get(JEECG_ACCESS_TOKEN) },
       columns: [
         { key: 'index', title: '#', width: 48, type: 'slot', align: 'center' },
         { key: 'fileName', title: '文件名', width: 260, type: 'slot' },

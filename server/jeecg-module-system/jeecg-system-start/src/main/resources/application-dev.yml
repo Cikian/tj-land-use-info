@@ -299,3 +299,56 @@ third-app:
       # appSecret
       client-secret: ??
       agent-id: ??
+
+ck:
+  crydis:
+    enable: true                    # 必须为 true 才会初始化
+    host: 127.0.0.1                 # Redis 服务器地址
+    port: 6379                      # Redis 端口，默认 6379
+    password:                       # Redis 密码，没有则留空
+    database: 0                     # 数据库索引，默认 0
+    timeout: 3000                   # 连接超时时间（毫秒）
+    max-active: 50                  # 最大连接数
+    max-idle: 10                    # 最大空闲连接
+    min-idle: 5                     # 最小空闲连接
+    max-wait: 3000                  # 最大等待时间（毫秒）
+  stargis:
+    zk:
+      # 中台（ZK-SERVER 2.0.0）对接开关；false 时 SDK 不装配，所有同步自动降级为"只标记不同步"
+      enabled: true
+      baseUrl: http://127.0.0.1:4548/app
+      # 中台专用对接账号（供业务侧调用中台接口，不是登录用户）
+      username: system
+      password: Chen0809@
+      captcha: cikian
+      # 机构(部门)增删改是否同步到中台
+      depart-sync-enabled: true
+      # true=中台调用失败即抛异常、本地事务回滚（生产建议）
+      # false=中台失败只记录日志并把 zk_sync_status 置为 failed，本地操作照常成功（联调期建议）
+      depart-sync-strict: true
+      # 角色增删改是否同步到中台（只同步角色本身：名称/权限字符/备注，不含菜单权限）
+      role-sync-enabled: true
+      # 语义同 depart-sync-strict，角色独立开关
+      role-sync-strict: true
+      # 删除角色时，这些权限字符对应的中台角色不会被删除（中台内置角色，误删会导致中台登录/鉴权异常）
+      role-delete-protected-keys: superAdmin,admin,normal,developer
+      # 用户增删改/冻结/改密是否同步到中台（含所属机构与角色两段关系）
+      user-sync-enabled: true
+      # 语义同 depart-sync-strict，用户独立开关
+      user-sync-strict: true
+      # 删除用户时对中台的处理：disable=停用（默认，中台用户ID被图层共享/日志引用，物理删除会断链）
+      #                            physical=物理删除（deleteBetch，会级联清掉中台的机构/角色关系）
+      user-delete-mode: physical
+      # 中台数据库信息，目前中台无法通过接口修改用户部门（中台本身bug），所以需要在中台数据库中修改用户部门
+      # 不配置本节时：直连通道不装配，保存涉及"改机构"的用户会被明确拦截并提示（不会静默不一致）
+      db-info:
+        host: 127.0.0.1
+        port: 3306
+        username: root
+        password: Chen0809@mysql
+        database: stargis_zk
+        # 可选（省略即用默认值）：
+        # url: jdbc:mysql://127.0.0.1:3306/stargis_zk?useSSL=false   # 配了它则忽略上面的 host/port/database
+        # connect-timeout: 5000                                      # 连接超时（毫秒）
+        # dep2user-table: estar_dep2user_system                      # 用户-机构关系表名
+        # enabled: true                                              # false=关闭直连通道

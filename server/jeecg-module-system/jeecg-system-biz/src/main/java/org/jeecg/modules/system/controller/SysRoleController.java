@@ -17,6 +17,9 @@ import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.constant.CacheConstant;
 import org.jeecg.common.constant.CommonConstant;
+//update-begin---author:stargis ---date:20260101  for：角色同步中台失败时向前端透出原因
+import org.jeecg.common.exception.JeecgBootException;
+//update-end---author:stargis ---date:20260101  for：角色同步中台失败时向前端透出原因
 import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.common.util.PmsUtil;
 import org.jeecg.common.util.oConvertUtils;
@@ -114,11 +117,15 @@ public class SysRoleController {
 		Result<SysRole> result = new Result<SysRole>();
 		try {
 			role.setCreateTime(new Date());
-			sysRoleService.save(role);
+			//update-begin---author:stargis ---date:20260101  for：新增角色同步至中台（ZK-SERVER）
+			sysRoleService.saveRoleWithZkSync(role);
+			//update-end---author:stargis ---date:20260101  for：新增角色同步至中台（ZK-SERVER）
 			result.success("添加成功！");
 		} catch (Exception e) {
 			log.error(e.getMessage(), e);
-			result.error500("操作失败");
+			//update-begin---author:stargis ---date:20260101  for：同步中台失败时向前端透出原因
+			result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
+			//update-end---author:stargis ---date:20260101  for：同步中台失败时向前端透出原因
 		}
 		return result;
 	}
@@ -136,12 +143,19 @@ public class SysRoleController {
 		if(sysrole==null) {
 			result.error500("未找到对应实体");
 		}else {
-			role.setUpdateTime(new Date());
-			boolean ok = sysRoleService.updateById(role);
-			//TODO 返回false说明什么？
-			if(ok) {
-				result.success("修改成功!");
+			//update-begin---author:stargis ---date:20260101  for：修改角色同步至中台（ZK-SERVER）
+			try {
+				role.setUpdateTime(new Date());
+				boolean ok = sysRoleService.updateRoleWithZkSync(role);
+				//TODO 返回false说明什么？
+				if(ok) {
+					result.success("修改成功!");
+				}
+			} catch (Exception e) {
+				log.error(e.getMessage(), e);
+				result.error500(e instanceof JeecgBootException ? e.getMessage() : "操作失败");
 			}
+			//update-end---author:stargis ---date:20260101  for：修改角色同步至中台（ZK-SERVER）
 		}
 		
 		return result;

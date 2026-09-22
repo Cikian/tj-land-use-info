@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { USER_INFO, ENHANCE_PRE } from "@/store/mutation-types"
+import { USER_INFO, ENHANCE_PRE, JEECG_ACCESS_TOKEN, JEECG_USER_INFO } from "@/store/mutation-types"
 const getters = {
   device: state => state.app.device,
   theme: state => state.app.theme,
@@ -21,6 +21,12 @@ const getters = {
   layer: state => state.user.layer,
   sysConfig: state => state.user.sysConfig,
   sysName: state => state.user.sysName,
+  // 【stargis 改造】Java 业务后端（jeecg）登录态。
+  // 页面刷新后 state 会丢，所以回落到 localStorage（登录时写入，登出清空）。
+  jeecgToken: state => state.user.jeecgToken || Vue.ls.get(JEECG_ACCESS_TOKEN),
+  jeecgUserInfo: state => state.user.jeecgInfo && Object.keys(state.user.jeecgInfo).length
+    ? state.user.jeecgInfo : Vue.ls.get(JEECG_USER_INFO),
+  jeecgDictItems: state => state.user.jeecgDictItems,
 }
 
 export default getters

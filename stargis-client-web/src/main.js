@@ -27,6 +27,8 @@ import 'vue-photo-preview/dist/skin.css'
 import SSO from '@/cas/sso.js'
 import {
   ACCESS_TOKEN,
+  JEECG_ACCESS_TOKEN,
+  JEECG_USER_INFO,
   DEFAULT_COLOR,
   DEFAULT_THEME,
   DEFAULT_LAYOUT_MODE,
@@ -179,6 +181,10 @@ function main() {
       store.commit('TOGGLE_WEAK', Vue.ls.get(DEFAULT_COLOR_WEAK, config.colorWeak))
       store.commit('TOGGLE_COLOR', Vue.ls.get(DEFAULT_COLOR, config.primaryColor))
       store.commit('SET_TOKEN', Vue.ls.get(ACCESS_TOKEN))
+      // 【stargis 改造】刷新页面后把 Java 业务后端（jeecg）的登录态从 localStorage 恢复回 store，
+      // 与上面的中台 SET_TOKEN 对应；令牌本身的读取以 localStorage 为准（见 manageJava.js）
+      store.commit('SET_JEECG_TOKEN', Vue.ls.get(JEECG_ACCESS_TOKEN) || '')
+      store.commit('SET_JEECG_INFO', Vue.ls.get(JEECG_USER_INFO) || {})
       store.commit('SET_MULTI_PAGE', Vue.ls.get(DEFAULT_MULTI_PAGE, config.multipage))
     },
     render: h => h(App)

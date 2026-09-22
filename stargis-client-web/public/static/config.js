@@ -4,7 +4,7 @@
 window._CONFIG = {
   PROJECT_NAME: '星际GIS统一开发协同平台', // 系统名称
   UE4_URL: 'http://127.0.0.1',  // 当前版本不可用
-  //接口父路径
+  //中台接口父路径
   VUE_APP_API_BASE_URL: 'http://127.0.0.1:4548',
 
   TOKENTIME: 1000, //token时长(分钟)

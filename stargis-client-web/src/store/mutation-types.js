@@ -1,4 +1,11 @@
+// 【中台】令牌：/app/** 接口用，见 src/utils/request.js、src/api/manage.js
 export const ACCESS_TOKEN = 'Access-Token'
+// 【stargis 改造】Java 业务后端（jeecg）的令牌与用户信息，与中台令牌分开存。
+// 中台令牌走 query/body 的 access_token，jeecg 令牌走请求头 X-Access-Token，
+// 两者是两套完全独立的会话，绝对不能互相覆盖（详见 src/api/manageJava.js）。
+export const JEECG_ACCESS_TOKEN = 'Jeecg-Access-Token'
+export const JEECG_USER_INFO = 'Jeecg-User-Info'
+export const JEECG_DICT_ITEMS = 'Jeecg-Dict-Items'
 export const SIDEBAR_TYPE = 'SIDEBAR_TYPE'
 export const DEFAULT_THEME = 'DEFAULT_THEME'
 export const DEFAULT_LAYOUT_MODE = 'DEFAULT_LAYOUT_MODE'

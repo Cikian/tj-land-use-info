@@ -52,19 +52,28 @@
           <j-select-position placeholder="请选择职务" :multiple="false" v-model="model.post"/>
         </a-form-model-item>
 
-        <a-form-model-item label="角色分配" :labelCol="labelCol" :wrapperCol="wrapperCol" v-show="!roleDisabled" >
-          <j-multi-select-tag
-                  :disabled="disableSubmit"
-                  v-model="model.selectedroles"
-                  :options="rolesOptions"
-                  placeholder="请选择角色">
-          </j-multi-select-tag>
+        <!--update-begin---author:stargis---date:20260101  for：一个用户只能有一个角色（与中台口径一致），改为单选且必填-->
+        <a-form-model-item label="角色分配" :labelCol="labelCol" :wrapperCol="wrapperCol" prop="selectedroles" v-show="!roleDisabled" >
+          <a-select
+            v-model="model.selectedroles"
+            :disabled="disableSubmit"
+            show-search
+            placeholder="请选择一个角色（必选）"
+            option-filter-prop="children"
+            style="width: 100%">
+            <a-select-option v-for="item in rolesOptions" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </a-select-option>
+          </a-select>
         </a-form-model-item>
+        <!--update-end---author:stargis---date:20260101  for：一个用户只能有一个角色-->
 
         <!--部门分配-->
-        <a-form-model-item label="部门分配" :labelCol="labelCol" :wrapperCol="wrapperCol" v-show="!departDisabled">
-          <j-select-depart v-model="model.selecteddeparts" :multi="true" @back="backDepartInfo" :backDepart="true" :treeOpera="true">></j-select-depart>
+        <!--update-begin---author:stargis---date:20260101  for：一个用户只能有一个机构（与中台口径一致），改为单选且必填-->
+        <a-form-model-item label="部门分配" :labelCol="labelCol" :wrapperCol="wrapperCol" prop="selecteddeparts" v-show="!departDisabled">
+          <j-select-depart v-model="model.selecteddeparts" :multi="false" @back="backDepartInfo" :backDepart="true" :treeOpera="true">></j-select-depart>
         </a-form-model-item>
+        <!--update-end---author:stargis---date:20260101  for：一个用户只能有一个机构-->
 
         <!--租户分配-->
         <a-form-model-item label="租户分配" :labelCol="labelCol" :wrapperCol="wrapperCol" v-show="!departDisabled">
@@ -163,8 +172,10 @@
         validatorRules:{
           username:[{required: true, message: '请输入用户账号!'},
             {validator: this.validateUsername,}],
-          password: [{required: true,pattern:/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[~!@#$%^&*()_+`\-={}:";'<>?,./]).{8,}$/,message: '密码由8位数字、大小写字母和特殊符号组成!'},
+          //update-begin---author:stargis---date:20260101  for：密码强度与中台同一策略（原规则过松，会通过但中台同步失败）
+          password: [{required: true,pattern:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@#!%^*?&+-])[A-Za-z\d$@#!%^*?&+-]{8,20}$/,message: '密码必须为8-20位，且同时包含数字、小写字母、大写字母和特殊字符（允许的特殊字符只有：$ @ # ! % ^ * ? & + -；下划线 _ 、点 . 、波浪号 ~ 、空格、中文都不允许）'},
             {validator: this.validateToNextPassword,trigger: 'change'}],
+          //update-end---author:stargis---date:20260101  for：密码强度与中台同一策略
           confirmpassword: [{required: true, message: '请重新输入登录密码!',},
             { validator: this.compareToFirstPassword,}],
           realname:[{ required: true, message: '请输入用户名称!' }],
@@ -173,7 +184,11 @@
           roles:{},
           workNo:[ { required: true, message: '请输入工号' },
             { validator: this.validateWorkNo }],
-          telephone: [{ pattern: /^0\d{2,3}-[1-9]\d{6,7}$/, message: '请输入正确的座机号码' },]
+          telephone: [{ pattern: /^0\d{2,3}-[1-9]\d{6,7}$/, message: '请输入正确的座机号码' },],
+          //update-begin---author:stargis---date:20260101  for：一个用户必须选择一个机构和一个角色（与中台口径一致）
+          selecteddeparts:[{ required: true, message: '请选择所属机构（一个用户只能有一个机构）!' }],
+          selectedroles:[{ required: true, message: '请选择角色（一个用户只能有一个角色）!' }]
+          //update-end---author:stargis---date:20260101  for：一个用户必须选择一个机构和一个角色
         },
         departIdShow:false,
         title:"操作",
