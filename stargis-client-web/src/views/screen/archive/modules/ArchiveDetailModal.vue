@@ -68,13 +68,29 @@
         :overlay="false"
       >
         <!-- ================= 基本信息 ================= -->
-        <div v-show="activeTab === 'base'" class="archive-detail__pane">
-          <section class="archive-detail__block">
-            <h4 class="archive-detail__block-title">关联项目</h4>
-            <screen-descriptions :items="projectItems" :columns="3" />
-          </section>
+        <!--
+          版式：两列「卡片列」，左右各自撑满高度，外框高度对齐 → 页面中心是平衡的。
+            左列：关联项目（按内容） + 其他信息（吃掉剩余高度）
+            右列：档案属性（吃掉剩余高度）
+          原来是把两组描述各占一半宽度并排，结果左边 6 项、右边 15 项，
+          右列拖得很长、左列下方一大片空，视觉重心全偏在右上角。
+          拆出「其他信息」后左右都是 5~6 行，且字段列宽足够（标签 108 + 值 250 以上），
+          长值不再折行。
+        -->
+        <div v-show="activeTab === 'base'" class="archive-detail__pane archive-detail__pane--base">
+          <div class="archive-detail__col">
+            <section class="archive-detail__block">
+              <h4 class="archive-detail__block-title">关联项目</h4>
+              <screen-descriptions :items="projectItems" :columns="2" />
+            </section>
 
-          <section class="archive-detail__block">
+            <section class="archive-detail__block archive-detail__block--grow">
+              <h4 class="archive-detail__block-title">其他信息</h4>
+              <screen-descriptions :items="otherItems" :columns="2" />
+            </section>
+          </div>
+
+          <section class="archive-detail__block archive-detail__block--grow">
             <h4 class="archive-detail__block-title">档案属性</h4>
             <screen-descriptions :items="attributeItems" :columns="3" />
           </section>
@@ -333,6 +349,9 @@ export default {
     attributeItems () {
       const data = this.detail || {}
       const sizeText = formatSize(data.totalSize)
+      // 档案的「本体属性」：档案号/名称/类型/密级/期限/年度/责任/日期/状态
+      // 其余（创建信息、最后更新、备注）属于审计信息，放到左列「其他信息」里，
+      // 让左右两列的行数接近，版面才平衡。
       return [
         { key: 'archiveNo', label: '档案号', value: data.archiveNo },
         { key: 'archiveName', label: '档案名称', value: data.archiveName, span: 2 },
@@ -350,9 +369,15 @@ export default {
           value: `${this.files.length} 个${sizeText !== '—' ? ` · ${sizeText}` : ''}`,
         },
         { key: 'categoryNames', label: '档案类别', value: this.categoryNames, span: 3 },
+      ]
+    },
+    /** 左列下半部分：档案的审计/补充信息 */
+    otherItems () {
+      const data = this.detail || {}
+      return [
         { key: 'createTime', label: '创建信息', value: this.joinInfo(data.createTime, data.createBy) },
         { key: 'updateTime', label: '最后更新', value: this.joinInfo(data.updateTime, data.updateBy) },
-        { key: 'remark', label: '备注', value: data.remark, span: 3 },
+        { key: 'remark', label: '备注', value: data.remark, span: 2 },
       ]
     },
     /** 多个卷内文件可能分属不同类别，去重后用「、」连接 */
@@ -546,21 +571,51 @@ export default {
   &__pane {
     display: flex;
     flex-direction: column;
-    gap: var(--screen-space-3);
+    gap: var(--screen-space-4);
     flex: 1 1 auto;
     min-height: 0;
   }
 
+  /**
+   * 基本信息：两列卡片列。
+   *   align-items: stretch  → 左右两列的外框高度始终相等；
+   *   align-content: safe center → 整块内容在正文里垂直居中，上下留白对称，
+   *     而不是贴顶堆着、下面空一大片（safe 保证内容超高时退回顶对齐，不裁切）。
+   */
+  &__pane--base {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: stretch;
+    align-content: safe center;
+    gap: var(--screen-space-4);
+  }
+
+  &__col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--screen-space-4);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* 卡片化：与首页面板同一套玻璃质感，让分区边界一眼可见 */
   &__block {
     display: flex;
     flex-direction: column;
-    gap: var(--screen-space-2);
+    gap: var(--screen-space-3);
     min-height: 0;
+    padding: var(--screen-space-4);
+    background: var(--screen-panel-bg);
+    border: 1px solid var(--screen-border);
+    border-radius: var(--screen-radius);
+    box-shadow: var(--screen-shadow), var(--screen-shadow-inset);
+    -webkit-backdrop-filter: blur(var(--screen-blur));
+    backdrop-filter: blur(var(--screen-blur));
 
     // 只让需要的块吃掉剩余高度，避免所有块都被拉高
     &--grow {
-      flex: 1 1 auto;
-      min-height: 240px;
+      flex: 1 1 0;
+      min-height: 200px;
     }
   }
 
@@ -611,14 +666,10 @@ export default {
   min-width: 0;
 }
 
-@media (min-width: 1600px) {
-  // 基本信息里的两组描述在超宽屏上并排
-  .archive-detail__pane:first-child {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-auto-rows: min-content;
-    align-content: start;
-    gap: var(--screen-space-3) var(--screen-space-4);
+/* 窄屏（例如把窗口拉窄调试）：基本信息的两列改为一列，避免字段被压得过窄 */
+@media (max-width: 1200px) {
+  .archive-detail__pane--base {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>
