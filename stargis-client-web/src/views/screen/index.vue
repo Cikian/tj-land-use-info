@@ -48,9 +48,9 @@
       @menu-change="handleMenuChange"
     />
 
-    <!-- ===== 档案管理 / 收发文：整页模块 ===== -->
+    <!-- ===== 档案管理：整页模块（「收发文」是它内部的一个页签） ===== -->
     <archive-screen
-      v-if="activeMenu === 'archive' || activeMenu === 'doc'"
+      v-if="activeMenu === 'archive'"
       ref="archive"
       class="land-screen__module stage-hit"
       :default-tab="archiveTab"
@@ -106,11 +106,10 @@ import {
 /**
  * 已经实现为大屏子页面的菜单项：
  *   home    首页工作台
- *   archive 档案管理（整页模块）
- *   doc     收发文（复用档案管理模块，初始页签落到「收发文管理」）
+ *   archive 档案管理（整页模块，「收发文」是它内部的一个页签，不占一级菜单）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive', 'doc']
+const IMPLEMENTED_MENUS = ['home', 'archive']
 
 /** 档案页允许直接落到某个页签：/screen/archive?tab=doc */
 const ARCHIVE_TABS = ['maintain', 'query', 'statistics', 'doc', 'category']
@@ -147,13 +146,21 @@ export default {
     const routeQuery = (this.$route && this.$route.query) || {}
     const routePath = (this.$route && this.$route.path) || ''
     // 通过路由 /screen/archive 直达档案页时，顶栏导航同步高亮到「档案管理」；
-    // 也支持 /screen?menu=archive 的等价写法
+    // 也支持 /screen?menu=archive 的等价写法。
+    // 「收发文」不再是独立菜单，深链 ?menu=doc 或 ?tab=doc 一律归到「档案管理」，
+    // 只是把模块内部的初始页签落到「收发文管理」。
     let initialMenu = 'home'
-    if (routePath.indexOf('/screen/archive') > -1) {
-      initialMenu = routeQuery.tab === 'doc' ? 'doc' : 'archive'
+    if (routePath.indexOf('/screen/archive') > -1 || routeQuery.menu === 'archive') {
+      initialMenu = 'archive'
     } else if (routeQuery.menu && IMPLEMENTED_MENUS.indexOf(routeQuery.menu) > -1) {
       initialMenu = routeQuery.menu
     }
+    const initialArchiveTab =
+      ARCHIVE_TABS.indexOf(routeQuery.tab) > -1
+        ? routeQuery.tab
+        : routeQuery.menu === 'doc'
+          ? 'doc'
+          : 'maintain'
 
     return {
       hf,
@@ -169,13 +176,8 @@ export default {
         online: null,
       },
 
-      /** 档案页初始页签（?tab=statistics 之类的深链） */
-      archiveTab:
-        ARCHIVE_TABS.indexOf(routeQuery.tab) > -1
-          ? routeQuery.tab
-          : initialMenu === 'doc'
-            ? 'doc'
-            : 'maintain',
+      /** 档案页初始页签（?tab=doc 之类的深链） */
+      archiveTab: initialArchiveTab,
 
       // 先铺兜底演示数据，接口成功后再整段覆盖
       leftPanel: demoLeftPanel,
@@ -329,16 +331,6 @@ export default {
         if (navigation && typeof navigation.catch === 'function') navigation.catch(() => {})
       }
 
-      if (key === 'doc') {
-        // 收发文复用档案管理模块，切到「收发文管理」页签
-        this.archiveTab = 'doc'
-        this.$nextTick(() => {
-          const archive = this.$refs.archive
-          if (archive && typeof archive.setTab === 'function') archive.setTab('doc')
-        })
-        return
-      }
-
       if (IMPLEMENTED_MENUS.indexOf(key) > -1) return
 
       // 未实现的模块给出明确反馈，而不是静默什么都不发生
@@ -363,6 +355,7 @@ export default {
 
 <style scoped lang="less">
 .land-screen {
+  /* 四张氛围蒙版：上下铺满宽度、左右贴边并纵向铺满，随设计画布拉伸 */
   &__vignette {
     position: absolute;
     display: block;
@@ -370,40 +363,40 @@ export default {
 
     &.is-top {
       left: 0;
+      right: 0;
       top: 0;
-      width: 1920px;
       height: 223px;
     }
 
     &.is-bottom {
       left: 0;
-      top: 794px;
-      width: 1920px;
+      right: 0;
+      bottom: 0;
       height: 286px;
     }
 
     &.is-left {
       left: 0;
       top: 0;
+      bottom: 0;
       width: 560px;
-      height: 1080px;
     }
 
     &.is-right {
-      left: 1360px;
+      right: 0;
       top: 0;
+      bottom: 0;
       width: 560px;
-      height: 1080px;
     }
   }
 
-  /* 整页模块（档案管理 / 收发文）占满设计稿的正文区（与左右面板同一纵向区间） */
+  /* 整页模块（档案管理）占满设计稿的正文区（与左右面板同一纵向区间） */
   &__module {
     position: absolute;
     left: 30px;
+    right: 30px;
     top: 149px;
-    width: 1860px;
-    height: 881px;
+    bottom: 50px;
   }
 }
 </style>

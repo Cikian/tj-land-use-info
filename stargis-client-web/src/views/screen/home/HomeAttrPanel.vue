@@ -53,7 +53,7 @@
           v-for="col in columns"
           :key="col.key"
           class="home-attr__th"
-          :style="{ left: `${col.left}px` }"
+          :style="col.style"
         >{{ col.title }}</span>
 
         <div
@@ -69,15 +69,15 @@
             alt=""
             aria-hidden="true"
           />
-          <span class="home-attr__td" :style="{ left: `${COL.index}px` }">{{ index + 1 }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.district}px` }">{{ row.district }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.landAcquisition}px` }">{{ percent(row.landAcquisition) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.feasibility}px` }">{{ percent(row.feasibility) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.preliminaryDesign}px` }">{{ percent(row.preliminaryDesign) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.fund}px` }">{{ percent(row.fund) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.notStarted}px` }">{{ percent(row.notStarted) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.notCompleted}px` }">{{ percent(row.notCompleted) }}</span>
-          <span class="home-attr__td" :style="{ left: `${COL.notHandedOver}px` }">{{ percent(row.notHandedOver) }}</span>
+          <span class="home-attr__td" :style="cellStyle('index')">{{ index + 1 }}</span>
+          <span class="home-attr__td" :style="cellStyle('district')">{{ row.district }}</span>
+          <span class="home-attr__td" :style="cellStyle('landAcquisition')">{{ percent(row.landAcquisition) }}</span>
+          <span class="home-attr__td" :style="cellStyle('feasibility')">{{ percent(row.feasibility) }}</span>
+          <span class="home-attr__td" :style="cellStyle('preliminaryDesign')">{{ percent(row.preliminaryDesign) }}</span>
+          <span class="home-attr__td" :style="cellStyle('fund')">{{ percent(row.fund) }}</span>
+          <span class="home-attr__td" :style="cellStyle('notStarted')">{{ percent(row.notStarted) }}</span>
+          <span class="home-attr__td" :style="cellStyle('notCompleted')">{{ percent(row.notCompleted) }}</span>
+          <span class="home-attr__td" :style="cellStyle('notHandedOver')">{{ percent(row.notHandedOver) }}</span>
           <img
             class="home-attr__action"
             :src="hf.actionView"
@@ -119,8 +119,14 @@ import { hf } from '@/assets/screen-blue'
 import { warningTabs } from '../config'
 import { demoWarningData } from '../mock'
 
-/** 列横向偏移（取自高保真 CSS 的 left 值，相对数据表左上角） */
-const COL = {
+/**
+ * 列横向位置。
+ * 设计稿表宽 960，列的 left 值取自高保真 CSS；这里换算成百分比，
+ * 这样屏幕比 16:9 更宽、属性表被拉宽时，各列会按比例摊开，
+ * 而不是全部挤在左边、右边留下大片空白。设计稿比例下数值完全一致。
+ */
+const DESIGN_TABLE_WIDTH = 960
+const COL_LEFT = {
   index: 13,
   district: 69,
   landAcquisition: 153,
@@ -130,8 +136,14 @@ const COL = {
   notStarted: 668,
   notCompleted: 743,
   notHandedOver: 819,
-  action: 895,
 }
+/** 「操作」列靠右锚定：设计稿 x=895、图标/文字宽约 28，即距表右边界 37px */
+const ACTION_RIGHT = DESIGN_TABLE_WIDTH - 895 - 28
+
+const COL_PCT = Object.keys(COL_LEFT).reduce((acc, key) => {
+  acc[key] = `${((COL_LEFT[key] / DESIGN_TABLE_WIDTH) * 100).toFixed(4)}%`
+  return acc
+}, {})
 
 /** 表头列（「操作」列的标题也在表头里，单元格是三圆点按钮） */
 const COLUMNS = [
@@ -162,28 +174,40 @@ export default {
   data () {
     return {
       hf,
-      COL,
       activeTab: (this.tabs[0] && this.tabs[0].key) || 'city',
       collapsed: false,
     }
   },
   computed: {
     columns () {
-      return COLUMNS.map((col) => ({ key: col.key, title: col.title, left: COL[col.key] }))
+      return COLUMNS.map((col) => ({
+        key: col.key,
+        title: col.title,
+        style:
+          col.key === 'action'
+            ? { right: `${ACTION_RIGHT}px` }
+            : { left: COL_PCT[col.key] },
+      }))
     },
     rows () {
       return (this.data && this.data[this.activeTab]) || []
     },
   },
   methods: {
+    /** 单元格定位：与表头同一套列位置 */
+    cellStyle (key) {
+      return { left: COL_PCT[key] }
+    },
     /**
-     * 高保真只有两个页签（603 / 778，步进 175）。
-     * 保留原有「地块预警信息」后共 3 个，整组右对齐到 x=985，
-     * 因此前两个页签相对设计稿左移 128px —— 这是唯一一处刻意的位置偏移，
-     * 面板标题（48~120）与下方数据表（y=63 起）均不受影响。
+     * 高保真只有两个页签（x=603 / 778，步进 175，宽 160）。保留原有
+     * 「地块预警信息」后共 3 个，整组右对齐（设计稿最后一个页签右缘距面板
+     * 右边界 15px），所以前两个页签相对设计稿左移 —— 这是刻意的位置偏移，
+     * 面板标题与下方数据表均不受影响。用 right 定位是为了让属性表被拉宽时
+     * 页签始终贴在右侧。
      */
     tabStyle (index) {
-      return { left: `${475 + index * 175}px` }
+      const count = this.tabs.length
+      return { right: `${15 + (count - 1 - index) * 175}px` }
     },
     handleTab (tab) {
       if (tab.key === this.plotTabKey) {
@@ -204,9 +228,12 @@ export default {
 
 .home-attr {
   position: absolute;
+  // 设计稿 x=460..1460（左右各留 460，即与两侧面板保持 30px 间距），
+  // 纵向用设计稿原值 y=709..1030，与左右面板底边对齐；
+  // ScreenStage 保证了设计高度 ≥1080，所以这里不会溢出。
   left: 460px;
+  right: 460px;
   top: 709px;
-  width: 1000px;
   height: 321px;
 
   &__bg,
@@ -219,14 +246,14 @@ export default {
   &__bg {
     left: 0;
     top: 0;
-    width: 1000px;
+    width: 100%;
     height: 321px;
   }
 
   &__bar {
     left: 0;
     top: 274px;
-    width: 1000px;
+    width: 100%;
     height: 47px;
   }
 
@@ -297,16 +324,16 @@ export default {
   &__table {
     position: absolute;
     left: 20px;
+    right: 20px;
     top: 63px;
-    width: 960px;
     height: 232px;
   }
 
   &__head-bg {
     position: absolute;
     left: 2px;
+    right: 1px;
     top: 0;
-    width: 957px;
     height: 36px;
     display: block;
     pointer-events: none;
@@ -315,8 +342,8 @@ export default {
   &__body-bg {
     position: absolute;
     left: 0;
+    right: 0;
     top: 48px;
-    width: 959px;
     height: 183px;
     display: block;
     pointer-events: none;
@@ -334,19 +361,19 @@ export default {
   &__tr {
     position: absolute;
     left: 0;
-    width: 960px;
+    width: 100%;
     height: 46px;
 
     &:hover::before {
       content: '';
       position: absolute;
       left: 0;
+      right: 0;
       top: 0;
-      width: 959px;
       height: 46px;
       background-image: url('~@/assets/screen-blue/attr-row-hover.png');
       background-repeat: no-repeat;
-      background-size: 959px 46px;
+      background-size: 100% 46px;
       pointer-events: none;
     }
   }
@@ -354,8 +381,8 @@ export default {
   &__tr-bg {
     position: absolute;
     left: 0;
+    right: 0;
     top: 0;
-    width: 959px;
     height: 46px;
     display: block;
     pointer-events: none;
@@ -373,7 +400,8 @@ export default {
 
   &__action {
     position: absolute;
-    left: 895px;
+    // 设计稿 x=895（表宽 960、图标 14），即距右边界 51px
+    right: 51px;
     top: 16px;
     width: 14px;
     height: 14px;
@@ -386,7 +414,7 @@ export default {
     position: absolute;
     left: 0;
     top: 130px;
-    width: 960px;
+    width: 100%;
     margin: 0;
     font-size: 14px;
     color: #4a7396;

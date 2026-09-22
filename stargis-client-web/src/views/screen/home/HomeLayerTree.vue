@@ -147,7 +147,8 @@ export default {
 .home-tree {
   &__title-deco {
     position: absolute;
-    left: 1491px;
+    // 设计稿 x=1491，即距右边界 429px（自适应：右侧锚定）
+    right: 429px;
     top: 95px;
     width: 420px;
     height: 46px;
@@ -156,7 +157,8 @@ export default {
 
   &__title {
     position: absolute;
-    left: 1763px;
+    // 设计稿标题文字右缘止于 x=1835，即距右边界 85px
+    right: 85px;
     top: 104px;
     width: 72px;
     margin: 0;
@@ -170,21 +172,22 @@ export default {
 
   &__panel {
     position: absolute;
-    left: 1490px;
+    right: 30px;
     top: 149px;
-    width: 400px;
+    // 定尺高度：纵向多出来的空间留给地图，避免切图被拉伸变形
     height: 881px;
+    width: 400px;
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
-    background-size: 400px 881px;
+    background-size: 100% 100%;
   }
 
   /* ---------------- 检索框 ---------------- */
   &__search {
     position: absolute;
     left: 20px;
+    right: 20px;
     top: 20px;
-    width: 360px;
     height: 28px;
   }
 
@@ -192,7 +195,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 28px;
     display: block;
     pointer-events: none;
@@ -233,8 +236,9 @@ export default {
     position: absolute;
     left: 20px;
     top: 69px;
-    width: 360px;
-    height: 782px;
+    right: 20px;
+    // 设计稿 881 - 69 - 782 = 30
+    bottom: 30px;
     overflow: hidden;
   }
 
@@ -242,8 +246,8 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
-    height: 782px;
+    width: 100%;
+    height: 100%;
     display: block;
     pointer-events: none;
   }
@@ -251,7 +255,7 @@ export default {
   &__row {
     position: absolute;
     left: 0;
-    width: 360px;
+    width: 100%;
     height: 36px;
   }
 
@@ -259,7 +263,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 36px;
     display: block;
     pointer-events: none;
@@ -308,7 +312,8 @@ export default {
 
   &__switch {
     position: absolute;
-    left: 326px;
+    // 设计稿 x=1836，即距面板（400 宽）右边界 64px
+    right: 60px;
     top: 11px;
     width: 14px;
     height: 14px;

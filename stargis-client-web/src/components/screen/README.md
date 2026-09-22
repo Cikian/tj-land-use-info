@@ -13,9 +13,9 @@
 本目录是地图大屏页面的基础组件层。页面只负责「摆位置 + 喂数据」，
 所有视觉规范、交互细节、无障碍处理都收敛在组件内部。
 
-高保真首页（`views/screen/home/`）另有一套**定尺画布**实现：设计稿是 1920×1080，
-面板边框/标题装饰/表格底纹都是定尺切图，因此该页用 `ScreenStage` 做整体等比缩放，
-坐标一律使用设计稿原值。详见第 4 节。
+高保真首页（`views/screen/home/`）另有一套**自适应舞台**实现：设计稿是 1920×1080，
+面板边框/标题装饰/表格底纹都是定尺切图，因此该页用 `ScreenStage` 按高度缩放、
+宽度自适应伸展（铺满且不留黑边），坐标一律使用设计稿原值。详见第 4 节。
 
 ---
 
@@ -64,9 +64,9 @@
 
 | 组件 | 用途 | 关键 Props |
 | --- | --- | --- |
-| `ScreenStage` | 高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层） | `width` `height` `maxScale` `letterbox`；插槽 `map` / 默认；事件 `resize` |
+| `ScreenStage` | 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边） | `width` `height` `minDesignWidth` `maxScale` `minScale`；插槽 `map` / 默认；事件 `resize` |
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
-| `ScreenHeader` | 顶栏（高保真切图 + 8 项导航 + 实时时钟 + 用户区） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `online` |
+| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `online` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` |
 | `ScreenPopover` | 浮层容器（挂 body，供下拉/气泡复用） | `open` `anchor` `placement` `width` `maxHeight` `role` |
@@ -187,26 +187,50 @@ const columns = [
 
 ---
 
-## 4. 定尺画布（ScreenStage）与地图共存
+## 4. 自适应舞台（ScreenStage）与地图共存
 
 高保真模型是 **1920×1080 的定尺设计稿**，面板边框、标题装饰、表格底纹全部是
-定尺切图，因此首页（`views/screen/home/`）不做响应式重排，而是整屏等比缩放：
+定尺切图。早期实现是「固定 1920×1080 画布 + 等比缩放 + 居中」，
+在非 16:9 的窗口上必然出现黑边（实测 1912×962 左右各留约 100px），因此改成**按高度缩放、宽度自适应伸展**：
 
 ```vue
-<screen-stage @resize="handleStageResize">
+<screen-stage>
   <template #map><s3dm-viewer /></template>   <!-- 真实像素层 -->
-  ...按设计稿坐标绝对定位的界面...              <!-- 1920×1080 缩放层 -->
+  ...按设计稿坐标绝对定位的界面...              <!-- 缩放层 -->
 </screen-stage>
 ```
 
-`scale = min(视口宽 / 1920, 视口高 / 1080)`，画布居中、四周留底色（不裁切、不拉伸）。
+```js
+k  = clamp(min(视口高 / 1080, 视口宽 / minDesignWidth), minScale, maxScale)
+设计画布 = (视口宽 / k) × (视口高 / k)，transform: scale(k)
+```
+
+`画布宽 × k ≡ 视口宽`，所以**任何比例都铺满、不留黑边**；`视口高 / k` 在设计画布
+宽度 ≥ `minDesignWidth` 时恒等于 1080，纵向仍严格等于设计稿。
+
+`minDesignWidth` 默认 **1920**（设计稿原宽），因为左/右面板 400 + 属性表 1000 + 间距 30
+刚好铺满 1920，再窄属性表的 10 列表头就会互相挤压，顶栏标题切图也会和导航重叠。
+于是：
+
+| 屏幕比例 | 设计画布 | 多出来的空间去哪 |
+| --- | --- | --- |
+| 正好 16:9 | 1920×1080 | 无（与设计稿逐像素一致） |
+| 比 16:9 更宽 | 宽 > 1920，高 = 1080 | 中间的**地图与属性表横向变宽**，两侧面板保持 400 不变 |
+| 比 16:9 更窄 | 宽 = 1920，高 > 1080 | 中间的**地图纵向变高**，各面板与属性表仍按定尺高度摆放 |
+
+所以画布内组件的写法约定：
+
+- 靠左用 `left`、靠右用 `right`、靠上用 `top`、靠下用 `bottom`；
+  **禁止把右/下位置写成 `1920 - x` / `1080 - y` 的固定值**；
+- 需要横向拉伸的定尺切图用 `width: 100%` / `background-size: 100% 100%`；
+  纵向不拉伸（多出来的高度给地图，避免切图变形）；
+- 需要知道设计画布尺寸时读 CSS 变量 `--stage-w` / `--stage-h`（无单位数字）。
 
 **为什么地图单独一层、不放进缩放画布：**
 Cesium 的拾取与相机控制依赖 `canvas.clientWidth`（布局尺寸，不受 CSS `transform` 影响）
 与事件 `clientX`（视觉尺寸，受 `transform` 影响），两者在 `transform: scale` 下不一致，
-点击/拖拽会整体偏移。因此地图层用「真实像素」铺在设计稿矩形上
-（左/上 = 居中偏移，宽高 = `1920*scale × 1080*scale`），不施加 `transform`；
-UI 画布层施加 `transform` 覆盖在同一矩形上，两层视觉完全重合。
+点击/拖拽会整体偏移。因此地图层直接**铺满舞台**（真实像素、不施加 `transform`），
+UI 画布缩放后与它完全重合，地图交互坐标也保持正确。
 
 地图大屏的关键约束：**浮层不能吃掉地图的鼠标事件**。
 
@@ -218,7 +242,9 @@ UI 画布层施加 `transform` 覆盖在同一矩形上，两层视觉完全重�
 ```
 
 `ScreenHeader` 内部同样只在可点击元素上开启 `pointer-events: auto`，
-因此顶部栏的空白处依旧可以拖动地图。
+因此顶部栏的空白处依旧可以拖动地图。顶栏的导航用「弹性收缩的 flex 行」实现
+（`left`/`right` 定边界 + 各项 `flex: 0 1 140px`），设计画布比 1920 窄时等比收窄，
+不会压到标题切图上。
 
 ---
 
@@ -319,9 +345,9 @@ src/components/screen/
 ├─ utils.js                    # 纯函数工具（格式化 / 动效 / 唯一 id）
 ├─ toast.js                    # 命令式消息提示服务（$screenToast / toast）
 │
-├─ ScreenStage.vue             # 高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
+├─ ScreenStage.vue             # 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边）
 ├─ ScreenPanel.vue             # 面板容器
-├─ ScreenHeader.vue            # 顶栏（高保真切图 + 8 项导航 + 时钟）
+├─ ScreenHeader.vue            # 顶栏（高保真切图 + 7 项导航 + 时钟）
 ├─ ScreenMapStage.vue          # 地图舞台
 ├─ ScreenModal.vue             # 弹窗（挂 body + 焦点陷阱 + 滚动锁）
 ├─ ScreenPopover.vue           # 浮层容器（挂 body，下拉 / 气泡的公共基座）
@@ -364,13 +390,13 @@ src/components/screen/
 | 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue` |
 | 首页定尺面板 | — | `src/views/screen/home/`：`HomeLeftPanel`（出让地块情况统计）、`HomeLayerTree`（地图管理图层面板）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
 | 档案管理（大屏子页面） | 顶栏「档案管理」，深链 `/screen/archive` | `src/views/screen/archive/index.vue` |
-| 收发文 | 顶栏「收发文」 | 复用档案模块，初始页签 `doc`（`/screen/archive?tab=doc`） |
+| 收发文 | 不占一级导航，是档案模块内的页签 | 深链 `/screen/archive?tab=doc` |
 
 **首页数据来源（`views/screen/` 三个文件的分工，改动时别搞混）：**
 
 | 文件 | 职责 |
 | --- | --- |
-| `config.js` | 静态常量：8 项顶栏导航、系统标题、属性表页签、预警字段契约 |
+| `config.js` | 静态常量：7 项顶栏导航、系统标题、属性表页签、预警字段契约 |
 | `mock.js` | **兜底演示数据**（高保真设计稿数字）。只在接口不可用/返回空时生效 |
 | `index.vue` | `loadDashboard()` 并发拉取 `LandDashboardVO` + `SupportingFacilitiesDashboardVO`，成功后整段覆盖兜底数据并下发给 `home/` 的面板组件 |
 

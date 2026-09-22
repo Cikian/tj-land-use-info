@@ -3,16 +3,20 @@
     ScreenHeader 大屏顶栏（高保真还原）
     ==================================================================
     完全按高保真模型 docs/高保真/.../首页.html 的定尺布局实现：
-      底图      bg-top_u6.png            (0, 0)    1920×128
-      系统标题  大标题切图 title.png       (34, 18)   599×35
-      导航项    nav-*.png               y=6      宽 140 高 54，右对齐到 x=1780
-      用户区    头像/用户名/下拉箭头       (1790, 22) 起
-      时钟      15:36 + 星期 + 日期       (477, 115) 起
+      底图      bg-top_u6.png           (0, 0)    1920×128（横向跟随拉伸）
+      系统标题  大标题切图 title.png      (34, 18)   599×35
+      导航项    nav-*.png              y=6      宽 140 高 54，右对齐到设计右边界 -140
+      用户区    头像/用户名/下拉箭头      设计右边界 -130 起
+      时钟      15:36 + 星期 + 日期      (477, 115) 起
+
+    ⚠ 自适应：顶栏宽度随设计画布宽度变化（见 ScreenStage），
+      所以导航与用户区一律用 right 定位、底图用 width:100% 拉伸，
+      不能写 1920 的固定值。
 
     ⚠ 导航项数量：高保真是 6 项（140 宽 / 150 间距）。本系统一级菜单为
-      8 项（新增「档案管理」「提级论证管理」，保留「查询统计」「收发文」），
-      因此间距由 150 收紧到 140、整块右对齐到 x=1780，
-      保证 8 项仍在标题切图（止于 x=633）与用户区（起于 x=1790）之间。
+      7 项（新增「档案管理」「提级论证管理」，「收发文」是档案管理模块内的
+      页签、不单独占一级菜单），因此间距由 150 收紧到 140，
+      整块右对齐，保证仍落在标题切图（止于 x=633）与用户区之间。
   -->
   <header class="screen-header">
     <!-- 底图：整条顶栏的深蓝渐变 + 装饰线 -->
@@ -22,14 +26,19 @@
     <img class="screen-header__title" :src="hf.title" :alt="title" />
 
     <!-- 一级导航 -->
-    <nav v-if="menus && menus.length" class="screen-header__nav" aria-label="主导航">
+    <nav
+      v-if="menus && menus.length"
+      class="screen-header__nav"
+      :style="navStyle()"
+      aria-label="主导航"
+    >
       <button
-        v-for="(item, index) in menus"
+        v-for="item in menus"
         :key="item.key"
         type="button"
         class="screen-header__nav-item stage-hit"
         :class="{ 'is-active': item.key === activeMenu }"
-        :style="navItemStyle(index)"
+        :style="navItemStyle()"
         :aria-current="item.key === activeMenu ? 'page' : undefined"
         @click="handleMenu(item)"
       >
@@ -75,14 +84,22 @@ import { hf } from '@/assets/screen-blue'
 
 const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
 
-/** 高保真定尺参数（画布坐标） */
+/**
+ * 高保真定尺参数（设计稿 1920×1080 坐标）。
+ *   navLeft       导航区左边界：标题切图止于 x=633，留 27px 呼吸
+ *   navRightMargin 导航区右边界到设计画布右边界的距离（设计稿最后一项止于 1780）
+ *   userRightMargin 用户区右边界到设计画布右边界的距离（设计稿收尾于 1890）
+ * 导航用「弹性收缩的 flex 行」实现：设计画布比 1920 窄时，
+ * 各项等比收窄而不是跟标题切图重叠。
+ */
 export const HEADER_LAYOUT = {
   height: 128,
   navTop: 6,
   navItemWidth: 140,
   navItemHeight: 54,
-  navItemStep: 140,
-  navRight: 1780,
+  navLeft: 660,
+  navRightMargin: 140,
+  userRightMargin: 30,
 }
 
 export default {
@@ -139,15 +156,26 @@ export default {
     document.removeEventListener('visibilitychange', this.handleVisibility)
   },
   methods: {
-    /** 第 index 个导航项的绝对定位（整块右对齐，见头部注释） */
-    navItemStyle (index) {
-      const { navTop, navItemWidth, navItemHeight, navItemStep, navRight } = HEADER_LAYOUT
-      const count = this.menus.length
-      const left = navRight - (count - 1 - index) * navItemStep - navItemWidth
+    /**
+     * 导航行样式：左右边界固定，行内各项用 flex 平分剩余空间。
+     * 设计画布 ≥1920 时 7 项总宽 980 < 可用宽，右对齐到设计位置；
+     * 更窄时等比收缩，绝不会压到标题切图上。
+     */
+    navStyle () {
+      const { navTop, navLeft, navRightMargin, navItemHeight } = HEADER_LAYOUT
       return {
-        left: `${left}px`,
+        left: `${navLeft}px`,
+        right: `${navRightMargin}px`,
         top: `${navTop}px`,
+        height: `${navItemHeight}px`,
+      }
+    },
+    /** 单个导航项：定宽 140，空间不足时按 flex-shrink 等比收窄 */
+    navItemStyle () {
+      const { navItemWidth, navItemHeight } = HEADER_LAYOUT
+      return {
         width: `${navItemWidth}px`,
+        flex: `0 1 ${navItemWidth}px`,
         height: `${navItemHeight}px`,
       }
     },
@@ -187,7 +215,8 @@ export default {
   position: absolute;
   left: 0;
   top: 0;
-  width: 1920px;
+  // 宽度跟随设计画布（自适应），不能写死 1920
+  width: 100%;
   height: 128px;
   // 顶部装饰线会略微溢出，允许显示
   overflow: visible;
@@ -196,9 +225,11 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 1920px;
+    width: 100%;
     height: 128px;
     display: block;
+    // 底图横向跟随拉伸（装饰线轻微变形可接受，换来的是一直铺满）
+    object-fit: fill;
   }
 
   &__title {
@@ -212,17 +243,18 @@ export default {
 
   &__nav {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 128px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    // 左右边界由 navStyle() 给出，见 HEADER_LAYOUT
   }
 
   &__nav-item {
-    position: absolute;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 0;
     padding: 0;
     font-family: inherit;
     font-size: 16px;
@@ -248,8 +280,9 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 140px;
-    height: 54px;
+    // 宽度跟随按钮（窄屏时按钮会等比收窄，切图一起缩）
+    width: 100%;
+    height: 100%;
     display: block;
     pointer-events: none;
   }
@@ -259,12 +292,16 @@ export default {
     z-index: 1;
     padding-top: 2px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   /* ---------- 用户区 ---------- */
+  /* 靠右定位：设计稿里头像起于 x=1790、下拉箭头收尾于 1890，即距右边界 30px */
   &__user {
     position: absolute;
-    left: 1790px;
+    right: 30px;
     top: 22px;
     display: flex;
     align-items: center;

@@ -314,11 +314,12 @@ export default {
     position: absolute;
     left: 30px;
     top: 149px;
-    width: 400px;
+    // 定尺高度：纵向多出来的空间留给地图，避免切图被拉伸变形
     height: 881px;
+    width: 400px;
     background-image: url('~@/assets/screen-blue/panel-left-bg.png');
     background-repeat: no-repeat;
-    background-size: 400px 881px;
+    background-size: 100% 100%;
   }
 
   /* ---------------- 页签 ---------------- */
@@ -373,15 +374,16 @@ export default {
     position: absolute;
     left: 20px;
     top: 60px;
-    width: 360px;
-    height: 785px;
+    right: 20px;
+    // 设计稿 881 - 60 - 785 = 36
+    bottom: 36px;
   }
 
   &__stat {
     position: absolute;
     left: 0;
     top: 3px;
-    width: 360px;
+    width: 100%;
     height: 120px;
   }
 
@@ -389,7 +391,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 120px;
     display: block;
   }
@@ -440,7 +442,7 @@ export default {
     position: absolute;
     left: 0;
     top: 133px;
-    width: 360px;
+    width: 100%;
     height: 80px;
   }
 
@@ -523,15 +525,16 @@ export default {
     position: absolute;
     left: 0;
     top: 233px;
-    width: 360px;
-    height: 552px;
+    right: 0;
+    // 设计稿 785 - 233 = 552，高度随面板一起伸展
+    bottom: 0;
   }
 
   &__detail-head {
     position: absolute;
     left: 1px;
+    right: 0;
     top: 0;
-    width: 359px;
     height: 36px;
   }
 
@@ -539,7 +542,8 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 357px;
+    // 设计稿里表头切图 357 宽，占 359 的表头区、右边留 2px
+    right: 2px;
     height: 36px;
     display: block;
   }
@@ -593,17 +597,17 @@ export default {
   &__rank {
     position: absolute;
     left: 0;
+    right: 0;
     top: 46px;
-    width: 360px;
-    height: 506px;
+    bottom: 0;
   }
 
   &__table-bg {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
-    height: 506px;
+    width: 100%;
+    height: 100%;
     display: block;
     pointer-events: none;
   }
@@ -613,7 +617,7 @@ export default {
     position: absolute;
     left: 0;
     top: 120px;
-    width: 360px;
+    width: 100%;
     margin: 0;
     font-size: 14px;
     color: #4a7396;
@@ -624,7 +628,7 @@ export default {
   &__rank-row {
     position: absolute;
     left: 0;
-    width: 360px;
+    width: 100%;
     height: 46px;
   }
 
@@ -632,7 +636,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 46px;
     display: block;
     pointer-events: none;
