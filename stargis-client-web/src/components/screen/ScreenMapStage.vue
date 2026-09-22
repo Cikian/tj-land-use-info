@@ -98,16 +98,16 @@ export default {
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(60% 55% at 50% 46%, rgba(47, 227, 192, 0.14) 0%, rgba(2, 26, 30, 0) 68%),
-      radial-gradient(38% 40% at 50% 52%, rgba(20, 130, 140, 0.22) 0%, rgba(2, 26, 30, 0) 70%);
+      radial-gradient(60% 55% at 50% 46%, rgba(130, 198, 255, 0.14) 0%, rgba(4, 12, 28, 0) 68%),
+      radial-gradient(38% 40% at 50% 52%, rgba(40, 96, 170, 0.22) 0%, rgba(4, 12, 28, 0) 70%);
   }
 
   &__grid {
     position: absolute;
     inset: 0;
     opacity: 0.5;
-    background-image: linear-gradient(rgba(47, 227, 192, 0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(47, 227, 192, 0.06) 1px, transparent 1px);
+    background-image: linear-gradient(rgba(130, 198, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(130, 198, 255, 0.06) 1px, transparent 1px);
     background-size: 64px 64px;
     mask-image: radial-gradient(70% 70% at 50% 50%, #000 0%, transparent 100%);
     -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000 0%, transparent 100%);
@@ -141,8 +141,8 @@ export default {
     background: radial-gradient(
       78% 78% at 50% 50%,
       rgba(0, 0, 0, 0) 42%,
-      rgba(1, 17, 20, 0.55) 82%,
-      rgba(1, 17, 20, 0.82) 100%
+      rgba(2, 8, 20, 0.55) 82%,
+      rgba(2, 8, 20, 0.82) 100%
     );
   }
 
@@ -193,7 +193,7 @@ export default {
     padding: 3px 10px;
     font-size: var(--screen-font-xs);
     color: var(--screen-text-sub);
-    background: rgba(2, 26, 30, 0.72);
+    background: rgba(4, 12, 28, 0.72);
     border: 1px solid var(--screen-border);
     border-radius: var(--screen-radius-pill);
     pointer-events: none;

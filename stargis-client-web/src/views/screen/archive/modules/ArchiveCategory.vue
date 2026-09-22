@@ -888,7 +888,7 @@ export default {
     padding: var(--screen-space-3);
     font-size: var(--screen-font-xs);
     color: var(--screen-text-mute);
-    background: rgba(2, 24, 28, 0.4);
+    background: rgba(6, 20, 40, 0.4);
     border: 1px dashed var(--screen-border-soft);
     border-radius: var(--screen-radius-sm);
   }

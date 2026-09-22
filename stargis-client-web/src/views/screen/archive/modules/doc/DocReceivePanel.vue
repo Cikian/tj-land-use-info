@@ -594,7 +594,7 @@ export default {
     &.is-active {
       border-left-color: var(--screen-accent);
       border-color: var(--screen-border-strong);
-      background: rgba(47, 227, 192, 0.1);
+      background: rgba(130, 198, 255, 0.1);
     }
   }
 

@@ -479,7 +479,7 @@ export default {
 
   // 选中行：底色 + 左侧高亮条，不改变行高
   tbody tr.is-selected td {
-    background: rgba(47, 227, 192, 0.09);
+    background: rgba(130, 198, 255, 0.09);
   }
 
   tbody tr.is-selected td:first-child {
@@ -566,7 +566,7 @@ export default {
     width: 15px;
     height: 15px;
     color: transparent;
-    background: rgba(2, 24, 28, 0.72);
+    background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border);
     border-radius: 3px;
     transition: background-color var(--screen-duration) var(--screen-ease),
@@ -603,7 +603,7 @@ export default {
     transition: width 760ms var(--screen-ease);
 
     &.is-accent {
-      .screen-bar-fill(var(--screen-viz-green), #0f9c86);
+      .screen-bar-fill(var(--screen-viz-green), #1f9e4a);
     }
 
     &.is-muted {
@@ -624,7 +624,7 @@ export default {
     padding: 2px 12px;
     font-size: var(--screen-font-xs);
     color: var(--screen-accent);
-    background: rgba(47, 227, 192, 0.08);
+    background: rgba(130, 198, 255, 0.08);
     border: 1px solid var(--screen-border);
     border-radius: var(--screen-radius-sm);
     cursor: pointer;
@@ -634,7 +634,7 @@ export default {
     .screen-focus-ring();
 
     &:hover {
-      background: rgba(47, 227, 192, 0.18);
+      background: rgba(130, 198, 255, 0.18);
       border-color: var(--screen-border-strong);
     }
   }

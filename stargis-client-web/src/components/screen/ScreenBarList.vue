@@ -213,7 +213,7 @@ export default {
       }
 
       &:active {
-        background: rgba(47, 227, 192, 0.12);
+        background: rgba(130, 198, 255, 0.12);
       }
     }
   }

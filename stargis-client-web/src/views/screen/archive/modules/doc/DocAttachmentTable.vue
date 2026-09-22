@@ -228,7 +228,7 @@ export default {
     gap: var(--screen-space-4);
     flex-wrap: wrap;
     padding: var(--screen-space-2) var(--screen-space-3);
-    background: rgba(2, 24, 28, 0.45);
+    background: rgba(6, 20, 40, 0.45);
     border: 1px solid var(--screen-border-soft);
     border-radius: var(--screen-radius-sm);
   }

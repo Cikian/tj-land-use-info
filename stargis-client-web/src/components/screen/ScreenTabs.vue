@@ -111,12 +111,12 @@ export default {
 
     &:hover:not(.is-disabled) {
       color: var(--screen-text);
-      background: rgba(47, 227, 192, 0.08);
+      background: rgba(130, 198, 255, 0.08);
     }
 
     &.is-active {
       color: var(--screen-accent);
-      background: rgba(47, 227, 192, 0.12);
+      background: rgba(130, 198, 255, 0.12);
       border-color: var(--screen-border-strong);
       text-shadow: 0 0 8px var(--screen-accent-glow);
     }
@@ -134,7 +134,7 @@ export default {
     font-size: var(--screen-font-xs);
     line-height: 15px;
     border-radius: var(--screen-radius-pill);
-    background: rgba(47, 227, 192, 0.16);
+    background: rgba(130, 198, 255, 0.16);
     color: var(--screen-accent);
   }
 

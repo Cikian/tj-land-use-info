@@ -83,7 +83,7 @@ export default {
   line-height: 1;
   white-space: nowrap;
   color: var(--screen-text);
-  background: rgba(2, 24, 28, 0.72);
+  background: rgba(6, 20, 40, 0.72);
   border: 1px solid var(--screen-border);
   border-radius: var(--screen-radius-sm);
   cursor: pointer;
@@ -95,18 +95,18 @@ export default {
   // 悬停：提亮描边并轻微加底色，不改变任何尺寸属性
   &:hover:not(:disabled) {
     color: var(--screen-accent);
-    background: rgba(47, 227, 192, 0.1);
+    background: rgba(130, 198, 255, 0.1);
     border-color: var(--screen-border-strong);
   }
 
   // 按下：加深底色，位移为 0
   &:active:not(:disabled) {
-    background: rgba(47, 227, 192, 0.2);
+    background: rgba(130, 198, 255, 0.2);
   }
 
   &:disabled {
     color: var(--screen-text-mute);
-    background: rgba(2, 24, 28, 0.38);
+    background: rgba(6, 20, 40, 0.38);
     border-color: var(--screen-border-soft);
     cursor: not-allowed;
   }
@@ -155,17 +155,17 @@ export default {
 
     &:hover:not(:disabled) {
       color: var(--screen-text-on-accent);
-      background: linear-gradient(180deg, #48f0d0 0%, #1ee0b0 100%);
+      background: linear-gradient(180deg, #6cc4ff 0%, #2f8ce0 100%);
       border-color: var(--screen-accent-bright);
     }
 
     &:active:not(:disabled) {
-      background: linear-gradient(180deg, #24cead 0%, #10b893 100%);
+      background: linear-gradient(180deg, #57b6f5 0%, #1d5fd0 100%);
     }
 
     &:disabled {
       color: var(--screen-text-mute);
-      background: rgba(47, 227, 192, 0.14);
+      background: rgba(130, 198, 255, 0.14);
       border-color: var(--screen-border-soft);
     }
   }
@@ -196,7 +196,7 @@ export default {
 
     &:hover:not(:disabled) {
       color: var(--screen-accent-bright);
-      background: rgba(47, 227, 192, 0.1);
+      background: rgba(130, 198, 255, 0.1);
       border-color: transparent;
     }
   }

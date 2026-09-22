@@ -151,7 +151,7 @@ export default {
   align-items: center;
   gap: 2px;
   padding: 2px;
-  background: rgba(2, 24, 28, 0.72);
+  background: rgba(6, 20, 40, 0.72);
   border: 1px solid var(--screen-border);
   border-radius: var(--screen-radius-sm);
 
@@ -177,14 +177,14 @@ export default {
 
     &:hover:not(.is-disabled):not(.is-active) {
       color: var(--screen-text);
-      background: rgba(47, 227, 192, 0.08);
+      background: rgba(130, 198, 255, 0.08);
     }
 
     // 选中态：底色 + 描边 + 字重三重线索，不依赖颜色单一传达
     &.is-active {
       color: var(--screen-accent);
       font-weight: 600;
-      background: rgba(47, 227, 192, 0.14);
+      background: rgba(130, 198, 255, 0.14);
       border-color: var(--screen-border-strong);
       text-shadow: 0 0 8px var(--screen-accent-glow);
     }

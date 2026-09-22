@@ -164,7 +164,7 @@ export default {
   min-height: 32px;
   padding: 0 10px;
   color: var(--screen-text);
-  background: rgba(2, 24, 28, 0.72);
+  background: rgba(6, 20, 40, 0.72);
   border: 1px solid var(--screen-border);
   border-radius: var(--screen-radius-sm);
   transition: border-color var(--screen-duration) var(--screen-ease),

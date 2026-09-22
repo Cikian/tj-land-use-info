@@ -490,10 +490,10 @@ export default {
     height: 100%;
     border-radius: inherit;
     transition: width 700ms var(--screen-ease);
-    .screen-bar-fill(var(--screen-viz-green), #0f9c86);
+    .screen-bar-fill(var(--screen-viz-green), #1f9e4a);
 
     &.is-full {
-      .screen-bar-fill(var(--screen-viz-mint), #0fb894);
+      .screen-bar-fill(var(--screen-viz-mint), #1f9e4a);
     }
   }
 }

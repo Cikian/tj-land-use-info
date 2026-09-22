@@ -428,7 +428,7 @@ export default {
     flex-direction: column;
     gap: var(--screen-space-3);
     padding: var(--screen-space-3);
-    background: rgba(2, 24, 28, 0.5);
+    background: rgba(6, 20, 40, 0.5);
     border: 1px solid var(--screen-border-soft);
     border-radius: var(--screen-radius);
   }

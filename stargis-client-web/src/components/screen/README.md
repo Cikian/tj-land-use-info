@@ -1,11 +1,21 @@
 # 大屏基础组件库 · Screen UI
 
-> 设计来源：UI 设计稿《天津市经营性用地市政基础设施配套动态监管工作站》
-> （`saved-images/20260911-150021-gis-ui-*.png`，取色与尺寸均按设计稿实测）
-> 主题：**青绿暗色**（固化主题，不随项目 `blue/green` 皮肤切换）
+> 设计来源：UI 同事交付的高保真模型
+> `docs/高保真/市政-天津市经营性用地市政配套设施动态监管工作站/首页.html`
+> （Axure 导出；配色取自 `files/首页/styles.css` 的文字色 + 切图实测底色，
+> 切图已复制到 `src/assets/screen-blue/`，见该目录 `index.js` 的映射表）
+> 主题：**深海蓝科技风**（固化主题，不随项目 `blue/green` 皮肤切换）
+>
+> 上一版为「青绿暗色」（源自 `saved-images/20260911-150021-gis-ui-*.png`），
+> 2026-09 按新的高保真模型整体换肤：**只改了 `screen-tokens.less` 与少量硬编码
+> 高亮色**，组件结构未变，因此所有既有页面自动跟随。
 
 本目录是地图大屏页面的基础组件层。页面只负责「摆位置 + 喂数据」，
 所有视觉规范、交互细节、无障碍处理都收敛在组件内部。
+
+高保真首页（`views/screen/home/`）另有一套**定尺画布**实现：设计稿是 1920×1080，
+面板边框/标题装饰/表格底纹都是定尺切图，因此该页用 `ScreenStage` 做整体等比缩放，
+坐标一律使用设计稿原值。详见第 4 节。
 
 ---
 
@@ -13,30 +23,36 @@
 
 | 文件 | 作用 | 引入方式 |
 | --- | --- | --- |
-| `styles/screen-tokens.less` | CSS 自定义属性（颜色 / 间距 / 字号 / 圆角 / 动效） | 已在 `src/main.js` **全局引入一次** |
+| `styles/screen-tokens.less` | CSS 自定义属性（颜色 / 间距 / 字号 / 圆角 / 动效）+ 全局工具类 | 已在 `src/main.js` **全局引入一次** |
 | `styles/screen-mixins.less` | Less 混入（玻璃面板、条形渐变、省略、焦点环） | 组件内按相对路径 `@import` |
 
 **约定：组件样式一律使用 `var(--screen-*)`，禁止写死颜色。**
 需要换肤时只改 `screen-tokens.less` 一个文件即可。
 
-核心令牌（节选，均为设计稿实测取色）：
+核心令牌（节选，均为高保真实测取色）：
 
 ```less
---screen-text: #dcedee;          // 主文本
---screen-text-sub: #8fb6b8;      // 次级文本
---screen-text-mute: #5e8285;     // 弱化文本
---screen-number: #62f0c4;        // 大号统计数字（设计稿 #60F0C0）
---screen-accent: #2fe3c0;        // 主强调（激活态 / 描边 / 按钮）
---screen-panel-bg: rgba(3, 27, 32, 0.72);
---screen-border: rgba(20, 168, 158, 0.26);
+--screen-text: #ffffff;          // 主文本（高保真标题与表格主要文字为纯白）
+--screen-text-sub: #66afd4;      // 次级文本（高保真大量使用）
+--screen-text-mute: #4a7396;     // 弱化文本
+--screen-number: #ffe597;        // 大号统计数字（高保真指定暖黄 #FFE597）
+--screen-accent: #82c6ff;        // 主强调（激活态 / 描边 / 图标）
+--screen-accent-soft: #66afd4;   // 次强调（单位 / 标签）
+--screen-panel-bg: rgba(8, 22, 42, 0.92);
+--screen-border: rgba(55, 132, 215, 0.32);
 
-/* 数据可视化语义色 —— 设计稿里颜色是有含义的，不要随意替换 */
---screen-viz-green: #22c795;     // 市级占比条 / 表格常规项
---screen-viz-cyan: #0fc3ce;      // 区级占比条 / 排行条
---screen-viz-mint: #14d2a2;      // 环形图 市级 / 表盘填充
---screen-viz-blue: #1fa3e8;      // 环形图 区级
---screen-viz-amber: #f0a83c;     // 预警橙：资金 / 未开工 / 未竣工 / 未移交
+/* 数据可视化语义色 —— 高保真里颜色是有含义的，不要随意替换 */
+--screen-viz-green: #43e972;     // 出让情况 · 市级环形图
+--screen-viz-cyan: #3fd8d0;      // 出让情况 · 区级环形图
+--screen-viz-amber: #f5a524;     // 预警橙：资金 / 未开工 / 未竣工 / 未移交
 ```
+
+> 落实配套情况的环形图在高保真里用的是红 `#e95b43` / 金 `#c99e54`（见
+> `assets/screen-blue/ring-fill-red.svg` / `ring-fill-gold.svg`），表示「未落实」，
+> 与出让情况的绿 / 青不是同一套语义，实现时按页签区分引用，不要统一。
+
+全局工具类：`.stage-hit` —— `ScreenStage` 画布整体 `pointer-events: none`
+（否则全屏蒙版会挡住地图），画布内需要交互的元素必须挂这个类。
 
 对比度：正文 `--screen-text` 对面板底色 ≥ 4.5:1，弱化文本仅用于单位 / 序号等非关键信息。
 
@@ -48,12 +64,14 @@
 
 | 组件 | 用途 | 关键 Props |
 | --- | --- | --- |
+| `ScreenStage` | 高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层） | `width` `height` `maxScale` `letterbox`；插槽 `map` / 默认；事件 `resize` |
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
-| `ScreenHeader` | 顶栏（标题 / 导航 / 实时时钟 / 用户 / 在线态） | `title` `menus` `activeMenu` `showClock` `userName` `online` |
+| `ScreenHeader` | 顶栏（高保真切图 + 8 项导航 + 实时时钟 + 用户区） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `online` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` |
 | `ScreenPopover` | 浮层容器（挂 body，供下拉/气泡复用） | `open` `anchor` `placement` `width` `maxHeight` `role` |
 | `ScreenPopconfirm` | 危险操作二次确认 | `title` `description` `tone` `okText` `placement` `confirmLoading` |
+
 
 ### 2.2 展示 / 数据可视化
 
@@ -169,15 +187,34 @@ const columns = [
 
 ---
 
-## 4. 布局与地图共存
+## 4. 定尺画布（ScreenStage）与地图共存
+
+高保真模型是 **1920×1080 的定尺设计稿**，面板边框、标题装饰、表格底纹全部是
+定尺切图，因此首页（`views/screen/home/`）不做响应式重排，而是整屏等比缩放：
+
+```vue
+<screen-stage @resize="handleStageResize">
+  <template #map><s3dm-viewer /></template>   <!-- 真实像素层 -->
+  ...按设计稿坐标绝对定位的界面...              <!-- 1920×1080 缩放层 -->
+</screen-stage>
+```
+
+`scale = min(视口宽 / 1920, 视口高 / 1080)`，画布居中、四周留底色（不裁切、不拉伸）。
+
+**为什么地图单独一层、不放进缩放画布：**
+Cesium 的拾取与相机控制依赖 `canvas.clientWidth`（布局尺寸，不受 CSS `transform` 影响）
+与事件 `clientX`（视觉尺寸，受 `transform` 影响），两者在 `transform: scale` 下不一致，
+点击/拖拽会整体偏移。因此地图层用「真实像素」铺在设计稿矩形上
+（左/上 = 居中偏移，宽高 = `1920*scale × 1080*scale`），不施加 `transform`；
+UI 画布层施加 `transform` 覆盖在同一矩形上，两层视觉完全重合。
 
 地图大屏的关键约束：**浮层不能吃掉地图的鼠标事件**。
 
-页面采用如下约定（见 `src/views/screen/index.vue`）：
-
 ```less
-.land-screen__ui  { pointer-events: none; }  /* 浮层整体穿透 */
-.land-screen__panel { pointer-events: auto; } /* 面板自身可交互 */
+/* ScreenStage 画布整体穿透 */
+.screen-stage__canvas { pointer-events: none; }
+/* 画布内需要交互的元素挂全局类（定义在 screen-tokens.less） */
+.stage-hit { pointer-events: auto; }
 ```
 
 `ScreenHeader` 内部同样只在可点击元素上开启 `pointer-events: auto`，
@@ -282,8 +319,9 @@ src/components/screen/
 ├─ utils.js                    # 纯函数工具（格式化 / 动效 / 唯一 id）
 ├─ toast.js                    # 命令式消息提示服务（$screenToast / toast）
 │
+├─ ScreenStage.vue             # 高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
 ├─ ScreenPanel.vue             # 面板容器
-├─ ScreenHeader.vue            # 顶栏
+├─ ScreenHeader.vue            # 顶栏（高保真切图 + 8 项导航 + 时钟）
 ├─ ScreenMapStage.vue          # 地图舞台
 ├─ ScreenModal.vue             # 弹窗（挂 body + 焦点陷阱 + 滚动锁）
 ├─ ScreenPopover.vue           # 浮层容器（挂 body，下拉 / 气泡的公共基座）
@@ -323,8 +361,29 @@ src/components/screen/
 
 | 页面 | 路由 | 文件 |
 | --- | --- | --- |
-| 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue`，演示数据 `src/views/screen/mock.js` |
+| 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue` |
+| 首页定尺面板 | — | `src/views/screen/home/`：`HomeLeftPanel`（出让地块情况统计）、`HomeLayerTree`（地图管理图层面板）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
 | 档案管理（大屏子页面） | 顶栏「档案管理」，深链 `/screen/archive` | `src/views/screen/archive/index.vue` |
+| 收发文 | 顶栏「收发文」 | 复用档案模块，初始页签 `doc`（`/screen/archive?tab=doc`） |
+
+**首页数据来源（`views/screen/` 三个文件的分工，改动时别搞混）：**
+
+| 文件 | 职责 |
+| --- | --- |
+| `config.js` | 静态常量：8 项顶栏导航、系统标题、属性表页签、预警字段契约 |
+| `mock.js` | **兜底演示数据**（高保真设计稿数字）。只在接口不可用/返回空时生效 |
+| `index.vue` | `loadDashboard()` 并发拉取 `LandDashboardVO` + `SupportingFacilitiesDashboardVO`，成功后整段覆盖兜底数据并下发给 `home/` 的面板组件 |
+
+接口来自 **Java 业务后端**（`@/api/land/landData`，走 `window._CONFIG.VUE_DATA_JAVA_URL`），
+不是中台。已知缺口（前端已按「宁可留白也不串口径」处理，等后端补齐）：
+
+1. 宗地 `ranks` 只有**行政区划维度**，对应设计稿的市级子表；
+   街镇维度的区级子表后端暂无 → 该子表显示「暂无数据」。
+2. 配套 `ranks` 只有区县汇总，同样没有街镇维度。
+3. 「地块预警信息」弹窗的明细后端暂未提供，沿用兜底数据。
+
+高保真切图资源：`src/assets/screen-blue/`（来源为本仓 `docs/高保真/.../images/首页/`，
+复制时统一改为 ASCII 文件名；`index.js` 是唯一映射入口，组件里只引用 `hf.xxx`）。
 
 ### 档案模块
 

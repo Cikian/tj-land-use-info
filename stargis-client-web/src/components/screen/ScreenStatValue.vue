@@ -114,7 +114,7 @@ export default {
   // ---- 语义色 ----
   &.is-success &__number {
     color: var(--screen-success);
-    text-shadow: 0 0 16px rgba(34, 199, 149, 0.34);
+    text-shadow: 0 0 16px rgba(67, 233, 114, 0.34);
   }
 
   &.is-warning &__number {

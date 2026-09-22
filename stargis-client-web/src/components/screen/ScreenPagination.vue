@@ -272,7 +272,7 @@ export default {
     font-size: var(--screen-font-xs);
     font-variant-numeric: tabular-nums;
     color: var(--screen-text-sub);
-    background: rgba(2, 24, 28, 0.72);
+    background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border);
     border-radius: var(--screen-radius-sm);
     cursor: pointer;
@@ -284,20 +284,20 @@ export default {
     &:hover:not(:disabled):not(.is-active) {
       color: var(--screen-accent);
       border-color: var(--screen-border-strong);
-      background: rgba(47, 227, 192, 0.1);
+      background: rgba(130, 198, 255, 0.1);
     }
 
     // 当前页：底色 + 描边 + 字重，三重线索
     &.is-active {
       color: var(--screen-accent);
       font-weight: 600;
-      background: rgba(47, 227, 192, 0.16);
+      background: rgba(130, 198, 255, 0.16);
       border-color: var(--screen-border-strong);
     }
 
     &:disabled {
       color: var(--screen-text-mute);
-      background: rgba(2, 24, 28, 0.38);
+      background: rgba(6, 20, 40, 0.38);
       border-color: var(--screen-border-soft);
       cursor: not-allowed;
     }
@@ -321,7 +321,7 @@ export default {
     font-variant-numeric: tabular-nums;
     text-align: center;
     color: var(--screen-text);
-    background: rgba(2, 24, 28, 0.72);
+    background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border);
     border-radius: var(--screen-radius-sm);
     outline: none;

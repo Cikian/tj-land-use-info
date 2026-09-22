@@ -22,6 +22,7 @@
  * 容器 / 布局
  *   ScreenPanel      面板容器（标题栏 / 内容插槽 / 底栏 / 折叠 / 四角装饰）
  *   ScreenHeader     大屏顶栏（标题 / 导航 / 实时时钟 / 用户 / 在线状态）
+ *   ScreenStage      高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
  *   ScreenMapStage   地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角）
  *   ScreenModal      弹窗（挂 body + 焦点陷阱 + 滚动锁）
  *   ScreenPopover    浮层容器（挂 body，供下拉/气泡复用，解决面板裁剪问题）
@@ -59,6 +60,7 @@
  *   ScreenToast      消息提示容器（一般通过 toast.js 命令式调用）
  */
 
+import ScreenStage from './ScreenStage.vue'
 import ScreenPanel from './ScreenPanel.vue'
 import ScreenHeader from './ScreenHeader.vue'
 import ScreenMapStage from './ScreenMapStage.vue'
@@ -97,6 +99,7 @@ import ScreenToast from './ScreenToast.vue'
 
 const components = {
   // 容器 / 布局
+  ScreenStage,
   ScreenPanel,
   ScreenHeader,
   ScreenMapStage,
@@ -147,6 +150,7 @@ const ScreenUI = {
 }
 
 export {
+  ScreenStage,
   ScreenPanel,
   ScreenHeader,
   ScreenMapStage,

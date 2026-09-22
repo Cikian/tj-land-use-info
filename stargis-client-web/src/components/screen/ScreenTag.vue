@@ -62,7 +62,7 @@ export default {
   font-size: var(--screen-font-xs);
   line-height: 18px;
   color: var(--screen-accent-soft);
-  background: rgba(47, 227, 192, 0.08);
+  background: rgba(130, 198, 255, 0.08);
   border: 1px solid var(--screen-border);
   border-radius: var(--screen-radius-pill);
 
@@ -84,7 +84,7 @@ export default {
   //       以保证颜色全部来自 --screen-* 令牌（见需求硬性规则 5）。
   &.is-success {
     color: var(--screen-success);
-    background: rgba(34, 199, 149, 0.1);
+    background: rgba(67, 233, 114, 0.1);
   }
 
   &.is-warning {
@@ -101,7 +101,7 @@ export default {
   // 文字用 --screen-info（蓝）与 accent（青）区分，避免引入新的硬编码颜色。
   &.is-info {
     color: var(--screen-info);
-    background: rgba(47, 227, 192, 0.08);
+    background: rgba(130, 198, 255, 0.08);
   }
 
   &.is-muted {

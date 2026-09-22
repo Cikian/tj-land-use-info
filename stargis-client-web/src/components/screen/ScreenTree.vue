@@ -591,7 +591,7 @@ export default {
     // 选中：强调色浅底 + 左侧 2px 竖条（形状提示，不只靠颜色）
     &.is-selected {
       color: var(--screen-accent);
-      background: rgba(47, 227, 192, 0.12);
+      background: rgba(130, 198, 255, 0.12);
       font-weight: 600;
 
       &::before {
@@ -630,7 +630,7 @@ export default {
     }
 
     &.is-drop-inside {
-      background: rgba(47, 227, 192, 0.18);
+      background: rgba(130, 198, 255, 0.18);
       box-shadow: inset 0 0 0 1px var(--screen-accent);
     }
 
@@ -669,7 +669,7 @@ export default {
 
     &:hover {
       color: var(--screen-accent);
-      background: rgba(47, 227, 192, 0.12);
+      background: rgba(130, 198, 255, 0.12);
     }
 
     // 叶子节点的占位：与箭头等宽，保证同层文字左对齐
@@ -695,7 +695,7 @@ export default {
   &__mark {
     padding: 0 1px;
     color: var(--screen-accent-bright);
-    background: rgba(47, 227, 192, 0.18);
+    background: rgba(130, 198, 255, 0.18);
     border-radius: 2px;
   }
 
@@ -706,7 +706,7 @@ export default {
     font-size: var(--screen-font-xs);
     line-height: 16px;
     color: var(--screen-text-mute);
-    background: rgba(2, 24, 28, 0.72);
+    background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border-soft);
     border-radius: var(--screen-radius-sm);
   }
@@ -719,7 +719,7 @@ export default {
     line-height: 16px;
     font-variant-numeric: tabular-nums;
     color: var(--screen-text-sub);
-    background: rgba(47, 227, 192, 0.08);
+    background: rgba(130, 198, 255, 0.08);
     border-radius: var(--screen-radius-pill);
   }
 

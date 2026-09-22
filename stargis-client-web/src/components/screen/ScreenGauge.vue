@@ -79,9 +79,9 @@ export default {
     /** 轨道颜色（设计稿为深青蓝，切勿用亮色以免抢占进度层的视觉权重） */
     trackColor: { type: String, default: 'rgba(17, 96, 116, 0.55)' },
     /** 渐变起色 */
-    fromColor: { type: String, default: '#1be0ae' },
+    fromColor: { type: String, default: '#6cc4ff' },
     /** 渐变止色 */
-    toColor: { type: String, default: '#0fb894' },
+    toColor: { type: String, default: '#1d5fd0' },
     /** 数值文案颜色 tone */
     tone: { type: String, default: 'accent' },
     /** 是否入场动画 */

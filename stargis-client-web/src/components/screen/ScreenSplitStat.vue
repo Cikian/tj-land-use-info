@@ -155,11 +155,11 @@ export default {
 
     // 设计稿：市级为绿色，区级为青色
     &.is-green {
-      background-image: linear-gradient(90deg, var(--screen-viz-green) 0%, #0f9c86 100%);
+      background-image: linear-gradient(90deg, var(--screen-viz-green) 0%, #1f9e4a 100%);
     }
 
     &.is-cyan {
-      background-image: linear-gradient(90deg, var(--screen-viz-cyan) 0%, #0a95b4 100%);
+      background-image: linear-gradient(90deg, var(--screen-viz-cyan) 0%, #1f9aa0 100%);
     }
 
     &.is-amber {
