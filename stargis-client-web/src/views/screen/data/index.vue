@@ -38,17 +38,39 @@
     >
       <land-list v-if="activeKey === 'list'" @edit="edit" />
     </screen-modal>
+
+    <screen-modal
+      :visible="activeKey === 'facility-add'"
+      title="配套项目添加"
+      :width="1280"
+      :show-footer="false"
+      @cancel="close"
+    >
+      <facility-form v-if="activeKey === 'facility-add'" ref="facilityForm" @saved="saved" />
+    </screen-modal>
+
+    <screen-modal
+      :visible="activeKey === 'facility-list'"
+      title="配套项目查询"
+      :width="1280"
+      :show-footer="false"
+      @cancel="close"
+    >
+      <facility-list v-if="activeKey === 'facility-list'" @edit="editFacility" />
+    </screen-modal>
   </div>
 </template>
 
 <script>
 import { ScreenModal } from '@/components/screen'
+import FacilityForm from './FacilityForm.vue'
+import FacilityList from './FacilityList.vue'
 import LandForm from './LandForm.vue'
 import LandList from './LandList.vue'
 
 export default {
   name: 'DataScreen',
-  components: { ScreenModal, LandForm, LandList },
+  components: { ScreenModal, FacilityForm, FacilityList, LandForm, LandList },
   data () {
     return {
       activeKey: '',
@@ -56,6 +78,8 @@ export default {
       menus: [
         { key: 'add', label: '经营性用地添加' },
         { key: 'list', label: '经营性用地查询' },
+        { key: 'facility-add', label: '配套项目添加' },
+        { key: 'facility-list', label: '配套项目查询' },
       ],
     }
   },
@@ -73,6 +97,13 @@ export default {
       this.activeKey = 'add'
       this.$nextTick(() => {
         if (this.$refs.form) this.$refs.form.fill(row)
+      })
+    },
+    editFacility (row) {
+      this.editing = row
+      this.activeKey = 'facility-add'
+      this.$nextTick(() => {
+        if (this.$refs.facilityForm) this.$refs.facilityForm.fill(row)
       })
     },
     saved () {

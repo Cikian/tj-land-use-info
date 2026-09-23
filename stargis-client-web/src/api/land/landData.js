@@ -28,7 +28,11 @@ export const landDataUrl = {
   landList: '/land/data/land/list',
   landAdd: '/land/data/land/add',
   landEdit: '/land/data/land/edit',
-  landDelete: '/land/data/land/delete'
+  landDelete: '/land/data/land/delete',
+  facilityList: '/land/data/facility/list',
+  facilityAdd: '/land/data/facility/add',
+  facilityEdit: '/land/data/facility/edit',
+  facilityDelete: '/land/data/facility/delete'
 }
 
 /**
@@ -108,6 +112,26 @@ export function deleteLand (id) {
   return javaDeleteAction(landDataUrl.landDelete, { id })
 }
 
+/** 配套项目分页列表。 */
+export function queryFacilityList (params) {
+  return javaGetAction(landDataUrl.facilityList, params)
+}
+
+/** 新增配套项目。必须挂到已有宗地，项目名称不可重复。 */
+export function addFacility (data) {
+  return javaPostAction(landDataUrl.facilityAdd, data)
+}
+
+/** 编辑配套项目。 */
+export function editFacility (data) {
+  return javaPutAction(landDataUrl.facilityEdit, data)
+}
+
+/** 删除配套项目（逻辑删除）。 */
+export function deleteFacility (id) {
+  return javaDeleteAction(landDataUrl.facilityDelete, { id })
+}
+
 export default {
   landDataUrl,
   queryLandOptions,
@@ -122,5 +146,9 @@ export default {
   queryLandList,
   addLand,
   editLand,
-  deleteLand
+  deleteLand,
+  queryFacilityList,
+  addFacility,
+  editFacility,
+  deleteFacility
 }
