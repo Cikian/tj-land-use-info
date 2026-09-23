@@ -110,11 +110,20 @@ public class Facility implements Serializable {
     /** 项建批复是否完成 */
     private String xjpfsfwc;
 
+    /** 项建批复状态 */
+    private String xjpfzt;
+
     /** 可研批复是否完成 */
     private String kypfsfwc;
 
+    /** 可研批复状态 */
+    private String kypfzt;
+
     /** 初设及概算批复是否完成 */
     private String csjgspfsfwc;
+
+    /** 初设及概算批复状态 */
+    private String csjgspfzt;
 
     /** 概算批复金额（万元） */
     private BigDecimal gspfje;
@@ -124,6 +133,9 @@ public class Facility implements Serializable {
 
     /** 是否开工 */
     private String sfkg;
+
+    /** 开工状态 */
+    private String kgzt;
 
     /** 预计开工时间 */
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd")
@@ -136,12 +148,61 @@ public class Facility implements Serializable {
     /** 是否竣工 */
     private String sfjg;
 
+    /** 预计竣工时间 */
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd")
+    private Date yjjgsj;
+
     /** 实际竣工时间 */
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd")
     private Date sjjgsj;
 
     /** 是否移交 */
     private String sfyj;
+
+    /** 配套项目核定用地与地籍调查 */
+    private String ptxmhdydydjdc;
+
+    /** 项建批复文件 */
+    private String xjpfwj;
+
+    /** 可研批复文件 */
+    private String kypfwj;
+
+    /** 初设及概算批复文件 */
+    private String csjgspfwj;
+
+    /** 道路规划 */
+    private String dlgh;
+
+    /** 规划工程许可 */
+    private String ghgcxk;
+
+    /** 管线综合矢量数据（shp） */
+    private String gxzhslsj;
+
+    /** 专业配套方案 */
+    private String zyptfa;
+
+    /** 专业管理意见 */
+    private String zyglyj;
+
+    /** 规划用地许可与划拨手续办理 */
+    private String ghydxkyhbsxbl;
+
+    /** 施工许可 */
+    private String sgxk;
+
+    /** 不动产登记 */
+    private String bdcdj;
+
+    /** 具体问题 */
+    private String jtwt;
+
+    /** 工作建议 */
+    private String gzjy;
+
+    /** 资料缺失内容及说明 */
+    private String zlqsnrjsm;
 
     /** 备注 */
     private String bz;

@@ -15,7 +15,7 @@
             l.`dkmc`      AS dkmc,
             l.`xzqh`      AS xzqh,
             l.`xmfl`      AS xmfl,
-            (SELECT COUNT(1) FROM `t_supporting_facilities` f WHERE f.`crzdbh` = l.`crzdbh`) AS facilityCount
+            (SELECT COUNT(1) FROM `xj_kjkfb_supporting_facilities` f WHERE f.`crzdbh` = l.`crzdbh`) AS facilityCount
         FROM `t_land` l
         WHERE l.`del_flag` = 0
         <if test="xzqh != null and xzqh != ''">
@@ -50,7 +50,7 @@
                  AND f.`ptxmmc` != '引河里北道、富彩道'
                 THEN f.`ptxmmc` END) AS roadCount
         FROM `t_land` l
-        LEFT JOIN `t_supporting_facilities` f
+        LEFT JOIN `xj_kjkfb_supporting_facilities` f
           ON f.`crzdbh` = l.`crzdbh`
          AND COALESCE(f.`delFlag`, '0') = '0'
         WHERE l.`del_flag` = 0
@@ -58,6 +58,7 @@
 
     <select id="selectDashboardRanks" resultType="java.util.LinkedHashMap">
         SELECT
+            l.`xmfl` AS projectType,
             l.`xzqh` AS name,
             COUNT(DISTINCT l.`id`) AS value,
             COUNT(DISTINCT CASE
@@ -66,14 +67,14 @@
                  AND f.`ptxmmc` != '引河里北道、富彩道'
                 THEN f.`ptxmmc` END) AS roadCount
         FROM `t_land` l
-        LEFT JOIN `t_supporting_facilities` f
+        LEFT JOIN `xj_kjkfb_supporting_facilities` f
           ON f.`crzdbh` = l.`crzdbh`
          AND COALESCE(f.`delFlag`, '0') = '0'
         WHERE l.`del_flag` = 0
           AND l.`xmfl` IN ('市级项目', '区级项目')
           AND l.`xzqh` IS NOT NULL
           AND l.`xzqh` != ''
-        GROUP BY l.`xzqh`
+        GROUP BY l.`xmfl`, l.`xzqh`
         ORDER BY value DESC, l.`xzqh`
     </select>
 

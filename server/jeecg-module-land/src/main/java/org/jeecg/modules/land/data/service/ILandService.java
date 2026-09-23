@@ -30,4 +30,16 @@ public interface ILandService extends IService<Land> {
 
     /** 首页宗地总览与行政区排行。 */
     LandDashboardVO queryDashboard();
+
+    /**
+     * 新增经营性用地。
+     * 沿用旧系统规则：出让宗地编号必填且不可重复。
+     */
+    void createLand(Land land);
+
+    /**
+     * 编辑经营性用地。
+     * 出让宗地编号仍必填，且不能改成其他宗地已占用的编号。
+     */
+    void updateLand(Land land);
 }

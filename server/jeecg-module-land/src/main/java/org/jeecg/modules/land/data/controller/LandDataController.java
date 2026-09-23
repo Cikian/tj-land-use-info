@@ -1,5 +1,8 @@
 package org.jeecg.modules.land.data.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
@@ -7,17 +10,26 @@ import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
+import org.jeecg.common.system.query.QueryGenerator;
 import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.service.IFacilityService;
 import org.jeecg.modules.land.data.service.ILandService;
+import org.jeecg.modules.land.data.vo.FacilityDashboardVO;
 import org.jeecg.modules.land.data.vo.FacilityOptionVO;
+import org.jeecg.modules.land.data.vo.LandDashboardVO;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import javax.servlet.http.HttpServletRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -166,5 +178,124 @@ public class LandDataController {
             return Result.error("未找到对应的配套项目");
         }
         return Result.OK(facility);
+    }
+
+    /**
+     * 首页出让情况。
+     * 首页工作台登录后即可查看，不挂档案/收发文的按钮权限。
+     */
+    @AutoLog(value = "数据管理-首页宗地统计")
+    @ApiOperation(value = "首页宗地统计", notes = "已出让宗地总数、市级/区级数量、按行政区划的出让地块与涉及道路")
+    @GetMapping(value = "/dashboard")
+    public Result<LandDashboardVO> dashboard() {
+        return Result.OK(landService.queryDashboard());
+    }
+
+    /**
+     * 首页落实配套情况与预警。
+     * 数据表沿用旧库 {@code xj_kjkfb_supporting_facilities}。
+     */
+    @AutoLog(value = "数据管理-首页配套统计")
+    @ApiOperation(value = "首页配套统计", notes = "待落实配套宗地、行政区排行、市级/区级/地块预警")
+    @GetMapping(value = "/facility/dashboard")
+    public Result<FacilityDashboardVO> facilityDashboard() {
+        return Result.OK(facilityService.queryDashboard());
+    }
+
+    @AutoLog(value = "数据管理-首页预警明细")
+    @ApiOperation(value = "首页预警明细", notes = "某个行政区下未完成的配套项目")
+    @GetMapping(value = "/facility/warning/detail")
+    public Result<List<Facility>> warningDetail(@RequestParam(name = "projectType") String projectType,
+                                                @RequestParam(name = "district") String district) {
+        return Result.OK(facilityService.queryWarningDetails(projectType, district));
+    }
+
+    @AutoLog(value = "经营性用地-分页列表")
+    @ApiOperation(value = "经营性用地-分页列表")
+    // @RequiresPermissions("land:data:land:list")
+    @GetMapping(value = "/land/list")
+    public Result<IPage<Land>> landList(Land land,
+                                        @RequestParam(name = "pageNo", defaultValue = "1") Integer pageNo,
+                                        @RequestParam(name = "pageSize", defaultValue = "10") Integer pageSize,
+                                        HttpServletRequest request) {
+        QueryWrapper<Land> wrapper = QueryGenerator.initQueryWrapper(land, request.getParameterMap());
+        wrapper.orderByDesc("create_time");
+        return Result.OK(landService.page(new Page<>(pageNo, pageSize), wrapper));
+    }
+
+    @AutoLog(value = "经营性用地-添加")
+    @ApiOperation(value = "经营性用地-添加", notes = "出让宗地编号必填且不可重复")
+    // @RequiresPermissions("land:data:land:add")
+    @PostMapping(value = "/land/add")
+    public Result<?> addLand(@RequestBody Land land) {
+        landService.createLand(land);
+        return Result.OK("创建成功！");
+    }
+
+    @AutoLog(value = "经营性用地-编辑")
+    @ApiOperation(value = "经营性用地-编辑")
+    // @RequiresPermissions("land:data:land:edit")
+    @RequestMapping(value = "/land/edit", method = {RequestMethod.PUT, RequestMethod.POST})
+    public Result<?> editLand(@RequestBody Land land) {
+        landService.updateLand(land);
+        return Result.OK("更新成功");
+    }
+
+    @AutoLog(value = "经营性用地-删除")
+    @ApiOperation(value = "经营性用地-删除", notes = "逻辑删除")
+    // @RequiresPermissions("land:data:land:delete")
+    @DeleteMapping(value = "/land/delete")
+    public Result<?> deleteLand(@RequestParam(name = "id") String id) {
+        if (landService.queryById(id) == null) {
+            return Result.error("删除失败不存在");
+        }
+        landService.removeById(id);
+        return Result.OK("删除成功");
+    }
+
+    @AutoLog(value = "配套项目-分页列表")
+    @ApiOperation(value = "配套项目-分页列表")
+    // @RequiresPermissions("land:data:facility:list")
+    @GetMapping(value = "/facility/list")
+    public Result<IPage<Facility>> facilityList(Facility facility,
+                                                @RequestParam(name = "pageNo", defaultValue = "1") Integer pageNo,
+                                                @RequestParam(name = "pageSize", defaultValue = "10") Integer pageSize,
+                                                HttpServletRequest request) {
+        QueryWrapper<Facility> wrapper = QueryGenerator.initQueryWrapper(facility, request.getParameterMap());
+        wrapper.eq("delFlag", "0");
+        wrapper.orderByDesc("createTime");
+        return Result.OK(facilityService.page(new Page<>(pageNo, pageSize), wrapper));
+    }
+
+    @AutoLog(value = "配套项目-添加")
+    @ApiOperation(value = "配套项目-添加", notes = "必须挂到已有宗地，配套项目名称不可重复")
+    // @RequiresPermissions("land:data:facility:add")
+    @PostMapping(value = "/facility/add")
+    public Result<?> addFacility(@RequestBody Facility facility) {
+        facilityService.createFacility(facility);
+        return Result.OK("创建成功！");
+    }
+
+    @AutoLog(value = "配套项目-编辑")
+    @ApiOperation(value = "配套项目-编辑")
+    // @RequiresPermissions("land:data:facility:edit")
+    @RequestMapping(value = "/facility/edit", method = {RequestMethod.PUT, RequestMethod.POST})
+    public Result<?> editFacility(@RequestBody Facility facility) {
+        facilityService.updateFacility(facility);
+        return Result.OK("更新成功");
+    }
+
+    @AutoLog(value = "配套项目-删除")
+    @ApiOperation(value = "配套项目-删除", notes = "逻辑删除，delFlag 置为 1")
+    // @RequiresPermissions("land:data:facility:delete")
+    @DeleteMapping(value = "/facility/delete")
+    public Result<?> deleteFacility(@RequestParam(name = "id") String id) {
+        Facility facility = facilityService.queryById(id);
+        if (facility == null) {
+            return Result.error("删除失败不存在");
+        }
+        facility.setDelFlag("1");
+        facilityService.updateById(facility);
+        return Result.OK("删除成功");
     }
 }

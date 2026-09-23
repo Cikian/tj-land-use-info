@@ -363,6 +363,13 @@ export const constantRouterMap = [
     hidden: true,
     component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
   },
+  // 数据管理深链：经营性用地添加 / 查询。
+  {
+    path: '/screen/data',
+    name: 'landDataScreen',
+    hidden: true,
+    component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
+  },
   // {
   //   path: '/',
   //   name: 'index',

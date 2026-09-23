@@ -6,6 +6,7 @@ import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.vo.FacilityOptionVO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @Description: 市政配套项目 Mapper
@@ -41,4 +42,22 @@ public interface FacilityMapper extends BaseMapper<Facility> {
 
     /** 该宗地下的配套项目数量 */
     long countByCrzdbh(@Param("crzdbh") String crzdbh);
+
+    /** 首页配套总览。 */
+    Map<String, Object> selectDashboardOverview();
+
+    /** 首页各行政区待落实配套宗地排行，按市级/区级分开。 */
+    List<Map<String, Object>> selectDashboardRanks();
+
+    /** 市级/区级项目预警。 */
+    List<Map<String, Object>> selectWarningByProjectType(@Param("xmfl") String xmfl);
+
+    /** 区级项目按旧系统 xzqh2 列出的全部行政区。 */
+    List<Map<String, Object>> selectDistrictGroups();
+
+    /** 地块预警。 */
+    List<Map<String, Object>> selectLandWarnings();
+
+    /** 某个行政区下未完成的配套项目。 */
+    List<Facility> selectWarningDetails(@Param("xmfl") String xmfl, @Param("xzqh") String xzqh);
 }

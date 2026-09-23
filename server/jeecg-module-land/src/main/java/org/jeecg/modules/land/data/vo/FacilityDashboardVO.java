@@ -1,4 +1,4 @@
-package org.jeecg.modules.land.supportingfacilities.vo;
+package org.jeecg.modules.land.data.vo;
 
 import lombok.Data;
 
@@ -11,7 +11,7 @@ import java.util.Map;
 
 /** 配套设施首页统计与预警。 */
 @Data
-public class SupportingFacilitiesDashboardVO implements Serializable {
+public class FacilityDashboardVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
@@ -28,6 +28,7 @@ public class SupportingFacilitiesDashboardVO implements Serializable {
     @Data
     public static class RankItem implements Serializable {
         private static final long serialVersionUID = 1L;
+        private String projectType;
         private String name;
         private long value;
         private long completedCount;
@@ -38,6 +39,9 @@ public class SupportingFacilitiesDashboardVO implements Serializable {
         private static final long serialVersionUID = 1L;
         private String id;
         private String district;
+        private boolean unreported;
+        private String landNo;
+        private String plotName;
         private BigDecimal landAcquisition = BigDecimal.ZERO;
         private BigDecimal feasibility = BigDecimal.ZERO;
         private BigDecimal preliminaryDesign = BigDecimal.ZERO;

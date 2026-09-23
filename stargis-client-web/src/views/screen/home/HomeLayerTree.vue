@@ -94,7 +94,6 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-import { demoLayerTree } from '../mock'
 
 export default {
   name: 'HomeLayerTree',
@@ -102,14 +101,9 @@ export default {
     return {
       hf,
       keyword: '',
-      /** 当前选中的图层节点（高保真默认选中第二个「一级子级」） */
-      activeId: 'l1-1',
-      /**
-       * 高保真底稿里「一级子级」的展开三角指向右侧（收起态）却仍然展示了子级，
-       * 属 Axure 静态渲染的不一致。这里默认展开 level 0 / 1，
-       * 保证三角方向与可见的子级一致（内容与设计稿完全相同）。
-       */
-      nodes: demoLayerTree.map((node) => ({ ...node, expanded: node.level <= 1 })),
+      /** 当前选中的图层节点。图层清单尚未接入接口，没有数据时为空。 */
+      activeId: '',
+      nodes: [],
     }
   },
   computed: {

@@ -46,21 +46,22 @@
 
       <!-- 数据表 -->
       <div class="home-attr__table">
-        <img class="home-attr__head-bg" :src="hf.attrHead" alt="" aria-hidden="true" />
-        <img class="home-attr__body-bg" :src="hf.attrBody" alt="" aria-hidden="true" />
-
-        <span
-          v-for="col in columns"
-          :key="col.key"
-          class="home-attr__th"
-          :style="col.style"
-        >{{ col.title }}</span>
+        <div class="home-attr__head">
+          <img class="home-attr__head-bg" :src="hf.attrHead" alt="" aria-hidden="true" />
+          <span
+            v-for="col in columns"
+            :key="col.key"
+            class="home-attr__th"
+            :style="col.style"
+          >{{ col.title }}</span>
+        </div>
+        <div class="home-attr__rows">
+          <img class="home-attr__body-bg" :src="hf.attrBody" alt="" aria-hidden="true" />
 
         <div
           v-for="(row, index) in rows"
           :key="row.id"
           class="home-attr__tr"
-          :style="{ top: `${48 + index * 46}px` }"
         >
           <img
             v-if="index % 2 === 0"
@@ -69,15 +70,13 @@
             alt=""
             aria-hidden="true"
           />
-          <span class="home-attr__td" :style="cellStyle('index')">{{ index + 1 }}</span>
-          <span class="home-attr__td" :style="cellStyle('district')">{{ row.district }}</span>
-          <span class="home-attr__td" :style="cellStyle('landAcquisition')">{{ percent(row.landAcquisition) }}</span>
-          <span class="home-attr__td" :style="cellStyle('feasibility')">{{ percent(row.feasibility) }}</span>
-          <span class="home-attr__td" :style="cellStyle('preliminaryDesign')">{{ percent(row.preliminaryDesign) }}</span>
-          <span class="home-attr__td" :style="cellStyle('fund')">{{ percent(row.fund) }}</span>
-          <span class="home-attr__td" :style="cellStyle('notStarted')">{{ percent(row.notStarted) }}</span>
-          <span class="home-attr__td" :style="cellStyle('notCompleted')">{{ percent(row.notCompleted) }}</span>
-          <span class="home-attr__td" :style="cellStyle('notHandedOver')">{{ percent(row.notHandedOver) }}</span>
+          <span
+            v-for="col in dataColumns"
+            :key="col.key"
+            class="home-attr__td"
+            :style="cellStyle(col.key)"
+            :title="cellText(row, index, col.key)"
+          >{{ cellText(row, index, col.key) }}</span>
           <img
             class="home-attr__action"
             :src="hf.actionView"
@@ -87,6 +86,7 @@
             @click="$emit('row-action', row)"
             @keydown.enter.prevent="$emit('row-action', row)"
           />
+        </div>
         </div>
 
         <p v-if="!rows.length" class="home-attr__empty">
@@ -117,7 +117,6 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 import { warningTabs } from '../config'
-import { demoWarningData } from '../mock'
 
 /**
  * 列横向位置。
@@ -140,8 +139,14 @@ const COL_LEFT = {
 /** 「操作」列靠右锚定：设计稿 x=895、图标/文字宽约 28，即距表右边界 37px */
 const ACTION_RIGHT = DESIGN_TABLE_WIDTH - 895 - 28
 
-const COL_PCT = Object.keys(COL_LEFT).reduce((acc, key) => {
+const COL_KEYS = Object.keys(COL_LEFT)
+const COL_PCT = COL_KEYS.reduce((acc, key) => {
   acc[key] = `${((COL_LEFT[key] / DESIGN_TABLE_WIDTH) * 100).toFixed(4)}%`
+  return acc
+}, {})
+const COL_WIDTH = COL_KEYS.reduce((acc, key, index) => {
+  const next = index === COL_KEYS.length - 1 ? 890 : COL_LEFT[COL_KEYS[index + 1]]
+  acc[key] = `${(((next - COL_LEFT[key] - 12) / DESIGN_TABLE_WIDTH) * 100).toFixed(4)}%`
   return acc
 }, {})
 
@@ -165,7 +170,7 @@ export default {
     /** 页签（默认取 config.js，与接口无关） */
     tabs: { type: Array, default: () => warningTabs },
     /** 预警数据：{ city: [...], district: [...] }，字段见 config.js 的 warningFields */
-    data: { type: Object, default: () => demoWarningData },
+    data: { type: Object, default: () => ({ city: [], district: [], plot: [] }) },
     /** 接口加载态 */
     loading: { type: Boolean, default: false },
     /** 点击后开弹窗的页签 key（不切换面板内容） */
@@ -192,11 +197,19 @@ export default {
     rows () {
       return (this.data && this.data[this.activeTab]) || []
     },
+    dataColumns () {
+      return this.columns.filter((col) => col.key !== 'action')
+    },
   },
   methods: {
     /** 单元格定位：与表头同一套列位置 */
     cellStyle (key) {
-      return { left: COL_PCT[key] }
+      return { left: COL_PCT[key], width: COL_WIDTH[key] }
+    },
+    cellText (row, index, key) {
+      if (key === 'index') return String(index + 1)
+      if (key === 'district') return row.district
+      return this.percent(row, row[key])
     },
     /**
      * 高保真只有两个页签（x=603 / 778，步进 175，宽 160）。保留原有
@@ -216,7 +229,8 @@ export default {
       }
       this.activeTab = tab.key
     },
-    percent (value) {
+    percent (row, value) {
+      if (row && row.unreported) return '未填报配套项目信息'
       return `${Number(value).toFixed(2)}%`
     },
   },
@@ -327,6 +341,26 @@ export default {
     right: 20px;
     top: 63px;
     height: 232px;
+    overflow: hidden;
+  }
+
+  &__rows {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 48px;
+    bottom: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  &__head {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 36px;
+    z-index: 2;
   }
 
   &__head-bg {
@@ -344,7 +378,7 @@ export default {
   &__body-bg {
     position: absolute;
     left: 0;
-    top: 48px;
+    top: 0;
     // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
     width: 100%;
     height: 183px;
@@ -362,8 +396,7 @@ export default {
   }
 
   &__tr {
-    position: absolute;
-    left: 0;
+    position: relative;
     width: 100%;
     height: 46px;
 
@@ -399,7 +432,9 @@ export default {
     font-size: 14px;
     line-height: 14px;
     color: #66afd4;
+    overflow: hidden;
     white-space: nowrap;
+    text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
   }
 

@@ -342,11 +342,11 @@ ck:
       # 中台数据库信息，目前中台无法通过接口修改用户部门（中台本身bug），所以需要在中台数据库中修改用户部门
       # 不配置本节时：直连通道不装配，保存涉及"改机构"的用户会被明确拦截并提示（不会静默不一致）
       db-info:
-        host: 127.0.0.1
+        host: 49.232.252.56
         port: 3306
         username: root
         password: Chen0809@mysql
-        database: stargis_zk
+        database: tj_jyxyd_zk
         # 可选（省略即用默认值）：
         # url: jdbc:mysql://127.0.0.1:3306/stargis_zk?useSSL=false   # 配了它则忽略上面的 host/port/database
         # connect-timeout: 5000                                      # 连接超时（毫秒）

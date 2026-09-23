@@ -71,7 +71,7 @@
   /**
    * 出让宗地 → 配套项目 两级联动选择器
    *
-   * 需求约定：「项目来自 t_supporting_facilities」，且要先选宗地再联动选项目
+   * 需求约定：「项目来自 xj_kjkfb_supporting_facilities」，且要先选宗地再联动选项目
    * （宗地表 t_land 由 nutzwk_ywk.xj_kjkfb_commercial_land 迁移而来，
    *  配套表按 crzdbh 与宗地关联，实测关联率 95.8%）。
    *

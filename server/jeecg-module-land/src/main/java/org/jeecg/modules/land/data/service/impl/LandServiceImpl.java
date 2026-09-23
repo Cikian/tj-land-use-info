@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
+import org.apache.shiro.SecurityUtils;
+import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.mapper.LandMapper;
 import org.jeecg.modules.land.data.service.ILandService;
@@ -12,6 +15,7 @@ import org.jeecg.modules.land.data.vo.LandDashboardVO;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +89,7 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         List<LandDashboardVO.RankItem> ranks = new ArrayList<>();
         for (Map<String, Object> row : baseMapper.selectDashboardRanks()) {
             LandDashboardVO.RankItem item = new LandDashboardVO.RankItem();
+            item.setProjectType(valueOf(row, "projectType"));
             item.setName(valueOf(row, "name"));
             item.setValue(toLong(row, "value"));
             item.setRoadCount(toLong(row, "roadCount"));
@@ -92,6 +97,56 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         }
         result.setRanks(ranks);
         return result;
+    }
+
+    @Override
+    public void createLand(Land land) {
+        if (land == null || StringUtils.isBlank(land.getCrzdbh())) {
+            throw new JeecgBootException("出让宗地编号不能为空");
+        }
+        land.setCrzdbh(land.getCrzdbh().trim());
+        if (queryByCrzdbh(land.getCrzdbh()) != null) {
+            throw new JeecgBootException("创建失败！当前出让宗地编号已创建!");
+        }
+        land.setId(null);
+        land.setDelFlag(0);
+        land.setCreateBy(currentUsername());
+        land.setCreateTime(new Date());
+        save(land);
+    }
+
+    @Override
+    public void updateLand(Land land) {
+        if (land == null || StringUtils.isBlank(land.getId())) {
+            throw new JeecgBootException("宗地主键不能为空");
+        }
+        if (StringUtils.isBlank(land.getCrzdbh())) {
+            throw new JeecgBootException("出让宗地编号不能为空");
+        }
+        Land current = queryById(land.getId());
+        if (current == null) {
+            throw new JeecgBootException("未找到对应的出让宗地");
+        }
+        land.setCrzdbh(land.getCrzdbh().trim());
+        Land duplicated = queryByCrzdbh(land.getCrzdbh());
+        if (duplicated != null && !duplicated.getId().equals(land.getId())) {
+            throw new JeecgBootException("出让宗地编号不能重复");
+        }
+        land.setUpdateBy(currentUsername());
+        land.setUpdateTime(new Date());
+        updateById(land);
+    }
+
+    private static String currentUsername() {
+        try {
+            Object principal = SecurityUtils.getSubject().getPrincipal();
+            if (principal instanceof LoginUser) {
+                return ((LoginUser) principal).getUsername();
+            }
+        } catch (Exception ignored) {
+            // 未登录场景不阻断写入，审计字段留空
+        }
+        return null;
     }
 
     private static String trimToNull(String value) {

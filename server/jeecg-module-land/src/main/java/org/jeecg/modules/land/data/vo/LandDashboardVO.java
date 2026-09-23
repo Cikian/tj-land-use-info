@@ -21,6 +21,7 @@ public class LandDashboardVO implements Serializable {
     @Data
     public static class RankItem implements Serializable {
         private static final long serialVersionUID = 1L;
+        private String projectType;
         private String name;
         private long value;
         private long roadCount;

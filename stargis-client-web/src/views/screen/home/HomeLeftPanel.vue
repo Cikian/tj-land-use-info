@@ -143,7 +143,6 @@
               :key="index"
               class="home-left__tr"
               :class="{ 'is-alt': index % 2 === 0, 'is-total': row.isTotal }"
-              :style="{ top: `${index * 46}px` }"
             >
               <img
                 v-if="index % 2 === 0"
@@ -169,7 +168,6 @@
               v-for="(item, index) in rankRows"
               :key="item.name"
               class="home-left__rank-row"
-              :style="{ top: `${index * 46}px` }"
             >
               <img
                 v-if="index % 2 === 0"
@@ -194,7 +192,6 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-import { demoLeftPanel } from '../mock'
 
 /** 表头 / 单元格的横向偏移（取自高保真 CSS 的 left 值） */
 const TH_OFFSET = { index: 14, name: 52, plots: 186, roads: 283 }
@@ -206,9 +203,9 @@ export default {
   props: {
     /**
      * 面板数据（出让情况 / 落实配套情况 两个页签）。
-     * 默认用高保真兜底数据；接口可用时由页面传入实时数据。
+     * 只使用接口返回的数据，没有数据时为空。
      */
-    panel: { type: Object, default: () => demoLeftPanel },
+    panel: { type: Object, default: () => ({}) },
     /** 各区出让排行 / 各区配套落实（切换到「排行」视图时展示） */
     transferRank: { type: Array, default: () => [] },
     supportingRank: { type: Array, default: () => [] },
@@ -219,18 +216,24 @@ export default {
     return {
       hf,
       TH_OFFSET,
-      activeTab: this.panel.tabs[0].key,
+      activeTab: (this.panel.tabs && this.panel.tabs[0] && this.panel.tabs[0].key) || 'transfer',
       /** 与 split 双卡一一对应：city = 市级，district = 区级 */
-      activeSplit: this.panel.transfer.split[0].key,
+      activeSplit: 'city',
       viewMode: 'table',
     }
   },
   computed: {
     current () {
-      return this.panel[this.activeTab] || this.panel.transfer
+      return this.panel[this.activeTab] || this.panel.transfer || {
+        stat: { label: '', value: 0, unit: '宗' },
+        split: [],
+        columns: [],
+        tables: { city: { rows: [], total: null }, district: { rows: [], total: null } },
+      }
     },
     table () {
-      return this.current.tables[this.activeSplit] || this.current.tables.city
+      const tables = this.current.tables || {}
+      return tables[this.activeSplit] || tables.city || { rows: [], total: null }
     },
     /** 明细表行（补上序号，并把合计行单独标记） */
     tableRows () {
@@ -252,7 +255,7 @@ export default {
   watch: {
     activeTab () {
       // 切页签时把「市级 / 区级」重置回该页签的第一张卡，避免残留上一个页签的选择
-      this.activeSplit = this.current.split[0].key
+      this.activeSplit = (this.current.split[0] && this.current.split[0].key) || 'city'
     },
   },
   methods: {
@@ -603,6 +606,17 @@ export default {
     right: 0;
     top: 46px;
     bottom: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  &__table {
+    .home-left__tr:last-child {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      background: rgba(5, 24, 48, 0.96);
+    }
   }
 
   &__table-bg {
@@ -629,8 +643,7 @@ export default {
 
   &__tr,
   &__rank-row {
-    position: absolute;
-    left: 0;
+    position: relative;
     width: 100%;
     height: 46px;
   }

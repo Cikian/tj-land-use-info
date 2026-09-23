@@ -18,8 +18,8 @@
 
     数据来源：
       loadDashboard() 并发拉取 LandDashboardVO（宗地）与
-      SupportingFacilitiesDashboardVO（配套），成功后覆盖 ./mock.js 的兜底演示数据；
-      接口不可用时保留兜底数据，保证没有业务后端时界面仍按设计稿完整呈现。
+      FacilityDashboardVO（配套）。没有数据或接口失败时对应区域保持空白，
+      不使用设计稿演示数据。
   -->
   <screen-stage :max-scale="4" @resize="handleStageResize">
     <!-- 真实地图（真实像素层） -->
@@ -56,6 +56,9 @@
       :default-tab="archiveTab"
     />
 
+    <!-- ===== 数据管理：只保留左侧菜单和地图，点击菜单项再弹窗 ===== -->
+    <data-screen v-else-if="activeMenu === 'data'" />
+
     <!-- ===== 首页工作台 ===== -->
     <template v-else>
       <home-left-panel
@@ -69,7 +72,6 @@
         :tabs="warningTabs"
         :data="warningData"
         :loading="dashboardLoading"
-        @open-plot-warning="plotVisible = true"
         @row-action="handleAttrAction"
       />
 
@@ -79,6 +81,11 @@
         @close="plotVisible = false"
         @row-action="handleAttrAction"
       />
+      <home-plot-modal
+        v-if="warningDetailVisible"
+        :data="warningDetail"
+        @close="warningDetailVisible = false"
+      />
     </template>
   </screen-stage>
 </template>
@@ -86,30 +93,56 @@
 <script>
 import S3dmViewer from '@/views/maps/S3dmViewer.vue'
 import ArchiveScreen from './archive/index.vue'
+import DataScreen from './data/index.vue'
 import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
 import HomePlotModal from './home/HomePlotModal.vue'
-import { ScreenStage, ScreenHeader } from '@/components/screen'
+import { ScreenHeader, ScreenStage } from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
-import { queryFacilityDashboard, queryLandDashboard } from '@/api/land/landData'
+import { queryFacilityDashboard, queryLandDashboard, queryWarningDetail } from '@/api/land/landData'
 
 import { headerMenus, systemTitle, warningTabs } from './config'
-import {
-  demoLeftPanel,
-  demoPlotWarning,
-  demoSupportingRank,
-  demoTransferRank,
-  demoWarningData,
-} from './mock'
+
+function emptyPanelSection (cube, label) {
+  return {
+    cube,
+    stat: { label, value: 0, unit: '宗' },
+    split: [
+      { key: 'city', label: '市级', value: 0, unit: '宗', percent: 0, tone: 'green' },
+      { key: 'district', label: '区级', value: 0, unit: '宗', percent: 0, tone: 'cyan' },
+    ],
+    columns: PANEL_COLUMNS,
+    tables: {
+      city: { rows: [], total: { name: '合计', plots: 0, roads: 0 } },
+      district: { rows: [], total: { name: '合计', plots: 0, roads: 0 } },
+    },
+  }
+}
+
+function emptyLeftPanel () {
+  return {
+    tabs: [
+      { key: 'transfer', label: '出让情况' },
+      { key: 'support', label: '落实配套情况' },
+    ],
+    transfer: emptyPanelSection('a', '已出让土地总数'),
+    support: emptyPanelSection('b', '需要落实配套'),
+  }
+}
+
+function emptyPlotWarning () {
+  return { title: '地块预警信息', total: 0, rows: [] }
+}
 
 /**
  * 已经实现为大屏子页面的菜单项：
  *   home    首页工作台
  *   archive 档案管理（整页模块，「收发文」是它内部的一个页签，不占一级菜单）
+ *   data    数据管理（经营性用地添加 / 查询）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive']
+const IMPLEMENTED_MENUS = ['home', 'archive', 'data']
 
 /** 档案页允许直接落到某个页签：/screen/archive?tab=doc */
 const ARCHIVE_TABS = ['maintain', 'query', 'statistics', 'doc', 'category']
@@ -130,17 +163,59 @@ function toNumber (value) {
   return Number(value || 0)
 }
 
+function percentText (value) {
+  return `${toNumber(value)}%`
+}
+
+function rankTable (ranks, roadKey, plotTotal) {
+  const rows = ranks.map((item) => ({
+    name: item.name,
+    plots: toNumber(item.value),
+    roads: toNumber(item[roadKey]),
+  }))
+  return {
+    rows,
+    total: {
+      name: '合计',
+      plots: plotTotal,
+      roads: rows.reduce((sum, item) => sum + item.roads, 0),
+    },
+  }
+}
+
+function toPlotWarning (rows) {
+  const list = rows || []
+  return {
+    title: '地块预警信息',
+    total: list.length,
+    rows: list.map((item) => ({
+      id: item.id,
+      district: item.district,
+      landNo: item.landNo,
+      plotName: item.plotName,
+      landAcquisition: percentText(item.landAcquisition),
+      feasibility: percentText(item.feasibility),
+      preliminaryDesign: percentText(item.preliminaryDesign),
+      fund: percentText(item.fund),
+      notStarted: percentText(item.notStarted),
+      notCompleted: percentText(item.notCompleted),
+      notHandedOver: percentText(item.notHandedOver),
+    })),
+  }
+}
+
 export default {
   name: 'LandUseScreen',
   components: {
     S3dmViewer,
     ArchiveScreen,
+    DataScreen,
     HomeLeftPanel,
     HomeLayerTree,
     HomeAttrPanel,
     HomePlotModal,
-    ScreenStage,
     ScreenHeader,
+    ScreenStage,
   },
   data () {
     const routeQuery = (this.$route && this.$route.query) || {}
@@ -152,6 +227,8 @@ export default {
     let initialMenu = 'home'
     if (routePath.indexOf('/screen/archive') > -1 || routeQuery.menu === 'archive') {
       initialMenu = 'archive'
+    } else if (routePath.indexOf('/screen/data') > -1 || routeQuery.menu === 'data') {
+      initialMenu = 'data'
     } else if (routeQuery.menu && IMPLEMENTED_MENUS.indexOf(routeQuery.menu) > -1) {
       initialMenu = routeQuery.menu
     }
@@ -179,13 +256,14 @@ export default {
       /** 档案页初始页签（?tab=doc 之类的深链） */
       archiveTab: initialArchiveTab,
 
-      // 先铺兜底演示数据，接口成功后再整段覆盖
-      leftPanel: demoLeftPanel,
-      transferRank: demoTransferRank,
-      supportingRank: demoSupportingRank,
-      warningData: demoWarningData,
+      leftPanel: emptyLeftPanel(),
+      transferRank: [],
+      supportingRank: [],
+      warningData: { city: [], district: [], plot: [] },
       warningTabs,
-      plotWarning: demoPlotWarning,
+      plotWarning: emptyPlotWarning(),
+      warningDetailVisible: false,
+      warningDetail: { title: '预警详情', total: 0, rows: [] },
 
       /** 地块预警信息弹窗 */
       plotVisible: false,
@@ -201,7 +279,7 @@ export default {
     this.loadDashboard()
   },
   methods: {
-    /** 并发拉取宗地与配套两个看板；任一失败都保留兜底数据并提示 */
+    /** 并发拉取宗地与配套两个看板；失败或没有数据时对应区域保持空白 */
     loadDashboard () {
       this.dashboardLoading = true
       return Promise.all([queryLandDashboard(), queryFacilityDashboard()])
@@ -209,16 +287,27 @@ export default {
           if (landResponse && landResponse.success) {
             this.applyLandDashboard(landResponse.result || {})
           } else {
+            this.leftPanel = Object.assign({}, this.leftPanel, { transfer: emptyPanelSection('a', '已出让土地总数') })
+            this.transferRank = []
             this.$screenToast.error((landResponse && landResponse.message) || '宗地统计加载失败')
           }
           if (facilityResponse && facilityResponse.success) {
             this.applyFacilityDashboard(facilityResponse.result || {})
           } else {
+            this.leftPanel = Object.assign({}, this.leftPanel, { support: emptyPanelSection('b', '需要落实配套') })
+            this.supportingRank = []
+            this.warningData = { city: [], district: [], plot: [] }
+            this.plotWarning = emptyPlotWarning()
             this.$screenToast.error((facilityResponse && facilityResponse.message) || '配套统计加载失败')
           }
         })
         .catch((error) => {
-          this.$screenToast.error((error && error.message) || '首页数据加载失败，已显示演示数据')
+          this.leftPanel = emptyLeftPanel()
+          this.transferRank = []
+          this.supportingRank = []
+          this.warningData = { city: [], district: [], plot: [] }
+          this.plotWarning = emptyPlotWarning()
+          this.$screenToast.error((error && error.message) || '首页数据加载失败')
         })
         .finally(() => {
           this.dashboardLoading = false
@@ -227,16 +316,15 @@ export default {
 
     /**
      * 宗地统计 → 左面板「出让情况」。
-     * ⚠ 后端 ranks 是「行政区划维度」的汇总（对应设计稿的市级子表）；
-     *   街镇维度的区级子表后端暂未提供，因此区级子表留空并由面板显示「暂无数据」，
-     *   不用市级数据顶替（避免展示口径错误）。后端补充分级明细后只需改这里。
+     * ranks 带 projectType：市级项目进市级子表，区级项目进区级子表。
      */
     applyLandDashboard (data) {
       const total = toNumber(data.total)
       const city = toNumber(data.cityCount)
       const district = toNumber(data.districtCount)
-      const roadTotal = toNumber(data.roadCount)
       const ranks = data.ranks || []
+      const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
+      const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
 
       this.leftPanel = Object.assign({}, this.leftPanel, {
         transfer: {
@@ -248,18 +336,8 @@ export default {
           ],
           columns: PANEL_COLUMNS,
           tables: {
-            city: {
-              rows: ranks.map((item) => ({
-                name: item.name,
-                plots: toNumber(item.value),
-                roads: toNumber(item.roadCount),
-              })),
-              total: { name: '合计', plots: city, roads: roadTotal },
-            },
-            district: {
-              rows: [],
-              total: { name: '合计', plots: district, roads: 0 },
-            },
+            city: rankTable(cityRanks, 'roadCount', city),
+            district: rankTable(districtRanks, 'roadCount', district),
           },
         },
       })
@@ -276,6 +354,8 @@ export default {
       const city = toNumber(data.cityLandCount)
       const district = toNumber(data.districtLandCount)
       const ranks = data.ranks || []
+      const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
+      const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
 
       this.leftPanel = Object.assign({}, this.leftPanel, {
         support: {
@@ -287,25 +367,15 @@ export default {
           ],
           columns: PANEL_COLUMNS,
           tables: {
-            city: {
-              rows: ranks.map((item) => ({
-                name: item.name,
-                plots: toNumber(item.value),
-                roads: toNumber(item.completedCount),
-              })),
-              total: { name: '合计', plots: city, roads: ranks.reduce((sum, item) => sum + toNumber(item.completedCount), 0) },
-            },
-            district: {
-              rows: [],
-              total: { name: '合计', plots: district, roads: 0 },
-            },
+            city: rankTable(cityRanks, 'completedCount', city),
+            district: rankTable(districtRanks, 'completedCount', district),
           },
         },
       })
 
       this.supportingRank = ranks.map((item) => ({ name: item.name, value: toNumber(item.value) }))
       this.warningData = Object.assign({ city: [], district: [], plot: [] }, data.warnings || {})
-      // 地块预警弹窗沿用兜底数据（后端暂无该粒度明细）
+      this.plotWarning = toPlotWarning(data.warnings && data.warnings.plot)
     },
 
     handleStageResize (scale) {
@@ -321,8 +391,9 @@ export default {
       // 所以这里的 activeMenu 不会被 data() 覆盖掉）。
       if (
         key !== 'archive' &&
+        key !== 'data' &&
         this.$route &&
-        this.$route.path.indexOf('/screen/archive') > -1 &&
+        (this.$route.path.indexOf('/screen/archive') > -1 || this.$route.path.indexOf('/screen/data') > -1) &&
         this.$router &&
         this.$router.replace
       ) {
@@ -347,7 +418,46 @@ export default {
     },
 
     handleAttrAction (row) {
-      this.$screenToast.info(`查看「${row.district}」预警详情`)
+      this.warningDetail = {
+        title: `${row.district || ''}地块预警信息`,
+        total: 0,
+        rows: [],
+      }
+      this.warningDetailVisible = true
+      queryWarningDetail({ projectType: this.warningActiveType(row), district: row.district })
+        .then((response) => {
+          if (!response || !response.success) {
+            this.$screenToast.error((response && response.message) || '预警详情加载失败')
+            return
+          }
+          const rows = response.result || []
+          this.warningDetail = {
+            title: `${row.district || ''}地块预警信息`,
+            total: rows.length,
+            rows: rows.map((item) => ({
+              id: item.id,
+              landNo: item.crzdbh,
+              plotName: item.dkmc,
+              projectName: item.ptxmmc,
+              landAcquisition: item.xjpfsfwc,
+              feasibility: item.kypfsfwc,
+              preliminaryDesign: item.csjgspfsfwc,
+              fund: item.zjlsqk,
+              notStarted: item.sfkg,
+              notCompleted: item.sfjg,
+              notHandedOver: item.sfyj,
+            })),
+          }
+        })
+        .catch((error) => {
+          this.$screenToast.error((error && error.message) || '预警详情加载失败')
+        })
+    },
+
+    warningActiveType (row) {
+      const id = String((row && row.id) || '')
+      if (id.indexOf('区级项目') === 0) return 'district'
+      return 'city'
     },
   },
 }

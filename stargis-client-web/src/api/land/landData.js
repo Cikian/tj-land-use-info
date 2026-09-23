@@ -1,4 +1,4 @@
-import { javaGetAction } from '@/api/manageJava'
+import { javaDeleteAction, javaGetAction, javaPostAction, javaPutAction } from '@/api/manageJava'
 
 /**
  * 数据管理 · 宗地 / 配套项目 基础查询接口
@@ -11,7 +11,7 @@ import { javaGetAction } from '@/api/manageJava'
  *
  * 用途：档案管理与收发文管理的「两级联动下拉」——
  *   第一步 选出让宗地（t_land）
- *   第二步 联动选该宗地下的配套项目（t_supporting_facilities）
+ *   第二步 联动选该宗地下的配套项目（xj_kjkfb_supporting_facilities）
  *
  * 与 admin-client/src/api/land/landData.js 一一对应（共用同一套后端）。
  */
@@ -23,7 +23,12 @@ export const landDataUrl = {
   facilitySearch: '/land/data/facility/search',
   facilityById: '/land/data/facility/queryById',
   landDashboard: '/land/data/dashboard',
-  facilityDashboard: '/land/supporting-facilities/dashboard'
+  facilityDashboard: '/land/data/facility/dashboard',
+  warningDetail: '/land/data/facility/warning/detail',
+  landList: '/land/data/land/list',
+  landAdd: '/land/data/land/add',
+  landEdit: '/land/data/land/edit',
+  landDelete: '/land/data/land/delete'
 }
 
 /**
@@ -78,6 +83,31 @@ export function queryFacilityDashboard () {
   return javaGetAction(landDataUrl.facilityDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
 }
 
+/** 首页某个行政区的预警配套明细。 */
+export function queryWarningDetail (params) {
+  return javaGetAction(landDataUrl.warningDetail, params)
+}
+
+/** 经营性用地分页列表。 */
+export function queryLandList (params) {
+  return javaGetAction(landDataUrl.landList, params)
+}
+
+/** 新增经营性用地。出让宗地编号必填且不可重复。 */
+export function addLand (data) {
+  return javaPostAction(landDataUrl.landAdd, data)
+}
+
+/** 编辑经营性用地。 */
+export function editLand (data) {
+  return javaPutAction(landDataUrl.landEdit, data)
+}
+
+/** 删除经营性用地（逻辑删除）。 */
+export function deleteLand (id) {
+  return javaDeleteAction(landDataUrl.landDelete, { id })
+}
+
 export default {
   landDataUrl,
   queryLandOptions,
@@ -87,5 +117,10 @@ export default {
   searchFacilityOptions,
   queryFacilityById,
   queryLandDashboard,
-  queryFacilityDashboard
+  queryFacilityDashboard,
+  queryWarningDetail,
+  queryLandList,
+  addLand,
+  editLand,
+  deleteLand
 }

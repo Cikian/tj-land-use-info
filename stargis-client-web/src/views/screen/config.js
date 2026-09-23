@@ -2,7 +2,7 @@
  * 首页静态展示配置；业务数据由 Java 业务后端实时加载（见 index.vue 的 loadDashboard）。
  *
  * ⚠ 本文件只放「不随接口变化」的常量。
- *   接口不可用时的兜底演示数据在 ./mock.js（高保真设计稿的数字，便于无后端时评审界面）。
+ *   业务数据只来自接口；没有数据时页面保持空白。
  */
 
 /**
@@ -29,17 +29,15 @@ export const systemTitle = '天津市经营性用地市政配套设施动态监�
 
 /**
  * 底部「属性表」的页签。
- * 高保真只有「市级项目预警 / 区级项目预警」两个页签；
- * 「地块预警信息」是设计稿里的独立浮层，按确认结论保留为第三个页签（点击开弹窗）。
+ * 只有市级项目预警和区级项目预警，没有地块预警。
  */
 export const warningTabs = [
   { key: 'city', label: '市级项目预警' },
   { key: 'district', label: '区级项目预警' },
-  { key: 'plot', label: '地块预警信息' },
 ]
 
 /**
- * 预警行的字段契约（与后端 SupportingFacilitiesDashboardVO.WarningItem 一一对应）。
+ * 预警行的字段契约（与后端 FacilityDashboardVO.WarningItem 一一对应）。
  * 列宽与横坐标属于定尺画布的一部分，写在 home/HomeAttrPanel.vue 的 COL 常量里，
  * 不再放在这里（旧的 warningColumns 是给已下线的 ScreenDataTable 版底部面板用的，已删除）。
  */

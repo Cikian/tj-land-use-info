@@ -28,18 +28,17 @@
       <!-- 表格 -->
       <div class="home-plot__table">
         <img class="home-plot__head" :src="hf.plotTableHead" alt="" aria-hidden="true" />
-        <img class="home-plot__body" :src="hf.plotTableBody" alt="" aria-hidden="true" />
-
         <span
           v-for="col in columns"
           :key="col.key"
           class="home-plot__th"
-          :style="{ left: `${colLeft(col.key)}px` }"
+          :style="{ left: colLeft(col.key) }"
         >{{ col.title }}</span>
+        <img class="home-plot__body" :src="hf.plotTableBody" alt="" aria-hidden="true" />
 
         <div
-          v-for="(row, index) in rows"
-          :key="index"
+          v-for="(row, index) in pageRows"
+          :key="row.id || index"
           class="home-plot__tr"
           :style="{ top: `${118 + index * 46}px` }"
         >
@@ -50,23 +49,13 @@
             alt=""
             aria-hidden="true"
           />
-          <span class="home-plot__td" :style="{ left: `${colLeft('landNo')}px` }">{{ row.landNo }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('plotName')}px` }">{{ row.plotName }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('landAcquisition')}px` }">{{ row.landAcquisition }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('feasibility')}px` }">{{ row.feasibility }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('preliminaryDesign')}px` }">{{ row.preliminaryDesign }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('fund')}px` }">{{ row.fund }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('notStarted')}px` }">{{ row.notStarted }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('notCompleted')}px` }">{{ row.notCompleted }}</span>
-          <span class="home-plot__td" :style="{ left: `${colLeft('notHandedOver')}px` }">{{ row.notHandedOver }}</span>
-          <img
-            class="home-plot__action"
-            :src="hf.actionView"
-            alt="查看"
-            role="button"
-            tabindex="0"
-            @click="$emit('row-action', row)"
-          />
+          <span
+            v-for="col in columns"
+            :key="col.key"
+            class="home-plot__td"
+            :style="cellStyle(col.key)"
+            :title="row[col.key]"
+          >{{ row[col.key] }}</span>
         </div>
       </div>
 
@@ -75,7 +64,7 @@
         <span class="home-plot__pager-total">共{{ data.total }}条信息</span>
         <button type="button" class="home-plot__page is-nav" @click="go(page - 1)">&lt;</button>
         <button
-          v-for="n in 5"
+          v-for="n in pageNumbers"
           :key="n"
           type="button"
           class="home-plot__page"
@@ -101,34 +90,46 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-import { demoPlotWarning } from '../mock'
 
 /** 列横向偏移（取自高保真 CSS 的 left 值，相对弹窗左上角） */
+const TABLE_WIDTH = 1367
 const COL_LEFT = {
-  landNo: 46,
-  plotName: 227,
-  landAcquisition: 493,
-  feasibility: 605,
-  preliminaryDesign: 717,
-  fund: 829,
-  notStarted: 940,
-  notCompleted: 1038,
-  notHandedOver: 1108,
-  action: 1178,
+  landNo: 16,
+  plotName: 180,
+  projectName: 360,
+  landAcquisition: 620,
+  feasibility: 730,
+  preliminaryDesign: 850,
+  fund: 990,
+  notStarted: 1090,
+  notCompleted: 1170,
+  notHandedOver: 1260,
+}
+const COL_WIDTH = {
+  landNo: 150,
+  plotName: 165,
+  projectName: 245,
+  landAcquisition: 95,
+  feasibility: 105,
+  preliminaryDesign: 125,
+  fund: 85,
+  notStarted: 65,
+  notCompleted: 65,
+  notHandedOver: 75,
 }
 
 /** 表头列（高保真底稿把「项建批复未完成」复制了两列，属笔误，这里去重并补「操作」列） */
 const COLUMNS = [
   { key: 'landNo', title: '出让宗地编号' },
   { key: 'plotName', title: '地块名称' },
-  { key: 'landAcquisition', title: '项建批复未完成' },
-  { key: 'feasibility', title: '可研批复未完成' },
-  { key: 'preliminaryDesign', title: '初设及概算批复未完成' },
-  { key: 'fund', title: '资金未落实' },
-  { key: 'notStarted', title: '未开工' },
-  { key: 'notCompleted', title: '未竣工' },
-  { key: 'notHandedOver', title: '未移交' },
-  { key: 'action', title: '操作' },
+  { key: 'projectName', title: '配套项目名称' },
+  { key: 'landAcquisition', title: '项建批复' },
+  { key: 'feasibility', title: '可研批复' },
+  { key: 'preliminaryDesign', title: '初设批复' },
+  { key: 'fund', title: '资金落实' },
+  { key: 'notStarted', title: '开工' },
+  { key: 'notCompleted', title: '竣工' },
+  { key: 'notHandedOver', title: '移交' },
 ]
 
 export default {
@@ -136,9 +137,9 @@ export default {
   props: {
     /**
      * 弹窗数据：{ title, total, rows[] }。
-     * 后端暂未提供「地块预警信息」粒度的明细，默认用高保真兜底数据。
+     * 只使用接口返回的地块预警，没有数据时为空。
      */
-    data: { type: Object, default: () => demoPlotWarning },
+    data: { type: Object, default: () => ({ title: '地块预警信息', total: 0, rows: [] }) },
   },
   data () {
     return {
@@ -153,6 +154,21 @@ export default {
     rows () {
       return (this.data && this.data.rows) || []
     },
+    pageCount () {
+      return Math.max(1, Math.ceil(this.rows.length / this.pageSize))
+    },
+    pageRows () {
+      const start = (this.page - 1) * this.pageSize
+      return this.rows.slice(start, start + this.pageSize)
+    },
+    pageNumbers () {
+      const count = this.pageCount
+      const start = Math.max(1, Math.min(this.page - 2, count - 4))
+      const end = Math.min(count, start + 4)
+      const numbers = []
+      for (let n = start; n <= end; n += 1) numbers.push(n)
+      return numbers
+    },
   },
   mounted () {
     document.addEventListener('keydown', this.handleKey)
@@ -162,11 +178,17 @@ export default {
   },
   methods: {
     colLeft (key) {
-      return COL_LEFT[key]
+      return `${((COL_LEFT[key] / TABLE_WIDTH) * 100).toFixed(4)}%`
+    },
+    cellStyle (key) {
+      return {
+        left: this.colLeft(key),
+        width: `${((COL_WIDTH[key] / TABLE_WIDTH) * 100).toFixed(4)}%`,
+      }
     },
     go (n) {
       if (typeof n !== 'number' || Number.isNaN(n)) return
-      this.page = Math.min(5, Math.max(1, n))
+      this.page = Math.min(this.pageCount, Math.max(1, n))
     },
     handleKey (e) {
       if (e.key === 'Escape') this.$emit('close')
@@ -198,7 +220,7 @@ export default {
   &__dialog {
     // 跟着画布居中，而不是按 1920×1080 写死 left/top
     position: relative;
-    width: 1270px;
+    width: 1420px;
     height: 663px;
   }
 
@@ -206,7 +228,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 1270px;
+    width: 1420px;
     height: 663px;
     display: block;
     pointer-events: none;
@@ -226,7 +248,8 @@ export default {
 
   &__close {
     position: absolute;
-    left: 1235px;
+    right: 21px;
+    left: auto;
     top: 21px;
     width: 14px;
     height: 14px;
@@ -246,27 +269,26 @@ export default {
   /* ---------------- 表格 ---------------- */
   &__table {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 1270px;
-    height: 663px;
-  }
-
-  &__head {
-    position: absolute;
     left: 25px;
     top: 72px;
-    width: 1217px;
-    height: 36px;
+    width: 1367px;
+    overflow: hidden;
+  }
+
+  &__head,
+  &__body {
+    position: relative;
+    left: 0;
     display: block;
+    width: 100%;
     pointer-events: none;
   }
 
+  &__head {
+    height: 36px;
+  }
+
   &__body {
-    position: absolute;
-    left: 25px;
-    top: 118px;
-    width: 1219px;
     height: 457px;
     display: block;
     pointer-events: none;
@@ -274,7 +296,7 @@ export default {
 
   &__th {
     position: absolute;
-    top: 83px;
+    top: 11px;
     font-size: 14px;
     line-height: 14px;
     color: #ffffff;
@@ -283,16 +305,16 @@ export default {
 
   &__tr {
     position: absolute;
-    left: 26px;
-    width: 1219px;
+    left: 0;
+    width: 100%;
     height: 46px;
   }
 
   &__tr-bg {
     position: absolute;
-    left: -1px;
+    left: 0;
     top: 0;
-    width: 1219px;
+    width: 100%;
     height: 46px;
     display: block;
     pointer-events: none;
@@ -304,7 +326,9 @@ export default {
     font-size: 13px;
     line-height: 14px;
     color: #66afd4;
+    overflow: hidden;
     white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   &__action {
