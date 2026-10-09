@@ -102,6 +102,36 @@ export const hf = {
   pagerSize: require('./pager-size.svg'),
   pagerPage: require('./pager-page.svg'),
   pagerCaret: require('./pager-caret.svg'),
+
+  /* ---------- 地图管理页 ----------
+   * 来源：高保真 地图管理.html（images/地图管理/）。
+   * 工具卡片 110×128（普通 / 选中两张底图）+ 68×54 工具图标；
+   * 右侧「拾取查询」面板的当前图层框 / 图层立方体图标 / 字段表头 / 字段表底。
+   */
+  toolCard: require('./tool-card.png'),
+  toolCardActive: require('./tool-card-active.png'),
+  toolPick: require('./tool-pick.png'),
+  toolLocateName: require('./tool-locate-name.png'),
+  toolLocateRoad: require('./tool-locate-road.png'),
+  toolQuerySpatial: require('./tool-query-spatial.png'),
+  toolQueryAttr: require('./tool-query-attr.png'),
+  toolQueryCombined: require('./tool-query-combined.png'),
+  toolStatistics: require('./tool-statistics.png'),
+  toolMeasureLine: require('./tool-measure-line.png'),
+  toolMeasureHorizontal: require('./tool-measure-horizontal.png'),
+  toolMeasureVertical: require('./tool-measure-vertical.png'),
+  toolMeasureArea: require('./tool-measure-area.png'),
+  toolBookmark: require('./tool-bookmark.png'),
+  toolTour: require('./tool-tour.png'),
+  toolHdExport: require('./tool-hd-export.png'),
+  toolTerrainHeight: require('./tool-terrain-height.png'),
+  toolUnderground: require('./tool-underground.png'),
+  toolLayers: require('./tool-layers.png'),
+  toolTerrainAlpha: require('./tool-terrain-alpha.png'),
+  pickLayerBox: require('./pick-layer-box.png'),
+  pickLayerIcon: require('./pick-layer-icon.png'),
+  pickTableHead: require('./pick-table-head.png'),
+  pickTableBody: require('./pick-table-body.png'),
 }
 
 export default hf

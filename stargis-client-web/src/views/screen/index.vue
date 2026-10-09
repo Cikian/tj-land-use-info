@@ -15,6 +15,7 @@
         ├─ 底部     HomeAttrPanel（属性表，市级 / 区级 / 地块预警信息）
         └─ 浮层     HomePlotModal（地块预警信息弹窗）
       档案管理 / 收发文 作为整页模块覆盖在画布正文区
+      地图管理 作为静态页面叠在画布上（地图保持可交互）
 
     数据来源：
       loadDashboard() 并发拉取 LandDashboardVO（宗地）与
@@ -35,7 +36,7 @@
 
     <!-- ===== 顶栏 ===== -->
     <!--
-      时钟只在首页显示：高保真里时钟位于 (477,115)，落在中间的地图留白区；
+      时钟只在首页 / 地图管理显示：高保真里时钟位于 (477,115)，落在中间的地图留白区；
       档案管理 / 收发文是整页模块，横向铺满后会和时钟重叠，因此隐藏。
     -->
     <screen-header
@@ -44,7 +45,7 @@
       :active-menu="activeMenu"
       :user-name="user.name"
       :online="user.online"
-      :show-clock="activeMenu === 'home'"
+      :show-clock="activeMenu === 'home' || activeMenu === 'map'"
       @menu-change="handleMenuChange"
       @logout="handleLogout"
     />
@@ -78,6 +79,13 @@
       class="land-screen__module stage-hit"
       :default-tab="reviewTab"
     />
+
+    <!--
+      ===== 地图管理：静态页面（左工具箱 + 右拾取查询 + 底部属性条） =====
+      ★ 与数据管理同理**不加 stage-hit**：地图管理页地图必须保持可交互，
+        容器 pointer-events: none，各面板自行开启。
+    -->
+    <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" />
 
     <!-- ===== 首页工作台 ===== -->
     <template v-else>
@@ -115,6 +123,7 @@ import S3dmViewer from '@/views/maps/S3dmViewer.vue'
 import ArchiveScreen from './archive/index.vue'
 import DataScreen from './data/index.vue'
 import EscalationScreen from './escalation/index.vue'
+import MapScreen from './map/index.vue'
 import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
@@ -163,9 +172,10 @@ function emptyPlotWarning () {
  *   archive 档案管理（整页模块，「收发文」是它内部的一个页签，不占一级菜单）
  *   data    数据管理（经营性用地添加 / 查询）
  *   review  提级论证管理（整页模块：项目录入 / 查询统计 / 资料及台账管理 / 提级论证审批）
+ *   map     地图管理（静态页面：左工具箱 / 右拾取查询 / 底部属性条，工具未接功能）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review']
+const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map']
 
 /** 档案页允许直接落到某个页签：/screen/archive?tab=doc
  *  ledger / handover / completion = 方案 2.3.2 第 7 / 6 / 8 项（道路验收移交台账、
@@ -251,6 +261,7 @@ export default {
     ArchiveScreen,
     DataScreen,
     EscalationScreen,
+    MapScreen,
     HomeLeftPanel,
     HomeLayerTree,
     HomeAttrPanel,
