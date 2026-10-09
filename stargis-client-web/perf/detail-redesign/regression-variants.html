@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ScreenDescriptions 生产等效渲染</title>
+<style>
+:root{
+  --screen-panel-bg:rgba(8,22,42,.92); --screen-panel-bg-solid:#08182e;
+  --screen-row-alt:rgba(55,132,215,.08);
+  --screen-border:rgba(55,132,215,.32); --screen-border-soft:rgba(55,132,215,.18);
+  --screen-border-strong:rgba(130,198,255,.62);
+  --screen-accent:#82c6ff; --screen-accent-soft:#66afd4; --screen-accent-deep:#1d335d;
+  --screen-text:#fff; --screen-text-sub:#66afd4; --screen-text-mute:#4a7396;
+  --screen-radius-sm:3px; --screen-radius:4px; --screen-radius-pill:999px;
+  --screen-space-1:4px; --screen-space-2:8px; --screen-space-3:12px; --screen-space-4:16px;
+  --screen-font-xs:12px; --screen-font-sm:13px; --screen-font-md:14px;
+  --screen-font-family:'Source Han Sans SC','PingFang SC','Microsoft YaHei',-apple-system,sans-serif;
+  --screen-font-number-family:var(--screen-font-family);
+}
+*{box-sizing:border-box}
+body{margin:0;padding:20px;background:#04091a;color:var(--screen-text);font-family:var(--screen-font-family)}
+h3{font:12px sans-serif;color:#82c6ff;margin:20px 0 8px}
+h3:first-child{margin-top:0}
+.card{padding:12px 16px 8px;background:rgba(8,22,42,.92);border:1px solid var(--screen-border-soft);border-radius:4px}
+.screen-descriptions[data-v-7ba5bd90] {
+  --sd-cols: var(--sd-input-cols, 3);
+  --sd-label-max: 160px;
+  --sd-row-pad: var(--screen-space-2);
+  --sd-gutter: var(--screen-space-3);
+  --sd-pair-gap: var(--screen-space-2);
+  display: grid;
+  grid-template-columns: repeat(var(--sd-cols), minmax(0, 1fr));
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+}.screen-descriptions__item[data-v-7ba5bd90] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  min-width: 0;
+  padding: 0 var(--sd-gutter) 0 0;
+  border-bottom: 1px solid var(--screen-border-soft);
+}.screen-descriptions__item.is-row-end[data-v-7ba5bd90] {
+  border-bottom-color: transparent;
+}.screen-descriptions__label[data-v-7ba5bd90] {
+  min-width: 0;
+  max-width: var(--sd-label-max);
+  margin: 0;
+  padding: var(--sd-row-pad) 0;
+  font-size: var(--screen-font-xs);
+  font-weight: 400;
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text-mute);
+  background: transparent;
+  border: 0;
+}.screen-descriptions__label-text[data-v-7ba5bd90] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}.screen-descriptions__value[data-v-7ba5bd90] {
+  min-width: 0;
+  margin: 0;
+  padding: var(--sd-row-pad) 0 var(--sd-row-pad) var(--sd-pair-gap);
+  font-size: var(--screen-font-sm);
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text);
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}.screen-descriptions__value.is-empty[data-v-7ba5bd90] {
+  color: var(--screen-text-mute);
+}.screen-descriptions__value.is-number[data-v-7ba5bd90] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+}.screen-descriptions__value.is-accent[data-v-7ba5bd90] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+  color: var(--screen-accent);
+}.screen-descriptions.is-plain .screen-descriptions__item[data-v-7ba5bd90] {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: var(--screen-space-1);
+}.screen-descriptions.is-plain .screen-descriptions__label[data-v-7ba5bd90] {
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}.screen-descriptions.is-plain .screen-descriptions__value[data-v-7ba5bd90] {
+  padding: 0;
+  border: 0;
+}.screen-descriptions.is-flat[data-v-7ba5bd90] {
+  --sd-row-pad: 5px;
+  --sd-line-h: 18px;
+}.screen-descriptions.is-flat .screen-descriptions__label[data-v-7ba5bd90] {
+  line-height: var(--sd-line-h);
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-flat .screen-descriptions__value[data-v-7ba5bd90] {
+  font-size: var(--screen-font-xs);
+  line-height: var(--sd-line-h);
+}.screen-descriptions__item.is-stack[data-v-7ba5bd90] {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: 2px;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label[data-v-7ba5bd90] {
+  max-width: none;
+  padding: 0;
+  line-height: 16px;
+  background: transparent;
+  border: 0;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label > .screen-descriptions__label-text[data-v-7ba5bd90] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}.screen-descriptions__item.is-stack > .screen-descriptions__value[data-v-7ba5bd90] {
+  padding: 0 0 var(--screen-space-2);
+  line-height: 19px;
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}.screen-descriptions.is-sm[data-v-7ba5bd90] {
+  --sd-row-pad: 3px;
+}.screen-descriptions.is-sm .screen-descriptions__label[data-v-7ba5bd90] {
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-sm .screen-descriptions__value[data-v-7ba5bd90] {
+  font-size: var(--screen-font-xs);
+}
+@media (max-width: 1200px) {.screen-descriptions[data-v-7ba5bd90] {
+    --sd-cols: 2;
+  }
+}
+@media (max-width: 900px) {.screen-descriptions[data-v-7ba5bd90] {
+    --sd-cols: 1;
+  }
+}
+</style></head>
+<body>
+<h3>A. flat + columns=4（提级论证 / 档案详情用）—— 也就是出问题的那种</h3><div class="card"><dl class="screen-descriptions is-md is-flat" data-v-7ba5bd90 style="--sd-input-cols:4;--sd-label-w:112px">
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>档案号</span></dt><dd class="screen-descriptions__value is-accent" data-v-7ba5bd90>DA-2025-0001</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>档案类型</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>电子档案</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>密级</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>一般</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>保管期限</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>永久</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>档案年度</span></dt><dd class="screen-descriptions__value is-number" data-v-7ba5bd90>2025</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>归档日期</span></dt><dd class="screen-descriptions__value is-number" data-v-7ba5bd90>2025-09-19</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>责任部门</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>滨海新区住建委</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>配套负责人</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>管理员</dd></div>
+      <div class="screen-descriptions__item is-stack" data-v-7ba5bd90><dt class="screen-descriptions__label is-stack" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>档案名称</span></dt><dd class="screen-descriptions__value is-stack" data-v-7ba5bd90>滨海新区智慧产业园项目档案</dd></div>
+      <div class="screen-descriptions__item is-stack is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label is-stack" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>档案类别</span></dt><dd class="screen-descriptions__value is-stack" data-v-7ba5bd90>项目立项文件、规划许可文件、施工许可文件</dd></div>
+  </dl></div>
+<h3>B. flat + columns=3 + 空值（论证结果与办理状态）</h3><div class="card"><dl class="screen-descriptions is-md is-flat" data-v-7ba5bd90 style="--sd-input-cols:3;--sd-label-w:112px">
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>办理状态</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>未办理</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>论证结果</span></dt><dd class="screen-descriptions__value is-empty" data-v-7ba5bd90>—</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>论证组织单位</span></dt><dd class="screen-descriptions__value is-empty" data-v-7ba5bd90>—</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>材料数 / 意见记录数</span></dt><dd class="screen-descriptions__value is-number" data-v-7ba5bd90>2 个 / 0 条</dd></div>
+  </dl></div>
+<h3>C. bordered 默认（其余页面在用）+ columns=3</h3><div class="card"><dl class="screen-descriptions is-md is-bordered" data-v-7ba5bd90 style="--sd-input-cols:3;--sd-label-w:96px">
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>类别名称</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>项目立项文件</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>类别编码</span></dt><dd class="screen-descriptions__value is-accent" data-v-7ba5bd90>CAT-001</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>状态</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>启用</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>排序号</span></dt><dd class="screen-descriptions__value is-number" data-v-7ba5bd90>3</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>子类别数</span></dt><dd class="screen-descriptions__value is-number" data-v-7ba5bd90>2</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>是否末级</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>否</dd></div>
+      <div class="screen-descriptions__item is-stack" data-v-7ba5bd90><dt class="screen-descriptions__label is-stack" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>完整路径</span></dt><dd class="screen-descriptions__value is-stack" data-v-7ba5bd90>项目档案 / 项目立项文件 / 可行性研究报告</dd></div>
+      <div class="screen-descriptions__item is-stack is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label is-stack" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>备注</span></dt><dd class="screen-descriptions__value is-stack" data-v-7ba5bd90>本级及以下子类别均可挂接卷内文件。</dd></div>
+  </dl></div>
+<h3>D. bordered + size=sm（审批页）+ columns=2</h3><div class="card"><dl class="screen-descriptions is-sm is-bordered" data-v-7ba5bd90 style="--sd-input-cols:2;--sd-label-w:104px">
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>项目编号</span></dt><dd class="screen-descriptions__value is-accent" data-v-7ba5bd90>TJ-2026-DEMO01</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>项目名称</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>滨海新区智慧产业园项目</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>办理状态</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>未办理</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>论证结果</span></dt><dd class="screen-descriptions__value is-empty" data-v-7ba5bd90>—</dd></div>
+  </dl></div>
+<h3>E. plain（bordered=false 历史写法）+ columns=3</h3><div class="card"><dl class="screen-descriptions is-md is-plain" data-v-7ba5bd90 style="--sd-input-cols:3;--sd-label-w:96px">
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>字段 A</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>值 A</dd></div>
+      <div class="screen-descriptions__item" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>字段 B</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>值 B</dd></div>
+      <div class="screen-descriptions__item is-row-end" data-v-7ba5bd90><dt class="screen-descriptions__label" data-v-7ba5bd90><span class="screen-descriptions__label-text" data-v-7ba5bd90>字段 C</span></dt><dd class="screen-descriptions__value" data-v-7ba5bd90>值 C</dd></div>
+  </dl></div>
+<pre id="probe" style="font:11px/1.7 monospace;color:#ffe597;white-space:pre;margin-top:18px"></pre>
+<script>
+window.addEventListener('load', function () {
+  var out = []
+  Array.prototype.forEach.call(document.querySelectorAll('.screen-descriptions'), function (dl, i) {
+    var it = dl.querySelector('.screen-descriptions__item')
+    var dt = it.querySelector('.screen-descriptions__label')
+    var dd = it.querySelector('.screen-descriptions__value')
+    function b (el) { var r = el.getBoundingClientRect(); return r.width.toFixed(0) + 'x' + r.height.toFixed(0) + '@x' + r.left.toFixed(0) }
+    out.push('#' + i + ' dl=[' + getComputedStyle(dl).gridTemplateColumns + ']')
+    out.push('    item display=' + getComputedStyle(it).display + '  item=' + b(it) +
+      '  dt=' + b(dt) + '  dd=' + b(dd) + '  ddLines=' + Math.round(dd.getBoundingClientRect().height / 18))
+    var st = dl.querySelector('.screen-descriptions__item.is-stack')
+    if (st) {
+      var sdt = st.querySelector('.screen-descriptions__label')
+      out.push('    stack item=' + b(st) + '  dt=' + b(sdt) + '  dd=' + b(st.querySelector('.screen-descriptions__value')))
+    }
+  })
+  document.getElementById('probe').textContent = out.join(String.fromCharCode(10))
+})
+</script>
+</body></html>

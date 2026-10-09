@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>详情页改版 · 前后对比</title>
+<style>
+  :root { --ink:#e6f1ff; --muted:#8fb6d9; --line:rgba(130,198,255,.28); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 28px 48px;
+    font-family: 'Source Han Sans CN','PingFang SC','Microsoft YaHei',-apple-system,sans-serif;
+    color: var(--ink);
+    background: radial-gradient(1200px 600px at 50% -10%, rgba(55,132,215,.18), transparent 70%), #04091a;
+  }
+  h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  p.lead { margin: 0 0 24px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 28px; }
+  figure { margin: 0; }
+  figcaption {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 10px; font-size: 13px; font-weight: 600;
+  }
+  figcaption .tag {
+    padding: 1px 8px; font-size: 11px; font-weight: 400; line-height: 17px;
+    border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+  }
+  figcaption .tag.is-bad { color: #f5a524; border-color: rgba(245,165,36,.45); }
+  figcaption .tag.is-good { color: #43e972; border-color: rgba(67,233,114,.45); }
+  figcaption .note { font-size: 12px; font-weight: 400; color: var(--muted); }
+  img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; }
+  .divider { height: 1px; background: var(--line); margin: 4px 0 24px; }
+  ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; color: var(--muted); line-height: 1.9; }
+  code { color: #c7e8ff; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>档案管理 / 提级论证管理 · 详情页改版对比</h1>
+  <p class="lead">
+    同一批数据、同一套设计令牌（<code>screen-tokens.less</code>），只改版式。
+    改前数据取自你给的截图；改后为按组件真实 CSS 结构的 1:1 复现（1912×1100）。
+  </p>
+
+  <div class="grid">
+    <figure>
+      <figcaption>
+        <span class="tag is-bad">改前 · 原始版面</span>
+        <span>提级论证项目详情</span>
+        <span class="note">
+          描述格有标签底色 + 每格描边（表格式噪声）；长值把整行撑高；分组卡内边距 16px；
+          3 列排布把右半边留空
+        </span>
+      </figcaption>
+      <img src="user-original.png" alt="改前的提级论证项目详情">
+    </figure>
+
+    <div class="divider"></div>
+
+    <figure>
+      <figcaption>
+        <span class="tag is-bad">中途出错的样子（已修掉）</span>
+        <span>标签一行、值一行</span>
+        <span class="note">
+          第一版改版把单元格做成 <code>display:contents</code>，一旦它没生效，
+          <code>dt</code>/<code>dd</code> 就退化成两个块级子元素，整页变成这种超高版面。
+          现在单元格自包含，不再依赖 <code>display:contents</code>
+        </span>
+      </figcaption>
+      <img src="user-broken.png" alt="改版中途出错的版面">
+    </figure>
+
+    <div class="divider"></div>
+
+    <figure>
+      <figcaption>
+        <span class="tag is-good">改后</span>
+        <span>提级论证项目详情</span>
+        <span class="note">
+          去标签底色与竖线，只留 1px 行分隔线；短字段 4 列等宽铺满，长文本 <code>stack</code> 独占整行；
+          行高 31px；分组卡内边距 16px → 12px
+        </span>
+      </figcaption>
+      <img src="final-escalation.png" alt="改后的提级论证项目详情">
+    </figure>
+
+    <div class="divider"></div>
+
+    <figure>
+      <figcaption>
+        <span class="tag is-good">改后</span>
+        <span>档案详情 · 基本信息</span>
+        <span class="note">
+          「档案属性」作为正文独占整行 4 列；「关联项目 / 其他信息」并排在下，
+          <code>align-items: start</code> 让两列各自收口、不互相拉伸留白
+        </span>
+      </figcaption>
+      <img src="final-archive.png" alt="改后的档案详情基本信息">
+    </figure>
+
+    <div class="divider"></div>
+
+    <figure>
+      <figcaption>
+        <span class="tag">回归</span>
+        <span>ScreenDescriptions 五种组合</span>
+        <span class="note">
+          flat×4列 / flat×3列+空值 / bordered（默认，其余页面在用）/ bordered+sm / plain，
+          用真实编译出来的 scoped CSS 逐个验证未回归
+        </span>
+      </figcaption>
+      <img src="regression-variants.png" alt="ScreenDescriptions 各变体回归对比">
+    </figure>
+  </div>
+</body>
+</html>

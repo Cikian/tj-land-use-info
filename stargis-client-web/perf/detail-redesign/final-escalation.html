@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>项目详情</title>
+<style>:root{
+  --screen-bg:rgba(1,14,17,.72); --screen-panel-bg:rgba(8,22,42,.92); --screen-panel-bg-solid:#08182e;
+  --screen-panel-head-bg:rgba(9,36,66,.85); --screen-row-alt:rgba(55,132,215,.08);
+  --screen-border:rgba(55,132,215,.32); --screen-border-soft:rgba(55,132,215,.18);
+  --screen-border-strong:rgba(130,198,255,.62);
+  --screen-accent:#82c6ff; --screen-accent-soft:#66afd4; --screen-accent-deep:#1d335d; --screen-accent-glow:rgba(130,198,255,.32);
+  --screen-text:#fff; --screen-text-sub:#66afd4; --screen-text-mute:#4a7396;
+  --screen-success:#43e972; --screen-warning:#f5a524; --screen-danger:#f2624c; --screen-info:#55b9ff;
+  --screen-radius-sm:3px; --screen-radius:4px; --screen-radius-lg:6px; --screen-radius-pill:999px;
+  --screen-space-1:4px; --screen-space-2:8px; --screen-space-3:12px; --screen-space-4:16px; --screen-space-5:20px;
+  --screen-font-xs:12px; --screen-font-sm:13px; --screen-font-md:14px; --screen-font-lg:16px; --screen-font-xl:18px;
+  --screen-shadow:0 8px 24px rgba(0,0,0,.45); --screen-shadow-inset:inset 0 0 24px rgba(130,198,255,.06);
+  --screen-blur:12px;
+  --screen-font-family:'Source Han Sans SC','PingFang SC','Microsoft YaHei',-apple-system,sans-serif;
+  --screen-font-number-family:var(--screen-font-family);
+}*{box-sizing:border-box}
+body{margin:0;font-family:var(--screen-font-family);color:var(--screen-text);
+  background:radial-gradient(1200px 600px at 50% -10%,rgba(55,132,215,.18),transparent 70%),#04091a}
+.screen-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--screen-space-5)}
+.screen-modal__dialog{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;
+  background:var(--screen-panel-bg-solid);border:1px solid var(--screen-border);border-radius:var(--screen-radius);
+  box-shadow:0 20px 60px rgba(0,0,0,.55),var(--screen-shadow-inset)}
+.screen-modal__head{display:flex;align-items:center;gap:var(--screen-space-3);flex:0 0 auto;min-height:46px;
+  padding:0 var(--screen-space-4) 0 var(--screen-space-3);background:var(--screen-panel-head-bg);
+  border-bottom:1px solid var(--screen-border-soft)}
+.screen-modal__bar{flex:0 0 auto;width:3px;height:15px;border-radius:var(--screen-radius-pill);
+  background:linear-gradient(180deg,var(--screen-accent) 0%,var(--screen-accent-deep) 100%);box-shadow:0 0 8px var(--screen-accent-glow)}
+.screen-modal__title{margin:0;font-size:var(--screen-font-lg);font-weight:600;letter-spacing:.03em}
+.screen-modal__head-extra{display:flex;align-items:center;gap:var(--screen-space-2);margin-left:auto;min-width:0}
+.screen-modal__body{flex:1 1 auto;min-height:0;padding:var(--screen-space-4);overflow-y:auto}
+.screen-btn{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 10px;font-family:inherit;
+  font-size:var(--screen-font-sm);color:var(--screen-text);background:rgba(6,20,40,.72);
+  border:1px solid var(--screen-border);border-radius:var(--screen-radius-sm)}
+.screen-tag{display:inline-flex;align-items:center;padding:0 6px;font-size:var(--screen-font-xs);line-height:16px;
+  color:var(--screen-accent-soft);background:rgba(130,198,255,.08);border:1px solid var(--screen-border);
+  border-radius:var(--screen-radius-pill);white-space:nowrap}
+.screen-tag.is-muted{color:var(--screen-text-mute);background:var(--screen-row-alt);border-color:var(--screen-border-soft)}
+.screen-tag.is-info{color:var(--screen-info);background:rgba(130,198,255,.08)}
+.screen-tag.is-success{color:var(--screen-success);background:rgba(67,233,114,.1)}
+.screen-tabs{display:flex;gap:var(--screen-space-1)}
+.screen-tabs__item{padding:3px 12px;font-family:inherit;font-size:var(--screen-font-sm);color:var(--screen-text-sub);
+  background:transparent;border:1px solid transparent;border-radius:var(--screen-radius-sm)}
+.screen-tabs__item.is-active{color:var(--screen-accent);background:rgba(130,198,255,.12);border-color:var(--screen-border-strong)}
+/* 页面骨架 */
+.pg{display:flex;flex-direction:column;gap:var(--screen-space-2);min-width:0;height:100%}
+.pg__head{display:flex;align-items:baseline;gap:var(--screen-space-3);flex-wrap:wrap;min-width:0}
+.pg__no{flex:none;font-variant-numeric:tabular-nums;font-size:var(--screen-font-sm);letter-spacing:.02em;color:var(--screen-accent)}
+.pg__name{margin:0;min-width:0;font-size:var(--screen-font-xl);font-weight:600}
+.pg__pane{display:flex;flex-direction:column;gap:var(--screen-space-2);min-width:0}
+.pg__row{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));align-items:start;gap:var(--screen-space-2);min-width:0}
+.pg__block{min-width:0;padding:var(--screen-space-2) var(--screen-space-3) var(--screen-space-1);
+  background:var(--screen-panel-bg);border:1px solid var(--screen-border-soft);border-radius:var(--screen-radius);
+  box-shadow:var(--screen-shadow-inset);-webkit-backdrop-filter:blur(var(--screen-blur));backdrop-filter:blur(var(--screen-blur))}
+.pg__block--tight{--sd-label-max:76px}
+.pg__title{display:flex;align-items:center;gap:var(--screen-space-2);margin:0 0 var(--screen-space-1);
+  font-size:var(--screen-font-sm);font-weight:600;color:var(--screen-text)}
+.pg__title::before{content:'';flex:none;width:3px;height:12px;border-radius:var(--screen-radius-pill);
+  background:linear-gradient(180deg,var(--screen-accent) 0%,var(--screen-accent-deep) 100%)}
+.pg__hint{font-size:var(--screen-font-xs);font-weight:400;color:var(--screen-text-mute)}
+.pg__modalhead{display:flex;align-items:center;gap:var(--screen-space-3);flex:0 0 auto;min-height:46px;
+  padding:0 var(--screen-space-4) 0 var(--screen-space-3);background:var(--screen-panel-head-bg);border-bottom:1px solid var(--screen-border-soft)}.screen-descriptions[data-v-proto01] {
+  --sd-cols: var(--sd-input-cols, 3);
+  --sd-label-max: 160px;
+  --sd-row-pad: var(--screen-space-2);
+  --sd-gutter: var(--screen-space-3);
+  --sd-pair-gap: var(--screen-space-2);
+  display: grid;
+  grid-template-columns: repeat(var(--sd-cols), minmax(0, 1fr));
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+}.screen-descriptions__item[data-v-proto01] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  min-width: 0;
+  padding: 0 var(--sd-gutter) 0 0;
+  border-bottom: 1px solid var(--screen-border-soft);
+}.screen-descriptions__item.is-row-end[data-v-proto01] {
+  border-bottom-color: transparent;
+}.screen-descriptions__label[data-v-proto01] {
+  min-width: 0;
+  max-width: var(--sd-label-max);
+  margin: 0;
+  padding: var(--sd-row-pad) 0;
+  font-size: var(--screen-font-xs);
+  font-weight: 400;
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text-mute);
+  background: transparent;
+  border: 0;
+}.screen-descriptions__label-text[data-v-proto01] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}.screen-descriptions__value[data-v-proto01] {
+  min-width: 0;
+  margin: 0;
+  padding: var(--sd-row-pad) 0 var(--sd-row-pad) var(--sd-pair-gap);
+  font-size: var(--screen-font-sm);
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text);
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}.screen-descriptions__value.is-empty[data-v-proto01] {
+  color: var(--screen-text-mute);
+}.screen-descriptions__value.is-number[data-v-proto01] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+}.screen-descriptions__value.is-accent[data-v-proto01] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+  color: var(--screen-accent);
+}.screen-descriptions.is-plain .screen-descriptions__item[data-v-proto01] {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: var(--screen-space-1);
+}.screen-descriptions.is-plain .screen-descriptions__label[data-v-proto01] {
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}.screen-descriptions.is-plain .screen-descriptions__value[data-v-proto01] {
+  padding: 0;
+  border: 0;
+}.screen-descriptions.is-flat[data-v-proto01] {
+  --sd-row-pad: 5px;
+  --sd-line-h: 18px;
+}.screen-descriptions.is-flat .screen-descriptions__label[data-v-proto01] {
+  line-height: var(--sd-line-h);
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-flat .screen-descriptions__value[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+  line-height: var(--sd-line-h);
+}.screen-descriptions__item.is-stack[data-v-proto01] {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: 2px;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label[data-v-proto01] {
+  max-width: none;
+  padding: 0;
+  line-height: 16px;
+  background: transparent;
+  border: 0;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label > .screen-descriptions__label-text[data-v-proto01] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}.screen-descriptions__item.is-stack > .screen-descriptions__value[data-v-proto01] {
+  padding: 0 0 var(--screen-space-2);
+  line-height: 19px;
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}.screen-descriptions.is-sm[data-v-proto01] {
+  --sd-row-pad: 3px;
+}.screen-descriptions.is-sm .screen-descriptions__label[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-sm .screen-descriptions__value[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+}
+@media (max-width: 1200px) {.screen-descriptions[data-v-proto01] {
+    --sd-cols: 2;
+  }
+}
+@media (max-width: 900px) {.screen-descriptions[data-v-proto01] {
+    --sd-cols: 1;
+  }
+}
+
+</style>
+</head><body>
+<div class="screen-modal">
+  <div class="screen-modal__dialog" data-v-proto01>
+    <header class="screen-modal__head" data-v-proto01>
+      <span class="screen-modal__bar" data-v-proto01></span>
+      <h2 class="screen-modal__title" data-v-proto01>项目详情</h2>
+      <div class="screen-modal__head-extra" data-v-proto01>
+        <span class="screen-tag is-muted" data-v-proto01>未办理</span>
+        <span class="screen-tag is-muted" data-v-proto01>论证结果：未登记</span>
+        <span class="screen-tag is-info" data-v-proto01>2 个材料</span>
+        <span class="screen-tag is-info" data-v-proto01>0 条意见记录</span>
+        <button class="screen-btn" data-v-proto01>编辑</button>
+        <button class="screen-btn" data-v-proto01>打印</button>
+        <button class="screen-btn" data-v-proto01>刷新</button></div>
+    </header>
+    <div class="screen-modal__body" data-v-proto01>
+      <div class="pg" data-v-proto01>
+        <header class="pg__head" data-v-proto01>
+          <span class="pg__no" data-v-proto01>TJ-2026-DEMO01</span>
+          <h3 class="pg__name" data-v-proto01>滨海新区智慧产业园项目</h3>
+        </header>
+        <div class="screen-tabs" data-v-proto01>
+          <button class="screen-tabs__item is-active" data-v-proto01>基本信息</button>
+          <button class="screen-tabs__item" data-v-proto01>提级论证材料</button>
+          <button class="screen-tabs__item" data-v-proto01>审核意见记录</button>
+        </div>
+        <div class="pg__pane" data-v-proto01>
+          <section class="pg__block" data-v-proto01>
+            <h4 class="pg__title" data-v-proto01>项目基本信息<span class="pg__hint" data-v-proto01>项目维度，共 9 项</span></h4>
+            <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:2;--sd-label-max:96px" data-cols="2">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="项目编号"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目编号</span></dt><dd class="screen-descriptions__value is-accent" data-v-proto01>TJ-2026-DEMO01</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="项目类型"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目类型</span></dt><dd class="screen-descriptions__value" data-v-proto01>产业类</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="申报单位"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>申报单位</span></dt><dd class="screen-descriptions__value" data-v-proto01>滨海新区发展和改革局</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="申报时间"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>申报时间</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>2026-09-10</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="项目规模"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目规模</span></dt><dd class="screen-descriptions__value" data-v-proto01>总建筑面积 18.6 万㎡</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="总投资（亿元）"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>总投资（亿元）</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>12.8</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="项目名称"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目名称</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>滨海新区智慧产业园项目</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="建设地点"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>建设地点</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>高新区创新大道 88 号</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="项目概述"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目概述</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>项目拟建设高新技术产业基地，主要包括研发办公楼、生产车间、配套设施等，旨在打造集研发、生产、孵化于一体的高新技术产业集聚区。</dd></div>
+      </dl>
+          </section>
+          <section class="pg__block" data-v-proto01>
+            <h4 class="pg__title" data-v-proto01>关联地块信息（选填）<span class="pg__hint" data-v-proto01>论证对象是项目，地块信息仅作上下文</span></h4>
+            <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:3;--sd-label-max:96px" data-cols="3">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="行政区划"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>行政区划</span></dt><dd class="screen-descriptions__value" data-v-proto01>滨海新区</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="功能区"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>功能区</span></dt><dd class="screen-descriptions__value" data-v-proto01>高新区</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="规划用地性质"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>规划用地性质</span></dt><dd class="screen-descriptions__value" data-v-proto01>工业用地</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="是否土地整理项目"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>是否土地整理项目</span></dt><dd class="screen-descriptions__value" data-v-proto01>否</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="地块面积（㎡）"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>地块面积（㎡）</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>62800</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="关联出让宗地编号"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>关联出让宗地编号</span></dt><dd class="screen-descriptions__value is-accent" data-v-proto01>津滨高（挂）2018-17</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="地块名称"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>地块名称</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>高新区创新大道 88 号地块</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="关联配套项目"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>关联配套项目</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>海缘东路道路、排水、照明工程</dd></div>
+      </dl>
+          </section>
+          <section class="pg__block" data-v-proto01>
+            <h4 class="pg__title" data-v-proto01>提级论证信息<span class="pg__hint" data-v-proto01>长文本逐条展示，两列并排</span></h4>
+            <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:2;--sd-label-max:96px" data-cols="2">
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="提级论证事由"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>提级论证事由</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>项目总投资 12.8 亿元，超出滨海新区自行审批权限，需报市发展改革委提级论证。</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="提级论证依据"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>提级论证依据</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>《天津市政府投资项目管理办法》第十七条；《滨海新区重点项目管理实施细则》第九条。</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="必要性说明"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>必要性说明</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>项目建成后可承接高新区 30 余家高新技术企业入驻，年产值预计 25 亿元。</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="可行性说明"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>可行性说明</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>用地已取得出让合同，周边道路、排水、照明配套工程已进入实施阶段。</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="论证事项内容"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>论证事项内容</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>建设规模、投资估算、资金来源、建设时序、配套条件落实情况。</dd></div>
+      </dl>
+          </section>
+          <section class="pg__block" data-v-proto01>
+            <h4 class="pg__title" data-v-proto01>论证结果与办理状态<span class="pg__hint" data-v-proto01>流程在线下办理，以下为人工登记</span></h4>
+            <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:2;--sd-label-max:120px" data-cols="2">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="办理状态"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>办理状态</span></dt><dd class="screen-descriptions__value" data-v-proto01><span class="screen-tag is-muted" data-v-proto01>未办理</span></dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="论证结果"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>论证结果</span></dt><dd class="screen-descriptions__value is-empty" data-v-proto01>—</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="论证组织单位"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>论证组织单位</span></dt><dd class="screen-descriptions__value is-empty" data-v-proto01>—</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="论证会日期"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>论证会日期</span></dt><dd class="screen-descriptions__value is-empty" data-v-proto01>—</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="论证完成日期"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>论证完成日期</span></dt><dd class="screen-descriptions__value is-empty" data-v-proto01>—</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="材料数 / 意见记录数"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>材料数 / 意见记录数</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>2 个 / 0 条</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="创建信息"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>创建信息</span></dt><dd class="screen-descriptions__value" data-v-proto01>系统管理员 · 2026-09-10 09:12</dd></div>
+      </dl>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

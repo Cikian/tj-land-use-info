@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>档案详情</title>
+<style>:root{
+  --screen-bg:rgba(1,14,17,.72); --screen-panel-bg:rgba(8,22,42,.92); --screen-panel-bg-solid:#08182e;
+  --screen-panel-head-bg:rgba(9,36,66,.85); --screen-row-alt:rgba(55,132,215,.08);
+  --screen-border:rgba(55,132,215,.32); --screen-border-soft:rgba(55,132,215,.18);
+  --screen-border-strong:rgba(130,198,255,.62);
+  --screen-accent:#82c6ff; --screen-accent-soft:#66afd4; --screen-accent-deep:#1d335d; --screen-accent-glow:rgba(130,198,255,.32);
+  --screen-text:#fff; --screen-text-sub:#66afd4; --screen-text-mute:#4a7396;
+  --screen-success:#43e972; --screen-warning:#f5a524; --screen-danger:#f2624c; --screen-info:#55b9ff;
+  --screen-radius-sm:3px; --screen-radius:4px; --screen-radius-lg:6px; --screen-radius-pill:999px;
+  --screen-space-1:4px; --screen-space-2:8px; --screen-space-3:12px; --screen-space-4:16px; --screen-space-5:20px;
+  --screen-font-xs:12px; --screen-font-sm:13px; --screen-font-md:14px; --screen-font-lg:16px; --screen-font-xl:18px;
+  --screen-shadow:0 8px 24px rgba(0,0,0,.45); --screen-shadow-inset:inset 0 0 24px rgba(130,198,255,.06);
+  --screen-blur:12px;
+  --screen-font-family:'Source Han Sans SC','PingFang SC','Microsoft YaHei',-apple-system,sans-serif;
+  --screen-font-number-family:var(--screen-font-family);
+}*{box-sizing:border-box}
+body{margin:0;font-family:var(--screen-font-family);color:var(--screen-text);
+  background:radial-gradient(1200px 600px at 50% -10%,rgba(55,132,215,.18),transparent 70%),#04091a}
+.screen-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:var(--screen-space-5)}
+.screen-modal__dialog{display:flex;flex-direction:column;width:100%;height:100%;min-height:0;
+  background:var(--screen-panel-bg-solid);border:1px solid var(--screen-border);border-radius:var(--screen-radius);
+  box-shadow:0 20px 60px rgba(0,0,0,.55),var(--screen-shadow-inset)}
+.screen-modal__head{display:flex;align-items:center;gap:var(--screen-space-3);flex:0 0 auto;min-height:46px;
+  padding:0 var(--screen-space-4) 0 var(--screen-space-3);background:var(--screen-panel-head-bg);
+  border-bottom:1px solid var(--screen-border-soft)}
+.screen-modal__bar{flex:0 0 auto;width:3px;height:15px;border-radius:var(--screen-radius-pill);
+  background:linear-gradient(180deg,var(--screen-accent) 0%,var(--screen-accent-deep) 100%);box-shadow:0 0 8px var(--screen-accent-glow)}
+.screen-modal__title{margin:0;font-size:var(--screen-font-lg);font-weight:600;letter-spacing:.03em}
+.screen-modal__head-extra{display:flex;align-items:center;gap:var(--screen-space-2);margin-left:auto;min-width:0}
+.screen-modal__body{flex:1 1 auto;min-height:0;padding:var(--screen-space-4);overflow-y:auto}
+.screen-btn{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 10px;font-family:inherit;
+  font-size:var(--screen-font-sm);color:var(--screen-text);background:rgba(6,20,40,.72);
+  border:1px solid var(--screen-border);border-radius:var(--screen-radius-sm)}
+.screen-tag{display:inline-flex;align-items:center;padding:0 6px;font-size:var(--screen-font-xs);line-height:16px;
+  color:var(--screen-accent-soft);background:rgba(130,198,255,.08);border:1px solid var(--screen-border);
+  border-radius:var(--screen-radius-pill);white-space:nowrap}
+.screen-tag.is-muted{color:var(--screen-text-mute);background:var(--screen-row-alt);border-color:var(--screen-border-soft)}
+.screen-tag.is-info{color:var(--screen-info);background:rgba(130,198,255,.08)}
+.screen-tag.is-success{color:var(--screen-success);background:rgba(67,233,114,.1)}
+.screen-tabs{display:flex;gap:var(--screen-space-1)}
+.screen-tabs__item{padding:3px 12px;font-family:inherit;font-size:var(--screen-font-sm);color:var(--screen-text-sub);
+  background:transparent;border:1px solid transparent;border-radius:var(--screen-radius-sm)}
+.screen-tabs__item.is-active{color:var(--screen-accent);background:rgba(130,198,255,.12);border-color:var(--screen-border-strong)}
+/* 页面骨架 */
+.pg{display:flex;flex-direction:column;gap:var(--screen-space-2);min-width:0;height:100%}
+.pg__head{display:flex;align-items:baseline;gap:var(--screen-space-3);flex-wrap:wrap;min-width:0}
+.pg__no{flex:none;font-variant-numeric:tabular-nums;font-size:var(--screen-font-sm);letter-spacing:.02em;color:var(--screen-accent)}
+.pg__name{margin:0;min-width:0;font-size:var(--screen-font-xl);font-weight:600}
+.pg__pane{display:flex;flex-direction:column;gap:var(--screen-space-2);min-width:0}
+.pg__row{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));align-items:start;gap:var(--screen-space-2);min-width:0}
+.pg__block{min-width:0;padding:var(--screen-space-2) var(--screen-space-3) var(--screen-space-1);
+  background:var(--screen-panel-bg);border:1px solid var(--screen-border-soft);border-radius:var(--screen-radius);
+  box-shadow:var(--screen-shadow-inset);-webkit-backdrop-filter:blur(var(--screen-blur));backdrop-filter:blur(var(--screen-blur))}
+.pg__block--tight{--sd-label-max:76px}
+.pg__title{display:flex;align-items:center;gap:var(--screen-space-2);margin:0 0 var(--screen-space-1);
+  font-size:var(--screen-font-sm);font-weight:600;color:var(--screen-text)}
+.pg__title::before{content:'';flex:none;width:3px;height:12px;border-radius:var(--screen-radius-pill);
+  background:linear-gradient(180deg,var(--screen-accent) 0%,var(--screen-accent-deep) 100%)}
+.pg__hint{font-size:var(--screen-font-xs);font-weight:400;color:var(--screen-text-mute)}
+.pg__modalhead{display:flex;align-items:center;gap:var(--screen-space-3);flex:0 0 auto;min-height:46px;
+  padding:0 var(--screen-space-4) 0 var(--screen-space-3);background:var(--screen-panel-head-bg);border-bottom:1px solid var(--screen-border-soft)}.screen-descriptions[data-v-proto01] {
+  --sd-cols: var(--sd-input-cols, 3);
+  --sd-label-max: 160px;
+  --sd-row-pad: var(--screen-space-2);
+  --sd-gutter: var(--screen-space-3);
+  --sd-pair-gap: var(--screen-space-2);
+  display: grid;
+  grid-template-columns: repeat(var(--sd-cols), minmax(0, 1fr));
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+}.screen-descriptions__item[data-v-proto01] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  min-width: 0;
+  padding: 0 var(--sd-gutter) 0 0;
+  border-bottom: 1px solid var(--screen-border-soft);
+}.screen-descriptions__item.is-row-end[data-v-proto01] {
+  border-bottom-color: transparent;
+}.screen-descriptions__label[data-v-proto01] {
+  min-width: 0;
+  max-width: var(--sd-label-max);
+  margin: 0;
+  padding: var(--sd-row-pad) 0;
+  font-size: var(--screen-font-xs);
+  font-weight: 400;
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text-mute);
+  background: transparent;
+  border: 0;
+}.screen-descriptions__label-text[data-v-proto01] {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}.screen-descriptions__value[data-v-proto01] {
+  min-width: 0;
+  margin: 0;
+  padding: var(--sd-row-pad) 0 var(--sd-row-pad) var(--sd-pair-gap);
+  font-size: var(--screen-font-sm);
+  line-height: var(--sd-line-h, 18px);
+  color: var(--screen-text);
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}.screen-descriptions__value.is-empty[data-v-proto01] {
+  color: var(--screen-text-mute);
+}.screen-descriptions__value.is-number[data-v-proto01] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+}.screen-descriptions__value.is-accent[data-v-proto01] {
+  font-family: var(--screen-font-number-family);
+  font-variant-numeric: tabular-nums;
+  color: var(--screen-accent);
+}.screen-descriptions.is-plain .screen-descriptions__item[data-v-proto01] {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: var(--screen-space-1);
+}.screen-descriptions.is-plain .screen-descriptions__label[data-v-proto01] {
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}.screen-descriptions.is-plain .screen-descriptions__value[data-v-proto01] {
+  padding: 0;
+  border: 0;
+}.screen-descriptions.is-flat[data-v-proto01] {
+  --sd-row-pad: 5px;
+  --sd-line-h: 18px;
+}.screen-descriptions.is-flat .screen-descriptions__label[data-v-proto01] {
+  line-height: var(--sd-line-h);
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-flat .screen-descriptions__value[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+  line-height: var(--sd-line-h);
+}.screen-descriptions__item.is-stack[data-v-proto01] {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  row-gap: 2px;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label[data-v-proto01] {
+  max-width: none;
+  padding: 0;
+  line-height: 16px;
+  background: transparent;
+  border: 0;
+}.screen-descriptions__item.is-stack > .screen-descriptions__label > .screen-descriptions__label-text[data-v-proto01] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}.screen-descriptions__item.is-stack > .screen-descriptions__value[data-v-proto01] {
+  padding: 0 0 var(--screen-space-2);
+  line-height: 19px;
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}.screen-descriptions.is-sm[data-v-proto01] {
+  --sd-row-pad: 3px;
+}.screen-descriptions.is-sm .screen-descriptions__label[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+}.screen-descriptions.is-sm .screen-descriptions__value[data-v-proto01] {
+  font-size: var(--screen-font-xs);
+}
+@media (max-width: 1200px) {.screen-descriptions[data-v-proto01] {
+    --sd-cols: 2;
+  }
+}
+@media (max-width: 900px) {.screen-descriptions[data-v-proto01] {
+    --sd-cols: 1;
+  }
+}
+
+</style>
+</head><body>
+<div class="screen-modal">
+  <div class="screen-modal__dialog" data-v-proto01>
+    <header class="screen-modal__head" data-v-proto01>
+      <span class="screen-modal__bar" data-v-proto01></span>
+      <h2 class="screen-modal__title" data-v-proto01>档案详情</h2>
+      <div class="screen-modal__head-extra" data-v-proto01>
+        <span class="screen-tag is-success" data-v-proto01>已归档</span>
+        <span class="screen-tag is-muted" data-v-proto01>项目档案</span>
+        <span class="screen-tag is-muted" data-v-proto01>密级：内部</span>
+        <span class="screen-tag is-info" data-v-proto01>6 个卷内文件</span>
+        <button class="screen-btn" data-v-proto01>编辑</button>
+        <button class="screen-btn" data-v-proto01>导出该项目档案</button></div>
+    </header>
+    <div class="screen-modal__body" data-v-proto01>
+      <div class="pg" data-v-proto01>
+        <header class="pg__head" data-v-proto01 style="padding-bottom:8px;border-bottom:1px solid var(--screen-border-soft)">
+          <span class="pg__no" data-v-proto01 style="font-size:16px;font-weight:600">DA-2026-BH-0007</span>
+          <h3 class="pg__name" data-v-proto01 style="font-size:16px">滨海新区智慧产业园项目档案</h3>
+        </header>
+        <div class="screen-tabs" data-v-proto01>
+          <button class="screen-tabs__item is-active" data-v-proto01>基本信息</button>
+          <button class="screen-tabs__item" data-v-proto01>档案文件</button>
+          <button class="screen-tabs__item" data-v-proto01>收发文情况</button>
+          <button class="screen-tabs__item" data-v-proto01>操作记录</button>
+        </div>
+        <div class="pg__pane" data-v-proto01>
+          <section class="pg__block" data-v-proto01>
+            <h4 class="pg__title" data-v-proto01>档案属性<span class="pg__hint" data-v-proto01>档案本体信息，共 12 项</span></h4>
+            <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:2;--sd-label-max:96px" data-cols="2">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="档案号"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案号</span></dt><dd class="screen-descriptions__value is-accent" data-v-proto01>DA-2026-BH-0007</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="档案类型"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案类型</span></dt><dd class="screen-descriptions__value" data-v-proto01>项目档案</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="密级"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>密级</span></dt><dd class="screen-descriptions__value" data-v-proto01>内部</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="保管期限"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>保管期限</span></dt><dd class="screen-descriptions__value" data-v-proto01>永久</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="档案年度"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案年度</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>2026</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="归档日期"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>归档日期</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>2026-09-12</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="责任部门"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>责任部门</span></dt><dd class="screen-descriptions__value" data-v-proto01>滨海新区住建委</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="配套负责人"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>配套负责人</span></dt><dd class="screen-descriptions__value" data-v-proto01>张伟</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="档案状态"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案状态</span></dt><dd class="screen-descriptions__value" data-v-proto01>已归档</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="卷内文件"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>卷内文件</span></dt><dd class="screen-descriptions__value is-number" data-v-proto01>6 个 · 12.4 MB</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="档案名称"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案名称</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>滨海新区智慧产业园项目档案</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="档案类别"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>档案类别</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>项目立项文件、规划许可文件、施工许可文件</dd></div>
+      </dl>
+          </section>
+          <div class="pg__row" data-v-proto01>
+            <section class="pg__block pg__block--tight" data-v-proto01>
+              <h4 class="pg__title" data-v-proto01>关联项目</h4>
+              <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:3;--sd-label-max:76px" data-cols="3">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="出让宗地编号"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>出让宗地编号</span></dt><dd class="screen-descriptions__value is-accent" data-v-proto01>津滨高（挂）2018-17</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="所属行政区"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>所属行政区</span></dt><dd class="screen-descriptions__value" data-v-proto01>滨海新区</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="配套设施类别"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>配套设施类别</span></dt><dd class="screen-descriptions__value" data-v-proto01>道路、排水、照明</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="项目来源"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>项目来源</span></dt><dd class="screen-descriptions__value" data-v-proto01>政府投资</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="地块名称"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>地块名称</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>高新区创新大道 88 号地块</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="配套项目"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>配套项目</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>海缘东路道路、排水、照明工程</dd></div>
+      </dl>
+            </section>
+            <section class="pg__block pg__block--tight" data-v-proto01>
+              <h4 class="pg__title" data-v-proto01>其他信息</h4>
+              <dl class="screen-descriptions is-md is-flat" data-v-proto01 style="--sd-input-cols:3;--sd-label-max:76px" data-cols="3">
+        <div class="screen-descriptions__item" data-v-proto01 data-label="创建信息"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>创建信息</span></dt><dd class="screen-descriptions__value" data-v-proto01>系统管理员 · 2026-09-12 10:24</dd></div>
+        <div class="screen-descriptions__item" data-v-proto01 data-label="最后更新"><dt class="screen-descriptions__label" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>最后更新</span></dt><dd class="screen-descriptions__value" data-v-proto01>张伟 · 2026-09-14 09:02</dd></div>
+        <div class="screen-descriptions__item is-stack" data-v-proto01 data-label="备注"><dt class="screen-descriptions__label is-stack" data-v-proto01><span class="screen-descriptions__label-text" data-v-proto01>备注</span></dt><dd class="screen-descriptions__value is-stack" data-v-proto01>纸质原件已移交档案室，电子件与纸质件一致。</dd></div>
+      </dl>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>
