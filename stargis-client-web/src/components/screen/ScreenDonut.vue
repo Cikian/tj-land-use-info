@@ -28,7 +28,7 @@
         <!-- 数据弧 -->
         <g :transform="`rotate(-90 ${center} ${center})`">
           <circle
-            v-for="(seg, index) in segments"
+            v-for="seg in segments"
             :key="seg.key"
             :cx="center"
             :cy="center"

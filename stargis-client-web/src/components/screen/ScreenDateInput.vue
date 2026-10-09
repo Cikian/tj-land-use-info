@@ -9,6 +9,13 @@
       2. Chromium 下 color-scheme: dark 会让面板直接渲染成暗色，无需重绘；
       3. 原生输入自带键盘操作、读屏支持与本地化格式，无障碍成本最低。
 
+     ⚠ 原生日期控件的坑（踩过一次，别再踩）：
+       空值的 <input type="date" / "month"> 会由浏览器**自绘**一段格式提示
+       （yyyy/mm/dd、yyyy年--月），placeholder 属性对它无效；中文占位只能自绘。
+       两者落在同一位置就是「请选择出让时间 / yyyy/mm/dd 叠在一起看不清」。
+       现在由样式的 .is-empty + :focus 两条规则分工：空值未聚焦只显示中文占位，
+       聚焦后交还原生字段（见 <style> 内注释）。
+
     用法：
       // 单选：v-model 为 'YYYY-MM-DD'
       <screen-date-input v-model="form.archiveDate" id="archive-date" placeholder="选择归档日期" />
@@ -40,6 +47,7 @@
       <input
         :id="id || undefined"
         class="screen-date-input__field"
+        :class="{ 'is-empty': !singleValue }"
         :type="inputType"
         :value="singleValue"
         :disabled="disabled"
@@ -73,6 +81,7 @@
         <input
           :id="startId || undefined"
           class="screen-date-input__field"
+          :class="{ 'is-empty': !startValue }"
           type="date"
           :value="startValue"
           :disabled="disabled"
@@ -92,6 +101,7 @@
         <input
           :id="endId || undefined"
           class="screen-date-input__field"
+          :class="{ 'is-empty': !endValue }"
           type="date"
           :value="endValue"
           :disabled="disabled"
@@ -155,12 +165,12 @@ export default {
     /** range 模式开始日期输入框 id */
     startId: { type: String, default: '' },
     /** range 模式结束日期输入框 id */
-    endId: { type: String, default: '' },
+    endId: { type: String, default: '' }
   },
   data () {
     return {
       /** 区间起止顺序非法（begin > end）时置位；仅作视觉与 aria 提示，不阻断事件 */
-      rangeInvalid: false,
+      rangeInvalid: false
     }
   },
   computed: {
@@ -201,7 +211,7 @@ export default {
     },
     endAriaLabel () {
       return this.endPlaceholder || '结束日期'
-    },
+    }
   },
   watch: {
     // 外部把值清空时同步复位校验态，避免红框残留
@@ -209,7 +219,7 @@ export default {
       if (!this.rangeInvalid) return
       const [begin, end] = this.rangeValues
       if (!begin || !end || begin <= end) this.rangeInvalid = false
-    },
+    }
   },
   methods: {
     /** 区间顺序校验：两侧都填了才判非法 */
@@ -241,8 +251,8 @@ export default {
       this.rangeInvalid = false
       this.$emit('input', next)
       this.$emit('change', next, { valid: true })
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -363,9 +373,40 @@ export default {
       color: currentColor;
     }
 
-    // Chromium 在「未选值」时会给表单控件加 :invalid，借此把占位态压暗
-    &:invalid {
-      .screen-placeholder();
+    /* ★ 叠字修复（本组件此前最明显的显示 bug）
+     * ---------------------------------------------------------------
+     * Chromium 对空值的 <input type="date" / "month"> **一定会自绘**一段格式提示
+     * （yyyy/mm/dd、yyyy年--月）：它既不是 placeholder 属性渲染的，也不受
+     * placeholder="…" 影响（实测：写了 placeholder 照样画出格式文案）。
+     * 本组件为了给中文提示，又绝对定位自绘了一只 __placeholder，
+     * 两段文案落在同一位置，就成了「请选择出让时间 / yyyy/mm/dd 叠在一起看不清」。
+     *
+     * 处理分工：
+     *   1. 空值且未聚焦 → 把浏览器自绘的格式文案整段藏掉（透明），只留中文占位；
+     *   2. 聚焦后 → 自绘占位让位（见下面 __field:focus ~ __placeholder 规则），
+     *      交还原生字段显示 —— 键盘录入、上下键切换年/月/日时要看得见焦点在哪。
+     *
+     * 为什么用 Vue 侧的 .is-empty 类而不是 :invalid：
+     *   空值的原生日期控件**不会**命中 :invalid（实测 Edge/Chromium：
+     *   非 required 的空日期输入 matches(':invalid') === false），旧代码的
+     *   `&:invalid { .screen-placeholder() }` 其实从未生效，原生文案一直是亮白，
+     *   和暗蓝占位叠在一起对比极强。这里改用显式类判断，语义确定且跨版本稳定。
+     *
+     * 浏览器范围：隐藏自绘文案依赖 ::-webkit-datetime-edit 伪元素（Chromium / Edge），
+     *   与同文件已有的 ::-webkit-calendar-picker-indicator、color-scheme: dark
+     *   是同一条前提；不支持该伪元素的浏览器里这条规则不生效，表现与修复前一致。 */
+    &.is-empty:not(:focus) {
+      &::-webkit-datetime-edit {
+        color: transparent;
+      }
+
+      &::-webkit-datetime-edit-fields-wrapper,
+      &::-webkit-datetime-edit-text,
+      &::-webkit-datetime-edit-year-field,
+      &::-webkit-datetime-edit-month-field,
+      &::-webkit-datetime-edit-day-field {
+        color: transparent;
+      }
     }
   }
 
@@ -379,6 +420,12 @@ export default {
     pointer-events: none;
     .screen-placeholder();
     .screen-ellipsis();
+  }
+
+  /* 聚焦后把输入交还原生字段（见 __field 中 .is-empty 的说明）：
+     此时浏览器会画出 yyyy/mm/dd 与当前字段高亮，自绘占位必须让位，否则又是叠字 */
+  &__field:focus ~ &__placeholder {
+    opacity: 0;
   }
 
   // ---------- 清除按钮 ----------
