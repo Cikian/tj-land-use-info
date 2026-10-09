@@ -17,6 +17,25 @@ const files = [
   'src/views/land/archive/ArchiveList.vue',
   'src/views/land/archive/ArchiveQuery.vue',
   'src/views/land/archive/ArchiveStatistics.vue',
+  // 道路设施验收及移交资料台账（方案 2.3.2 第 7 项；api/land/ledger.js 不是 SFC，无需列在这里）
+  'src/views/land/archive/RoadAcceptanceLedger.vue',
+  'src/views/land/archive/modules/LedgerSearchForm.vue',
+  'src/views/land/archive/modules/LedgerTable.vue',
+  'src/views/land/archive/modules/LedgerModal.vue',
+  'src/views/land/archive/modules/LedgerDetailModal.vue',
+  'src/views/land/archive/modules/LedgerImportModal.vue',
+  // 道路交付及养护协议移交事项（方案 2.3.2 第 6 项；api/land/handover.js 不是 SFC）
+  'src/views/land/archive/RoadHandoverList.vue',
+  'src/views/land/archive/modules/HandoverSearchForm.vue',
+  'src/views/land/archive/modules/HandoverTable.vue',
+  'src/views/land/archive/modules/HandoverModal.vue',
+  'src/views/land/archive/modules/HandoverDetailModal.vue',
+  // 竣工验收项目历史工程资料数字化档案（方案 2.3.2 第 8 项；api/land/completion.js 不是 SFC）
+  'src/views/land/archive/CompletionArchiveList.vue',
+  'src/views/land/archive/modules/CompletionSearchForm.vue',
+  'src/views/land/archive/modules/CompletionTable.vue',
+  'src/views/land/archive/modules/CompletionModal.vue',
+  'src/views/land/archive/modules/CompletionDetailModal.vue',
   'src/views/land/archive/modules/ArchiveDetailModal.vue',
   'src/views/land/archive/modules/ArchiveFileTable.vue',
   'src/views/land/archive/modules/ArchiveModal.vue',
@@ -32,7 +51,19 @@ const files = [
   'src/views/land/document/modules/DocFlowModal.vue',
   'src/views/land/document/modules/DocReceiveModal.vue',
   'src/views/land/document/modules/DocSendModal.vue',
-  'src/views/land/document/modules/UserSelect.vue'
+  'src/views/land/document/modules/UserSelect.vue',
+  // 提级论证管理（api/land/escalation.js 不是 SFC，无需列在这里）
+  'src/views/land/escalation/EscalationEntryList.vue',
+  'src/views/land/escalation/EscalationQuery.vue',
+  'src/views/land/escalation/EscalationLedger.vue',
+  'src/views/land/escalation/EscalationAudit.vue',
+  'src/views/land/escalation/modules/EscalationFormModal.vue',
+  'src/views/land/escalation/modules/EscalationSearchForm.vue',
+  'src/views/land/escalation/modules/EscalationTable.vue',
+  'src/views/land/escalation/modules/EscalationMaterialTable.vue',
+  'src/views/land/escalation/modules/EscalationRecordPanel.vue',
+  'src/views/land/escalation/modules/EscalationDetailModal.vue',
+  'src/views/land/escalation/modules/EscalationStatCharts.vue'
 ]
 
 let failed = 0

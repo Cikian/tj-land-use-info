@@ -133,12 +133,35 @@ org.jeecg.modules.land
 
 ## 五、当前状态
 
-本模块目前**只有目录结构与包说明（109 个 `package-info.java`）**，尚无业务代码，因此编译产物不含 class 文件（JDK 8 下纯 Javadoc 的 `package-info` 不生成 `.class`）。
+> ★ **2026-09-30 更新**：本节原先写的「本模块目前只有目录结构与包说明（109 个 `package-info.java`），
+> 尚无业务代码」**已经过时**，现有 4 个域已有业务代码，其余域仍为占位包。
 
-已验证：
+**已有业务代码的域**：
 
+| 域 | 内容 | 说明文档 |
+|---|---|---|
+| `archive/` | 档案类别管理、档案维护、卷内文件、收发文管理（重写实现） | `docs/档案管理-实现说明.md` |
+| `archive/ledger/` | **道路设施验收及移交资料台账**（方案 2.3.2 第 7 项，13 类资料勾选矩阵 + 快速检索 + Excel 导出） | `docs/道路设施验收及移交资料台账管理-实现说明.md` |
+| `escalation/` | 提级论证项目录入、查询统计、资料及台账、审核意见登记 | `docs/提级论证管理-实现说明.md` |
+| `data/` | 宗地 / 配套项目下拉与增删改查、首页看板接口 | 代码注释 |
+
+**仍只有 `package-info.java` 占位符的域**：`analysis/`（配套分析 11 项）、`map/`（地图管理与三维引擎适配）、
+`stat/`（查询统计与首页）——即清单里 P2 之后的大头工作量。
+
+**编译验证**：
+
+```bash
+mvn -o -pl jeecg-module-land compile     # → BUILD SUCCESS（2026-09-30 实测）
 ```
-mvn -pl jeecg-module-land install     → BUILD SUCCESS
-```
 
-下一步建议按清单 **P1（基座搭建）→ P2（数据管理）** 顺序填充，P5d（纯表单/查询类面板）因后端接口已就绪，可作为第一个可演示里程碑。
+> ⚠ **本机无法构建整个应用**：`jeecg-system-biz` 依赖中台私有件
+> `cn.cikian:stargis-zk-sdk`（`server/pom.xml:140` 声明），该件不在本机
+> `~/.m2/repository/cn/cikian` 下，也没有可用的自定义 `settings.xml`，
+> 离线构建会报 `Cannot access ... in offline mode`。因此各模块只能单独编译，
+> **接口级（HTTP）验证需要先把该件装进本地仓库或到目标环境部署后做**。
+
+前端自检（在 `code/new/admin-client` 下）：
+
+```bash
+node scripts/verify-sfc.js       # 模板编译 / less 编译 / name / a-descriptions 规则体检
+```

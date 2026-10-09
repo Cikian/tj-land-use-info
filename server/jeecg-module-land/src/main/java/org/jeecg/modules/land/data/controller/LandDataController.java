@@ -49,8 +49,8 @@ import java.util.Map;
  *   第二步：选配套项目   →  GET /land/data/facility/options?crzdbh=xxx
  * </pre>
  *
- * <p><b>权限</b>：这一层是档案与收发文录入时共用的<b>只读基础数据</b>
- * （宗地下拉、配套项目下拉、行政区划下拉），被三个业务页面复用，
+ * <p><b>权限</b>：这一层是档案、收发文与道路验收移交台账录入时共用的<b>只读基础数据</b>
+ * （宗地下拉、配套项目下拉、行政区划下拉），被四个业务页面复用，
  * 因此用 {@code Logical.OR} 放行「任意一个业务页面的读取权限」，
  * 避免为此单独造一个「公共查询」权限码而增加授权负担。
  *
@@ -59,6 +59,7 @@ import java.util.Map;
  *   land:archive:list / add / edit
  *   land:docReceive:list / add / edit
  *   land:docSend:list / add / edit
+ *   land:ledger:list / add / edit / archive
  * </pre>
  */
 @Slf4j
@@ -94,7 +95,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/options")
     public Result<List<LandOptionVO>> landOptions(@RequestParam(name = "keyword", required = false) String keyword,
                                                   @RequestParam(name = "xzqh", required = false) String xzqh,
@@ -108,7 +112,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/queryById")
     public Result<Land> landById(@RequestParam(name = "id", required = false) String id,
                                  @RequestParam(name = "crzdbh", required = false) String crzdbh) {
@@ -125,7 +132,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/land/xzqhOptions")
     public Result<List<Map<String, Object>>> xzqhOptions() {
         return Result.OK(landService.queryXzqhOptions());
@@ -143,7 +153,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/options")
     public Result<List<FacilityOptionVO>> facilityOptions(@RequestParam(name = "crzdbh", required = false) String crzdbh,
                                                           @RequestParam(name = "keyword", required = false) String keyword,
@@ -157,7 +170,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/search")
     public Result<List<FacilityOptionVO>> facilitySearch(@RequestParam(name = "keyword", required = false) String keyword,
                                                          @RequestParam(name = "limit", required = false) Integer limit) {
@@ -170,7 +186,10 @@ public class LandDataController {
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
-            "land:docSend:list", "land:docSend:add", "land:docSend:edit"}, logical = Logical.OR)
+            "land:docSend:list", "land:docSend:add", "land:docSend:edit",
+            "land:ledger:list", "land:ledger:add", "land:ledger:edit", "land:ledger:archive",
+            "land:handover:list", "land:handover:add", "land:handover:edit", "land:handover:archive",
+            "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/queryById")
     public Result<Facility> facilityById(@RequestParam(name = "id", required = true) String id) {
         Facility facility = facilityService.queryById(id);

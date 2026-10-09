@@ -31,6 +31,66 @@
             <groupId>org.jeecgframework.boot</groupId>
             <artifactId>jeecg-boot-base-core</artifactId>
         </dependency>
+
+        <!--
+          集成测试用依赖（仅 test 作用域，不进运行时包）。
+
+          ★ 为什么要在这里单测：本工程的整体构建依赖中台私有件
+            cn.cikian:stargis-zk-sdk（server/pom.xml 声明），该件不在公共仓库里，
+            于是「起整个应用做接口级验证」在无该件的环境下做不了。
+            这里用一份**最小 Spring 配置**（DataSource + MyBatis-Plus + 本模块的
+            Service/Controller）直接跑真实 SQL 与 MockMvc，
+            从而在没有整个应用的情况下完成接口级验证。
+
+          测试默认连 application-dev.yml 指向的同一个库（可用 -Dledger.test.jdbcUrl 覆盖），
+          并且**整个测试类跑在一个事务里、结束回滚**，不会给库里留下数据。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <!--
+      ★ 集成测试的开关。
+
+      父 POM（jeecg-boot-parent 3.4.3）在 maven-surefire-plugin 的 <configuration> 里
+      硬编码了 <skipTests>true</skipTests>，插件配置优先于 -DskipTests=false，
+      所以命令行参数盖不住它。这里用一个 profile 显式打开：
+
+          mvn -o -pl jeecg-module-land test -Pit
+
+      默认（不带 -Pit）保持与全项目一致：跳过测试。
+      这么设计的原因是本模块的测试是**打真库的集成测试**（默认连 application-dev.yml
+      指向的 49.232.252.56），无网络的环境下会自动失败；
+      而其它模块还没有测试，不该因为本模块让全量构建突然变慢或变脆。
+
+      换库跑（例如只想连本机）：
+          mvn -o -pl jeecg-module-land test -Pit \
+              -Dledger.test.jdbcUrl="jdbc:mysql://127.0.0.1:3306/tj-jyxyd?tinyInt1isBit=false" \
+              -Dledger.test.username=root -Dledger.test.password=***
+    -->
+    <profiles>
+        <profile>
+            <id>it</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <skipTests>false</skipTests>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>

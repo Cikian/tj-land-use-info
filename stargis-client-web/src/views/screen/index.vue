@@ -24,7 +24,7 @@
   <screen-stage :max-scale="4" @resize="handleStageResize">
     <!-- 真实地图（真实像素层） -->
     <template #map>
-      <s3dm-viewer v-if="mapEnabled" />
+      <s3dm-viewer v-if="mapEnabled" :paused="mapPaused" />
     </template>
 
     <!-- ===== 全屏蒙版（设计稿的四张氛围切图） ===== -->
@@ -46,6 +46,7 @@
       :online="user.online"
       :show-clock="activeMenu === 'home'"
       @menu-change="handleMenuChange"
+      @logout="handleLogout"
     />
 
     <!-- ===== 档案管理：整页模块（「收发文」是它内部的一个页签） ===== -->
@@ -56,8 +57,27 @@
       :default-tab="archiveTab"
     />
 
-    <!-- ===== 数据管理：只保留左侧菜单和地图，点击菜单项再弹窗 ===== -->
-    <data-screen v-else-if="activeMenu === 'data'" />
+    <!--
+      ===== 数据管理：整页模块（左二级导航 + 右侧面板） =====
+      ★ 这里**刻意不加 stage-hit**：数据管理是唯一「地图必须继续可用」的整页模块
+        （边看地块边录数据）。stage-hit 会把整屏变成 pointer-events: auto，
+        整块画布就会吃掉地图的鼠标事件（缩放、拖动全部失效）。
+        交互由 data/index.vue 自己在 __nav / __body 两块上显式开启。
+    -->
+    <data-screen
+      v-else-if="activeMenu === 'data'"
+      ref="data"
+      class="land-screen__module"
+      :default-tab="dataTab"
+    />
+
+    <!-- ===== 提级论证管理：整页模块（记录型台账：录入 / 查询统计 / 台账 / 审核意见登记） ===== -->
+    <escalation-screen
+      v-else-if="activeMenu === 'review'"
+      ref="escalation"
+      class="land-screen__module stage-hit"
+      :default-tab="reviewTab"
+    />
 
     <!-- ===== 首页工作台 ===== -->
     <template v-else>
@@ -94,6 +114,7 @@
 import S3dmViewer from '@/views/maps/S3dmViewer.vue'
 import ArchiveScreen from './archive/index.vue'
 import DataScreen from './data/index.vue'
+import EscalationScreen from './escalation/index.vue'
 import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
@@ -101,6 +122,7 @@ import HomePlotModal from './home/HomePlotModal.vue'
 import { ScreenHeader, ScreenStage } from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import { queryFacilityDashboard, queryLandDashboard, queryWarningDetail } from '@/api/land/landData'
+import { logoutAndGoToLogin } from '@/utils/session'
 
 import { headerMenus, systemTitle, warningTabs } from './config'
 
@@ -110,13 +132,13 @@ function emptyPanelSection (cube, label) {
     stat: { label, value: 0, unit: '宗' },
     split: [
       { key: 'city', label: '市级', value: 0, unit: '宗', percent: 0, tone: 'green' },
-      { key: 'district', label: '区级', value: 0, unit: '宗', percent: 0, tone: 'cyan' },
+      { key: 'district', label: '区级', value: 0, unit: '宗', percent: 0, tone: 'cyan' }
     ],
     columns: PANEL_COLUMNS,
     tables: {
       city: { rows: [], total: { name: '合计', plots: 0, roads: 0 } },
-      district: { rows: [], total: { name: '合计', plots: 0, roads: 0 } },
-    },
+      district: { rows: [], total: { name: '合计', plots: 0, roads: 0 } }
+    }
   }
 }
 
@@ -124,10 +146,10 @@ function emptyLeftPanel () {
   return {
     tabs: [
       { key: 'transfer', label: '出让情况' },
-      { key: 'support', label: '落实配套情况' },
+      { key: 'support', label: '落实配套情况' }
     ],
     transfer: emptyPanelSection('a', '已出让土地总数'),
-    support: emptyPanelSection('b', '需要落实配套'),
+    support: emptyPanelSection('b', '需要落实配套')
   }
 }
 
@@ -140,19 +162,37 @@ function emptyPlotWarning () {
  *   home    首页工作台
  *   archive 档案管理（整页模块，「收发文」是它内部的一个页签，不占一级菜单）
  *   data    数据管理（经营性用地添加 / 查询）
+ *   review  提级论证管理（整页模块：项目录入 / 查询统计 / 资料及台账管理 / 提级论证审批）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive', 'data']
+const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review']
 
-/** 档案页允许直接落到某个页签：/screen/archive?tab=doc */
-const ARCHIVE_TABS = ['maintain', 'query', 'statistics', 'doc', 'category']
+/** 档案页允许直接落到某个页签：/screen/archive?tab=doc
+ *  ledger / handover / completion = 方案 2.3.2 第 7 / 6 / 8 项（道路验收移交台账、
+ *  道路交付及养护协议移交事项、竣工验收项目历史工程资料数字化档案），
+ *  与 archive/index.vue 的 tabs / PANELS 保持一致 */
+const ARCHIVE_TABS = ['maintain', 'query', 'statistics', 'ledger', 'handover', 'completion', 'doc', 'category']
+
+/**
+ * 提级论证页允许直接落到某个页签：/screen/review?tab=audit
+ * （与 src/views/screen/escalation/index.vue 的 tabs / PANELS 保持一致）
+ */
+const REVIEW_TABS = ['entry', 'query', 'ledger', 'audit']
+
+/**
+ * 数据管理页允许直接落到某个页签：/screen/data?tab=facility
+ * （与 src/views/screen/data/index.vue 的 tabs / PANELS、以及后端菜单 sort_no 保持一致）
+ * ★ 两处必须同步改：漏改这里白名单的表现是「深链进不去、静默落回默认页签」，
+ *   与档案模块 ARCHIVE_TABS 是同一个坑。
+ */
+const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachment', 'recycle']
 
 /** 左面板明细表的列（位置见 home/HomeLeftPanel.vue 的 TH_OFFSET） */
 const PANEL_COLUMNS = [
   { key: 'index', title: '序号' },
   { key: 'name', title: '行政区划' },
   { key: 'plots', title: '出让地块' },
-  { key: 'roads', title: '涉及道路' },
+  { key: 'roads', title: '涉及道路' }
 ]
 
 function percent (value, total) {
@@ -171,15 +211,15 @@ function rankTable (ranks, roadKey, plotTotal) {
   const rows = ranks.map((item) => ({
     name: item.name,
     plots: toNumber(item.value),
-    roads: toNumber(item[roadKey]),
+    roads: toNumber(item[roadKey])
   }))
   return {
     rows,
     total: {
       name: '合计',
       plots: plotTotal,
-      roads: rows.reduce((sum, item) => sum + item.roads, 0),
-    },
+      roads: rows.reduce((sum, item) => sum + item.roads, 0)
+    }
   }
 }
 
@@ -199,8 +239,8 @@ function toPlotWarning (rows) {
       fund: percentText(item.fund),
       notStarted: percentText(item.notStarted),
       notCompleted: percentText(item.notCompleted),
-      notHandedOver: percentText(item.notHandedOver),
-    })),
+      notHandedOver: percentText(item.notHandedOver)
+    }))
   }
 }
 
@@ -210,12 +250,13 @@ export default {
     S3dmViewer,
     ArchiveScreen,
     DataScreen,
+    EscalationScreen,
     HomeLeftPanel,
     HomeLayerTree,
     HomeAttrPanel,
     HomePlotModal,
     ScreenHeader,
-    ScreenStage,
+    ScreenStage
   },
   data () {
     const routeQuery = (this.$route && this.$route.query) || {}
@@ -229,6 +270,9 @@ export default {
       initialMenu = 'archive'
     } else if (routePath.indexOf('/screen/data') > -1 || routeQuery.menu === 'data') {
       initialMenu = 'data'
+    } else if (routePath.indexOf('/screen/review') > -1 || routeQuery.menu === 'review') {
+      // 提级论证管理：整页模块，内部 4 个页签（?tab=entry|query|ledger|audit）
+      initialMenu = 'review'
     } else if (routeQuery.menu && IMPLEMENTED_MENUS.indexOf(routeQuery.menu) > -1) {
       initialMenu = routeQuery.menu
     }
@@ -238,6 +282,16 @@ export default {
         : routeQuery.menu === 'doc'
           ? 'doc'
           : 'maintain'
+
+    const initialReviewTab = REVIEW_TABS.indexOf(routeQuery.tab) > -1 ? routeQuery.tab : 'entry'
+
+    /**
+     * 数据管理页初始页签（?tab=facility 之类的深链）。
+     * ★ 默认落在「经营性用地信息录入」而不是第一个页签（批量导入）：
+     *   日常使用最多的是逐条录入；批量导入是一次性的年度动作，
+     *   把它做成默认会让每次进数据管理都先看到「下载模板」。
+     */
+    const initialDataTab = DATA_TABS.indexOf(routeQuery.tab) > -1 ? routeQuery.tab : 'land'
 
     return {
       hf,
@@ -250,11 +304,17 @@ export default {
             this.$store.getters.userInfo &&
             (this.$store.getters.userInfo.realname || this.$store.getters.userInfo.username)) ||
           'Admin',
-        online: null,
+        online: null
       },
 
       /** 档案页初始页签（?tab=doc 之类的深链） */
       archiveTab: initialArchiveTab,
+
+      /** 提级论证页初始页签（?tab=audit 之类的深链） */
+      reviewTab: initialReviewTab,
+
+      /** 数据管理页初始页签（?tab=facility 之类的深链） */
+      dataTab: initialDataTab,
 
       leftPanel: emptyLeftPanel(),
       transferRank: [],
@@ -272,7 +332,39 @@ export default {
       /** 画布缩放比（ScreenStage 抛出，供需要真实像素坐标的浮层使用） */
       stageScale: 1,
       /** 是否挂载真实 Cesium 地图：可通过 ?map=0 关闭（便于无地图服务时预览界面） */
-      mapEnabled: routeQuery.map !== '0',
+      mapEnabled: routeQuery.map !== '0'
+    }
+  },
+  computed: {
+    /**
+     * 是否暂停 Cesium 渲染。
+     * ===============================================================
+     * 判据只有一条：**地图此刻是否被人看见**。看不见就没必要每帧重绘。
+     *
+     * （1）档案管理 / 提级论证管理是整页模块（.land-screen__module 的 inset: 0
+     *     铺满画布），地图只从面板之间的 12px 缝隙里露出一点点，而 Cesium 的
+     *     默认渲染循环仍然在按 rAF 每帧重绘整屏。
+     *
+     *     实测（1920×1080，perf/perf-lag.js）在这两个页面上：
+     *       主线程占用 45%（Script 39%）、持续出现 80~100ms 的 Long Task、
+     *       帧间隔 p99 从 6ms 涨到 18ms、事件循环延迟 p90 从 6ms 涨到 9~11ms
+     *       —— 用户感知就是「点什么都要等一下」。
+     *     停掉渲染循环后：主线程 45% → 2%，Long Task 消失，帧间隔 p99 回到 6ms。
+     *
+     * （2）首页的「地块预警信息」弹窗（HomePlotModal）也是一个 inset: 0 的
+     *     全画布遮罩，弹窗开着的时候地图同样一眼都看不到，而用户正在里面
+     *     滚动表格、翻页——这正是最不该被渲染循环抢主线程的时刻。
+     *
+     * 注意不要写成「非 home 即暂停」：顶栏还有若干「待接入」菜单，点它们时
+     * activeMenu 会变成那个 key，但页面回落到首页版式、地图是可见的，
+     * 那种情况绝不能停。数据管理页也是「只保留菜单 + 地图」（见 data/index.vue
+     * 的注释），必须保持渲染。
+     */
+    mapPaused () {
+      const fullPageModule = this.activeMenu === 'archive' || this.activeMenu === 'review'
+      // 这两个弹窗都渲染 HomePlotModal（position:absolute + inset:0 的全画布遮罩）
+      const coveredByModal = this.plotVisible || this.warningDetailVisible
+      return fullPageModule || coveredByModal
     }
   },
   mounted () {
@@ -332,14 +424,14 @@ export default {
           stat: { label: '已出让土地总数', value: total, unit: '宗' },
           split: [
             { key: 'city', label: '市级', value: city, unit: '宗', percent: percent(city, total), tone: 'green' },
-            { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' },
+            { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' }
           ],
           columns: PANEL_COLUMNS,
           tables: {
             city: rankTable(cityRanks, 'roadCount', city),
-            district: rankTable(districtRanks, 'roadCount', district),
-          },
-        },
+            district: rankTable(districtRanks, 'roadCount', district)
+          }
+        }
       })
 
       this.transferRank = ranks.map((item) => ({ name: item.name, value: toNumber(item.value) }))
@@ -363,14 +455,14 @@ export default {
           stat: { label: '需要落实配套', value: total, unit: '宗' },
           split: [
             { key: 'city', label: '市级', value: city, unit: '宗', percent: percent(city, total), tone: 'green' },
-            { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' },
+            { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' }
           ],
           columns: PANEL_COLUMNS,
           tables: {
             city: rankTable(cityRanks, 'completedCount', city),
-            district: rankTable(districtRanks, 'completedCount', district),
-          },
-        },
+            district: rankTable(districtRanks, 'completedCount', district)
+          }
+        }
       })
 
       this.supportingRank = ranks.map((item) => ({ name: item.name, value: toNumber(item.value) }))
@@ -380,6 +472,15 @@ export default {
 
     handleStageResize (scale) {
       this.stageScale = scale
+    },
+
+    /**
+     * 顶栏用户区「退出登录」。
+     * 与「登录态失效」共用同一条出口（utils/session.js）：
+     * 清掉中台 + jeecg 两套登录态、尽力通知两个后端注销，然后回到登录页。
+     */
+    handleLogout () {
+      logoutAndGoToLogin()
     },
 
     handleMenuChange (key) {
@@ -392,8 +493,11 @@ export default {
       if (
         key !== 'archive' &&
         key !== 'data' &&
+        key !== 'review' &&
         this.$route &&
-        (this.$route.path.indexOf('/screen/archive') > -1 || this.$route.path.indexOf('/screen/data') > -1) &&
+        (this.$route.path.indexOf('/screen/archive') > -1 ||
+          this.$route.path.indexOf('/screen/data') > -1 ||
+          this.$route.path.indexOf('/screen/review') > -1) &&
         this.$router &&
         this.$router.replace
       ) {
@@ -421,7 +525,7 @@ export default {
       this.warningDetail = {
         title: `${row.district || ''}地块预警信息`,
         total: 0,
-        rows: [],
+        rows: []
       }
       this.warningDetailVisible = true
       queryWarningDetail({ projectType: this.warningActiveType(row), district: row.district })
@@ -445,8 +549,8 @@ export default {
               fund: item.zjlsqk,
               notStarted: item.sfkg,
               notCompleted: item.sfjg,
-              notHandedOver: item.sfyj,
-            })),
+              notHandedOver: item.sfyj
+            }))
           }
         })
         .catch((error) => {
@@ -458,8 +562,8 @@ export default {
       const id = String((row && row.id) || '')
       if (id.indexOf('区级项目') === 0) return 'district'
       return 'city'
-    },
-  },
+    }
+  }
 }
 </script>
 
