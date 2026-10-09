@@ -1,0 +1,18 @@
+! Spring Boot 扩展点注册。
+!
+! ★ 本文件为什么存在：
+!   本工程把 yml 里的口令/密钥换成了 ${TJ_XXX} 占位符，真实值放在 server/.env。
+!   但 Spring Boot 不认识 .env 文件，直接用 IDE 或 java -jar 启动会报
+!   「Could not resolve placeholder 'TJ_DB_HOST'」。
+!   DotEnvEnvironmentPostProcessor 在「环境准备阶段」把 .env 读成一个
+!   最低优先级的 PropertySource，于是 IDE / jar / 脚本三种启动方式都能直接用。
+!
+! ★ 格式说明（这不是 YAML，是 Java Properties）：
+!   · 注释用 ! 或 # 开头；空行允许；
+!   · 行尾反斜杠是**续行**，所以键值里不能靠它换行；
+!   · 键值放在同一行最稳妥，多值用逗号分隔，末尾不要留逗号。
+!
+! ★ 注意：Spring Boot 2.4+ 已不推荐用 spring.factories 注册自动配置
+!   （应改用 META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports），
+!   但 EnvironmentPostProcessor **仍然只能**通过 spring.factories 注册 —— 这是它唯一的入口。
+org.springframework.boot.env.EnvironmentPostProcessor=org.jeecg.config.DotEnvEnvironmentPostProcessor

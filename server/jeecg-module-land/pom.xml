@@ -55,6 +55,25 @@
             <artifactId>mysql-connector-java</artifactId>
             <scope>test</scope>
         </dependency>
+        <!--
+          ★ 连接池（HikariCP），**仅测试用**。
+
+          为什么测试需要它：集成测试连的是远程库，而原来的 DriverManagerDataSource
+          **没有连接池** —— 每条语句都要新开一次 TCP 连接。全量 152 个用例跑下来
+          是上千次建连，偶发撞上远程库瞬时拒绝，报出两类假红：
+            · 测试前  CannotCreateTransaction / Communications link failure
+            · 清理时  CannotGetJdbcConnectionException
+          实测同一测试类单独跑必过、混在全量里偶发失败，就是连接数压力所致。
+          换成池化数据源后建连次数从「上千」降到「十几次」，问题从根上消失。
+
+          版本由父 POM 的 dependencyManagement 管理（spring-boot 的默认版本），
+          这里不写版本号，避免与 Boot 版本漂移。
+        -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <!--

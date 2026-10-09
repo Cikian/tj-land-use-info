@@ -6,12 +6,13 @@ import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerIntercept
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.mapper.MapperScannerConfigurer;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
@@ -221,14 +222,42 @@ public class LandTestConfig {
         return password;
     }
 
+    /**
+     * 测试数据源：**连接池**（HikariCP），不是 DriverManagerDataSource。
+     *
+     * <p>★ 为什么必须是池化的：本测试连的是**远程库**（49.232.252.56）。
+     * {@code DriverManagerDataSource} 没有池 —— 每条语句都新开一次 TCP 连接。
+     * 全量 152 个用例跑下来是**上千次建连**，会偶发撞上远程库的瞬时拒绝，报出两类假红：
+     * <ul>
+     *   <li>测试开始前：{@code CannotCreateTransactionException / Communications link failure}；</li>
+     *   <li>测试结束清理时：{@code CannotGetJdbcConnectionException}。</li>
+     * </ul>
+     * 特征很明显：**同一个测试类单独跑必过，混在全量里偶发失败**（实测
+     * {@code RoadAcceptanceLedgerDataTest}、{@code CompletionArchiveDataTest} 都出现过）。
+     * 换成池化数据源后建连次数从上千降到十几次，问题从根上消失 ——
+     * 这比在每处清理里加重试更彻底（加重试只是把症状盖住）。
+     *
+     * <p>池子刻意开得很小（{@value #POOL_SIZE}）：单线程顺序跑测试，
+     * 不需要并发；开小一点也避免把远程库的连接数占满。
+     */
+    private static final int POOL_SIZE = 4;
+
     @Bean
     public DataSource dataSource() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        dataSource.setUrl(prop("ledger.test.jdbcUrl", "TJ_DB_URL", DEFAULT_URL));
-        dataSource.setUsername(prop("ledger.test.username", "TJ_DB_USER", DEFAULT_USER));
-        dataSource.setPassword(requirePassword());
-        return dataSource;
+        HikariConfig config = new HikariConfig();
+        config.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        config.setJdbcUrl(prop("ledger.test.jdbcUrl", "TJ_DB_URL", DEFAULT_URL));
+        config.setUsername(prop("ledger.test.username", "TJ_DB_USER", DEFAULT_USER));
+        config.setPassword(requirePassword());
+        config.setMaximumPoolSize(POOL_SIZE);
+        config.setMinimumIdle(1);
+        // 远程库偶发慢查询：给足超时，别让池等待把测试搞成随机失败
+        config.setConnectionTimeout(30_000L);
+        // 池里的连接长时间空闲后失效，用心跳语句探活，避免拿到死连接
+        config.setConnectionTestQuery("SELECT 1");
+        config.setKeepaliveTime(60_000L);
+        config.setPoolName("land-test-pool");
+        return new HikariDataSource(config);
     }
 
     @Bean
