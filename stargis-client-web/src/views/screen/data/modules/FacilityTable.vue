@@ -26,7 +26,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1780"
+    :min-width="1420"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -81,7 +81,6 @@
         </span>
       </span>
     </template>
-
     <template #stageStatus="{ row }">
       <facility-stage-chips
         v-if="(row.stageStatus || []).length"
@@ -147,16 +146,34 @@ export default {
   },
   data () {
     return {
+      /**
+       * ★ 列宽之和必须等于 min-width（1420），否则表格一定出现横向滚动条。
+       *
+       * 原来的分配是 190+250+100+110+190+130+200+380+260 = 1810，而 min-width 是 1780 ——
+       * 在 1920 宽的屏幕上内容区只有约 1560px（要减掉左侧导航与内边距），
+       * 于是**必然**横向滚动，而且滚出来的是一大片空白（列宽之和已超过实际内容需要）。
+       *
+       * 收紧原则（按「这一列实际要放什么」定宽，不是按标题长度）：
+       *   · 编号 / 区划 / 分类：内容是短编号或固定几个字，给到能完整显示即可；
+       *   · 名称 / 建设单位：长文本，本来就有 ellipsis + title 兜底，宁可窄一点；
+       *   · 操作：**不能靠 ellipsis**，六个链接必须放得下（约 6×26 + 5×8 ≈ 196px），
+       *     所以它是唯一「宁可多给」的一列；
+       *   · 六大阶段：6 个阶段名等分，最长的是「立项用地规划许可阶段」（10 字），
+       *     FacilityStageChips 内部是 flex + ellipsis，给 280px 时每格约 42px，
+       *     够放 2~3 个字 + 百分比，更多靠 title 悬浮查看。
+       *
+       * 当前合计 230+150+80+90+150+110+130+280+200 = 1420。
+       */
       columns: [
-        { key: 'crzdbh', title: '出让宗地编号', width: 190, type: 'slot' },
-        { key: 'ptxmmc', title: '配套项目 / 类别', width: 250, type: 'slot' },
-        { key: 'xzqh', title: '行政区划', width: 100, type: 'slot' },
-        { key: 'xmfl', title: '项目分类', width: 110, type: 'slot', align: 'center' },
-        { key: 'jsdw', title: '建设单位', width: 190, type: 'slot' },
-        { key: 'tzgs', title: '投资估算(万元)', width: 130, type: 'slot', align: 'right' },
-        { key: 'percent', title: '整体进度', width: 200, type: 'slot' },
-        { key: 'stageStatus', title: '六大阶段', width: 380, type: 'slot' },
-        { key: 'action', title: '操作', width: 260, type: 'slot', align: 'center' }
+        { key: 'crzdbh', title: '出让宗地编号', width: 150, type: 'slot' },
+        { key: 'ptxmmc', title: '配套项目 / 类别', width: 230, type: 'slot' },
+        { key: 'xzqh', title: '行政区划', width: 80, type: 'slot', align: 'center' },
+        { key: 'xmfl', title: '项目分类', width: 90, type: 'slot', align: 'center' },
+        { key: 'jsdw', title: '建设单位', width: 150, type: 'slot' },
+        { key: 'tzgs', title: '投资估算(万元)', width: 110, type: 'slot', align: 'right' },
+        { key: 'percent', title: '整体进度', width: 130, type: 'slot' },
+        { key: 'stageStatus', title: '六大阶段', width: 280, type: 'slot' },
+        { key: 'action', title: '操作', width: 200, type: 'slot', align: 'center' }
       ]
     }
   },
@@ -257,8 +274,15 @@ export default {
     display: inline-flex;
     align-items: center;
     gap: 3px;
+    min-width: 0;
     font-size: var(--screen-font-xs);
     color: var(--screen-danger);
+    // 收窄「整体进度」列后这里会放不下 4 个字 + 图标；截断而不是撑破列宽
+    .screen-ellipsis();
+
+    /deep/ .screen-icon {
+      flex: 0 0 auto;
+    }
   }
 
   &__actions {

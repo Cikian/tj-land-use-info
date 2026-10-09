@@ -16,7 +16,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1580"
+    :min-width="1578"
     :empty-text="emptyText"
     @cell-click="handleCellClick"
   >

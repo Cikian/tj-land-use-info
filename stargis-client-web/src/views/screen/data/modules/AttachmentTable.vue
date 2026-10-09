@@ -25,7 +25,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1500"
+    :min-width="1400"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
