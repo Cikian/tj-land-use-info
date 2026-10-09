@@ -84,17 +84,47 @@ E:\Project\tj-land-use-info\                  ← 工作区根（不是 git 仓�
 
 ## 3. 🔴 高危陷阱（每条都真踩过）
 
-### 3.1 Maven 依赖 `jeecg-boot-base-core` 用的是 `.m2` 里的 jar，不是工作区源码
+### 3.1 ⚠️ 只构建单个子模块时，上游模块会用 `.m2` 里的旧 jar（不是源码）
 
-**改过 `jeecg-boot-base-core` 之后必须 install，否则运行时还是旧 jar：**
+**这不是配置错误，是 Maven 的基本工作方式**，但它是本项目最容易浪费半小时的坑。
+
+**为什么**：`-pl jeecg-module-land` 只把**一个**模块放进本次 reactor；
+`jeecg-boot-base-core` 于是被当成**外部依赖**，从本地仓库 `.m2` 取 jar。
+你可以自己看 reactor 里有什么：
 
 ```powershell
 cd code/new/server
-mvn -o -pl jeecg-boot-base-core install -DskipTests   # -o 若因离线缺件失败，去掉 -o
+# 只有 1 个模块（base-core 不在里面 → 用 .m2 的 jar）
+mvn -o -pl jeecg-module-land validate
+# 有 3 个模块：jeecg-boot-parent → jeecg-boot-base-core → jeecg-module-land（用源码构建）
+mvn -o -pl jeecg-module-land -am validate
 ```
 
-症状：`ClassNotFoundException: org.jeecg.config.DotEnvEnvironmentPostProcessor`，
-或「`.env` 明明放对了却报 `Could not resolve placeholder 'TJ_DB_HOST'`」。
+雪上加霜的是版本号是 **`3.4.3`（release，不是 `-SNAPSHOT`）**：
+Maven 把 release 版本当**不可变发布件**，一旦 `.m2` 里有就永远不检查更新，
+也不会「过期后自动重取」。
+
+**正确做法（二选一，推荐 ①）**：
+
+```powershell
+# ① 加 -am（also make）：把上游模块一起放进 reactor，用工作区源码构建
+mvn -o -pl jeecg-module-land -am test -Pit
+
+# ② 或先把改动 install 到 .m2，之后再单独构建子模块
+mvn -o -pl jeecg-boot-base-core install -DskipTests
+```
+
+> ★ 只从**根目录**跑 `mvn test` / `mvn package`（不带 `-pl`）时，
+> 所有模块天然都在 reactor 里，**不会**有这个坑 —— 所以它只在
+> 「用 `-pl` 单独构建某个子模块」时才出现。
+
+**症状**（改了 `jeecg-boot-base-core` 但没让源码进 reactor 时）：
+`ClassNotFoundException`，或「`.env` 明明放对了却报
+`Could not resolve placeholder 'TJ_DB_HOST'`」，或「改的代码像没生效」。
+本项目的 `.env` 加载器就在 base-core 里，所以这个坑特别容易被撞上。
+
+**怎么确认自己踩了**：看构建日志里有没有 `Building jeecg-boot-base-core`。
+没有就是用了 `.m2` 的 jar。
 
 ### 3.2 两个 MySQL 实例，`application-dev.yml` 指向**远程**那个
 
@@ -136,11 +166,12 @@ mvn -o -pl jeecg-boot-base-core install -DskipTests   # -o 若因离线缺件失
 
 ```powershell
 cd code/new/server
-mvn -pl jeecg-module-land test -Pit              # 全量
-mvn -pl jeecg-module-land test -Pit -Dtest=数据管理类名   # 单类（-Dtest 支持子串）
+mvn -pl jeecg-module-land -am test -Pit              # 全量
+mvn -pl jeecg-module-land -am test -Pit -Dtest=数据管理类名   # 单类（-Dtest 支持子串）
 ```
 
 不带 `-Pit` 会看到 `Tests run: 0 ... BUILD SUCCESS` —— **那不是通过，是没跑**。
+`-am` 的作用见 §3.1（让上游模块用源码构建）。
 
 ### 3.6 大屏端（stargis-client-web）的四条硬规定
 
@@ -180,7 +211,7 @@ node scripts/verify-sfc.js
   从 JVM 工作目录**向上找 4 级**找 `.env`。IDE / `java -jar` / `mvn` 三种方式都能用。
   所以**放仓库根或 `server/` 都能被找到**，但 `server/` 是约定位置。
 - 排查：启动日志里应有 `[jeecg] 已加载环境变量文件：<路径>（N 项）`。
-  **没有这行** → 基本是 §3.1（base-core 没 install）。
+  **没有这行** → 基本是 §3.1：base-core 的源码没进 reactor（或没 install 到 `.m2`）。
 - 详见 `code/new/server/环境变量与敏感信息.md`。
 
 ### 3.9 数据库/文档改动很容易被「顺手统一」毁掉
@@ -195,14 +226,14 @@ node scripts/verify-sfc.js
 ## 4. 常用命令速查
 
 ```powershell
-# ===== 后端 =====
+# ===== 后端（★ -am 是关键：见 §3.1）=====
 cd code/new/server
 
-# 集成测试（★ 必须 -Pit）
-mvn -pl jeecg-module-land test -Pit
+# 集成测试（-Pit 打开测试；-am 让 base-core 用源码而不是 .m2 的 jar）
+mvn -pl jeecg-module-land -am test -Pit
 # 单类
-mvn -pl jeecg-module-land test -Pit -Dtest=DataManagementTest
-# 编译（含 base-core 改动时）
+mvn -pl jeecg-module-land -am test -Pit -Dtest=DataManagementTest
+# 只改了 base-core 时，把它装进 .m2（之后单独构建子模块才拿得到）
 mvn -o -pl jeecg-boot-base-core install -DskipTests
 # 启动（脚本注入 .env；也可直接用 IDE 跑主类）
 powershell -ExecutionPolicy Bypass -File scripts/run-with-env.ps1
@@ -233,9 +264,11 @@ git status --porcelain
 1. **先读** `docs/新旧系统差异清单.md` 里对应模块的条目。
    想让某处「跟旧系统一致」之前，先确认它是不是 🔧**有意修正**——是的话改回去就是制造 bug。
 2. 确认改动落在**正确的模块与目录**（§2）。
-3. 后端改动：加/改 SQL 脚本 → 执行到**远程库** → 补测试 → `mvn -pl jeecg-module-land test -Pit`。
+3. 后端改动：加/改 SQL 脚本 → 执行到**远程库** → 补测试 → `mvn -pl jeecg-module-land -am test -Pit`
+   （**`-am` 别漏**：漏了就可能用 `.m2` 里的旧 base-core，见 §3.1）。
 4. 前端改动：`eslint --no-ignore` + `node scripts/verify-sfc.js` 都要过。
-5. 动了 `jeecg-boot-base-core` → **必须** `mvn -o -pl jeecg-boot-base-core install -DskipTests`。
+5. 动了 `jeecg-boot-base-core` → 要么构建时带 `-am`，要么先
+   `mvn -o -pl jeecg-boot-base-core install -DskipTests`（见 §3.1）。
 6. 发现新的新旧差异 → **补进差异清单**（照它的条目模板，带行号证据），并写变更记录。
 7. 提交信息用中文，说明**为什么**改；`.env`、口令、token **绝不提交**。
 
@@ -279,6 +312,7 @@ git status --porcelain
 | 日期 | 变更 | 说明 |
 |---|---|---|
 | 2026-10-09 | 建立本文件 | 汇总目录结构、高危陷阱、命令速查、检查单 |
+| 2026-10-09 | **改写 §3.1** | 原来只写「必须 install」，容易被理解成配置有问题。实际是 Maven 的 reactor 机制：`-pl` 只把选中模块放进 reactor，其余模块从 `.m2` 取。改为解释原因 + 给出 `-am` 这个更省事的做法（已实测 `-pl … -am` 会构建 3 个模块），并把 §4/§5 的命令同步加上 `-am` |
 
 > 新增陷阱时，请**同时**：① 在本文件 §3 加一条（编号继续，
 > 例如 §3.10）；② 在本表登记。陷阱要写**症状**和**怎么排查**，不要只写结论。
