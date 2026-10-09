@@ -26,8 +26,8 @@ spring:
       max-request-size: 10MB
   mail:
     host: smtp.163.com
-    username: jeecgos@163.com
-    password: ??
+    username: ${TJ_MAIL_USERNAME:}
+    password: ${TJ_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -99,8 +99,8 @@ spring:
     druid:
       stat-view-servlet:
         enabled: true
-        loginUsername: admin
-        loginPassword: 123456
+        loginUsername: ${TJ_DRUID_LOGIN_USERNAME:}
+        loginPassword: ${TJ_DRUID_LOGIN_PASSWORD:}
         allow:
       web-stat-filter:
         enabled: true
@@ -131,8 +131,8 @@ spring:
       datasource:
         master:
           url: jdbc:mysql://127.0.0.1:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-          username: root
-          password: root
+          username: ${TJ_DB_USER}
+          password: ${TJ_DB_PASSWORD}
           driver-class-name: com.mysql.cj.jdbc.Driver
           # 多数据源配置
           #multi-datasource1:
@@ -143,9 +143,9 @@ spring:
   #redis 配置
   redis:
     database: 0
-    host: 127.0.0.1
-    port: 6379
-    password: ''
+    host: ${TJ_REDIS_HOST:127.0.0.1}
+    port: ${TJ_REDIS_PORT:6379}
+    password: '${TJ_REDIS_PASSWORD:}'
 #mybatis plus 设置
 mybatis-plus:
   mapper-locations: classpath*:org/jeecg/modules/**/xml/*Mapper.xml
@@ -169,7 +169,7 @@ jeecg:
   # 是否启用安全模式
   safeMode: false
   # 签名密钥串(前后端要一致，正式发布请自行修改)
-  signatureSecret: dd05f1c54d63749eda95f9fa6d49v442a
+  signatureSecret: ${TJ_SIGNATURE_SECRET:}
   # 签名拦截接口
   signUrls: /sys/dict/getDictItems/*,/sys/dict/loadDict/*,/sys/dict/loadDictOrderByValue/*,/sys/dict/loadDictItem/*,/sys/dict/loadTreeData,/sys/api/queryTableDictItemsByCode,/sys/api/queryFilterTableDictInfo,/sys/api/queryTableDictByKeys,/sys/api/translateDictFromTable,/sys/api/translateDictFromTableByKeys
   #local\minio\alioss
@@ -187,8 +187,8 @@ jeecg:
     excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**,/jmreport/bigscreen2/**,/api/getUserInfo
   #阿里云oss存储和大鱼短信秘钥配置
   oss:
-    accessKey: ??
-    secretKey: ??
+    accessKey: ${TJ_OSS_ACCESS_KEY:}
+    secretKey: ${TJ_OSS_SECRET_KEY:}
     endpoint: oss-cn-beijing.aliyuncs.com
     bucketName: jeecgdev
     staticDomain: https://static.jeecg.com
@@ -202,8 +202,8 @@ jeecg:
   # minio文件上传
   minio:
     minio_url: http://minio.jeecg.com
-    minio_name: ??
-    minio_pass: ??
+    minio_name: ${TJ_MINIO_NAME:}
+    minio_pass: ${TJ_MINIO_PASSWORD:}
     bucketName: otatest
   #大屏报表参数设置
   jmreport:
@@ -246,8 +246,8 @@ knife4j:
   production: false
   basic:
     enable: true
-    username: jeecg
-    password: jeecg1314
+    username: ${TJ_KNIFE4J_USERNAME:}
+    password: ${TJ_KNIFE4J_PASSWORD:}
 #第三方登录
 justauth:
   enabled: true

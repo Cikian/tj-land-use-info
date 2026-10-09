@@ -26,8 +26,8 @@ spring:
       max-request-size: 10MB
   mail:
     host: smtp.163.com
-    username: jeecgos@163.com
-    password: ??
+    username: ${TJ_MAIL_USERNAME:}
+    password: ${TJ_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -84,22 +84,22 @@ spring:
       maxActive: 10
       stat-view-servlet:
         enabled: true
-        loginUsername: admin
-        loginPassword: 123456
+        loginUsername: ${TJ_DRUID_LOGIN_USERNAME:}
+        loginPassword: ${TJ_DRUID_LOGIN_PASSWORD:}
         allow:
       web-stat-filter:
         enabled: true
       driverClassName: dm.jdbc.driver.DmDriver
       url: jdbc:dm://127.0.0.1:5236/?JEECG&zeroDateTimeBehavior=convertToNull&useUnicode=true&characterEncoding=utf-8
-      username: ??
-      password: ??
+      username: ${TJ_DB_USER}
+      password: ${TJ_DB_PASSWORD}
       validationQuery: SELECT 1 FROM DUAL
   #redis 配置
   redis:
     database: 0
-    host: 127.0.0.1
-    port: 6379
-    password: ''
+    host: ${TJ_REDIS_HOST:127.0.0.1}
+    port: ${TJ_REDIS_PORT:6379}
+    password: '${TJ_REDIS_PASSWORD:}'
 #mybatis plus 设置
 mybatis-plus:
   mapper-locations: classpath*:org/jeecg/modules/**/xml/*Mapper.xml
@@ -121,7 +121,7 @@ jeecg:
   # 是否启用安全模式
   safeMode: false
   # 签名密钥串(前后端要一致，正式发布请自行修改)
-  signatureSecret: dd05f1c54d63749eda95f9fa6d49v442a
+  signatureSecret: ${TJ_SIGNATURE_SECRET:}
   # 本地：local\Minio：minio\阿里云：alioss
   uploadType: alioss
   path:
@@ -133,8 +133,8 @@ jeecg:
     excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**,/jmreport/bigscreen2/**
   #阿里云oss存储配置
   oss:
-    accessKey: ??
-    secretKey: ??
+    accessKey: ${TJ_OSS_ACCESS_KEY:}
+    secretKey: ${TJ_OSS_SECRET_KEY:}
     endpoint: oss-cn-beijing.aliyuncs.com
     bucketName: ??
   # ElasticSearch 6设置
@@ -147,8 +147,8 @@ jeecg:
   # minio文件上传
   minio:
     minio_url: http://minio.jeecg.com
-    minio_name: ??
-    minio_pass: ??
+    minio_name: ${TJ_MINIO_NAME:}
+    minio_pass: ${TJ_MINIO_PASSWORD:}
     bucketName: otatest
   #大屏报表参数设置
   jmreport:
@@ -187,8 +187,8 @@ swagger:
   production: false
   basic:
     enable: false
-    username: jeecg
-    password: jeecg1314
+    username: ${TJ_KNIFE4J_USERNAME:}
+    password: ${TJ_KNIFE4J_PASSWORD:}
 #第三方登录
 justauth:
   enabled: true

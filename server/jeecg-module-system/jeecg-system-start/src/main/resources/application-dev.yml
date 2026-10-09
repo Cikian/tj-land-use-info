@@ -28,8 +28,9 @@ spring:
       max-request-size: 200MB
   mail:
     host: smtp.163.com
-    username: jeecgos@163.com
-    password: ??
+    # ★ 授权码/口令已外移到 .env（见 server/.env.example）
+    username: ${TJ_MAIL_USERNAME:}
+    password: ${TJ_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -101,8 +102,10 @@ spring:
     druid:
       stat-view-servlet:
         enabled: true
-        loginUsername: admin
-        loginPassword: 123456
+        # ★ Druid 监控台口令已外移到 .env。旧模板把 admin/123456 直接写在仓库里，
+        #   这里改成 ${VAR:}，缺失时按空口令处理，由部署方负责补齐。
+        loginUsername: ${TJ_DRUID_LOGIN_USERNAME:}
+        loginPassword: ${TJ_DRUID_LOGIN_PASSWORD:}
         allow:
       web-stat-filter:
         enabled: true
@@ -132,9 +135,12 @@ spring:
         connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
       datasource:
         master:
-          url: jdbc:mysql://49.232.252.56:3306/tj-jyxyd?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-          username: root
-          password: Chen0809@mysql
+          # ★ 连接信息全部来自 .env（见 server/.env.example）。
+          #   写成 ${VAR:} 而不是 ${VAR:默认口令}：口令缺失时宁可启动失败，
+          #   也不要拿一个写在仓库里的默认口令去连库。
+          url: jdbc:mysql://${TJ_DB_HOST}:${TJ_DB_PORT}/${TJ_DB_NAME}?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          username: ${TJ_DB_USER}
+          password: ${TJ_DB_PASSWORD}
           driver-class-name: com.mysql.cj.jdbc.Driver
           # 多数据源配置
           #multi-datasource1:
@@ -145,9 +151,11 @@ spring:
   #redis 配置
   redis:
     database: 0
-    host: 127.0.0.1
-    port: 6379
-    password: ''
+    host: ${TJ_REDIS_HOST:127.0.0.1}
+    port: ${TJ_REDIS_PORT:6379}
+    # ★ 用 ${VAR:} 而不是 ${VAR:''}：本机 Redis 无口令时要落成**空值**，
+    #   写成 ${VAR:''} 在 YAML 里会变成字面量两个单引号，Redis 拿它当口令去认证会失败。
+    password: ${TJ_REDIS_PASSWORD:}
 #mybatis plus 设置
 mybatis-plus:
   mapper-locations: classpath*:org/jeecg/modules/**/xml/*Mapper.xml
@@ -171,7 +179,7 @@ jeecg:
   # 是否启用安全模式
   safeMode: false
   # 签名密钥串(前后端要一致，正式发布请自行修改)
-  signatureSecret: dd05f1c54d63749eda95f9fa6d49v442a
+  signatureSecret: ${TJ_SIGNATURE_SECRET:}
   # 签名拦截接口
   signUrls: /sys/dict/getDictItems/*,/sys/dict/loadDict/*,/sys/dict/loadDictOrderByValue/*,/sys/dict/loadDictItem/*,/sys/dict/loadTreeData,/sys/api/queryTableDictItemsByCode,/sys/api/queryFilterTableDictInfo,/sys/api/queryTableDictByKeys,/sys/api/translateDictFromTable,/sys/api/translateDictFromTableByKeys
   #local、minio、alioss
@@ -191,8 +199,8 @@ jeecg:
     excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**,/jmreport/bigscreen2/**
   #阿里云oss存储和大鱼短信秘钥配置
   oss:
-    accessKey: ??
-    secretKey: ??
+    accessKey: ${TJ_OSS_ACCESS_KEY:}
+    secretKey: ${TJ_OSS_SECRET_KEY:}
     endpoint: oss-cn-beijing.aliyuncs.com
     bucketName: jeecgdev
   # ElasticSearch 6设置
@@ -205,8 +213,8 @@ jeecg:
   # minio文件上传
   minio:
     minio_url: http://minio.jeecg.com
-    minio_name: ??
-    minio_pass: ??
+    minio_name: ${TJ_MINIO_NAME:}
+    minio_pass: ${TJ_MINIO_PASSWORD:}
     bucketName: otatest
   #大屏报表参数设置
   jmreport:
@@ -249,8 +257,8 @@ knife4j:
   production: false
   basic:
     enable: false
-    username: jeecg
-    password: jeecg1314
+    username: ${TJ_KNIFE4J_USERNAME:}
+    password: ${TJ_KNIFE4J_PASSWORD:}
 #第三方登录
 justauth:
   enabled: true
@@ -318,8 +326,8 @@ ck:
       enabled: true
       baseUrl: http://127.0.0.1:4548/app
       # 中台专用对接账号（供业务侧调用中台接口，不是登录用户）
-      username: system
-      password: Chen0809@
+      username: ${TJ_ZK_USERNAME:}
+      password: ${TJ_ZK_PASSWORD:}
       captcha: cikian
       # 机构(部门)增删改是否同步到中台
       depart-sync-enabled: true
@@ -342,10 +350,10 @@ ck:
       # 中台数据库信息，目前中台无法通过接口修改用户部门（中台本身bug），所以需要在中台数据库中修改用户部门
       # 不配置本节时：直连通道不装配，保存涉及"改机构"的用户会被明确拦截并提示（不会静默不一致）
       db-info:
-        host: 49.232.252.56
-        port: 3306
-        username: root
-        password: Chen0809@mysql
+        host: ${TJ_DB_HOST}
+        port: ${TJ_DB_PORT}
+        username: ${TJ_DB_USER}
+        password: ${TJ_DB_PASSWORD}
         database: tj_jyxyd_zk
         # 可选（省略即用默认值）：
         # url: jdbc:mysql://127.0.0.1:3306/stargis_zk?useSSL=false   # 配了它则忽略上面的 host/port/database

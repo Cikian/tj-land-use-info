@@ -6,6 +6,13 @@
 **/target
 **/logs
 
+## 环境变量：真实口令只留在本地 .env，仓库里只提交 .env.example
+# ★ 用 `.env`（无斜杠）而不是 `server/.env`，这样任意层级新增的 .env 都会被挡住，
+#   避免以后在其它模块放 .env 时忘了加规则。
+.env
+# 例外：模板文件要提交（! 取反必须紧跟在被排除的规则之后）
+!.env.example
+
 ## front
 **/*.lock
 # 前端构建产物（由 npm run build 生成，不入库）
