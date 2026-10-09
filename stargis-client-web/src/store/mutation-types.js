@@ -23,7 +23,26 @@ export const SYS_BUTTON_AUTH = 'SYS_BUTTON_AUTH'
 export const ENCRYPTED_STRING = 'ENCRYPTED_STRING'
 export const ENHANCE_PRE = 'enhance_'
 export const UI_CACHE_DB_DICT_DATA = 'UI_CACHE_DB_DICT_DATA'
-export const INDEX_MAIN_PAGE_PATH = '/dashboard/analysis'
+/**
+ * 【大屏改造】登录成功 / 登录态有效时要落的首页。
+ *
+ * 本工程已改造成「地图大屏」，真正的首页是 constantRouterMap 里的 `/`
+ * （component = views/screen/index，即带完整浮层的工作站）。
+ * 两个历史取值都不能用：
+ *   · '/dashboard/analysis' —— 该路由**未注册**；
+ *   · '/stargis' —— 只出现在 asyncRouterMap（死配置，GenerateRoutes 从未被 dispatch），
+ *     运行时同样**不存在**；views/stargis/index 是「裸地图页」，没有大屏浮层。
+ * 跳到未注册路由不会有任何组件渲染（只看到一张地图），所以这里统一收口。
+ *
+ * ⚠ 新增登录入口请一律用本常量，不要再写裸字符串。
+ */
+export const HOME_PAGE_PATH = '/'
+/**
+ * 历史常量，语义是「登录后的主页面」。
+ * 它原先指向 /dashboard/analysis（本工程未注册），保留名字只为兼容，
+ * 取值已跟随 HOME_PAGE_PATH —— 指向一个不存在的路由是纯粹的陷阱。
+ */
+export const INDEX_MAIN_PAGE_PATH = HOME_PAGE_PATH
 export const OAUTH2_LOGIN_PAGE_PATH = '/oauth2-app/login'
 export const TENANT_ID = 'TENANT_ID'
 export const ONL_AUTH_FIELDS = 'ONL_AUTH_FIELDS'

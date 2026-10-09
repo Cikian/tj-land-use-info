@@ -83,22 +83,12 @@ export function formatDate(value, fmt) {
 
 // 生成首页路由
 export function generateIndexRouter(data) {
+  // ★ 首页必须是 '/'（地图大屏工作站）。
+  //   这里原先也挂了一个 '/stargis' → views/stargis/index（裸地图页，无浮层），
+  //   而该路径与 constantRouterMap 的 '/' 是两套首页，容易把人送到「只有一张地图」
+  //   的页面上。已删除，首页统一由 router.config.js 的 '/' 承担。
   let indexRouter = [{
-    path: '/stargis',
-    name: 'stargis',
-    component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
-    // path: '/',
-    // name: 'dashboard',
-    // //component: () => import('@/components/layouts/BasicLayout'),
-    // component: resolve => require(['@/components/layouts/TabLayout'], resolve),
-    // meta: { title: '首页' },
-    // redirect: '/dashboard/analysis',
-    // children: [
-    //   ...generateChildRouters(data)
-    // ]
-  },{
     "path": "*", "redirect": "/", "hidden": true
-    // "path": "*", "redirect": "/404", "hidden": true
   }]
   return indexRouter;
 }

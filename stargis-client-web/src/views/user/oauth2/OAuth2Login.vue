@@ -12,7 +12,7 @@
 <script>
 import { mapActions } from 'vuex'
 import { isOAuth2AppEnv, timeFix } from '@/utils/util'
-import { INDEX_MAIN_PAGE_PATH } from '@/store/mutation-types'
+import { HOME_PAGE_PATH } from '@/store/mutation-types'
 
 export default {
   name: 'OAuth2Login',
@@ -82,8 +82,8 @@ export default {
       })
     },
     loginSuccess() {
-      // 登陆成功，重定向到主页
-      this.$router.replace({path: INDEX_MAIN_PAGE_PATH})
+      // 登陆成功，重定向到主页（'/' = 地图大屏工作站）
+      this.$router.replace({path: HOME_PAGE_PATH})
       // TODO 这个提示是否还需要？
       this.$notification.success({
         message: '欢迎',

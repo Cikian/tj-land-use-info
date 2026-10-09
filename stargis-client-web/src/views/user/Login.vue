@@ -51,7 +51,7 @@
 
 <script>
 import Vue from 'vue'
-import { ACCESS_TOKEN, ENCRYPTED_STRING } from '@/store/mutation-types'
+import { ACCESS_TOKEN, ENCRYPTED_STRING, HOME_PAGE_PATH } from '@/store/mutation-types'
 // import ThirdLogin from './third/ThirdLogin'
 import LoginSelectTenant from './LoginSelectTenant'
 import TwoStepCaptcha from '@/components/tools/TwoStepCaptcha'
@@ -149,7 +149,10 @@ export default {
     },
     //登录成功
     loginSuccess() {
-      this.$router.push({ path: '/stargis' }).catch(() => {
+      // ★ 必须跳 HOME_PAGE_PATH（'/'，地图大屏工作站）。
+      //   这里原先写的是 '/stargis'，而该路由只存在于死配置 asyncRouterMap 里，
+      //   运行时并未注册 —— 结果是登录后除了一张地图什么都渲染不出来。
+      this.$router.push({ path: HOME_PAGE_PATH }).catch(() => {
         // console.log('登录跳转首页出错,这个错误从哪里来的')
       })
       this.$notification.success({

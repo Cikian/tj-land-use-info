@@ -8,11 +8,11 @@ export const asyncRouterMap = [
   // ⚠️ 该数组当前不会被注册：store/modules/permission.js 的 GenerateRoutes 从未被 dispatch，
   //    实际路由 = constantRouterMap（见文件末尾）+ 后端菜单生成的动态路由。
   //    新增独立页面请加到 constantRouterMap。
-  {
-    path: '/stargis',
-    name: 'stargis',
-    component: () => import(/* webpackChunkName: "user" */ '@/views/stargis/index')
-  },
+  //
+  // ⚠️ 这里原本还有一个 { path: '/stargis', component: views/stargis/index }。
+  //    它既是死配置（永远不生效），又极具误导性：Login.vue 曾据此把登录后跳转
+  //    写成 '/stargis'，运行时该路由并不存在，于是登录后什么都不渲染。
+  //    裸地图页在 constantRouterMap 里已有正式入口 '/map'，故删除。 
   // {
   //   path: '/',
   //   name: 'dashboard',
@@ -367,6 +367,14 @@ export const constantRouterMap = [
   {
     path: '/screen/data',
     name: 'landDataScreen',
+    hidden: true,
+    component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
+  },
+  // 提级论证管理深链：直接落到大屏的「提级论证管理」整页模块。
+  // 支持 ?tab=entry|query|ledger|audit 指定初始页签，也支持 ?map=0 关闭 Cesium。
+  {
+    path: '/screen/review',
+    name: 'landEscalationScreen',
     hidden: true,
     component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
   },

@@ -6,7 +6,7 @@ import 'nprogress/nprogress.css' // progress bar style
 import notification from 'ant-design-vue/es/notification'
 import {
   ACCESS_TOKEN,
-  INDEX_MAIN_PAGE_PATH,
+  HOME_PAGE_PATH,
   OAUTH2_LOGIN_PAGE_PATH
 } from '@/store/mutation-types'
 import {
@@ -88,8 +88,11 @@ router.beforeEach((to, from, next) => {
       // alert(Vue.ls.get(ACCESS_TOKEN))
       /* has token */
       if (to.path === '/user/login' || to.path === OAUTH2_LOGIN_PAGE_PATH) {
+        // ★ 已登录用户访问登录页 → 回大屏首页（'/'）。
+        //   原先用 INDEX_MAIN_PAGE_PATH（/dashboard/analysis），该路由在本工程
+        //   并未注册，跳过去只会渲染出一片空白。
         next({
-          path: INDEX_MAIN_PAGE_PATH
+          path: HOME_PAGE_PATH
         })
         NProgress.done()
       } else {

@@ -7,7 +7,7 @@ import { filterObj } from '@/utils/util';
 import { deleteAction, getAction,downFile,getFileAccessHttpUrl } from '@/api/manage'
 import Vue from 'vue'
 import { ACCESS_TOKEN, TENANT_ID } from "@/store/mutation-types"
-import store from '@/store'
+import { logoutAndGoToLogin } from '@/utils/session'
 
 export const JeecgListMixin = {
   data(){
@@ -329,20 +329,11 @@ export const JeecgListMixin = {
         this.loading = false;
         if (info.file.response.status === 500) {
           let data = info.file.response
-          const token = Vue.ls.get(ACCESS_TOKEN)
-          if (token && data.message.includes("Token失效")) {
-            this.$error({
-              title: '登录已过期',
-              content: '很抱歉，登录已过期，请重新登录',
-              okText: '重新登录',
-              mask: false,
-              onOk: () => {
-                store.dispatch('Logout').then(() => {
-                  Vue.ls.remove(ACCESS_TOKEN)
-                  window.location.reload();
-                })
-              }
-            })
+          // 【stargis 改造】上传是打到 Java 业务后端的，500 + “Token失效”就是
+          // jeecg 令牌不可用；与其它接口一样直接退出到登录页（旧实现是弹框让用户点
+          // “重新登录”，用户不点就一直卡在页面上）
+          if (data.message && data.message.includes("Token失效")) {
+            logoutAndGoToLogin('业务后端登录已过期，请重新登录')
           }
         } else {
           this.$message.error(`文件上传失败: ${info.file.msg} `);

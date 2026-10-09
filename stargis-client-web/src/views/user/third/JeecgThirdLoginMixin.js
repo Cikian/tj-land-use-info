@@ -4,6 +4,9 @@
 import { mapActions } from 'vuex'
 import { postAction } from '@api/manage'
 import { timeFix } from '@/utils/util'
+// ★ 登录后统一落到 HOME_PAGE_PATH（'/'，地图大屏工作站）。
+//   原先写的 "/dashboard/analysis" 在本工程里并未注册路由，跳过去什么都不渲染。
+import { HOME_PAGE_PATH } from '@/store/mutation-types'
 
 export const JeecgThirdLoginMixin = {
   data() {
@@ -183,7 +186,7 @@ export const JeecgThirdLoginMixin = {
       // update-begin- author:sunjianlei --- date:20190812 --- for: 登录成功后不解除禁用按钮，防止多次点击
       // this.loginBtn = false
       // update-end- author:sunjianlei --- date:20190812 --- for: 登录成功后不解除禁用按钮，防止多次点击
-      this.$router.push({ path: "/dashboard/analysis" }).catch(()=>{
+      this.$router.push({ path: HOME_PAGE_PATH }).catch(()=>{
         console.log('登录跳转首页出错,这个错误从哪里来的')
       })
       this.$notification.success({
