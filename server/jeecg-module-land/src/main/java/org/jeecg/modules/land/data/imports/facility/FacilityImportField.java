@@ -21,7 +21,7 @@ import java.util.Map;
  * <p><b>★ 列名为什么必须是旧库的真实列名</b>：
  * 旧系统 {@code xjKjkfbSupportingFacilitiesController.getExcelDemo()} 生成的两行表头就是
  * 「第 0 行 = 英文字段名、第 1 行 = 中文注释」，数据从第 3 行开始。
- * 而配套表 {@code xj_kjkfb_supporting_facilities} 是<b>直接复用旧表名</b>的
+ * 而配套表 {@code t_supporting_facilities} <b>列结构沿用旧系统配套表</b>
  * （见 {@code Facility} 实体注释），列名与旧库逐字一致，因此：
  * <ol>
  *   <li>中心手里已在用的配套 Excel 可以直接传进来，不需要重新填；</li>

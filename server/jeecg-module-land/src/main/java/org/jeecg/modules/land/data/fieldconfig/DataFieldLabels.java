@@ -18,7 +18,7 @@ import java.util.Set;
  * <p>所以中文名在这里显式登记一份。<b>这些名字本来就要写在前端表单上</b>，
  * 服务层再写一遍不额外增加维护面，却换来「履历里显示的是人看得懂的名字」。
  *
- * <p>字段名与 {@code t_land} / {@code xj_kjkfb_supporting_facilities} 的列名
+ * <p>字段名与 {@code t_land} / {@code t_supporting_facilities} 的列名
  * （即批量导入模板的英文字段名）完全一致，三处共用同一套命名，
  * 排查数据问题时不需要做二次翻译。
  */

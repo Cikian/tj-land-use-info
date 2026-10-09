@@ -85,7 +85,7 @@ public class CompletionArchive implements Serializable {
     /** 出让宗地ID → t_land.id（可空） */
     private String landId;
 
-    /** 配套项目ID → xj_kjkfb_supporting_facilities.id（可空；关联扫描件的第一查找键） */
+    /** 配套项目ID → t_supporting_facilities.id（可空；关联扫描件的第一查找键） */
     private String facilityId;
 
     /** 出让宗地编号 → t_land.crzdbh（可空；关联扫描件的兜底查找键） */

@@ -6,7 +6,7 @@
 --
 --  ★ 数据是怎么"造"出来的
 --    不是随便编名字，而是**基于库里的真实数据**：
---      · 宗地 / 配套项目：取自 xj_kjkfb_supporting_facilities + t_land，
+--      · 宗地 / 配套项目：取自 t_supporting_facilities + t_land，
 --        覆盖 河东/河西/南开/东丽 4 个区、排水/燃气/道路 3 类配套、市级+区级 2 类项目；
 --      · 档案类别：只挂 t_archive_category 里**真实存在的叶子类别**（37 个叶子，覆盖 6 个顶级类别）；
 --      · 文件大小 / 扩展名 / 卷内序号：按真实档案习惯给（pdf 为主，另有 jpg/xlsx/zip/docx/dwg）。

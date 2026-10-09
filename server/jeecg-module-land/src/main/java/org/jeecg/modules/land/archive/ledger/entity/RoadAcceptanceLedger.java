@@ -26,7 +26,7 @@ import java.util.List;
  *
  * <p><b>★ 这个功能在旧系统里不存在</b>（旧代码全文检索 0 命中、旧库无表、旧菜单无此项），
  * 属于方案 2.3.2 第 7 项的全新开发；但**有旧数据要迁** ——
- * 以旧配套项目表 {@code xj_kjkfb_supporting_facilities} 的道路类项目为底账
+ * 以旧配套项目表 {@code t_supporting_facilities} 的道路类项目为底账
  * 生成台账初始记录（见 {@code sql/ledger/05_migrate_road_facilities.sql}）。
  * 因此本实体上有两个「迁移专用」列（{@link #sourceFacilityId} / {@link #facilityId}），
  * 它们共同保证「一条配套项目 ↔ 一条台账」可追溯、可幂等重跑。
@@ -90,7 +90,7 @@ public class RoadAcceptanceLedger implements Serializable {
     /** 配套设施类别（道路/市政道路/道路及管线…） */
     private String ptsslb;
 
-    /** 配套项目ID → xj_kjkfb_supporting_facilities.id */
+    /** 配套项目ID → t_supporting_facilities.id */
     private String facilityId;
 
     /** 配套项目名称（冗余，与 roadName 同值） */

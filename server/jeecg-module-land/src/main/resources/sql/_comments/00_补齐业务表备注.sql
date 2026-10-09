@@ -15,9 +15,9 @@
 --  ★ 可重复执行：ALTER ... COMMENT 是幂等的（同样的值再设一次不会有副作用）。
 --
 --  ★★ 核对中最重要的一个发现（已写进表备注）
---    t_supporting_facilities 与 xj_kjkfb_supporting_facilities **是同一份数据的两个副本**：
+--    t_supporting_facilities 与 t_supporting_facilities **是同一份数据的两个副本**：
 --      · 均 1433 行，id 完全重合，关键字段逐行一致；
---      · 但代码 93 处引用**全部**指向 xj_kjkfb_supporting_facilities
+--      · 但代码 93 处引用**全部**指向 t_supporting_facilities
 --        （Facility 实体 @TableName、FacilityMapper.xml、DataRecycleMapper、
 --         台账/移交/竣工档案/提级论证的 facility_id 注释……）；
 --      · t_supporting_facilities 在代码与配置（online 表单、积木报表）中**零引用**。
@@ -33,12 +33,12 @@ SET NAMES utf8mb4;
 -- ---------------------------------------------------------------------------
 
 -- ① 配套项目主表：新系统实际在用的那张
-ALTER TABLE `xj_kjkfb_supporting_facilities`
+ALTER TABLE `t_supporting_facilities`
   COMMENT = '配套项目主表（旧库同名表，新系统直接复用）：1 宗地 N 配套；1433 行于 2026-09 自旧库迁入。★ 唯一在用的一张配套表，Facility 实体与 93 处代码全部指向它；删除状态列是驼峰 delFlag（varchar 0/1），与 t_land.del_flag（下划线 tinyint）不同';
 
 -- ② 同结构重复表：零引用，标注为「勿写入」
 ALTER TABLE `t_supporting_facilities`
-  COMMENT = '配套项目主表 · 未使用的重复副本：与 xj_kjkfb_supporting_facilities 同结构同数据（1433 行、id 完全重合），但代码与配置中零引用。★ 请勿写入本表——写进来的数据不会被程序读到；新系统一律用 xj_kjkfb_supporting_facilities';
+  COMMENT = '配套项目主表 · 未使用的重复副本：与 t_supporting_facilities 同结构同数据（1433 行、id 完全重合），但代码与配置中零引用。★ 请勿写入本表——写进来的数据不会被程序读到；新系统一律用 t_supporting_facilities';
 
 -- ③④⑤ 旧系统收发文三表（已迁入新结构）
 ALTER TABLE `xj_filemanage_send`

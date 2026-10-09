@@ -8,7 +8,7 @@
 -- ★★ 与「道路设施验收及移交资料台账」（第 7 项）一样，本功能在旧系统中【不存在】：
 --     ① 旧代码 code/old/3DPlanWeb 与 code/old/tj-sfw 全文检索「养护协议 / 交付 / 移交事项」
 --        → 0 命中；
---     ② 旧库三个库没有任何移交/协议表，只有 xj_kjkfb_supporting_facilities 的
+--     ② 旧库三个库没有任何移交/协议表，只有 t_supporting_facilities 的
 --        sfyj(是否移交) / jsgydw(接收管养单位) / jsdw(建设单位) 等字段；
 --     ③ 旧菜单表 stargis_menu（92 行）无此项。
 --   因此本模块是**按方案新建**；「迁移」只做一件事：
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS `t_road_handover` (
   `crzdbh`            VARCHAR(100)     NULL COMMENT '出让宗地编号 → t_land.crzdbh',
   `land_id`           VARCHAR(64)      NULL COMMENT '出让宗地ID → t_land.id（冗余）',
   `dkmc`              VARCHAR(255)     NULL COMMENT '地块名称（冗余，迁移时由 crzdbh 反查）',
-  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → xj_kjkfb_supporting_facilities.id',
+  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → t_supporting_facilities.id',
   `ptxmmc`            VARCHAR(100)     NULL COMMENT '配套项目名称（冗余，与 road_name 同值）',
 
   -- ===== 协议与移交信息 =====

@@ -4,7 +4,7 @@
 --
 -- ★★ 迁移背景（务必先读 01 脚本的表头：旧系统没有这个功能）
 --   旧系统没有台账表可搬，所以「迁移」在这里的含义是：
---   以旧配套项目表 xj_kjkfb_supporting_facilities 里的**道路类项目为底账**，
+--   以旧配套项目表 t_supporting_facilities 里的**道路类项目为底账**，
 --   为每条道路生成一条台账初始记录（需求方 2026-09 确认：道路类全部生成）。
 --
 --   底账范围（实测 1340 条，线上库与本地库数字一致）：
@@ -68,7 +68,7 @@ SET NAMES utf8mb4;
 -- ---------------------------------------------------------------------------
 SELECT '依赖检查' AS 检查项,
        (SELECT COUNT(*) FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xj_kjkfb_supporting_facilities') AS 源表_配套项目,
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_supporting_facilities') AS 源表_配套项目,
        (SELECT COUNT(*) FROM information_schema.TABLES
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_road_acceptance_ledger') AS 目标表_台账,
        (SELECT COUNT(*) FROM information_schema.TABLES
@@ -76,7 +76,7 @@ SELECT '依赖检查' AS 检查项,
 
 --    0.2 底账条数（应为 1340）与迁移前台账条数（首次执行应为 0）
 SELECT '迁移前基线' AS 检查项,
-       (SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities`
+       (SELECT COUNT(*) FROM `t_supporting_facilities`
          WHERE `ptsslb` IN ('道路', '市政道路', '道路及管线')
            AND `ptxmmc` IS NOT NULL AND `ptxmmc` <> ''
            AND (`delFlag` IS NULL OR `delFlag` = '0')) AS 底账条数,
@@ -163,7 +163,7 @@ FROM (
     YEAR(COALESCE(`s`.`sjjgsj`, `s`.`createTime`, NOW()))            AS `y`,
     -- 同年度内流水号：(竣工时间, id) 升序计数。确定性、可复跑，不依赖用户变量
     (SELECT COUNT(*)
-       FROM `xj_kjkfb_supporting_facilities` `b`
+       FROM `t_supporting_facilities` `b`
       WHERE `b`.`ptsslb` IN ('道路', '市政道路', '道路及管线')
         AND `b`.`ptxmmc` IS NOT NULL AND `b`.`ptxmmc` <> ''
         AND (`b`.`delFlag` IS NULL OR `b`.`delFlag` = '0')
@@ -172,7 +172,7 @@ FROM (
         AND (COALESCE(`b`.`sjjgsj`, `b`.`createTime`, NOW()), `b`.`id`)
          <= (COALESCE(`s`.`sjjgsj`, `s`.`createTime`, NOW()), `s`.`id`)
     )                                                                AS `seq`
-  FROM `xj_kjkfb_supporting_facilities` `s`
+  FROM `t_supporting_facilities` `s`
   WHERE `s`.`ptsslb` IN ('道路', '市政道路', '道路及管线')
     AND `s`.`ptxmmc` IS NOT NULL AND `s`.`ptxmmc` <> ''
     AND (`s`.`delFlag` IS NULL OR `s`.`delFlag` = '0')
@@ -193,7 +193,7 @@ FROM `t_road_acceptance_ledger`;
 
 --    2.2 ★ 对账：底账条数 与 已迁移条数 必须相等（差 > 0 说明有行被 INSERT IGNORE 静默丢弃，
 --        通常是 ledger_no 撞唯一键，需查下面的 2.3）
-SELECT (SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities`
+SELECT (SELECT COUNT(*) FROM `t_supporting_facilities`
          WHERE `ptsslb` IN ('道路', '市政道路', '道路及管线')
            AND `ptxmmc` IS NOT NULL AND `ptxmmc` <> ''
            AND (`delFlag` IS NULL OR `delFlag` = '0'))                AS 底账条数,

@@ -55,7 +55,7 @@ SELECT
   0,
   r.`create_by`, r.`create_time`, r.`update_by`, r.`update_time`
 FROM `xj_filemanage_receive` r
-LEFT JOIN `xj_kjkfb_supporting_facilities` f ON f.`ptxmmc` = TRIM(r.`ywk_pro`)
+LEFT JOIN `t_supporting_facilities` f ON f.`ptxmmc` = TRIM(r.`ywk_pro`)
 LEFT JOIN `t_land` l ON l.`crzdbh` = f.`crzdbh` AND l.`del_flag` = 0
 ON DUPLICATE KEY UPDATE
   `doc_no`        = VALUES(`doc_no`),
@@ -103,7 +103,7 @@ SELECT
   0,
   s.`create_by`, s.`create_time`, s.`update_by`, s.`update_time`
 FROM `xj_filemanage_send` s
-LEFT JOIN `xj_kjkfb_supporting_facilities` f ON f.`ptxmmc` = TRIM(s.`ywk_pro`)
+LEFT JOIN `t_supporting_facilities` f ON f.`ptxmmc` = TRIM(s.`ywk_pro`)
 LEFT JOIN `t_land` l ON l.`crzdbh` = f.`crzdbh` AND l.`del_flag` = 0
 ON DUPLICATE KEY UPDATE
   `doc_no`     = VALUES(`doc_no`),

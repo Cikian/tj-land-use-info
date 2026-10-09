@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS `t_completion_archive` (
 
   -- ===== 关联项目信息（★ 全选填：存量历史项目不一定有对应宗地/配套项目，见 §6.3.8）=====
   `land_id`           VARCHAR(64)      NULL COMMENT '出让宗地ID → t_land.id（可空）',
-  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → xj_kjkfb_supporting_facilities.id（可空；关联扫描件的第一查找键）',
+  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → t_supporting_facilities.id（可空；关联扫描件的第一查找键）',
   `crzdbh`            VARCHAR(100)     NULL COMMENT '出让宗地编号 → t_land.crzdbh（可空；关联扫描件的兜底查找键）',
   `ptxmmc`            VARCHAR(100)     NULL COMMENT '配套项目名称（冗余，便于关联扫描件与展示）',
   `dkmc`              VARCHAR(255)     NULL COMMENT '地块名称（冗余）',

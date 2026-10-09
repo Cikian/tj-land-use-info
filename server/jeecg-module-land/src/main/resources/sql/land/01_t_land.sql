@@ -6,7 +6,7 @@
 --    新系统（档案管理 / 收发文管理 / 数据管理）全部落在 tj-jyxyd 库，
 --    而宗地数据只在旧库 nutzwk_ywk.xj_kjkfb_commercial_land 里。
 --    设计文档 6.3.9（3）明确要求「不要跨库读」——配套项目表
---    xj_kjkfb_supporting_facilities 早已复制进 tj-jyxyd，宗地表却没有，
+--    t_supporting_facilities 早已复制进 tj-jyxyd，宗地表却没有，
 --    本脚本把宗地表也复制进来，使「宗地 → 配套项目」的 1:N 关联可以在同库 JOIN。
 --
 --  字段策略：

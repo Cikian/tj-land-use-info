@@ -10,7 +10,7 @@
         · 系统表列结构与脚本假设一致
         · admin 角色 id 与授权脚本一致（f6817f48af4fb3af11b9e8bf182f618b）
         · 父菜单「档案管理」存在
-        · 迁移依赖表存在（xj_kjkfb_supporting_facilities / t_land / t_archive）
+        · 迁移依赖表存在（t_supporting_facilities / t_land / t_archive）
         · 本模块固定主键前缀无冲突
 
       执行（幂等）
@@ -101,13 +101,13 @@ $pre = Invoke-Sql @"
 SELECT
  (SELECT COUNT(*) FROM sys_role WHERE id='f6817f48af4fb3af11b9e8bf182f618b') AS admin_role,
  (SELECT COUNT(*) FROM sys_permission WHERE id='7e2a9c4f1b6d4a3e8f0c5b7d9a1e2f30' AND del_flag=0) AS parent_menu,
- (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='xj_kjkfb_supporting_facilities') AS src_facility,
+ (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='t_supporting_facilities') AS src_facility,
  (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='t_land') AS t_land,
  (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='t_archive') AS t_archive,
  (SELECT COUNT(*) FROM sys_permission WHERE id LIKE '2ed9e0a11ed9e0a11ed9e0a11ed9e%') AS perm_conflict,
  (SELECT COUNT(*) FROM sys_dict WHERE id LIKE '2ed9e0a11ed9e0a11ed9e0a11ed9e2%') AS dict_conflict,
  (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='t_road_handover') AS handover_table,
- (SELECT COUNT(*) FROM xj_kjkfb_supporting_facilities
+ (SELECT COUNT(*) FROM t_supporting_facilities
     WHERE ptsslb IN ('道路','市政道路','道路及管线') AND sfyj='是'
       AND ptxmmc IS NOT NULL AND ptxmmc <> '' AND (delFlag IS NULL OR delFlag='0')) AS source_rows;
 "@
@@ -117,7 +117,7 @@ $adminRole, $parentMenu, $srcFacility, $tLand, $tArchive, $permConf, $dictConf, 
 $problems = @()
 if ([int]$adminRole -eq 0)     { $problems += "admin 角色 id 不是 f6817f48af4fb3af11b9e8bf182f618b" }
 if ([int]$parentMenu -eq 0)    { $problems += "父菜单「档案管理」不存在，请先同步档案管理模块" }
-if ([int]$srcFacility -eq 0)   { $problems += "缺少源表 xj_kjkfb_supporting_facilities，无法迁移" }
+if ([int]$srcFacility -eq 0)   { $problems += "缺少源表 t_supporting_facilities，无法迁移" }
 if ([int]$tLand -eq 0)         { $problems += "缺少 t_land（迁移时按 crzdbh 反查地块名称要用）" }
 if ([int]$tArchive -eq 0)      { Write-Host "  注意：t_archive 不存在——移交事项能建，但「关联档案」页签会没数据" -ForegroundColor Yellow }
 if ([int]$permConf -ne 0 -or [int]$dictConf -ne 0) {
@@ -175,7 +175,7 @@ SELECT '表与索引' AS 项, TABLE_NAME AS 对象, TABLE_ROWS AS 估算行数, 
 SELECT '索引数' AS 项, COUNT(DISTINCT INDEX_NAME) AS 索引数
  FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='t_road_handover';
 SELECT '迁移对账' AS 项,
- (SELECT COUNT(*) FROM xj_kjkfb_supporting_facilities
+ (SELECT COUNT(*) FROM t_supporting_facilities
    WHERE ptsslb IN ('道路','市政道路','道路及管线') AND sfyj='是'
      AND ptxmmc IS NOT NULL AND ptxmmc <> '' AND (delFlag IS NULL OR delFlag='0')) AS 底账条数,
  (SELECT COUNT(*) FROM t_road_handover WHERE source_facility_id IS NOT NULL) AS 已迁移条数,

@@ -88,7 +88,7 @@ public abstract class LandIntegrationTestBase {
      * {@code CannotGetJdbcConnectionException}。
      *
      * <p>实测过两次这种偶发失败（一次在 {@code t_facility_process}，一次在
-     * {@code xj_kjkfb_supporting_facilities}，都是同一段清理代码的不同行）。
+     * {@code t_supporting_facilities}，都是同一段清理代码的不同行）。
      * 它报出来的是**假红**：测试方法本身早就通过了，事务也回滚了，
      * 库里并没有数据残留 —— 只是「顺手再擦一遍」这个动作没连上库。
      * 这种失败会让人去怀疑一个根本没问题的测试，所以这里显式容忍。
@@ -125,7 +125,7 @@ public abstract class LandIntegrationTestBase {
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = connection.prepareStatement(
-                    "DELETE FROM `xj_kjkfb_supporting_facilities` WHERE `crzdbh` LIKE ?")) {
+                    "DELETE FROM `t_supporting_facilities` WHERE `crzdbh` LIKE ?")) {
                 ps.setString(1, TEST_DATA_CRZDBH_PREFIX + "%");
                 ps.executeUpdate();
             }
@@ -190,7 +190,7 @@ public abstract class LandIntegrationTestBase {
      *
      * <p>这类失败报的是**假红**：测试方法本身早已通过、事务也已回滚、库里没有残留，
      * 只是「顺手再擦一遍」这个动作没连上库。它会让人去怀疑一个根本没问题的测试
-     * （实测已在 {@code t_facility_process}、{@code xj_kjkfb_supporting_facilities}、
+     * （实测已在 {@code t_facility_process}、{@code t_supporting_facilities}、
      * {@code t_completion_archive} 三处出现过）。
      *
      * <p>处理方式与基类 {@link #cleanTestRows()} 完全一致：

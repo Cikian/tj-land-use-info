@@ -4,7 +4,7 @@
 
     <!--
       ★ 配套项目表回写窄接口（设计文档 2.4 的 L1 / L2）
-      表名沿用旧库 xj_kjkfb_supporting_facilities（不是 t_facility，见设计文档 3.2 第 1 条）。
+      表 t_supporting_facilities（不是 t_facility，见设计文档 3.2 第 1 条）。
 
       ★★ 本表审计列是【驼峰】：delFlag（不是 del_flag）。
          data 模块的 Facility 实体用 @TableField("delFlag") 显式映射，
@@ -26,7 +26,7 @@
         SELECT f.`id`         AS `id`,
                f.`sfzsjtjlz` AS sfzsjtjlz,
                f.`tjlzsftg`  AS tjlzsftg
-        FROM `xj_kjkfb_supporting_facilities` f
+        FROM `t_supporting_facilities` f
         WHERE f.`id` = #{facilityId}
           AND COALESCE(f.`delFlag`, '0') = '0'
         LIMIT 1
@@ -39,7 +39,7 @@
         两列都为 null 时 SQL 非法，由调用方保证不会这样调用（Service 里先判空）。
     -->
     <update id="updateWritebackFields">
-        UPDATE `xj_kjkfb_supporting_facilities`
+        UPDATE `t_supporting_facilities`
         <set>
             <if test="sfzsjtjlz != null">
                 `sfzsjtjlz` = #{sfzsjtjlz},

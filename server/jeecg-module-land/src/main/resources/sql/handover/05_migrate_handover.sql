@@ -5,7 +5,7 @@
 -- ★★ 迁移范围：旧库「是否移交 = 是」的**道路类**项目（实测 84 条）
 --
 --   旧系统没有移交事项表，但有唯一一个能证明「已经移交了」的标志位：
---     xj_kjkfb_supporting_facilities.sfyj = '是'
+--     t_supporting_facilities.sfyj = '是'
 --   实测（线上库 tj-jyxyd）：
 --     道路类（ptsslb ∈ 道路/市政道路/道路及管线）共 1340 条，其中 sfyj='是' → **84 条**
 --     非道路类另有 sfyj='是' 2 条（排水），**不纳入本模块**（那是排水工程移交，方案未列）
@@ -51,14 +51,14 @@ SET NAMES utf8mb4;
 -- ---------------------------------------------------------------------------
 SELECT '依赖检查' AS 检查项,
        (SELECT COUNT(*) FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'xj_kjkfb_supporting_facilities') AS 源表_配套项目,
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_supporting_facilities') AS 源表_配套项目,
        (SELECT COUNT(*) FROM information_schema.TABLES
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_road_handover') AS 目标表_移交事项,
        (SELECT COUNT(*) FROM information_schema.TABLES
          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_land') AS 依赖表_宗地;
 
 SELECT '迁移前基线' AS 检查项,
-       (SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities`
+       (SELECT COUNT(*) FROM `t_supporting_facilities`
          WHERE `ptsslb` IN ('道路', '市政道路', '道路及管线')
            AND `sfyj` = '是' AND `ptxmmc` IS NOT NULL AND `ptxmmc` <> ''
            AND (`delFlag` IS NULL OR `delFlag` = '0')) AS 底账条数,
@@ -121,7 +121,7 @@ FROM (
     YEAR(COALESCE(`s`.`sjjgsj`, `s`.`createTime`, NOW()))            AS `y`,
     -- 同年度内流水：(竣工时间, id) 升序计数。确定性、可复跑，不依赖用户变量
     (SELECT COUNT(*)
-       FROM `xj_kjkfb_supporting_facilities` `b`
+       FROM `t_supporting_facilities` `b`
       WHERE `b`.`ptsslb` IN ('道路', '市政道路', '道路及管线')
         AND `b`.`sfyj` = '是' AND `b`.`ptxmmc` IS NOT NULL AND `b`.`ptxmmc` <> ''
         AND (`b`.`delFlag` IS NULL OR `b`.`delFlag` = '0')
@@ -130,7 +130,7 @@ FROM (
         AND (COALESCE(`b`.`sjjgsj`, `b`.`createTime`, NOW()), `b`.`id`)
          <= (COALESCE(`s`.`sjjgsj`, `s`.`createTime`, NOW()), `s`.`id`)
     )                                                                AS `seq`
-  FROM `xj_kjkfb_supporting_facilities` `s`
+  FROM `t_supporting_facilities` `s`
   WHERE `s`.`ptsslb` IN ('道路', '市政道路', '道路及管线')
     AND `s`.`sfyj` = '是' AND `s`.`ptxmmc` IS NOT NULL AND `s`.`ptxmmc` <> ''
     AND (`s`.`delFlag` IS NULL OR `s`.`delFlag` = '0')
@@ -151,7 +151,7 @@ SELECT '迁移结果' AS 项,
 FROM `t_road_handover`;
 
 --    2.2 对账：底账条数 与 已迁移条数 必须相等
-SELECT (SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities`
+SELECT (SELECT COUNT(*) FROM `t_supporting_facilities`
          WHERE `ptsslb` IN ('道路', '市政道路', '道路及管线')
            AND `sfyj` = '是' AND `ptxmmc` IS NOT NULL AND `ptxmmc` <> ''
            AND (`delFlag` IS NULL OR `delFlag` = '0'))                AS 底账条数,

@@ -122,7 +122,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         //   除了注入风险外，ESCAPE 里的反斜杠还会被 JDBC/MySQL 双层解析吞掉，
         //   结果是「搜 100% 匹配不到任何记录」这种极难排查的问题。
         if (condition.getHasFacility() != null) {
-            String existsSql = "SELECT 1 FROM xj_kjkfb_supporting_facilities f "
+            String existsSql = "SELECT 1 FROM t_supporting_facilities f "
                     + "WHERE f.crzdbh = t_land.crzdbh AND COALESCE(f.delFlag, '0') = '0'";
             if (Boolean.TRUE.equals(condition.getHasFacility())) {
                 wrapper.exists(existsSql);
@@ -132,7 +132,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         }
         if (StringUtils.isNotBlank(condition.getFacilityKeyword())) {
             String keyword = condition.getFacilityKeyword().trim();
-            likeNoEscape(wrapper, "EXISTS (SELECT 1 FROM xj_kjkfb_supporting_facilities f "
+            likeNoEscape(wrapper, "EXISTS (SELECT 1 FROM t_supporting_facilities f "
                             + "WHERE f.crzdbh = t_land.crzdbh AND COALESCE(f.delFlag, '0') = '0' "
                             + "AND (f.ptxmmc LIKE {0} OR f.crzdbh LIKE {0}))",
                     "%" + keyword + "%");

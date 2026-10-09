@@ -14,8 +14,8 @@
 --     · 操作日志走 jeecg 自带的 @AutoLog → sys_log（零额外表）。
 --
 -- ★ 与清单第 7.2 章 DDL 的关键差异（照抄会翻车，详见设计文档 3.2）：
---   1) 关联配套项目表是 xj_kjkfb_supporting_facilities，**不是 t_facility**
---      （档案模块落地时已确认：配套表复用旧表名，未新建 t_facility）；
+--   1) 关联配套项目表是 t_supporting_facilities，**不是 t_facility**
+--      （配套表由旧系统表更名而来，未新建 t_facility）；
 --   2) 唯一键改为 project_no 单列。清单写的 (project_no, del_flag) 会导致
 --      「同一编号删除两次即冲突」，且允许删除后重号；
 --   3) 补齐 ENGINE / CHARSET（InnoDB + utf8mb4_general_ci，与 t_archive / t_land 一致）；
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS `t_escalation_project` (
   `tdzl_project`      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否土地整理项目（字典 yn）',
 
   -- 与主业务系统的挂钩点
-  `facility_id`       VARCHAR(100)     NULL COMMENT '关联配套项目ID → xj_kjkfb_supporting_facilities.id',
+  `facility_id`       VARCHAR(100)     NULL COMMENT '关联配套项目ID → t_supporting_facilities.id',
   `ptxmmc`            VARCHAR(100)     NULL COMMENT '配套项目名称（冗余，台账展示用）',
   `crzdbh`            VARCHAR(100)     NULL COMMENT '关联出让宗地编号 → t_land.crzdbh（可空）',
 

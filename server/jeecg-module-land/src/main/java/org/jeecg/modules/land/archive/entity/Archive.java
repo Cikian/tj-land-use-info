@@ -85,7 +85,7 @@ public class Archive implements Serializable {
     /** 出让宗地编号（冗余业务键） */
     private String crzdbh;
 
-    /** 配套项目ID → xj_kjkfb_supporting_facilities.id */
+    /** 配套项目ID → t_supporting_facilities.id */
     private String facilityId;
 
     /** 配套项目名称（冗余） */

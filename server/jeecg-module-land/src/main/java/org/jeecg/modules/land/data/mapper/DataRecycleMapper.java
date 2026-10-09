@@ -22,11 +22,12 @@ import java.util.Map;
  *
  * <p><b>★ 两张表的软删列名不一样（真实结构差异，不是笔误）</b>：
  * <pre>
- *   t_land                           del_flag  (下划线, tinyint)
- *   xj_kjkfb_supporting_facilities   delFlag   (驼峰, varchar '0'/'1')
+ *   t_land                   del_flag  (下划线, tinyint)
+ *   t_supporting_facilities  delFlag   (驼峰,   varchar '0'/'1')
  * </pre>
- * 这是复制旧表时就留下的差异（Facility 实体上专门有 {@code @TableField("delFlag")}
- * 的注释在讲这件事）。写 SQL 时必须分辨，写错就是「回收站永远为空」。
+ * 后者的列结构沿用旧系统配套表，所以保留下划线/驼峰的混搭（Facility 实体上专门有
+ * {@code @TableField("delFlag")} 的注释在讲这件事）。写 SQL 时必须分辨，
+ * 写错就是「回收站永远为空」或「删不掉」。
  */
 @Mapper
 public interface DataRecycleMapper {
@@ -71,7 +72,7 @@ public interface DataRecycleMapper {
             + "       f.`ptxmmc` AS projectName, "
             + "       NULL AS updateBy, f.`createTime` AS updateTime, "
             + "       f.`delFlag` AS delFlag "
-            + "FROM `xj_kjkfb_supporting_facilities` f WHERE f.`delFlag` = '1' "
+            + "FROM `t_supporting_facilities` f WHERE f.`delFlag` = '1' "
             + "<if test='keyword != null and keyword != \"\"'>"
             + "  AND (f.`crzdbh` LIKE CONCAT('%', #{keyword}, '%')"
             + "       OR f.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%'))"
@@ -83,7 +84,7 @@ public interface DataRecycleMapper {
     /** 回收站计数（按业务类型分开，页面顶部卡片用） */
     @Select("SELECT "
             + " (SELECT COUNT(*) FROM `t_land` WHERE `del_flag` = 1) AS landDeleted, "
-            + " (SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities` WHERE `delFlag` = '1') AS facilityDeleted")
+            + " (SELECT COUNT(*) FROM `t_supporting_facilities` WHERE `delFlag` = '1') AS facilityDeleted")
     Map<String, Object> selectRecycleSummary();
 
     // ==================================================================
@@ -96,7 +97,7 @@ public interface DataRecycleMapper {
     int restoreLand(@Param("id") String id, @Param("updateBy") String updateBy);
 
     /** 恢复一条配套项目 */
-    @Update("UPDATE `xj_kjkfb_supporting_facilities` SET `delFlag` = '0' "
+    @Update("UPDATE `t_supporting_facilities` SET `delFlag` = '0' "
             + "WHERE `id` = #{id} AND `delFlag` = '1'")
     int restoreFacility(@Param("id") String id);
 
@@ -126,7 +127,7 @@ public interface DataRecycleMapper {
      * <p>配套表没有唯一键（旧表本来就没有），所以这里不阻止恢复，
      * 只用来给用户一句提示（「已存在同名配套项目，恢复后会出现两条同名记录」）。
      */
-    @Select("SELECT COUNT(*) FROM `xj_kjkfb_supporting_facilities` "
+    @Select("SELECT COUNT(*) FROM `t_supporting_facilities` "
             + "WHERE `ptxmmc` = #{ptxmmc} AND COALESCE(`delFlag`, '0') = '0'")
     int countActiveFacilityByPtxmmc(@Param("ptxmmc") String ptxmmc);
 
@@ -135,7 +136,7 @@ public interface DataRecycleMapper {
     Map<String, Object> selectDeletedLand(@Param("id") String id);
 
     /** 取一条被移除的配套项目 */
-    @Select("SELECT `id`, `crzdbh`, `ptxmmc` FROM `xj_kjkfb_supporting_facilities` "
+    @Select("SELECT `id`, `crzdbh`, `ptxmmc` FROM `t_supporting_facilities` "
             + "WHERE `id` = #{id} AND `delFlag` = '1'")
     Map<String, Object> selectDeletedFacility(@Param("id") String id);
 }

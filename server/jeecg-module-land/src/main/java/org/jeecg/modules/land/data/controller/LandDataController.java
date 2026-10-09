@@ -212,7 +212,7 @@ public class LandDataController {
 
     /**
      * 首页落实配套情况与预警。
-     * 数据表沿用旧库 {@code xj_kjkfb_supporting_facilities}。
+     * 数据表 {@code t_supporting_facilities}（列结构沿用旧系统配套表）。
      */
     @AutoLog(value = "数据管理-首页配套统计")
     @ApiOperation(value = "首页配套统计", notes = "待落实配套宗地、行政区排行、市级/区级/地块预警")

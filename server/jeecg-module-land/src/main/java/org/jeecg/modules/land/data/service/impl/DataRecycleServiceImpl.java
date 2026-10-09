@@ -29,7 +29,7 @@ import java.util.Map;
  * <p><b>★★ 本实现要绕过的三个真实结构陷阱</b>（写错任意一个都会「功能看起来正常、数据是错的」）：
  * <ol>
  *   <li><b>两张表的软删列名不同</b>：{@code t_land.del_flag}（下划线 tinyint）
- *       vs {@code xj_kjkfb_supporting_facilities.delFlag}（驼峰 varchar）。
+ *       vs {@code t_supporting_facilities.delFlag}（驼峰 varchar）。
  *       这是复制旧表时留下的差异，写 SQL 时必须分辨。</li>
  *   <li><b>不能用实体查询查回收站</b>：{@code Land.delFlag} 上有 {@code @TableLogic}，
  *       所有实体查询都会自动追加 {@code del_flag = 0}，永远查不到已删记录。

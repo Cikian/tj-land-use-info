@@ -48,8 +48,9 @@ import java.util.Set;
  * @Date: 2026-10-08
  * @Version V1.0
  *
- * <p><b>★ 配套表复用旧表 {@code xj_kjkfb_supporting_facilities}，三条结构差异必须牢记</b>
- * （都来自“复制旧表”时的历史包袱，写错任何一条都会导致「查不到数据」或「删不掉」）：
+ * <p><b>★ 配套表 {@code t_supporting_facilities} 的三条结构差异必须牢记</b>
+ * （都来自「列结构沿用旧系统配套表」这一决定，写错任何一条都会导致
+ * 「查不到数据」或「删不掉」）：
  * <ol>
  *   <li><b>软删列是驼峰 {@code delFlag}，且类型是 varchar('0'/'1')</b>，
  *       与宗地表的下划线 tinyint {@code del_flag} 完全不同。

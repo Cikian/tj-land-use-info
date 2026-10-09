@@ -8,7 +8,7 @@
 --    05 脚本为了让「不依赖库内既有数据分布也能执行」，把
 --    facility_id / ptxmmc / crzdbh 一律留空。
 --    本脚本把其中 3 条演示项目挂到库内**真实存在**的
---    xj_kjkfb_supporting_facilities（配套项目）与 t_land（出让宗地）上，
+--    t_supporting_facilities（配套项目）与 t_land（出让宗地）上，
 --    用来验证两件事：
 --      1) 录入/保存时的**反查**：按 crzdbh 带出 dkmc / xzqh / ghydxz；
 --      2) 保存时的**回写**：facility_id 非空 → 回写 sfzsjtjlz='是'；
@@ -16,7 +16,7 @@
 --    ★ 回写动作由**后端应用**在执行保存时完成，本脚本只负责建立关联关系。
 --
 --  ★ 匹配策略（功能区优先 → 区划 → 尽量不同宗地）
---    实测库内 xj_kjkfb_supporting_facilities.xzqh 里**没有「滨海新区」**，
+--    实测库内 t_supporting_facilities.xzqh 里**没有「滨海新区」**，
 --    滨海新区的配套用的是功能区值（生态城 / 经开区 / 高新区 / 保税区）。
 --    因此本脚本按「项目的 gnq（功能区）优先，其次 xzqh（行政区划）」去匹配，
 --    并且**按宗地编号分组**，保证三条挂接落在**不同宗地**上（否则会像
@@ -37,7 +37,7 @@ SET NAMES utf8mb4;
 -- 0) 先看看库内有哪些可挂接的真实数据（供人工判断是否合理）
 -- ---------------------------------------------------------------------------
 SELECT '配套项目·按区划分布' AS 数据源, `xzqh` AS 区划, COUNT(*) AS 条数, COUNT(DISTINCT `crzdbh`) AS 不同宗地数
-FROM `xj_kjkfb_supporting_facilities`
+FROM `t_supporting_facilities`
 WHERE `xzqh` IN ('高新区', '经开区', '保税区', '生态城', '东丽区', '津南区')
 GROUP BY `xzqh`
 ORDER BY 条数 DESC;
@@ -61,7 +61,7 @@ JOIN (
     SELECT MIN(`id`) AS `id`,
            `crzdbh`,
            SUBSTRING_INDEX(GROUP_CONCAT(`ptxmmc` ORDER BY `id` SEPARATOR '~~'), '~~', 1) AS `ptxmmc`
-      FROM `xj_kjkfb_supporting_facilities`
+      FROM `t_supporting_facilities`
      WHERE `xzqh` = '高新区'
      GROUP BY `crzdbh`
      ORDER BY `id`
@@ -78,7 +78,7 @@ JOIN (
     SELECT MIN(`id`) AS `id`,
            `crzdbh`,
            SUBSTRING_INDEX(GROUP_CONCAT(`ptxmmc` ORDER BY `id` SEPARATOR '~~'), '~~', 1) AS `ptxmmc`
-      FROM `xj_kjkfb_supporting_facilities`
+      FROM `t_supporting_facilities`
      WHERE `xzqh` = '高新区'
      GROUP BY `crzdbh`
      ORDER BY `id`
@@ -95,7 +95,7 @@ JOIN (
     SELECT MIN(`id`) AS `id`,
            `crzdbh`,
            SUBSTRING_INDEX(GROUP_CONCAT(`ptxmmc` ORDER BY `id` SEPARATOR '~~'), '~~', 1) AS `ptxmmc`
-      FROM `xj_kjkfb_supporting_facilities`
+      FROM `t_supporting_facilities`
      WHERE `xzqh` = '东丽区'
      GROUP BY `crzdbh`
      ORDER BY `id`
@@ -142,7 +142,7 @@ SELECT f.`id` AS 配套项目ID, f.`ptxmmc` AS 配套项目名称, f.`crzdbh` AS
        f.`sfzsjtjlz` AS 是否涉及提级论证_当前值,
        f.`tjlzsftg`  AS 提级论证是否通过_当前值,
        p.`project_no` AS 关联的演示项目编号
-FROM `xj_kjkfb_supporting_facilities` f
+FROM `t_supporting_facilities` f
 JOIN `t_escalation_project` p ON p.`facility_id` = f.`id`
 WHERE p.`id` LIKE 'demo-ep-%'
 ORDER BY p.`id`;
@@ -158,12 +158,12 @@ ORDER BY p.`id`;
 -- ---------------------------------------------------------------------------
 -- 4) 手工验证回写效果（可选，仅用于不启动后端时看库内变化；★ 会写库）
 -- ---------------------------------------------------------------------------
--- UPDATE `xj_kjkfb_supporting_facilities`
+-- UPDATE `t_supporting_facilities`
 --    SET `sfzsjtjlz` = '是'
 --  WHERE `id` IN (SELECT `facility_id` FROM `t_escalation_project`
 --                 WHERE `id` LIKE 'demo-ep-%' AND `facility_id` IS NOT NULL);
 --
--- UPDATE `xj_kjkfb_supporting_facilities`
+-- UPDATE `t_supporting_facilities`
 --    SET `tjlzsftg` = '是'
 --  WHERE `id` IN (SELECT `facility_id` FROM `t_escalation_project`
 --                 WHERE `id` LIKE 'demo-ep-%' AND `facility_id` IS NOT NULL

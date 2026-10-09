@@ -60,7 +60,7 @@ public class LedgerSaveDTO implements Serializable {
     /** 配套设施类别 */
     private String ptsslb;
 
-    /** 配套项目ID（来自 xj_kjkfb_supporting_facilities） */
+    /** 配套项目ID（来自 t_supporting_facilities） */
     private String facilityId;
 
     /** 配套项目名称（冗余） */

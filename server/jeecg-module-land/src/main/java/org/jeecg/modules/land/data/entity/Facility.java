@@ -19,9 +19,13 @@ import java.util.Date;
  * @Date: 2026-09-18
  * @Version: V1.0
  *
- * <p>表 {@code xj_kjkfb_supporting_facilities}（1433 行），**直接复用旧表名**，
- * 不再新建 {@code t_facility}：该表早已复制进 tj-jyxyd 库，且被收发文等场景引用，
- * 改名会带来无谓的迁移成本。
+ * <p>表 {@code t_supporting_facilities}（1433 行）。<b>列结构沿用旧系统配套表</b>，
+ * 未新建 {@code t_facility}：该表结构与历史数据都已确定，改名会带来无谓的迁移成本。
+ *
+ * <p><b>★ 历史沿革</b>：这张表原来叫 {@code xj_kjkfb_supporting_facilities}（旧库表名），
+ * 库内一度同时存在新旧两个副本，导致「写错表、数据静默丢失」的风险。
+ * 现已统一：业务代码一律只用 {@code t_supporting_facilities}，
+ * 旧表 {@code xj_kjkfb_supporting_facilities} 冻结为历史档案、不再读写。
  *
  * <p><b>审计字段的坑</b>：本表三列是 <b>驼峰命名</b>（{@code delFlag} / {@code createTime} /
  * {@code createAccount}），而全局 {@code map-underscore-to-camel-case=true}，
@@ -34,7 +38,7 @@ import java.util.Date;
 @Data
 @Accessors(chain = true)
 @EqualsAndHashCode(callSuper = false)
-@TableName("xj_kjkfb_supporting_facilities")
+@TableName("t_supporting_facilities")
 public class Facility implements Serializable {
 
     private static final long serialVersionUID = 1L;

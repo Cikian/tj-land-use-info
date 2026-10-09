@@ -26,7 +26,7 @@ import java.util.Date;
  *
  * <p><b>为什么复制一份而不是跨库读</b>：
  * 设计文档 6.3.9（3）明确要求「不要跨库读」——配套项目表
- * {@code xj_kjkfb_supporting_facilities} 已经在 tj-jyxyd 里，
+ * {@code t_supporting_facilities} 已经在 tj-jyxyd 里，
  * 宗地表也复制进来后，「宗地 1 : N 配套项目」的关联就能在同一个库里 JOIN，
  * 不需要给应用加 {@code @DS} 多数据源。
  *

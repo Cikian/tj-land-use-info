@@ -141,7 +141,7 @@ public class EscalationProject implements Serializable {
     // 与主业务系统的挂钩点（回写见 EscalationProjectServiceImpl.writebackFacility）
     // ------------------------------------------------------------------
 
-    /** 关联配套项目ID → xj_kjkfb_supporting_facilities.id */
+    /** 关联配套项目ID → t_supporting_facilities.id */
     private String facilityId;
 
     /** 配套项目名称（冗余，台账展示用，避免 JOIN 旧设施表） */

@@ -32,7 +32,7 @@
 --
 --  ★ 关联配套项目 / 出让宗地为什么先留空
 --    facility_id / crzdbh 需要指向库内**真实存在**的
---    xj_kjkfb_supporting_facilities.id 与 t_land.crzdbh。
+--    t_supporting_facilities.id 与 t_land.crzdbh。
 --    为了让本脚本不依赖库内既有数据的分布也能执行，这里一律留空；
 --    需要验证「回写 sfzsjtjlz/tjlzsftg」与「按宗地反查」时，再执行
 --    06_escalation_demo_link_real.sql（它从库内真实数据里挑记录挂上去）。

@@ -3,7 +3,7 @@
 <mapper namespace="org.jeecg.modules.land.data.mapper.FacilityMapper">
 
     <!--
-      市政配套项目 Mapper（表名沿用旧库 xj_kjkfb_supporting_facilities）
+      市政配套项目 Mapper（表 t_supporting_facilities，列结构沿用旧系统配套表）
       注意：本表的审计列是驼峰（delFlag / createTime / createAccount），
             查询时若要过滤删除状态，列名必须写 delFlag 而不是 del_flag。
     -->
@@ -21,7 +21,7 @@
 
     <select id="selectOptions" resultType="org.jeecg.modules.land.data.vo.FacilityOptionVO">
         SELECT <include refid="optionColumns"/>
-        FROM `xj_kjkfb_supporting_facilities` f
+        FROM `t_supporting_facilities` f
         WHERE COALESCE(f.`delFlag`, '0') = '0'
           AND f.`crzdbh` = #{crzdbh}
         <if test="keyword != null and keyword != ''">
@@ -33,7 +33,7 @@
 
     <select id="searchOptions" resultType="org.jeecg.modules.land.data.vo.FacilityOptionVO">
         SELECT <include refid="optionColumns"/>
-        FROM `xj_kjkfb_supporting_facilities` f
+        FROM `t_supporting_facilities` f
         <where>
             COALESCE(f.`delFlag`, '0') = '0'
             <if test="keyword != null and keyword != ''">
@@ -47,13 +47,13 @@
     </select>
 
     <select id="selectByPtxmmc" resultType="org.jeecg.modules.land.data.entity.Facility">
-        SELECT * FROM `xj_kjkfb_supporting_facilities`
+        SELECT * FROM `t_supporting_facilities`
         WHERE COALESCE(`delFlag`, '0') = '0' AND `ptxmmc` = #{ptxmmc}
         LIMIT 1
     </select>
 
     <select id="countByCrzdbh" resultType="long">
-        SELECT COUNT(1) FROM `xj_kjkfb_supporting_facilities`
+        SELECT COUNT(1) FROM `t_supporting_facilities`
         WHERE COALESCE(`delFlag`, '0') = '0' AND `crzdbh` = #{crzdbh}
     </select>
 
@@ -85,7 +85,7 @@
             SUM(CASE WHEN <include refid="actionableCondition"/> THEN 1 ELSE 0 END) AS facilityTotal,
             SUM(CASE WHEN <include refid="actionableCondition"/> AND f.`sfjg` = '是' THEN 1 ELSE 0 END) AS completedFacilityCount
         FROM `t_land` l
-        JOIN `xj_kjkfb_supporting_facilities` f ON f.`crzdbh` = l.`crzdbh`
+        JOIN `t_supporting_facilities` f ON f.`crzdbh` = l.`crzdbh`
         WHERE l.`del_flag` = 0
           AND l.`xmfl` IN ('市级项目', '区级项目')
           AND COALESCE(f.`delFlag`, '0') = '0'
@@ -98,7 +98,7 @@
             COUNT(DISTINCT CASE WHEN <include refid="actionableCondition"/> THEN l.`id` END) AS value,
             SUM(CASE WHEN <include refid="actionableCondition"/> AND f.`sfjg` = '是' THEN 1 ELSE 0 END) AS completedCount
         FROM `t_land` l
-        JOIN `xj_kjkfb_supporting_facilities` f ON f.`crzdbh` = l.`crzdbh`
+        JOIN `t_supporting_facilities` f ON f.`crzdbh` = l.`crzdbh`
         WHERE l.`del_flag` = 0
           AND l.`xmfl` IN ('市级项目', '区级项目')
           AND l.`xzqh` IS NOT NULL
@@ -132,7 +132,7 @@
             WHERE l.`del_flag` = 0
               AND l.`xmfl` = #{xmfl}
         ) grouped
-        JOIN `xj_kjkfb_supporting_facilities` f
+        JOIN `t_supporting_facilities` f
           ON f.`crzdbh` = grouped.`crzdbh`
         WHERE grouped.district IS NOT NULL
           AND grouped.district != ''
@@ -150,7 +150,7 @@
                    COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`)) AS district,
             <include refid="warningRates"/>
         FROM `t_land` l
-        JOIN `xj_kjkfb_supporting_facilities` f
+        JOIN `t_supporting_facilities` f
           ON f.`crzdbh` = l.`crzdbh`
          AND COALESCE(f.`delFlag`, '0') = '0'
         WHERE l.`del_flag` = 0
@@ -161,7 +161,7 @@
 
     <select id="selectWarningDetails" resultType="org.jeecg.modules.land.data.entity.Facility">
         SELECT f.*
-        FROM `xj_kjkfb_supporting_facilities` f
+        FROM `t_supporting_facilities` f
         JOIN `t_land` l ON l.`crzdbh` = f.`crzdbh`
         WHERE l.`del_flag` = 0
           AND COALESCE(f.`delFlag`, '0') = '0'

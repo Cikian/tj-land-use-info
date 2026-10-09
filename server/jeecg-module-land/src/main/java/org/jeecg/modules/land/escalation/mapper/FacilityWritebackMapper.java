@@ -19,9 +19,9 @@ import java.util.Map;
  *       回写失败也与 data 模块的加载顺序无关。</li>
  * </ol>
  *
- * <p>表名是 {@code xj_kjkfb_supporting_facilities}（<b>不是</b> {@code t_facility}）——
- * 档案模块落地时已确认配套表复用旧表名，清单第 7 章写的 {@code t_facility} 照抄会查不到表
- * （设计文档 3.2 第 1 条）。
+ * <p>表名是 {@code t_supporting_facilities}（<b>不是</b> {@code t_facility}）——
+ * 清单第 7 章写的 {@code t_facility} 照抄会查不到表（设计文档 3.2 第 1 条）。
+ * 该表的列结构沿用旧系统配套表，故列名仍是旧系统的写法（{@code sfzsjtjlz} / {@code tjlzsftg}）。
  *
  * <p>回写受配置开关 {@code land.escalation.writeback-enabled} 控制（默认开），
  * 且<b>失败只记 warn 日志</b>，绝不影响主业务流程。

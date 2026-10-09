@@ -37,7 +37,7 @@ public interface FacilityImportLogMapper {
      *
      * <p>★ 与宗地导入日志唯一的结构差异就是 {@code orphan_rows} 与 {@code allow_orphan}：
      * 事后核对「这批数据里有多少条挂不上宗地」时，只看日志表就够，
-     * 不需要再去翻 {@code xj_kjkfb_supporting_facilities} 与 {@code t_land} 做差集。
+     * 不需要再去翻 {@code t_supporting_facilities} 与 {@code t_land} 做差集。
      */
     @Insert("INSERT INTO t_facility_import_log "
             + "(id, file_name, file_size, total_rows, inserted_rows, updated_rows, skipped_rows, "

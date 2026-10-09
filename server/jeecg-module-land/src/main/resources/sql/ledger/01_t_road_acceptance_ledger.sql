@@ -9,7 +9,7 @@
 --        模板与 attachmentContrast.js 里的「建设工程规划验收」字样，均无关）；
 --     ② 旧库 nutzwk_ywk(179 表) / nutzwk_jyxyd(50 表) / jeecg-boot 的
 --        information_schema 里没有任何台账/验收表；只有
---        xj_kjkfb_supporting_facilities 的 sfyj(是否移交) / yjwj(移交文件) /
+--        t_supporting_facilities 的 sfyj(是否移交) / yjwj(移交文件) /
 --        jgwj(竣工文件) / sjjgsj(实际竣工时间) / jsgydw(接收管养单位) 等字段；
 --     ③ 旧菜单表 nutzwk_ywk.stargis_menu（92 行、8 个一级菜单）里没有该菜单，
 --        连「档案管理/收发文管理」也只是 href 指向不存在页面的空菜单。
@@ -30,7 +30,7 @@
 --      经开区 19 / 高新区 15 / 保税区 2」共 192 条非行政区值（清单 3.0 第 4 条），
 --      迁移时按「16 区 + 功能区」两列拆开；
 --   5) 新增 6 个冗余列（dkmc/ptsslb/ptxmmc/receive_unit/material_count/complete_date），
---      让台账页免 JOIN（旧设施表 xj_kjkfb_supporting_facilities 无合适索引，
+--      让台账页免 JOIN（旧设施表 t_supporting_facilities 无合适索引，
 --      且是 utf8_general_ci，与本表 utf8mb4_general_ci 跨表 JOIN 走不上索引）；
 --   6) 状态 4 值（未验收/验收中/已验收/已移交）**不入字典**：它驱动前端标签配色，
 --      放代码枚举更稳（照提级论证模块对 status 的处理）；
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `t_road_acceptance_ledger` (
   `land_id`           VARCHAR(64)      NULL COMMENT '出让宗地ID → t_land.id（冗余，便于直达档案）',
   `dkmc`              VARCHAR(255)     NULL COMMENT '地块名称（冗余，迁移时由 crzdbh 反查）',
   `ptsslb`            VARCHAR(100)     NULL COMMENT '配套设施类别（道路/市政道路/道路及管线…）',
-  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → xj_kjkfb_supporting_facilities.id',
+  `facility_id`       VARCHAR(100)     NULL COMMENT '配套项目ID → t_supporting_facilities.id',
   `ptxmmc`            VARCHAR(100)     NULL COMMENT '配套项目名称（冗余，与 road_name 同值）',
   `dldj`              VARCHAR(50)      NULL COMMENT '道路等级',
   `jsdw`              VARCHAR(100)     NULL COMMENT '建设单位',

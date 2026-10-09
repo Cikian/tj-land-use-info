@@ -48,7 +48,7 @@ public class FacilityProcess implements Serializable {
     @TableId(type = IdType.ASSIGN_ID)
     private String id;
 
-    /** 配套项目ID（xj_kjkfb_supporting_facilities.id） */
+    /** 配套项目ID（t_supporting_facilities.id） */
     private String ptId;
 
     /** 出让宗地编号（冗余，按宗地筛查环节时不联表） */

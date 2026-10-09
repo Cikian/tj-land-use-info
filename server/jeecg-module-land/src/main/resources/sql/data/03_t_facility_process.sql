@@ -18,7 +18,7 @@
 --    2. 旧库 lcqk 实际出现 4 种取值（进行中/已完成 + 代码里出现的未开启/不涉及），
 --       这里显式写明并加 CHECK 语义说明。
 --    3. 补 update_by/update_time，`createTime`/`createAccount` 沿用旧列名
---       （与配套主表 xj_kjkfb_supporting_facilities 的驼峰风格保持一致，
+--       （与配套主表 t_supporting_facilities 的驼峰风格保持一致，
 --        避免同一业务域里一套下划线一套驼峰）。
 --
 --  ★ 唯一性：一个配套项目的一个环节只应有一行 —— 唯一键 (pt_id, lc_id)。
@@ -30,7 +30,7 @@
 
 CREATE TABLE IF NOT EXISTS `t_facility_process` (
   `id`             varchar(64)    NOT NULL                COMMENT '主键',
-  `pt_id`          varchar(64)    NOT NULL                COMMENT '配套项目ID（xj_kjkfb_supporting_facilities.id）',
+  `pt_id`          varchar(64)    NOT NULL                COMMENT '配套项目ID（t_supporting_facilities.id）',
   `crzdbh`         varchar(100)       NULL                COMMENT '出让宗地编号（冗余：按宗地筛查环节时不联表）',
   `lc_id`          varchar(64)    NOT NULL                COMMENT '环节ID（t_process_configuration.id）',
   `lc_path`        varchar(20)        NULL                COMMENT '环节树路径（冗余：00010001，用于排序与「阶段→事项」归并）',

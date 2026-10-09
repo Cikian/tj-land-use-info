@@ -98,7 +98,7 @@ public class RoadHandover implements Serializable {
     /** 地块名称（冗余，迁移时由 crzdbh 反查） */
     private String dkmc;
 
-    /** 配套项目ID → xj_kjkfb_supporting_facilities.id */
+    /** 配套项目ID → t_supporting_facilities.id */
     private String facilityId;
 
     /** 配套项目名称（冗余，与 roadName 同值） */

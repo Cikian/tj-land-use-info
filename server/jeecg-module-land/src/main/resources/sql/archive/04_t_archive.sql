@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS `t_archive` (
   -- 关联业务对象
   `land_id`          varchar(64)       NULL                COMMENT '出让宗地ID → t_land.id',
   `crzdbh`           varchar(100)      NULL                COMMENT '出让宗地编号（冗余，业务键）',
-  `facility_id`      varchar(100)      NULL                COMMENT '配套项目ID → xj_kjkfb_supporting_facilities.id',
+  `facility_id`      varchar(100)      NULL                COMMENT '配套项目ID → t_supporting_facilities.id',
   `ptxmmc`           varchar(100)      NULL                COMMENT '配套项目名称（冗余）',
   `dkmc`             varchar(255)      NULL                COMMENT '地块名称（冗余，来自宗地）',
   `ptsslb`           varchar(100)      NULL                COMMENT '配套设施类别（冗余，来自配套项目）',
