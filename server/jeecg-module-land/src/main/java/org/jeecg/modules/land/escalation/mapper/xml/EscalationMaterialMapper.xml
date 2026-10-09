@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.escalation.mapper.EscalationMaterialMapper">
+
+    <!--
+      提级论证材料 Mapper
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定）。
+    -->
+
+    <select id="selectByProjectId" resultType="org.jeecg.modules.land.escalation.entity.EscalationMaterial">
+        SELECT m.*
+        FROM `t_escalation_material` m
+        WHERE m.`del_flag` = 0 AND m.`project_id` = #{projectId}
+        ORDER BY m.`material_type`, m.`version`, m.`upload_time`, m.`id`
+    </select>
+
+    <select id="selectByProjectIds" resultType="org.jeecg.modules.land.escalation.entity.EscalationMaterial">
+        SELECT m.*
+        FROM `t_escalation_material` m
+        WHERE m.`del_flag` = 0
+          AND m.`project_id` IN
+        <foreach collection="projectIds" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+        ORDER BY m.`project_id`, m.`material_type`, m.`version`, m.`id`
+    </select>
+
+    <select id="selectMaterialById" resultType="org.jeecg.modules.land.escalation.entity.EscalationMaterial">
+        SELECT m.*
+        FROM `t_escalation_material` m
+        WHERE m.`del_flag` = 0 AND m.`id` = #{id}
+        LIMIT 1
+    </select>
+
+    <!--
+      材料数与总字节：主表 material_count 的唯一口径。
+      服务端每次材料增删后都重算一遍（而不是 +1 / -1 累加），
+      这样即便出现历史脏数据也能被下一次写操作自动纠正。
+    -->
+    <select id="sumByProjectId" resultType="java.util.Map">
+        SELECT COUNT(1) AS fileCount, COALESCE(SUM(m.`file_size`), 0) AS totalSize
+        FROM `t_escalation_material` m
+        WHERE m.`del_flag` = 0 AND m.`project_id` = #{projectId}
+    </select>
+
+</mapper>

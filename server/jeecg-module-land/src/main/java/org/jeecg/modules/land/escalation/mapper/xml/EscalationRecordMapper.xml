@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.escalation.mapper.EscalationRecordMapper">
+
+    <!--
+      提级论证审核意见 / 办理记录 Mapper（★ append-only：只 INSERT）
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定）。
+      本文件里没有 update 意见正文 / delete 意见的语句，这是有意为之。
+    -->
+
+    <!-- 意见记录列表：时间倒序（最新的排最前），同秒登记时按 id 兜底保证顺序稳定 -->
+    <select id="selectByProjectId" resultType="org.jeecg.modules.land.escalation.entity.EscalationRecord">
+        SELECT r.*
+        FROM `t_escalation_record` r
+        WHERE r.`project_id` = #{projectId}
+        ORDER BY r.`record_time` DESC, r.`id` DESC
+    </select>
+
+    <!-- 意见记录数：主表 record_count 的唯一口径（重算而非累加） -->
+    <select id="countByProjectId" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_escalation_record` r
+        WHERE r.`project_id` = #{projectId}
+    </select>
+
+    <!--
+      回写主表冗余列（窄 UPDATE）：
+        latest_opinion / latest_opinion_time / latest_opinion_by / record_count
+        + 可选 status（只有前端勾了「同时更新办理状态」才会带上）。
+      ★ 用 <set> 而不是整条实体 updateById：主表 30+ 列，
+        读出来再写回既慢、又会把并发写入的字段（比如刚保存的论证结果）覆盖掉。
+    -->
+    <update id="updateLatestOpinion">
+        UPDATE `t_escalation_project`
+        <set>
+            `latest_opinion` = #{latestOpinion},
+            `latest_opinion_time` = #{latestOpinionTime},
+            `latest_opinion_by` = #{latestOpinionBy},
+            `record_count` = #{recordCount},
+            <if test="status != null and status != ''">
+                `status` = #{status},
+            </if>
+            <if test="updateBy != null and updateBy != ''">
+                `update_by` = #{updateBy},
+            </if>
+            `update_time` = #{updateTime}
+        </set>
+        WHERE `id` = #{projectId} AND `del_flag` = 0
+    </update>
+
+</mapper>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.escalation.mapper.FacilityWritebackMapper">
+
+    <!--
+      ★ 配套项目表回写窄接口（设计文档 2.4 的 L1 / L2）
+      表名沿用旧库 xj_kjkfb_supporting_facilities（不是 t_facility，见设计文档 3.2 第 1 条）。
+
+      ★★ 本表审计列是【驼峰】：delFlag（不是 del_flag）。
+         data 模块的 Facility 实体用 @TableField("delFlag") 显式映射，
+         FacilityMapper.xml 里也一律写 COALESCE(f.`delFlag`, '0') = '0'。
+         本文件沿用同一写法，否则会报 Unknown column 'del_flag'。
+      本表没有 update_time / update_by 列（只有 createTime / createAccount），
+      所以回写不写审计列——这既符合旧表结构，也避免与旧系统的写入逻辑打架。
+    -->
+
+    <!-- 读当前两列的值，用于「与当前值相同则不写」的判断。
+         ★★ 必须把 id 一起查出来（即使调用方用不到）：
+           MyBatis 对 resultType=Map 的结果，当**所有被选中的列都是 NULL** 时，
+           返回的 Map 里一个键都不会放（callSettersOnNulls 默认 false），
+           实测这一行会退化成 null —— 于是「项目存在但两列都还没写过」
+           （即首次回写的必然场景）会被误判成「配套项目不存在或已删除」。
+           加上 id 这个永不为 NULL 的列后，Map 一定非空，存在性判断才可靠。
+           联调实测：SQL 打印 Total: 1，但 service 拿到 null，即此坑。 -->
+    <select id="selectWritebackState" resultType="java.util.Map">
+        SELECT f.`id`         AS `id`,
+               f.`sfzsjtjlz` AS sfzsjtjlz,
+               f.`tjlzsftg`  AS tjlzsftg
+        FROM `xj_kjkfb_supporting_facilities` f
+        WHERE f.`id` = #{facilityId}
+          AND COALESCE(f.`delFlag`, '0') = '0'
+        LIMIT 1
+    </select>
+
+    <!--
+      只 UPDATE 这两列。
+      ★ 两列都用 <if> 包住：调用方只传需要改的那一列（或两列都传），
+        所以这条语句同时服务 L1、L2、L1+L2 三种场景；
+        两列都为 null 时 SQL 非法，由调用方保证不会这样调用（Service 里先判空）。
+    -->
+    <update id="updateWritebackFields">
+        UPDATE `xj_kjkfb_supporting_facilities`
+        <set>
+            <if test="sfzsjtjlz != null">
+                `sfzsjtjlz` = #{sfzsjtjlz},
+            </if>
+            <if test="tjlzsftg != null">
+                `tjlzsftg` = #{tjlzsftg},
+            </if>
+        </set>
+        WHERE `id` = #{facilityId}
+          AND COALESCE(`delFlag`, '0') = '0'
+    </update>
+
+</mapper>

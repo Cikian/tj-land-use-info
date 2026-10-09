@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.escalation.mapper.EscalationProjectMapper">
+
+    <!--
+      提级论证项目主表 Mapper
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定），
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml。
+    -->
+
+    <!-- ================================================================
+         公用 WHERE 片段：录入列表 / 查询统计 / 台账 / 导出 / 5 张统计图
+         共用同一套条件，保证「列表里看到什么，统计与导出就是什么」。
+         所有引用方都必须把项目主表别名为 p。
+         ================================================================ -->
+    <sql id="queryWhere">
+        p.`del_flag` = 0
+        <if test="q.projectNo != null and q.projectNo != ''">
+            AND p.`project_no` LIKE CONCAT('%', #{q.projectNo}, '%')
+        </if>
+        <if test="q.projectName != null and q.projectName != ''">
+            AND p.`project_name` LIKE CONCAT('%', #{q.projectName}, '%')
+        </if>
+        <if test="q.declareDept != null and q.declareDept != ''">
+            AND p.`declare_dept` LIKE CONCAT('%', #{q.declareDept}, '%')
+        </if>
+        <if test="q.projectType != null and q.projectType != ''">
+            AND p.`project_type` = #{q.projectType}
+        </if>
+        <if test="q.xzqh != null and q.xzqh != ''">
+            AND p.`xzqh` = #{q.xzqh}
+        </if>
+        <if test="q.gnq != null and q.gnq != ''">
+            AND p.`gnq` = #{q.gnq}
+        </if>
+        <if test="q.argResult != null and q.argResult != ''">
+            AND p.`arg_result` = #{q.argResult}
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND p.`status` = #{q.status}
+        </if>
+        <if test="q.tdzlProject != null">
+            AND p.`tdzl_project` = #{q.tdzlProject}
+        </if>
+        <if test="q.beginDeclareDate != null and q.beginDeclareDate != ''">
+            AND p.`declare_date` &gt;= #{q.beginDeclareDate}
+        </if>
+        <if test="q.endDeclareDate != null and q.endDeclareDate != ''">
+            AND p.`declare_date` &lt;= #{q.endDeclareDate}
+        </if>
+        <if test="q.beginInvestment != null">
+            AND p.`total_investment` &gt;= #{q.beginInvestment}
+        </if>
+        <if test="q.endInvestment != null">
+            AND p.`total_investment` &lt;= #{q.endInvestment}
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND p.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND p.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.dkmc != null and q.dkmc != ''">
+            AND p.`dkmc` LIKE CONCAT('%', #{q.dkmc}, '%')
+        </if>
+        <if test="q.beginCreateTime != null and q.beginCreateTime != ''">
+            AND p.`create_time` &gt;= CONCAT(#{q.beginCreateTime}, ' 00:00:00')
+        </if>
+        <if test="q.endCreateTime != null and q.endCreateTime != ''">
+            AND p.`create_time` &lt;= CONCAT(#{q.endCreateTime}, ' 23:59:59')
+        </if>
+        <!-- 关键词：在项目名称之外，再覆盖概述与五段论证正文（查询统计页的「全文」输入框） -->
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (
+                p.`project_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`project_summary` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`arg_reason` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`arg_content` LIKE CONCAT('%', #{q.keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <!-- 台账 14 列所用的窄字段集（列表与台账共用同一段 WHERE，只是列不同） -->
+    <sql id="ledgerColumns">
+        p.`id`               AS id,
+        p.`project_no`       AS projectNo,
+        p.`project_name`     AS projectName,
+        p.`declare_dept`     AS declareDept,
+        p.`xzqh`             AS xzqh,
+        p.`gnq`              AS gnq,
+        p.`project_type`     AS projectType,
+        p.`total_investment` AS totalInvestment,
+        p.`declare_date`     AS declareDate,
+        p.`material_count`   AS materialCount,
+        p.`status`           AS status,
+        p.`arg_result`       AS argResult,
+        p.`latest_opinion`   AS latestOpinion,
+        p.`latest_opinion_time` AS latestOpinionTime,
+        COALESCE(p.`update_time`, p.`create_time`) AS updateTime,
+        p.`ptxmmc`           AS ptxmmc
+    </sql>
+
+    <!-- ================= 分页列表 ================= -->
+    <select id="selectProjectPage" resultType="org.jeecg.modules.land.escalation.entity.EscalationProject">
+        SELECT p.*
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`create_time` DESC, p.`project_no` DESC
+    </select>
+
+    <!-- ================= 详情 ================= -->
+    <select id="selectDetailById" resultType="org.jeecg.modules.land.escalation.entity.EscalationProject">
+        SELECT p.*
+        FROM `t_escalation_project` p
+        WHERE p.`del_flag` = 0 AND p.`id` = #{id}
+        LIMIT 1
+    </select>
+
+    <!-- ================= 导出（项目） ================= -->
+    <select id="selectForExport" resultType="org.jeecg.modules.land.escalation.entity.EscalationProject">
+        SELECT p.*
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`declare_date` DESC, p.`project_no`
+    </select>
+
+    <!--
+      ================= 台账（14 列） =================
+      ★ seq（序号）刻意不在 SQL 里算：
+        用 MySQL 用户变量（@rowNum）算序号虽然省事，但分页插件会对 SQL 做结构分析并
+        生成 COUNT 语句，用户变量很容易被搬进 COUNT、生成非法 SQL；
+        而窗口函数 ROW_NUMBER() 只有 MySQL 8 才支持（本库是 MySQL 5.7）。
+        因此序号交给 Service 层用「分页偏移 + 行号」赋值（见 EscalationProjectServiceImpl
+        #queryLedgerPage / #queryLedgerForExport），SQL 保持最朴素的分页查询。
+      ★ 台账只读主表冗余列，不 JOIN 材料表与意见表：台账是高频页面，
+        material_count / latest_opinion 已由服务端维护好（设计文档 3.2 第 7 条）。
+    -->
+    <select id="selectLedgerPage" resultType="org.jeecg.modules.land.escalation.vo.EscalationLedgerVO">
+        SELECT
+            <include refid="ledgerColumns"/>
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`declare_date` DESC, p.`project_no` DESC
+    </select>
+
+    <!-- 台账导出：不分页，序号同样由 Service 侧从 1 开始赋值 -->
+    <select id="selectLedgerForExport" resultType="org.jeecg.modules.land.escalation.vo.EscalationLedgerVO">
+        SELECT
+            <include refid="ledgerColumns"/>
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`declare_date` DESC, p.`project_no` DESC
+    </select>
+
+    <!-- ================= 统计 ================= -->
+    <select id="countByQuery" resultType="long">
+        SELECT COUNT(1)
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <select id="selectStatByArgResult" resultType="org.jeecg.modules.land.escalation.vo.EscalationStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`arg_result`, ''), '未登记') AS `name`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`arg_result`, ''), '未登记')
+        ORDER BY `count` DESC
+    </select>
+
+    <select id="selectStatByDeclareDept" resultType="org.jeecg.modules.land.escalation.vo.EscalationStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`declare_dept`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`declare_dept`, ''), '未填写')
+        ORDER BY `count` DESC
+    </select>
+
+    <select id="selectStatByXzqh" resultType="org.jeecg.modules.land.escalation.vo.EscalationStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`xzqh`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`xzqh`, ''), '未填写')
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 按月趋势：name 形如 2026-09；未填申报时间的项目不计入趋势（折线图不画「未填写」点） -->
+    <select id="selectStatByMonth" resultType="org.jeecg.modules.land.escalation.vo.EscalationStatVO$NameCount">
+        SELECT DATE_FORMAT(p.`declare_date`, '%Y-%m') AS `name`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE p.`declare_date` IS NOT NULL AND <include refid="queryWhere"/>
+        GROUP BY DATE_FORMAT(p.`declare_date`, '%Y-%m')
+        ORDER BY `name`
+    </select>
+
+    <select id="selectStatByProjectType" resultType="org.jeecg.modules.land.escalation.vo.EscalationStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`project_type`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`project_type`, ''), '未填写')
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 台账顶部状态 tab 的角标：只返回库里存在的状态，缺失的 4 值由 Service 补 0 -->
+    <select id="selectCountGroupByStatus" resultType="org.jeecg.modules.land.escalation.vo.EscalationLedgerVO$StatusCount">
+        SELECT p.`status` AS `status`, COUNT(1) AS `count`
+        FROM `t_escalation_project` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY p.`status`
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- ================= 项目编号 ================= -->
+    <!--
+      取某年度已用掉的最大流水号。
+      说明：
+        ① 不按 del_flag 过滤——项目编号是 (project_no) 单列唯一键，逻辑删除的编号仍占着键位，
+           若把已删记录的号再分配一次，虽然不违反唯一键，但会让台账出现重号，故一律跳号；
+        ② 用 CHAR_LENGTH 精确限定「前缀 + 4 位流水」的格式，避免手工改写过
+           「TJ-2026-0001-补充」这类编号被 CAST 成 1 而污染最大值
+           （不用 REGEXP：jeecg 的 JSqlParser 拦截器对非常规语法兼容性更差）。
+    -->
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(p.`project_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_escalation_project` p
+        WHERE p.`project_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(p.`project_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByProjectNo" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_escalation_project` p
+        WHERE p.`del_flag` = 0
+          AND p.`project_no` = #{projectNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND p.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+</mapper>
