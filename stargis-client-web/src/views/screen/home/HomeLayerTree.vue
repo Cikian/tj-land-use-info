@@ -36,7 +36,7 @@
           :key="node.id"
           class="home-tree__row"
           :class="{ 'is-selected': node.id === activeId, 'is-expanded': node.expanded }"
-          :style="{ top: `${10 + index * 42}px` }"
+          :style="{ top: `${10 + index * 46}px` }"
           @click="activeId = node.id"
         >
           <img
@@ -154,12 +154,12 @@ export default {
     position: absolute;
     // 设计稿标题文字右缘止于 x=1835，即距右边界 85px
     right: 85px;
-    top: 104px;
-    width: 72px;
+    top: 102px;
+    width: 86px;
     margin: 0;
-    font-size: 18px;
+    font-size: var(--screen-font-lg);
     font-weight: 500;
-    line-height: 18px;
+    line-height: 24px;
     color: #ffffff;
     text-align: right;
     white-space: nowrap;
@@ -204,7 +204,7 @@ export default {
     height: 28px;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     line-height: 28px;
     color: #ffffff;
     background: transparent;
@@ -251,7 +251,7 @@ export default {
     position: absolute;
     left: 0;
     width: 100%;
-    height: 36px;
+    height: 46px;
   }
 
   &__row-bg {
@@ -259,7 +259,7 @@ export default {
     left: 0;
     top: 0;
     width: 100%;
-    height: 36px;
+    height: 46px;
     display: block;
     pointer-events: none;
   }
@@ -267,7 +267,7 @@ export default {
   /* 展开三角：8×6，收起时旋转 -90° 指向右侧（高保真收起态即此形态） */
   &__caret {
     position: absolute;
-    top: 15px;
+    top: 20px;
     width: 8px;
     height: 6px;
     cursor: pointer;
@@ -282,25 +282,25 @@ export default {
   &__folder {
     position: absolute;
     left: 49px;
-    top: 11px;
-    width: 15px;
-    height: 14px;
+    top: 15px;
+    width: 16px;
+    height: 16px;
   }
 
   /* 图层类型图标：14×14，level 1 / 2 */
   &__layer {
     position: absolute;
-    top: 11px;
-    width: 14px;
-    height: 14px;
+    top: 15px;
+    width: 16px;
+    height: 16px;
   }
 
   &__label {
     position: absolute;
-    top: 11px;
-    font-size: 14px;
+    top: 13px;
+    font-size: var(--screen-font-md);
     font-weight: 500;
-    line-height: 14px;
+    line-height: 20px;
     color: #82c6ff;
     white-space: nowrap;
   }
@@ -309,9 +309,9 @@ export default {
     position: absolute;
     // 设计稿 x=1836，即距面板（400 宽）右边界 64px
     right: 60px;
-    top: 11px;
-    width: 14px;
-    height: 14px;
+    top: 15px;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
     .screen-focus-ring();
   }

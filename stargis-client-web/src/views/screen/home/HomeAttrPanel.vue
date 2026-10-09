@@ -274,16 +274,16 @@ export default {
   &__title {
     position: absolute;
     left: 48px;
-    top: 16px;
+    top: 15px;
     margin: 0;
-    font-size: 18px;
+    font-size: var(--screen-font-lg);
     font-weight: 500;
-    line-height: 18px;
+    line-height: 22px;
     color: #ffffff;
     white-space: nowrap;
 
     &.is-collapsed {
-      top: 289px;
+      top: 288px;
     }
   }
 
@@ -295,7 +295,7 @@ export default {
     height: 38px;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #82c6ff;
     background: transparent;
     border: 0;
@@ -388,9 +388,9 @@ export default {
 
   &__th {
     position: absolute;
-    top: 11px;
-    font-size: 14px;
-    line-height: 14px;
+    top: 8px;
+    font-size: var(--screen-font-sm);
+    line-height: 20px;
     color: #ffffff;
     white-space: nowrap;
   }
@@ -428,9 +428,9 @@ export default {
 
   &__td {
     position: absolute;
-    top: 16px;
-    font-size: 14px;
-    line-height: 14px;
+    top: 14px;
+    font-size: var(--screen-font-sm);
+    line-height: 18px;
     color: #66afd4;
     overflow: hidden;
     white-space: nowrap;
@@ -442,9 +442,9 @@ export default {
     position: absolute;
     // 设计稿 x=895（表宽 960、图标 14），即距右边界 51px
     right: 51px;
-    top: 16px;
-    width: 14px;
-    height: 14px;
+    top: 14px;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
     .screen-focus-ring();
   }
@@ -456,7 +456,7 @@ export default {
     top: 130px;
     width: 100%;
     margin: 0;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #4a7396;
     text-align: center;
   }
@@ -464,10 +464,10 @@ export default {
   /* 加载提示：贴在标题右侧，不压住表头 */
   &__loading {
     position: absolute;
-    left: 130px;
-    top: 18px;
-    font-size: 12px;
-    line-height: 14px;
+    left: 140px;
+    top: 17px;
+    font-size: var(--screen-font-xs);
+    line-height: 20px;
     color: #82c6ff;
   }
 

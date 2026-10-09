@@ -9,16 +9,81 @@ import { axios } from '../../utils/request'
 export default {
   name: 'S3dmViewer',
   components: {},
+  props: {
+    /**
+     * 是否暂停渲染（默认 false —— 既有调用方行为完全不变）。
+     * ===============================================================
+     * 【为什么需要这个开关】Cesium 的默认渲染循环（useDefaultRenderLoop）
+     * 是「无条件按 rAF 每帧渲染」：只要 viewer 存在，它就一直在 render，
+     * 不管镜头有没有动、画面有没有被人看见。
+     *
+     * 实测（perf/perf-lag.js，1920×1080）：在**档案管理**页面上，地图被整页模块
+     * 盖住、只在面板缝隙里露出一点点，它仍然占着渲染进程主线程 45%
+     * （其中 Script 39%），并持续产生 80~100ms 的 Long Task ——
+     * 于是该页面上每一次点击、输入、切页签都要排在 Cesium 的渲染片后面，
+     * 表现为「所有操作都滞后」。
+     *
+     * 把渲染循环停掉后，同一页面主线程占用 45% → 2%，Long Task 消失、
+     * 帧间隔 p99 从 18ms 回到 6ms（完整数据见 perf/README.md）。
+     * 画面不会变：暂停只是不再重绘，canvas 里最后一帧仍然留着，
+     * 被面板遮住的部分本来就看不见；返回首页时恢复渲染，Cesium 的渲染循环
+     * 每帧都会先 resize() 再 render()，尺寸与内容会自动校正。
+     */
+    paused: { type: Boolean, default: false },
+  },
   data() {
     return {}
   },
+  watch: {
+    paused() {
+      this.applyRenderLoop()
+    },
+  },
   mounted() {
     this.initMap()
+    // initMap 里 new Cesium.Viewer 之后默认渲染循环就已经在跑了；
+    // 如果本组件一挂载就处于暂停态（例如深链直接进档案管理页），这里立刻停掉，
+    // 否则会白白渲染到用户切回首页为止。
+    this.applyRenderLoop()
     this.$bus.$on('downloadMapImage', (val) => {
       this.toImage(val)
     })
   },
+  beforeDestroy() {
+    // 组件销毁时把渲染循环停掉，避免 window.viewer 上的 rAF 循环继续跑
+    this.pauseRenderLoop()
+  },
   methods: {
+    /**
+     * 把 paused 同步到 Cesium 的渲染循环开关。
+     * useDefaultRenderLoop 的 setter 两个方向都有效：
+     *   置 false → 当前这帧结束后 rAF 循环自行退出；
+     *   置 true  → 重新开始渲染循环。
+     * 这也是 Cesium 官方为「不需要每帧渲染」场景留的开关。
+     */
+    applyRenderLoop() {
+      if (this.paused) {
+        this.pauseRenderLoop()
+      } else {
+        this.resumeRenderLoop()
+      }
+    },
+    pauseRenderLoop() {
+      const viewer = this.currentViewer()
+      if (viewer) viewer.useDefaultRenderLoop = false
+    },
+    resumeRenderLoop() {
+      const viewer = this.currentViewer()
+      if (viewer) viewer.useDefaultRenderLoop = true
+    },
+    /** 当前存活的 Cesium Viewer；不可用时返回 null（销毁过 / 还没创建） */
+    currentViewer() {
+      const viewer = window.viewer
+      if (!viewer) return null
+      if (typeof viewer.isDestroyed === 'function' && viewer.isDestroyed()) return null
+      return viewer
+    },
+
     initMap() {
       //
       // document.getElementById("home").innerHTML = '<object type="text/html" data="http://192.168.20.3/" width="100%" height="100%"></object>';

@@ -77,8 +77,10 @@
             aria-hidden="true"
           />
           <span class="home-left__stat-label">{{ current.stat.label }}</span>
-          <span class="home-left__stat-value">{{ current.stat.value }}</span>
-          <span class="home-left__stat-unit">{{ current.stat.unit }}</span>
+          <span class="home-left__stat-figure">
+            <span class="home-left__stat-value">{{ current.stat.value }}</span>
+            <span class="home-left__stat-unit">{{ current.stat.unit }}</span>
+          </span>
         </div>
 
         <!-- 市级 / 区级 双卡（兼作明细切换） -->
@@ -113,8 +115,10 @@
             />
             <span class="home-left__ring-text">{{ item.percent }}%</span>
             <span class="home-left__split-label">{{ item.label }}</span>
-            <span class="home-left__split-value">{{ item.value }}</span>
-            <span class="home-left__split-unit">{{ item.unit }}</span>
+            <span class="home-left__split-figure">
+              <span class="home-left__split-value">{{ item.value }}</span>
+              <span class="home-left__split-unit">{{ item.unit }}</span>
+            </span>
           </button>
         </div>
 
@@ -304,11 +308,11 @@ export default {
   &__title {
     position: absolute;
     left: 83px;
-    top: 104px;
+    top: 102px;
     margin: 0;
-    font-size: 18px;
+    font-size: var(--screen-font-lg);
     font-weight: 500;
-    line-height: 18px;
+    line-height: 24px;
     color: #ffffff;
     white-space: nowrap;
   }
@@ -335,7 +339,7 @@ export default {
     height: 38px;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #82c6ff;
     background: transparent;
     border: 0;
@@ -413,32 +417,42 @@ export default {
   &__stat-label {
     position: absolute;
     left: 156px;
-    top: 29px;
-    font-size: 16px;
+    top: 30px;
+    font-size: var(--screen-font-lg);
     font-weight: 500;
-    line-height: 16px;
+    line-height: 22px;
     color: #ffffff;
     white-space: nowrap;
   }
 
-  &__stat-value {
+  /*
+   * 数值 + 单位排成一行。
+   * ⚠ 不能用「各自绝对定位」：数值位数一变（2 位 / 3 位 / 4 位）单位就会压上去。
+   *   用 flex 让单位始终跟在数值右侧，数值再长也只是往右推。
+   */
+  &__stat-figure {
     position: absolute;
     left: 156px;
-    top: 57px;
+    right: 16px;
+    top: 60px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  &__stat-value {
     font-family: var(--screen-font-number-family);
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 500;
-    line-height: 22px;
+    line-height: 1;
     color: #ffe597;
     font-variant-numeric: tabular-nums;
   }
 
   &__stat-unit {
-    position: absolute;
-    left: 201px;
-    top: 67px;
-    font-size: 16px;
-    line-height: 12px;
+    font-size: var(--screen-font-lg);
+    line-height: 1;
     color: #66afd4;
   }
 
@@ -485,11 +499,11 @@ export default {
 
   &__ring-text {
     position: absolute;
-    left: 36px;
-    top: 31px;
-    width: 27px;
+    left: 32px;
+    top: 32px;
+    width: 32px;
     font-family: var(--screen-font-number-family);
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     font-weight: 500;
     color: #ffffff;
     text-align: center;
@@ -498,30 +512,38 @@ export default {
 
   &__split-label {
     position: absolute;
-    left: 95px;
+    left: 96px;
     top: 19px;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
+    line-height: 1.25;
     color: #66afd4;
     white-space: nowrap;
   }
 
-  &__split-value {
+  /* 数值 + 单位同样排成一行，避免位数变化时单位被压住 */
+  &__split-figure {
     position: absolute;
-    left: 95px;
-    top: 39px;
+    left: 96px;
+    right: 8px;
+    top: 42px;
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  &__split-value {
     font-family: var(--screen-font-number-family);
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 500;
-    line-height: 17px;
+    line-height: 1;
     color: #ffffff;
     font-variant-numeric: tabular-nums;
   }
 
   &__split-unit {
-    position: absolute;
-    left: 131px;
-    top: 46px;
-    font-size: 12px;
+    font-size: var(--screen-font-xs);
+    line-height: 1;
     color: #66afd4;
   }
 
@@ -556,9 +578,9 @@ export default {
 
   &__th {
     position: absolute;
-    top: 11px;
-    font-size: 14px;
-    line-height: 14px;
+    top: 9px;
+    font-size: var(--screen-font-sm);
+    line-height: 18px;
     color: #ffffff;
     white-space: nowrap;
 
@@ -571,13 +593,13 @@ export default {
   &__view-switch {
     position: absolute;
     left: 340px;
-    top: 17px;
-    width: 52px;
-    height: 24px;
+    top: 14px;
+    width: 58px;
+    height: 30px;
     padding: 0;
     font-family: inherit;
-    font-size: 12px;
-    line-height: 22px;
+    font-size: var(--screen-font-xs);
+    line-height: 28px;
     color: #82c6ff;
     background: rgba(85, 185, 255, 0.12);
     border: 1px solid var(--screen-border);
@@ -636,7 +658,7 @@ export default {
     top: 120px;
     width: 100%;
     margin: 0;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #4a7396;
     text-align: center;
   }
@@ -645,7 +667,7 @@ export default {
   &__rank-row {
     position: relative;
     width: 100%;
-    height: 46px;
+    height: 54px;
   }
 
   &__tr-bg {
@@ -653,16 +675,16 @@ export default {
     left: 0;
     top: 0;
     width: 100%;
-    height: 46px;
+    height: 54px;
     display: block;
     pointer-events: none;
   }
 
   &__td {
     position: absolute;
-    top: 16px;
-    font-size: 14px;
-    line-height: 14px;
+    top: 17px;
+    font-size: var(--screen-font-md);
+    line-height: 20px;
     color: #66afd4;
     white-space: nowrap;
   }
@@ -676,8 +698,8 @@ export default {
   &__rank-no {
     position: absolute;
     left: 14px;
-    top: 16px;
-    font-size: 13px;
+    top: 17px;
+    font-size: var(--screen-font-sm);
     color: #4a7396;
     font-variant-numeric: tabular-nums;
   }
@@ -685,8 +707,8 @@ export default {
   &__rank-name {
     position: absolute;
     left: 52px;
-    top: 16px;
-    font-size: 14px;
+    top: 17px;
+    font-size: var(--screen-font-md);
     color: #66afd4;
     white-space: nowrap;
   }
@@ -694,9 +716,9 @@ export default {
   &__rank-bar {
     position: absolute;
     left: 148px;
-    top: 19px;
+    top: 22px;
     width: 130px;
-    height: 8px;
+    height: 9px;
     border-radius: var(--screen-radius-pill);
     background: var(--screen-bar-track);
     overflow: hidden;
@@ -712,9 +734,9 @@ export default {
   &__rank-value {
     position: absolute;
     right: 14px;
-    top: 15px;
+    top: 17px;
     font-family: var(--screen-font-number-family);
-    font-size: 14px;
+    font-size: var(--screen-font-md);
     color: #ffffff;
     font-variant-numeric: tabular-nums;
   }

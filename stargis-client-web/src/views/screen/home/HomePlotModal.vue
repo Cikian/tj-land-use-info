@@ -239,9 +239,9 @@ export default {
     left: 81px;
     top: 20px;
     margin: 0;
-    font-size: 18px;
+    font-size: var(--screen-font-lg);
     font-weight: 500;
-    line-height: 18px;
+    line-height: 24px;
     color: #ffffff;
     white-space: nowrap;
   }
@@ -267,11 +267,13 @@ export default {
   }
 
   /* ---------------- 表格 ---------------- */
+  // 表头顶到分页上方（72..592 ≈ 520）：行高 52 时正好放下 10 行，不出现滚动条
   &__table {
     position: absolute;
     left: 25px;
     top: 72px;
     width: 1367px;
+    height: 520px;
     overflow: hidden;
   }
 
@@ -289,16 +291,16 @@ export default {
   }
 
   &__body {
-    height: 457px;
+    height: 484px;
     display: block;
     pointer-events: none;
   }
 
   &__th {
     position: absolute;
-    top: 11px;
-    font-size: 14px;
-    line-height: 14px;
+    top: 9px;
+    font-size: var(--screen-font-sm);
+    line-height: 20px;
     color: #ffffff;
     white-space: nowrap;
   }
@@ -307,7 +309,7 @@ export default {
     position: absolute;
     left: 0;
     width: 100%;
-    height: 46px;
+    height: 52px;
   }
 
   &__tr-bg {
@@ -315,7 +317,7 @@ export default {
     left: 0;
     top: 0;
     width: 100%;
-    height: 46px;
+    height: 52px;
     display: block;
     pointer-events: none;
   }
@@ -323,8 +325,8 @@ export default {
   &__td {
     position: absolute;
     top: 16px;
-    font-size: 13px;
-    line-height: 14px;
+    font-size: var(--screen-font-sm);
+    line-height: 20px;
     color: #66afd4;
     overflow: hidden;
     white-space: nowrap;
@@ -334,9 +336,9 @@ export default {
   &__action {
     position: absolute;
     left: 1178px;
-    top: 16px;
-    width: 14px;
-    height: 14px;
+    top: 18px;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
     .screen-focus-ring();
   }
@@ -349,7 +351,7 @@ export default {
     display: flex;
     align-items: center;
     height: 36px;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #66afd4;
   }
 
@@ -364,7 +366,7 @@ export default {
     margin-right: 10px;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #66afd4;
     background: transparent;
     border: 0;
@@ -405,7 +407,7 @@ export default {
     margin-left: 24px;
     padding: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     color: #ffffff;
     background: transparent;
     border: 0;
@@ -440,7 +442,7 @@ export default {
       height: 100%;
       padding: 0;
       font-family: inherit;
-      font-size: 14px;
+      font-size: var(--screen-font-sm);
       color: #ffffff;
       text-align: center;
       background: transparent;
