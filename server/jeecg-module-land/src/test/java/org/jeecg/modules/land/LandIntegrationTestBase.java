@@ -177,6 +177,70 @@ public abstract class LandIntegrationTestBase {
                 + (last == null ? "未知" : last.getMessage()));
     }
 
+    /**
+     * 安全执行「兜底清理」SQL：一个连接、失败重试、最终失败只告警不判失败。
+     *
+     * <p>★ 为什么做成可复用的静态方法，而不是只在基类里写一遍：
+     * 档案（竣工档案/台账/移交）等测试模块有**自己的** {@code @AfterTransaction} 清理
+     * （它们要清各自的表），各自都手写了 {@code new JdbcTemplate(...).update(...)}。
+     * 全量跑 147 个用例时，这些清理合计要开上千次连接（测试用的是
+     * {@code DriverManagerDataSource}，**没有连接池**，每条语句一次 TCP 建连），
+     * 于是会偶发撞上远程库拒绝，抛 {@code CannotGetJdbcConnectionException} /
+     * {@code Communications link failure}。
+     *
+     * <p>这类失败报的是**假红**：测试方法本身早已通过、事务也已回滚、库里没有残留，
+     * 只是「顺手再擦一遍」这个动作没连上库。它会让人去怀疑一个根本没问题的测试
+     * （实测已在 {@code t_facility_process}、{@code xj_kjkfb_supporting_facilities}、
+     * {@code t_completion_archive} 三处出现过）。
+     *
+     * <p>处理方式与基类 {@link #cleanTestRows()} 完全一致：
+     * <ol>
+     *   <li>所有语句收进**同一个连接**（建连次数从 N 降到 1）；</li>
+     *   <li>失败重试 3 次（间隔 500ms / 1000ms），覆盖瞬时抖动；</li>
+     *   <li>仍失败只打印一行警告 —— 数据安全由事务保证，清不掉最多留下几行
+     *       测试前缀的垃圾行，下次运行时会被同一段代码一起清掉。</li>
+     * </ol>
+     *
+     * @param dataSource 数据源
+     * @param taskName   任务名（只用于日志，便于定位是哪段清理没成功）
+     * @param statements {@code [SQL, 参数1, 参数2, ...]} 形式的数组，参数可省略
+     */
+    protected static void safeCleanup(DataSource dataSource, String taskName, Object[]... statements) {
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        ConnectionCallback<Void> clean = connection -> {
+            for (Object[] statement : statements) {
+                try (PreparedStatement ps = connection.prepareStatement((String) statement[0])) {
+                    for (int i = 1; i < statement.length; i++) {
+                        ps.setObject(i, statement[i]);
+                    }
+                    ps.executeUpdate();
+                }
+            }
+            return null;
+        };
+
+        DataAccessException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                jdbcTemplate.execute(clean);
+                return;
+            } catch (DataAccessException e) {
+                last = e;
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(500L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        System.out.println("[LandIntegrationTestBase] " + taskName
+                + " 兜底清理未成功（已重试 3 次），不影响测试结论；残留的测试前缀行会在下次运行时被清掉。原因："
+                + (last == null ? "未知" : last.getMessage()));
+    }
+
     /** 取集合第一个元素，空集合返回 null（避免测试里到处写 get(0) 的空判断） */
     protected static <T> T first(List<T> list) {
         return list == null || list.isEmpty() ? null : list.get(0);

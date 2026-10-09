@@ -26,6 +26,7 @@ import org.springframework.test.context.transaction.AfterTransaction;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -89,17 +90,27 @@ public class CompletionArchiveDataTest extends LandIntegrationTestBase {
     @Autowired
     private ICompletionExportService exportService;
 
-    /** 事务结束（已回滚）后，把测试行物理删掉，保证库里不留测试记录 */
+    /**
+     * 事务结束（已回滚）后，把测试行物理删掉，保证库里不留测试记录。
+     *
+     * <p>★ 走基类的 {@link LandIntegrationTestBase#safeCleanup}：
+     * 它是「兜底」不是断言，失败时不能把测试判成失败。本测试连的是远程库、
+     * 数据源没有连接池，逐条 update 会各开一次连接，全量跑下来偶发撞上
+     * 「Communications link failure」——那会报出一个假红。
+     */
     @AfterTransaction
     public void cleanCompletionTestRows() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        List<Object[]> statements = new ArrayList<>();
         // ① 按测试前缀清理（覆盖绝大多数用例）
-        jdbcTemplate.update("DELETE FROM `t_completion_archive` WHERE `archive_no` LIKE ?",
-                TEST_ARCHIVE_NO_PREFIX + "%");
+        statements.add(new Object[]{
+                "DELETE FROM `t_completion_archive` WHERE `archive_no` LIKE ?",
+                TEST_ARCHIVE_NO_PREFIX + "%"});
         // ② 兜底：按本次测试真正创建的 id 清理（覆盖「故意占用真实编号格式」的用例）
         for (String id : createdIds) {
-            jdbcTemplate.update("DELETE FROM `t_completion_archive` WHERE `id` = ?", id);
+            statements.add(new Object[]{"DELETE FROM `t_completion_archive` WHERE `id` = ?", id});
         }
+        safeCleanup(dataSource, "竣工档案测试行清理",
+                statements.toArray(new Object[0][]));
     }
 
     // ==================================================================

@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -82,15 +81,18 @@ public class CompletionArchiveApiTest extends LandIntegrationTestBase {
                 .build();
     }
 
-    /** 事务结束（已回滚）后物理清理测试行；基类只清理台账表，本模块要自己清 */
+    /** 事务结束（已回滚）后物理清理测试行；基类只清理公共表，本模块要自己清 */
     @AfterTransaction
     public void cleanCompletionTestRows() {
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        jdbcTemplate.update("DELETE FROM `t_completion_archive` WHERE `archive_no` LIKE ?",
-                TEST_ARCHIVE_NO_PREFIX + "%");
+        List<Object[]> statements = new ArrayList<>();
+        statements.add(new Object[]{
+                "DELETE FROM `t_completion_archive` WHERE `archive_no` LIKE ?",
+                TEST_ARCHIVE_NO_PREFIX + "%"});
         for (String id : createdIds) {
-            jdbcTemplate.update("DELETE FROM `t_completion_archive` WHERE `id` = ?", id);
+            statements.add(new Object[]{"DELETE FROM `t_completion_archive` WHERE `id` = ?", id});
         }
+        safeCleanup(dataSource, "竣工档案接口测试行清理",
+                statements.toArray(new Object[0][]));
     }
 
     // ==================================================================
