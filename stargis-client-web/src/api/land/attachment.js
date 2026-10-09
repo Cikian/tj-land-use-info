@@ -148,8 +148,10 @@ export function queryAllowedAttachmentTypes () {
  *   fileMd5 / contentType / storeType / storePath / remark / sortNo
  *   ★ id / delFlag / uploadBy / uploadName / uploadTime / downloadCount
  *     一律由服务端重新赋值，客户端传了也会被忽略。
- *   ★ storePath 必须是**安全相对路径**（不能以 / 开头、不能含 ..），
- *     否则后端直接报错不写库。
+ *   ★ storePath 直接把上传接口返回的值传进来即可（它以 `/` 开头，因为 jeecg
+ *     的上传接口会把 biz 原样拼进返回路径）；后端会**归一成不带前导斜杠**的相对路径，
+ *     并对 `..`（路径穿越）与盘符绝对路径仍然直接报错不写库。
+ *     前端不需要自己去斜杠 —— 由服务端统一处理，避免各调用方写法不一致。
  * @returns {Promise} result 为补齐了展示字段的附件实体（可直接渲染，不必再查列表）
  */
 export function saveAttachment (data) {

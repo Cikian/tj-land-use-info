@@ -105,8 +105,9 @@ public interface ILandAttachmentService {
      *   <li>{@code bizId} 对应的业务对象必须<b>真实存在</b>
      *       （软删的不算）—— 否则会造出「挂在不存在业务上的附件」，
      *       页面上永远显示不出来，磁盘上却占着空间；</li>
-     *   <li>{@code storePath} 必须是<b>相对路径</b>：不得以 {@code /} 或 {@code \} 开头、
-     *       不得含 {@code ..}、不得含盘符；</li>
+     *   <li>{@code storePath} 由 Service **归一成相对路径**：jeecg 上传接口返回的路径
+     *       带前导斜杠，会被去掉；但含 {@code ..}（路径穿越）或 {@code :}（盘符绝对路径）
+     *       仍然一律拒绝。见 {@code LandAttachmentServiceImpl#normalizeStorePath}。</li>
      *   <li>{@code fileType} 必须在允许集合内（见 {@link #allowedFileTypes()}）。</li>
      * </ol>
      *

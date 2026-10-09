@@ -92,10 +92,11 @@ public class LandAttachment implements Serializable {
     private String storeType;
 
     /**
-     * 相对存储路径。
+     * 相对存储路径（不含前导斜杠）。
      *
-     * <p>★ 只允许相对路径。落库前 Service 会拒绝以 {@code /} 开头或含 {@code ..} 的值，
-     * 读盘时再做一次 canonicalPath 归属校验（照抄档案模块的做法）。
+     * <p>★ 落库前 Service 会归一：去掉前导斜杠（jeecg 上传接口返回的路径**带**前导斜杠，
+     * 因为它来自 {@code biz} 参数，而前端的 {@code buildBizPath()} 就是带斜杠的），
+     * 并拒绝含 {@code ..} 或盘符的值。读盘时再做一次 canonicalPath 归属校验。
      */
     private String storePath;
 

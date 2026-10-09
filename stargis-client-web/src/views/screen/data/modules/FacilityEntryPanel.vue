@@ -438,7 +438,9 @@ export default {
         tab: 'attachment',
         bizType: 'facility',
         bizId: record.id,
-        bizKey: record.ptxmmc || ''
+        bizKey: record.ptxmmc || '',
+        // 显式给名称：上传弹窗用它回显「这个附件挂到哪个配套」
+        bizName: record.ptxmmc || ''
       })
     },
 

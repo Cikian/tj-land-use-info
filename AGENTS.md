@@ -221,16 +221,10 @@ git status --porcelain
 每个测试方法跑在事务里、结束回滚，并兜底物理清理 `*-TEST-*` 前缀的行。
 所以**默认可以安全地在真实库上跑测试**——但**不要**在测试里关掉事务或提交。
 
-当前规模：集成测试 **10 个测试类 / 152 个用例**，全量运行 **0 失败**（2026-10-09 实测）。
+当前规模：集成测试 **11 个测试类 / 161 个用例**，全量运行 **0 失败**（2026-10-09 实测）。
 
-> 小提示：直接在源码里数 `@Test` 会得到 154 个，比实际执行多 2 ——
-> 有 2 个方法 JUnit 不按顶层测试收集。**以 surefire 报告的 152 为准**，
-> 或者干脆只看 `Tests run:` 那一行。
-> 各测试类用例数：`DataManagementTest` 36、`LandImportTest` 17、
-> `RoadAcceptanceLedgerDataTest` 17、`CompletionArchiveDataTest` 15、
-> `CompletionArchiveApiTest` 14、`RoadHandoverDataTest` 14、
-> `RoadAcceptanceLedgerApiTest` 14、`RoadHandoverApiTest` 10、
-> `RoadAcceptanceLedgerImportTest` 10、`DotEnvEnvironmentPostProcessorTest` 5。
+> 小提示：直接在源码里数 `@Test` 会得到比实际执行略多的数字（少数方法 JUnit
+> 不按顶层测试收集）。**以 `Tests run:` 那一行为准**。
 
 ---
 
