@@ -99,19 +99,19 @@ export default {
   data () {
     return {
       columns: [
-        { key: 'archiveNo', title: '档案号', width: 150, type: 'link' },
-        { key: 'archiveName', title: '档案名称', width: 220, type: 'slot' },
-        { key: 'categoryNames', title: '档案类别', width: 200, type: 'slot' },
-        { key: 'ptxmmc', title: '配套项目', width: 190, ellipsis: true },
-        { key: 'crzdbh', title: '出让宗地编号', width: 150, ellipsis: true },
-        { key: 'xzqh', title: '行政区划', width: 90 },
-        { key: 'responsibleDept', title: '责任部门', width: 120, ellipsis: true },
-        { key: 'responsibleUser', title: '配套负责人', width: 100 },
-        { key: 'archiveDate', title: '归档日期', width: 110 },
-        { key: 'fileCount', title: '卷内文件', width: 130, type: 'slot' },
+        { key: 'archiveNo', title: '档案号', width: 180, type: 'link', align: 'left' },
+        { key: 'archiveName', title: '档案名称', width: 180, type: 'slot' },
+        // { key: 'categoryNames', title: '档案类别', width: 200, type: 'slot' },
+        { key: 'ptxmmc', title: '配套项目', width: 190, ellipsis: true, align: 'center' },
+        { key: 'crzdbh', title: '出让宗地编号', width: 190, ellipsis: true, align: 'center' },
+        { key: 'xzqh', title: '行政区划', width: 100, align: 'center' },
+        { key: 'responsibleDept', title: '责任部门', width: 100, ellipsis: true, align: 'center' },
+        { key: 'responsibleUser', title: '负责人', width: 100, align: 'center' },
+        { key: 'archiveDate', title: '归档日期', width: 140, align: 'center' },
+        { key: 'fileCount', title: '卷内文件', width: 130, type: 'slot', align: 'center' },
         // tone 支持函数：按状态值决定标签语气，颜色 + 文字双重线索
-        { key: 'status', title: '状态', width: 90, type: 'tag', tone: statusTone },
-        { key: 'action', title: '操作', width: 150, type: 'slot', align: 'center' },
+        { key: 'status', title: '状态', width: 90, type: 'tag', tone: statusTone, align: 'center' },
+        { key: 'action', title: '操作', type: 'slot', align: 'center' },
       ],
     }
   },
