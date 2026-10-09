@@ -329,12 +329,18 @@ export function bizTypeText (bizType) {
 }
 
 /**
- * 上传业务子目录：/{module}/{yyyy}/{MM}
+ * 上传业务子目录：/{module}/attachment/{yyyy}/{MM}
  *
  * 后端按 biz 字段建立分目录，避免所有文件堆在同一层。
  * 数据管理三个业务各用一段路径：宗地用 land、配套用 facility、环节用 process，
  * 不要与档案的 archive / 收文的 receive / 发文的 send 混用
  * （混用会让运维按目录清理时误删别人的文件）。
+ *
+ * ★ 返回值**带前导斜杠**，这是刻意的：jeecg 的 `/sys/common/upload` 会把 biz 原样
+ *   拼进返回的存储路径，而档案 / 提级论证模块的 buildBizPath 同样是带斜杠的写法，
+ *   三个模块保持一致才不会出现「有的带、有的不带」。
+ *   存储侧由后端 `LandAttachmentServiceImpl.normalizeStorePath` 统一去掉前导斜杠
+ *   （前端拼 staticDomainURL 时多一个斜杠就会 404）。
  *
  * @param {string} module land / facility / process
  * @param {Date} [date]

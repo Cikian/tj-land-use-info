@@ -101,7 +101,11 @@ export default {
     AttachmentPreviewModal
   },
   props: {
-    /** 下钻条件（从配套详情跳过来时带 bizType / bizId / bizKey） */
+    /**
+     * 下钻条件（从配套详情跳过来时带 bizType / bizId / bizKey）。
+     * ★ bizId 是唯一 id、只用于过滤；bizKey 是可读名称（宗地编号 / 配套项目名称），
+     *   落在检索面板的「所属对象」里显示给用户看。
+     */
     initialQuery: { type: Object, default: () => ({}) }
   },
   data () {

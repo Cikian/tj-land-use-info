@@ -25,7 +25,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1500"
+    :min-width="1400"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -124,7 +124,7 @@ export default {
     return {
       columns: [
         { key: 'fileName', title: '文件名 / 归属', width: 320, type: 'slot' },
-        { key: 'fileTypeText', title: '附件类型', width: 170, type: 'slot', align: 'center' },
+        { key: 'fileTypeText', title: '材料类型', width: 170, type: 'slot', align: 'center' },
         { key: 'fileSize', title: '大小', width: 110, type: 'slot', align: 'right' },
         { key: 'fileExt', title: '格式', width: 90, type: 'slot', align: 'center' },
         { key: 'uploadName', title: '上传人', width: 120, type: 'slot' },

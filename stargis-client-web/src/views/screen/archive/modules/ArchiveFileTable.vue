@@ -61,7 +61,7 @@
       :columns="columns"
       :data="rows"
       row-key="rowKey"
-      :min-width="860"
+      :min-width="848"
       :max-height="disabled ? 320 : 260"
       :animated="false"
       empty-text="还没有卷内文件，请先上传"

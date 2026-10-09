@@ -26,7 +26,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1700"
+    :min-width="1340"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -141,17 +141,17 @@ export default {
   data () {
     return {
       columns: [
-        { key: 'crzdbh', title: '出让宗地编号', width: 200, type: 'slot' },
-        { key: 'dkmc', title: '地块名称 / 受让人', width: 240, type: 'slot' },
-        { key: 'xzqh', title: '行政区划', width: 100, type: 'slot' },
-        { key: 'xmfl', title: '项目分类', width: 110, type: 'slot', align: 'center' },
+        { key: 'crzdbh', title: '出让宗地编号', width: 170, type: 'slot' },
+        { key: 'dkmc', title: '地块名称 / 受让人', width: 200, type: 'slot' },
+        { key: 'xzqh', title: '行政区划', width: 70, type: 'slot', align: 'center' },
+        { key: 'xmfl', title: '项目分类', width: 100, type: 'slot', align: 'center' },
         { key: 'ghydxz', title: '规划用地性质', width: 140, ellipsis: true },
-        { key: 'crj', title: '出让金(亿元)', width: 120, type: 'slot', align: 'right' },
-        { key: 'crsj', title: '出让时间', width: 120, type: 'slot' },
-        { key: 'ptsfqq', title: '配套齐全', width: 100, align: 'center' },
-        { key: 'facilityCount', title: '配套数', width: 100, type: 'slot', align: 'center' },
-        { key: 'attachmentCount', title: '附件数', width: 90, type: 'slot', align: 'center' },
-        { key: 'changeCount', title: '变更次数', width: 100, type: 'slot', align: 'center' },
+        { key: 'crj', title: '出让金(亿元)', width: 100, type: 'slot', align: 'center' },
+        { key: 'crsj', title: '出让时间', width: 110, type: 'slot', align: 'center' },
+        { key: 'ptsfqq', title: '配套齐全', width: 70, align: 'center' },
+        { key: 'facilityCount', title: '配套数', width: 60, type: 'slot', align: 'center' },
+        { key: 'attachmentCount', title: '附件数', width: 60, type: 'slot', align: 'center' },
+        { key: 'changeCount', title: '变更次数', width: 60, type: 'slot', align: 'center' },
         { key: 'action', title: '操作', width: 200, type: 'slot', align: 'center' }
       ]
     }

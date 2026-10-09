@@ -580,19 +580,35 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
     }
 
     /**
-     * 存储路径校验与规范化（写侧，严格）。
+     * 存储路径校验与规范化（写侧）。
      *
-     * <p>jeecg 的 {@code /sys/common/upload} 返回的是 {@code bizPath + "/" + fileName}
-     * （3.4.3 的 {@code CommonController.uploadLocal}，不带前导斜杠），
-     * 所以「相对路径」是这个接口的固有口径；一旦前端传进来以 {@code /} 开头的值，
-     * 说明它不是上传接口给的，而是有人手工拼的 —— 这类值必须拒绝，
-     * 因为读盘时它会被当作「相对上传根目录」，语义已经与传入者的预期不一致。
+     * <p><b>★ 前导斜杠：容忍并去掉，不再拒绝</b>（2026-10-09 修正）。
+     * 先前这里把「以 {@code /} 开头」当成非法值直接拒绝，依据是本文件注释里那句
+     * 「3.4.3 的 uploadLocal 不带前导斜杠」—— <b>那句话是错的</b>：
+     * {@code CommonController.uploadLocal} 返回的是 {@code bizPath + "/" + fileName}，
+     * 而 {@code bizPath} 来自上传请求的 {@code biz} 参数；前端各模块的
+     * {@code buildBizPath()} 统一返回 {@code /facility/attachment/yyyy/MM}（**带**前导斜杠），
+     * 所以上传接口回给前端的路径本身就是以 {@code /} 开头的。
+     * 于是「用上传接口返回的路径落库」这条正常路径 100% 报错 ——
+     * 这个校验把唯一正确的用法给挡了。
+     *
+     * <p>为什么选择「规范化」而不是「改前端去掉斜杠」：
+     * <ol>
+     *   <li>同一个 {@code biz_path} 约定被档案 / 收发文 / 提级论证三个模块共用
+     *       （{@code archive/constants.js}、{@code escalation/constants.js} 的
+     *       {@code buildBizPath} 都带前导斜杠），改前端要动 3 处且遗漏一处就又踩；</li>
+     *   <li>档案 / 收发文模块把上传返回的 storePath <b>原样入库</b>，
+     *       所以库里本来就可能存在带前导斜杠的值 —— 只改前端不解决历史数据与新数据的差异；</li>
+     *   <li>服务端做归一是「不信任调用方写法」的正确位置，对任何调用方都成立。</li>
+     * </ol>
+     *
+     * <p>安全性没有放松：{@code ..}（路径穿越）、{@code :}（盘符绝对路径）
+     * 仍然一律拒绝；去掉前导斜杠只是把 {@code /a/b} 与 {@code a/b} 归一成同一种
+     * 「相对上传根目录」的语义 —— 两者在读盘时本来就指向同一个文件。
      *
      * <p>★ 与读侧（{@link #resolveAbsolutePath}）的分工：
-     * 写侧<b>严格</b>（拒绝一切可疑写法，让坏数据进不来），
-     * 读侧<b>宽容一点</b>（容忍历史数据里可能存在的多余前导斜杠，
-     * 只用 canonicalPath 兜住真正的越界）。两边都严会把历史数据变成「打不开」，
-     * 两边都松则会放进不可信路径 —— 一严一松，坏数据既进不来、老数据也读得出。
+     * 写侧负责归一（让坏数据进不来、好数据不被误拒），
+     * 读侧用 canonicalPath 兜住真正的越界（容忍历史数据里各种写法）。
      */
     private String normalizeStorePath(String storePath) {
         String path = DataSupport.clean(storePath);
@@ -600,10 +616,6 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             throw new JeecgBootException("缺少文件存储路径，请重新上传文件");
         }
         String normalized = path.replace('\\', '/');
-        if (normalized.startsWith("/")) {
-            throw new JeecgBootException("文件存储路径必须是相对路径（不能以「/」开头）：「" + path
-                    + "」。请使用 /sys/common/upload 接口返回的路径");
-        }
         if (normalized.contains("..")) {
             throw new JeecgBootException("文件存储路径不合法（包含「..」，疑似路径穿越）：「" + path + "」");
         }
@@ -611,8 +623,16 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             // Windows 的 C:/... 形式：它同样是绝对路径，只是不用斜杠开头
             throw new JeecgBootException("文件存储路径不合法（疑似盘符绝对路径）：「" + path + "」");
         }
+        // 去掉前导斜杠：jeecg 上传接口返回的就是带前导斜杠的路径（见方法注释），
+        // 统一存成相对路径，前端拼 staticDomainURL 时不会多出一个斜杠导致 404
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
         while (normalized.contains("//")) {
             normalized = normalized.replace("//", "/");
+        }
+        if (normalized.isEmpty()) {
+            throw new JeecgBootException("文件存储路径不合法（去掉前导斜杠后为空）：「" + path + "」");
         }
         return DataSupport.capLength(normalized, 500);
     }

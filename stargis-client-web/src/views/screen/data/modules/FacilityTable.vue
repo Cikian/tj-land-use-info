@@ -26,7 +26,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1780"
+    :min-width="1200"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -81,7 +81,6 @@
         </span>
       </span>
     </template>
-
     <template #stageStatus="{ row }">
       <facility-stage-chips
         v-if="(row.stageStatus || []).length"
@@ -147,16 +146,37 @@ export default {
   },
   data () {
     return {
+      /**
+       * ★ 列宽之和应 ≤ min-width，否则表格一定出现横向滚动条。
+       *
+       * 原来的分配是 190+250+100+110+190+130+200+380+260 = 1810，而 min-width 是 1780 ——
+       * 在 1920 宽的屏幕上内容区只有约 1560px（要减掉左侧导航与内边距），
+       * 于是**必然**横向滚动，而且滚出来的是一大片空白（列宽之和已超过实际内容需要）。
+       *
+       * 定宽原则（按「这一列要放什么」定，不是按标题长度）：
+       *   · 编号 / 区划 / 分类：短编号或固定几个字，够显示即可；
+       *   · 名称 / 建设单位：长文本，本来就有 ellipsis + title 兜底，宁可窄一点；
+       *   · 六大阶段：6 个阶段名等分，最长的是「立项用地规划许可阶段」（10 字），
+       *     FacilityStageChips 内部是 flex + ellipsis，窄了会截断并靠 title 悬浮查看；
+       *   · 操作：**不设 width**，让浏览器把剩余宽度全给它 ——
+       *     它是唯一「不能靠 ellipsis」的列（六个链接必须放得下），
+       *     而「剩余多少」只有布局时才知道，写死反而容易要么溢出、要么留白。
+       *
+       * ★ 因此 min-width 只需覆盖**有明确宽度的那 8 列**：
+       *   210+230+80+120+150+130+180+100 = 1200。
+       *   剩余宽度由「操作」列吸收；表格 `width:100%` 会填满容器，不会留白。
+       */
       columns: [
-        { key: 'crzdbh', title: '出让宗地编号', width: 190, type: 'slot' },
-        { key: 'ptxmmc', title: '配套项目 / 类别', width: 250, type: 'slot' },
-        { key: 'xzqh', title: '行政区划', width: 100, type: 'slot' },
-        { key: 'xmfl', title: '项目分类', width: 110, type: 'slot', align: 'center' },
-        { key: 'jsdw', title: '建设单位', width: 190, type: 'slot' },
-        { key: 'tzgs', title: '投资估算(万元)', width: 130, type: 'slot', align: 'right' },
-        { key: 'percent', title: '整体进度', width: 200, type: 'slot' },
-        { key: 'stageStatus', title: '六大阶段', width: 380, type: 'slot' },
-        { key: 'action', title: '操作', width: 260, type: 'slot', align: 'center' }
+        { key: 'crzdbh', title: '出让宗地编号', width: 210, type: 'slot' },
+        { key: 'ptxmmc', title: '配套项目 / 类别', width: 230, type: 'slot' },
+        { key: 'xzqh', title: '行政区划', width: 80, type: 'slot', align: 'center' },
+        { key: 'xmfl', title: '项目分类', width: 120, type: 'slot', align: 'center' },
+        { key: 'jsdw', title: '建设单位', width: 150, type: 'slot' },
+        { key: 'tzgs', title: '投资估算(万元)', width: 130, type: 'slot', align: 'center' },
+        { key: 'percent', title: '整体进度', width: 180, type: 'slot', align: 'center' },
+        { key: 'stageStatus', title: '六大阶段', width: 100, type: 'slot', align: 'center' },
+        // ★ 不设 width：剩余宽度全部给操作列，保证六个链接一行放得下
+        { key: 'action', title: '操作', type: 'slot', align: 'center' }
       ]
     }
   },
@@ -257,8 +277,15 @@ export default {
     display: inline-flex;
     align-items: center;
     gap: 3px;
+    min-width: 0;
     font-size: var(--screen-font-xs);
     color: var(--screen-danger);
+    // 收窄「整体进度」列后这里会放不下 4 个字 + 图标；截断而不是撑破列宽
+    .screen-ellipsis();
+
+    /deep/ .screen-icon {
+      flex: 0 0 auto;
+    }
   }
 
   &__actions {
