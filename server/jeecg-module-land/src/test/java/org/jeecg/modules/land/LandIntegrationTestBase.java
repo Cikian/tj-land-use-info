@@ -2,6 +2,8 @@ package org.jeecg.modules.land;
 
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
@@ -9,6 +11,7 @@ import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
+import java.sql.PreparedStatement;
 import java.util.List;
 
 /**
@@ -72,34 +75,106 @@ public abstract class LandIntegrationTestBase {
     @Autowired
     protected DataSource dataSource;
 
-    /** 每个测试方法结束（事务已回滚）后，把测试行物理删掉 */
+    /**
+     * 每个测试方法结束（事务已回滚）后，把测试行物理删掉。
+     *
+     * <p>★ 这是「兜底」，不是断言 —— 所以它失败时**不能把测试判成失败**。
+     *
+     * <p>为什么必须这样处理：本测试连的是**远程库**（49.232.252.56），
+     * 而 {@link LandTestConfig} 用的是 {@code DriverManagerDataSource} ——
+     * 它没有连接池，**每条语句都会新开一次 TCP 连接**。下面有 7 条 DELETE，
+     * 也就是 7 次建连；全量 147 个用例跑下来是上千次建连，
+     * 偶尔就会撞上远程库的瞬时拒绝，抛
+     * {@code CannotGetJdbcConnectionException}。
+     *
+     * <p>实测过两次这种偶发失败（一次在 {@code t_facility_process}，一次在
+     * {@code xj_kjkfb_supporting_facilities}，都是同一段清理代码的不同行）。
+     * 它报出来的是**假红**：测试方法本身早就通过了，事务也回滚了，
+     * 库里并没有数据残留 —— 只是「顺手再擦一遍」这个动作没连上库。
+     * 这种失败会让人去怀疑一个根本没问题的测试，所以这里显式容忍。
+     *
+     * <p>处理方式：
+     * <ol>
+     *   <li>整段清理只建**一个**连接（{@code ConnectionCallback}），把 7 条 DELETE
+     *       放在同一次连接里 —— 建连次数从 7 次降到 1 次，本身就大幅降低撞上的概率；</li>
+     *   <li>失败时重试 3 次（间隔 500ms / 1000ms），覆盖瞬时抖动；</li>
+     *   <li>仍然失败就**只打印一行警告**，不抛出 —— 因为事务已经回滚，
+     *       真正的数据安全由事务保证，这里清不掉最多是留下几行 {@code *-TEST-*} 前缀的
+     *       垃圾行，下次跑测试时同一段代码会顺手把它们一起清掉。</li>
+     * </ol>
+     */
     @AfterTransaction
     public void cleanTestRows() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        jdbcTemplate.update("DELETE FROM `t_road_acceptance_ledger` WHERE `ledger_no` LIKE ?",
-                TEST_LEDGER_NO_PREFIX + "%");
-        jdbcTemplate.update("DELETE FROM `t_road_handover` WHERE `handover_no` LIKE ?",
-                TEST_HANDOVER_NO_PREFIX + "%");
-        // ★ 经营性用地批量导入测试造的数据（t_land 上的唯一键是 (crzdbh, del_flag)，
-        //   所以这里要连 del_flag=1 的软删残留一起清掉）
-        jdbcTemplate.update("DELETE FROM `t_land` WHERE `crzdbh` LIKE ?",
-                TEST_LAND_CRZDBH_PREFIX + "%");
-        // ★ 数据管理其余 5 项的测试数据（方案 2.3.1（三）第 1/2/4/5/6 项），
-        //   它们用的是另一个前缀，必须单独清一遍。
-        //   顺序很要紧：先删子表再删父表 —— 虽然本库业务表之间没有外键约束
-        //   （实测确认 5 个外键全在 sys_qrtz_*），但 t_facility_process.pt_id
-        //   指向配套项目、t_land_attachment.biz_id 指向三者，先删子表更符合直觉，
-        //   也避免将来真加了外键时这段清理突然开始报错。
-        jdbcTemplate.update("DELETE FROM `t_data_change_log` WHERE `biz_key` LIKE ?",
-                TEST_DATA_KEY_PREFIX + "%");
-        jdbcTemplate.update("DELETE FROM `t_land_attachment` WHERE `biz_key` LIKE ?",
-                TEST_DATA_KEY_PREFIX + "%");
-        jdbcTemplate.update("DELETE FROM `t_facility_process` WHERE `crzdbh` LIKE ?",
-                TEST_DATA_CRZDBH_PREFIX + "%");
-        jdbcTemplate.update("DELETE FROM `xj_kjkfb_supporting_facilities` WHERE `crzdbh` LIKE ?",
-                TEST_DATA_CRZDBH_PREFIX + "%");
-        jdbcTemplate.update("DELETE FROM `t_land` WHERE `crzdbh` LIKE ?",
-                TEST_DATA_CRZDBH_PREFIX + "%");
+        // ★ 用 ConnectionCallback 把 8 条 DELETE 收进同一个连接：
+        //   DriverManagerDataSource 每条语句一次建连，收成一次是这里最有效的优化
+        ConnectionCallback<Void> clean = connection -> {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_data_change_log` WHERE `biz_key` LIKE ?")) {
+                ps.setString(1, TEST_DATA_KEY_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_land_attachment` WHERE `biz_key` LIKE ?")) {
+                ps.setString(1, TEST_DATA_KEY_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_facility_process` WHERE `crzdbh` LIKE ?")) {
+                ps.setString(1, TEST_DATA_CRZDBH_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `xj_kjkfb_supporting_facilities` WHERE `crzdbh` LIKE ?")) {
+                ps.setString(1, TEST_DATA_CRZDBH_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            // ★ 注意：t_land 上唯一键是 (crzdbh, del_flag)，所以要连 del_flag=1 的软删残留一起清。
+            //   两个测试批次用了不同前缀，所以这里要清两遍。
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_land` WHERE `crzdbh` LIKE ?")) {
+                ps.setString(1, TEST_DATA_CRZDBH_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_land` WHERE `crzdbh` LIKE ?")) {
+                ps.setString(1, TEST_LAND_CRZDBH_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_road_acceptance_ledger` WHERE `ledger_no` LIKE ?")) {
+                ps.setString(1, TEST_LEDGER_NO_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "DELETE FROM `t_road_handover` WHERE `handover_no` LIKE ?")) {
+                ps.setString(1, TEST_HANDOVER_NO_PREFIX + "%");
+                ps.executeUpdate();
+            }
+            return null;
+        };
+
+        DataAccessException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                jdbcTemplate.execute(clean);
+                return;
+            } catch (DataAccessException e) {
+                last = e;
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(500L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        // 兜底清理失败不判失败：事务已回滚，数据安全由事务保证
+        System.out.println("[LandIntegrationTestBase] 测试行兜底清理未成功（已重试 3 次），"
+                + "不影响测试结论；残留的 *-TEST-* 行会在下次运行时被同一段代码清掉。原因："
+                + (last == null ? "未知" : last.getMessage()));
     }
 
     /** 取集合第一个元素，空集合返回 null（避免测试里到处写 get(0) 的空判断） */
