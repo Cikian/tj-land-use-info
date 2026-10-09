@@ -18,14 +18,38 @@
   overflow: hidden;
 }
 
-/* 玻璃面板：暗色半透明 + 轻微内辉光 + 1px 青色描边 */
-.screen-glass(@blur: var(--screen-blur)) {
+/* 玻璃面板：暗色半透明 + 轻微内辉光 + 1px 青色描边
+ * -------------------------------------------------------------------
+ * ⚠⚠ 这里**故意不做 `backdrop-filter` 背景模糊**，不要"补回来"。
+ *
+ * 实测（perf/perf-raster-ab.js，1920×1080 + Windows 缩放 150%）：
+ * 浏览器一旦没有硬件加速（集显 / 云桌面 / 驱动被拉黑 / 手动关了加速），
+ * 合成与光栅化全部落到 CPU 上，`backdrop-filter` 的代价会被放大两个数量级：
+ *
+ *              悬停时帧间隔 p50   滚动   切页签   打开弹窗
+ *   有模糊          116ms        267ms   267ms    267ms
+ *   去掉模糊         16.7ms       17ms    33ms     50ms
+ *   对照组（保持模糊） 117ms        283ms   283ms    283ms     ← 确认可重现
+ *
+ * 注意上表「悬停 p50 = 116ms」：鼠标每移动一下都要 116ms 才出一帧，
+ * 用户的感觉就是「鼠标划过表格发涩、完全不跟手」；滚动/切页签/开弹窗同理。
+ * 有硬件加速时这些开销由 GPU 吸收，所以只在显卡好的机器上量不出来 ——
+ * 这正是这个问题排查了很久的原因。
+ *
+ * 这个模糊到底有没有用？没有。面板底色本来就是 `--screen-panel-bg`
+ * = rgba(8, 22, 42, 0.92)，92% 不透明，背后那点模糊几乎全被盖住了。
+ * 逐像素比对（关掉模糊 vs 保持模糊，同一页面同一状态）：
+ *   平均差 0.046/255，p99 差 1/255，只有 0.04% 的像素差超过 2/255。
+ * 也就是说：**去掉它画面看不出区别，但卡顿差别是二十倍**。
+ *
+ * 如果以后确实需要更强的玻璃感，正确做法是把 `--screen-panel-bg` 的
+ * 不透明度降下来，而不是加回 backdrop-filter。
+ */
+.screen-glass() {
   background: var(--screen-panel-bg);
   border: 1px solid var(--screen-border);
   border-radius: var(--screen-radius);
   box-shadow: var(--screen-shadow), var(--screen-shadow-inset);
-  -webkit-backdrop-filter: blur(@blur);
-  backdrop-filter: blur(@blur);
 }
 
 /* 数字排版：等宽 + 紧凑字距，保证多行数值右对齐 */
@@ -69,18 +93,19 @@
    不要在组件里各写一套 border / hover / focus 规则。
 
    统一尺寸契约（保证对齐与触控可达）：
-     控件高度 sm 28px / md 32px / lg 36px；
-     控件内水平内边距 10px；圆角 --screen-radius-sm。
+     控件高度 sm 32px / md 36px / lg 40px（见 screen-tokens.less 的
+     --screen-control-* 令牌，随字号一起上移了一档）；
+     控件内水平内边距 12px；圆角 --screen-radius-sm。
    =================================================================== */
 
 /* 控件基础外观：暗色玻璃底 + 1px 青绿描边 */
-.screen-control(@height: 32px) {
+.screen-control(@height: var(--screen-control-md)) {
   display: inline-flex;
   align-items: center;
   gap: var(--screen-space-2);
   width: 100%;
   min-height: @height;
-  padding: 0 10px;
+  padding: 0 12px;
   font-family: inherit;
   font-size: var(--screen-font-sm);
   line-height: 1.4;

@@ -255,13 +255,13 @@ export default {
 
   &--sm {
     .screen-date-input__control {
-      .screen-control(28px);
+      .screen-control(var(--screen-control-sm));
     }
   }
 
   &__control {
     position: relative;
-    .screen-control(32px);
+    .screen-control(var(--screen-control-md));
 
     &:hover:not(.is-disabled) {
       .screen-control-hover();

@@ -1,0 +1,418 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.ledger.mapper.RoadAcceptanceLedgerMapper">
+
+    <!--
+      道路设施验收及移交资料台账 Mapper
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定），
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml。
+    -->
+
+    <!-- ================================================================
+         公用 WHERE 片段：台账列表 / 统计 / 导出 共用同一套条件，
+         保证「台账里看到什么，统计与导出就是什么」。
+         所有引用方都必须把台账主表别名为 p。
+         ================================================================ -->
+    <sql id="queryWhere">
+        p.`del_flag` = 0
+        <if test="q.ledgerNo != null and q.ledgerNo != ''">
+            AND p.`ledger_no` LIKE CONCAT('%', #{q.ledgerNo}, '%')
+        </if>
+        <if test="q.roadName != null and q.roadName != ''">
+            AND p.`road_name` LIKE CONCAT('%', #{q.roadName}, '%')
+        </if>
+        <if test="q.xzqh != null and q.xzqh != ''">
+            AND p.`xzqh` = #{q.xzqh}
+        </if>
+        <if test="q.gnq != null and q.gnq != ''">
+            AND p.`gnq` = #{q.gnq}
+        </if>
+        <if test="q.acceptanceType != null and q.acceptanceType != ''">
+            AND p.`acceptance_type` = #{q.acceptanceType}
+        </if>
+        <if test="q.acceptanceResult != null and q.acceptanceResult != ''">
+            AND p.`acceptance_result` = #{q.acceptanceResult}
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND p.`status` = #{q.status}
+        </if>
+        <if test="q.beginAcceptanceDate != null and q.beginAcceptanceDate != ''">
+            AND p.`acceptance_date` &gt;= #{q.beginAcceptanceDate}
+        </if>
+        <if test="q.endAcceptanceDate != null and q.endAcceptanceDate != ''">
+            AND p.`acceptance_date` &lt;= #{q.endAcceptanceDate}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND p.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.dkmc != null and q.dkmc != ''">
+            AND p.`dkmc` LIKE CONCAT('%', #{q.dkmc}, '%')
+        </if>
+        <if test="q.ptsslb != null and q.ptsslb != ''">
+            AND p.`ptsslb` = #{q.ptsslb}
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND p.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.archiveId != null and q.archiveId != ''">
+            AND p.`archive_id` = #{q.archiveId}
+        </if>
+        <if test="q.beginHandoverDate != null and q.beginHandoverDate != ''">
+            AND p.`handover_date` &gt;= #{q.beginHandoverDate}
+        </if>
+        <if test="q.endHandoverDate != null and q.endHandoverDate != ''">
+            AND p.`handover_date` &lt;= #{q.endHandoverDate}
+        </if>
+        <if test="q.beginCompleteDate != null and q.beginCompleteDate != ''">
+            AND p.`complete_date` &gt;= #{q.beginCompleteDate}
+        </if>
+        <if test="q.endCompleteDate != null and q.endCompleteDate != ''">
+            AND p.`complete_date` &lt;= #{q.endCompleteDate}
+        </if>
+        <if test="q.beginMaterialCount != null">
+            AND p.`material_count` &gt;= #{q.beginMaterialCount}
+        </if>
+        <if test="q.endMaterialCount != null">
+            AND p.`material_count` &lt;= #{q.endMaterialCount}
+        </if>
+        <if test="q.beginCreateTime != null and q.beginCreateTime != ''">
+            AND p.`create_time` &gt;= CONCAT(#{q.beginCreateTime}, ' 00:00:00')
+        </if>
+        <if test="q.endCreateTime != null and q.endCreateTime != ''">
+            AND p.`create_time` &lt;= CONCAT(#{q.endCreateTime}, ' 23:59:59')
+        </if>
+
+        <!--
+          ★「缺少某类资料」筛选：把 13 个驼峰属性名逐一列成 when 分支，
+            而不是把参数拼进列名 —— 请求参数<b>永远不参与 SQL 文本构造</b>。
+            未知取值落到 otherwise 的 1 = 0（查不到任何行，不会再退化成「不过滤」）。
+            Service 层会先用 LedgerMaterial.ofProperty 校验并给出友好报错，
+            这里是第二道防线。
+        -->
+        <if test="q.missingMaterial != null and q.missingMaterial != ''">
+            AND (
+            <choose>
+                <when test="q.missingMaterial == 'hasSgxk'">p.`has_sgxk` = 0</when>
+                <when test="q.missingMaterial == 'hasYsbg'">p.`has_ysbg` = 0</when>
+                <when test="q.missingMaterial == 'hasJgtc'">p.`has_jgtc` = 0</when>
+                <when test="q.missingMaterial == 'hasZljdbg'">p.`has_zljdbg` = 0</when>
+                <when test="q.missingMaterial == 'hasCljybg'">p.`has_cljybg` = 0</when>
+                <when test="q.missingMaterial == 'hasAjbg'">p.`has_ajbg` = 0</when>
+                <when test="q.missingMaterial == 'hasGhyshgz'">p.`has_ghyshgz` = 0</when>
+                <when test="q.missingMaterial == 'hasJgbaba'">p.`has_jgbaba` = 0</when>
+                <when test="q.missingMaterial == 'hasDazxys'">p.`has_dazxys` = 0</when>
+                <when test="q.missingMaterial == 'hasDlyjd'">p.`has_dlyjd` = 0</when>
+                <when test="q.missingMaterial == 'hasYhxy'">p.`has_yhxy` = 0</when>
+                <when test="q.missingMaterial == 'hasJgwj'">p.`has_jgwj` = 0</when>
+                <when test="q.missingMaterial == 'hasYjwj'">p.`has_yjwj` = 0</when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+            )
+        </if>
+
+        <!-- 关键词：道路名称 / 台账编号 / 宗地编号 / 地块名称 的 OR 匹配 -->
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (
+                p.`road_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`ledger_no` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`crzdbh` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`dkmc` LIKE CONCAT('%', #{q.keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <!-- ================= 台账分页 ================= -->
+    <!--
+      ★ seq（序号）刻意不在 SQL 里算：
+        用 MySQL 用户变量（@rowNum）算序号虽然省事，但分页插件会对 SQL 做结构分析并
+        生成 COUNT 语句，用户变量很容易被搬进 COUNT、生成非法 SQL；
+        而窗口函数 ROW_NUMBER() 只有 MySQL 8 才支持（本库是 MySQL 5.7）。
+        因此序号交给 Service 层用「分页偏移 + 行号」赋值。
+    -->
+    <select id="selectLedgerPage" resultType="org.jeecg.modules.land.archive.ledger.entity.RoadAcceptanceLedger">
+        SELECT p.*
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`ledger_no`, p.`id`
+    </select>
+
+    <!-- 导出台账：不分页，序号同样由 Service 侧从 1 开始赋值 -->
+    <select id="selectForExport" resultType="org.jeecg.modules.land.archive.ledger.entity.RoadAcceptanceLedger">
+        SELECT p.*
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`ledger_no`, p.`id`
+    </select>
+
+    <!-- ================= 汇总指标（一次查询 6 个标量） ================= -->
+    <select id="selectSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(1)                                                                   AS `total`,
+            SUM(CASE WHEN p.`source_facility_id` IS NOT NULL THEN 1 ELSE 0 END)         AS `migratedCount`,
+            SUM(CASE WHEN p.`source_facility_id` IS NULL THEN 1 ELSE 0 END)             AS `manualCount`,
+            SUM(CASE WHEN p.`remark` LIKE '迁移提示%' THEN 1 ELSE 0 END)                 AS `orphanCount`,
+            SUM(CASE WHEN p.`material_count` = 13 THEN 1 ELSE 0 END)                    AS `fullMaterialCount`,
+            SUM(CASE WHEN p.`material_count` = 0 THEN 1 ELSE 0 END)                     AS `emptyMaterialCount`
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <!-- ================= 分类统计 ================= -->
+    <!-- 状态 tab 的角标：只返回库里存在的状态，缺失的 4 值由 Service 补 0 -->
+    <select id="selectCountGroupByStatus" resultType="org.jeecg.modules.land.archive.ledger.vo.LedgerStatVO$StatusCount">
+        SELECT p.`status` AS `status`, COUNT(1) AS `count`
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY p.`status`
+        ORDER BY `count` DESC
+    </select>
+
+    <!--
+      通用「按列分组计数」。
+      ★ ${column} 是字符串替换，只允许调用方（Service）传代码里写死的列名常量：
+        xzqh / gnq / acceptance_type / acceptance_result / ptsslb / status。
+        请求参数永远到不了这里（查询条件里的资料筛选走上面的 choose 白名单）。
+    -->
+    <select id="selectStatByColumn" resultType="org.jeecg.modules.land.archive.ledger.vo.LedgerStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`${column}`, ''), #{emptyLabel}) AS `name`, COUNT(1) AS `count`
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`${column}`, ''), #{emptyLabel})
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 按台账年度：年度取自台账编号 YS-{yyyy}-{4位} 的第 2 段；非本格式的编号不计入 -->
+    <select id="selectStatByYear" resultType="org.jeecg.modules.land.archive.ledger.vo.LedgerStatVO$NameCount">
+        SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(p.`ledger_no`, '-', 2), '-', -1) AS `name`, COUNT(1) AS `count`
+        FROM `t_road_acceptance_ledger` p
+        WHERE p.`ledger_no` LIKE 'YS-%' AND <include refid="queryWhere"/>
+        GROUP BY SUBSTRING_INDEX(SUBSTRING_INDEX(p.`ledger_no`, '-', 2), '-', -1)
+        ORDER BY `name`
+    </select>
+
+    <!--
+      13 类资料的归集情况：一次查询返回 13 个 SUM，
+      别名与 LedgerMaterial.property 一一对应，Service 按枚举顺序组装成中文名的 NameCount。
+      ★ 为什么不用 13 条 UNION ALL：13 条 UNION 要扫 13 遍表，这里一遍扫完。
+    -->
+    <select id="selectMaterialCoverage" resultType="java.util.Map">
+        SELECT
+            SUM(p.`has_sgxk`)    AS `hasSgxk`,
+            SUM(p.`has_ysbg`)    AS `hasYsbg`,
+            SUM(p.`has_jgtc`)    AS `hasJgtc`,
+            SUM(p.`has_zljdbg`)  AS `hasZljdbg`,
+            SUM(p.`has_cljybg`)  AS `hasCljybg`,
+            SUM(p.`has_ajbg`)    AS `hasAjbg`,
+            SUM(p.`has_ghyshgz`) AS `hasGhyshgz`,
+            SUM(p.`has_jgbaba`)  AS `hasJgbaba`,
+            SUM(p.`has_dazxys`)  AS `hasDazxys`,
+            SUM(p.`has_dlyjd`)   AS `hasDlyjd`,
+            SUM(p.`has_yhxy`)    AS `hasYhxy`,
+            SUM(p.`has_jgwj`)    AS `hasJgwj`,
+            SUM(p.`has_yjwj`)    AS `hasYjwj`
+        FROM `t_road_acceptance_ledger` p
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <!-- ================= 台账编号 ================= -->
+    <!--
+      取某年度已用掉的最大流水号。
+      说明：
+        ① 不按 del_flag 过滤——台账编号是 (ledger_no) 单列唯一键，逻辑删除的编号仍占着键位，
+           若把已删记录的号再分配一次会违唯一键，故一律跳号；
+        ② 用 CHAR_LENGTH 精确限定「前缀 + 4 位流水」的格式，避免手工改写过
+           「YS-2026-0001-补充」这类编号被 CAST 成 1 而污染最大值
+           （不用 REGEXP：jeecg 的 JSqlParser 拦截器对非常规语法兼容性更差）。
+    -->
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(p.`ledger_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_road_acceptance_ledger` p
+        WHERE p.`ledger_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(p.`ledger_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByLedgerNo" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_road_acceptance_ledger` p
+        WHERE p.`del_flag` = 0
+          AND p.`ledger_no` = #{ledgerNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND p.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <!-- ================= 写入 ================= -->
+    <!--
+      编辑台账：整体覆盖全部可编辑列。
+      ★ 与 MP 的 updateById 的关键差别：这里没有 <if test="... != null">，
+        所有列都会被赋值 —— 包括写成 NULL 的列。这是「允许把已填字段清空」的实现方式，
+        原因见 Mapper 接口上的注释。
+      ★ 刻意不写 archive_id / archive_count / source_facility_id / del_flag / create_*：
+        前两个由关联档案接口单独维护，后三个不允许被页面改动。
+    -->
+    <update id="updateLedgerAll">
+        UPDATE `t_road_acceptance_ledger`
+        <set>
+            `ledger_no`         = #{ledgerNo},
+            `road_name`         = #{roadName},
+            `xzqh`              = #{xzqh},
+            `gnq`               = #{gnq},
+            `crzdbh`            = #{crzdbh},
+            `land_id`           = #{landId},
+            `dkmc`              = #{dkmc},
+            `ptsslb`            = #{ptsslb},
+            `facility_id`       = #{facilityId},
+            `ptxmmc`            = #{ptxmmc},
+            `dldj`              = #{dldj},
+            `jsdw`              = #{jsdw},
+            `sgdw`              = #{sgdw},
+            `jldw`              = #{jldw},
+            `acceptance_type`   = #{acceptanceType},
+            `acceptance_no`     = #{acceptanceNo},
+            `acceptance_date`   = #{acceptanceDate},
+            `acceptance_org`    = #{acceptanceOrg},
+            `acceptance_result` = #{acceptanceResult},
+            `complete_date`     = #{completeDate},
+            `has_sgxk`          = #{hasSgxk},
+            `has_ysbg`          = #{hasYsbg},
+            `has_jgtc`          = #{hasJgtc},
+            `has_zljdbg`        = #{hasZljdbg},
+            `has_cljybg`        = #{hasCljybg},
+            `has_ajbg`          = #{hasAjbg},
+            `has_ghyshgz`       = #{hasGhyshgz},
+            `has_jgbaba`        = #{hasJgbaba},
+            `has_dazxys`        = #{hasDazxys},
+            `has_dlyjd`         = #{hasDlyjd},
+            `has_yhxy`          = #{hasYhxy},
+            `has_jgwj`          = #{hasJgwj},
+            `has_yjwj`          = #{hasYjwj},
+            `handover_unit`     = #{handoverUnit},
+            `receive_unit`      = #{receiveUnit},
+            `handover_date`     = #{handoverDate},
+            `status`            = #{status},
+            `material_count`    = #{materialCount},
+            `remark`            = #{remark},
+            `update_by`         = #{updateBy},
+            `update_time`       = #{updateTime}
+        </set>
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE `t_road_acceptance_ledger`
+        SET `status` = #{status}, `update_by` = #{updateBy}, `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateArchiveLink">
+        UPDATE `t_road_acceptance_ledger`
+        SET `archive_id` = #{archiveId},
+            `archive_count` = #{archiveCount},
+            `update_by` = #{updateBy},
+            `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <!-- ================= 关联档案（只读 t_archive） ================= -->
+    <!-- 该台账对应的全部档案：配套项目ID 优先，为空时退回按出让宗地编号匹配 -->
+    <select id="selectRelatedArchives" resultType="org.jeecg.modules.land.archive.ledger.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`               AS id,
+            a.`archive_no`       AS archiveNo,
+            a.`archive_name`     AS archiveName,
+            a.`archive_type`     AS archiveType,
+            a.`secret_level`     AS secretLevel,
+            a.`retention`        AS retention,
+            a.`archive_year`     AS archiveYear,
+            a.`archive_date`     AS archiveDate,
+            a.`status`           AS status,
+            a.`xzqh`             AS xzqh,
+            a.`responsible_dept` AS responsibleDept,
+            a.`facility_id`      AS facilityId,
+            a.`ptxmmc`           AS ptxmmc,
+            a.`crzdbh`           AS crzdbh,
+            a.`dkmc`             AS dkmc,
+            a.`ptsslb`           AS ptsslb,
+            a.`file_count`       AS fileCount,
+            a.`total_size`       AS totalSize,
+            a.`remark`           AS remark,
+            a.`create_time`      AS createTime
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countRelatedArchives" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+    </select>
+
+    <!-- 「挑档案」列表：可按配套项目ID / 宗地编号 过滤，也可只按关键词全局搜 -->
+    <select id="selectArchivesForPick" resultType="org.jeecg.modules.land.archive.ledger.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`           AS id,
+            a.`archive_no`   AS archiveNo,
+            a.`archive_name` AS archiveName,
+            a.`archive_type` AS archiveType,
+            a.`secret_level` AS secretLevel,
+            a.`archive_year` AS archiveYear,
+            a.`archive_date` AS archiveDate,
+            a.`status`       AS status,
+            a.`xzqh`         AS xzqh,
+            a.`facility_id`  AS facilityId,
+            a.`ptxmmc`       AS ptxmmc,
+            a.`crzdbh`       AS crzdbh,
+            a.`dkmc`         AS dkmc,
+            a.`file_count`   AS fileCount,
+            a.`total_size`   AS totalSize
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+        <if test="facilityId != null and facilityId != ''">
+            AND a.`facility_id` = #{facilityId}
+        </if>
+        <if test="crzdbh != null and crzdbh != ''">
+            AND a.`crzdbh` = #{crzdbh}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (a.`archive_no` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`archive_name` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countArchiveById" resultType="int">
+        SELECT COUNT(1) FROM `t_archive` a
+        WHERE a.`del_flag` = 0 AND a.`id` = #{archiveId}
+    </select>
+
+</mapper>

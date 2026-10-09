@@ -346,7 +346,7 @@ export default {
   }
 
   &__trigger {
-    .screen-control(32px);
+    .screen-control(var(--screen-control-md));
     text-align: left;
     cursor: pointer;
 

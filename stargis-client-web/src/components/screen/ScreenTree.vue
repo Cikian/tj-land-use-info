@@ -574,10 +574,10 @@ export default {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    min-height: 28px;
+    gap: 8px;
+    min-height: 34px;
     // 左侧内边距由 :style 按层级覆盖（padding-left），保证缩进随层级变化
-    padding: 4px 10px 4px 8px;
+    padding: 5px 10px 5px 8px;
     border-radius: var(--screen-radius-sm);
     cursor: pointer;
     user-select: none;
@@ -655,8 +655,8 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     color: var(--screen-text-sub);
     background: transparent;
@@ -701,10 +701,10 @@ export default {
 
   &__tag {
     flex: 0 0 auto;
-    padding: 0 5px;
+    padding: 0 6px;
     font-style: normal;
     font-size: var(--screen-font-xs);
-    line-height: 16px;
+    line-height: 20px;
     color: var(--screen-text-mute);
     background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border-soft);
@@ -713,10 +713,10 @@ export default {
 
   &__count {
     flex: 0 0 auto;
-    padding: 0 6px;
+    padding: 0 8px;
     font-style: normal;
     font-size: var(--screen-font-xs);
-    line-height: 16px;
+    line-height: 20px;
     font-variant-numeric: tabular-nums;
     color: var(--screen-text-sub);
     background: rgba(130, 198, 255, 0.08);

@@ -319,9 +319,9 @@ export default {
 
   &__summary {
     margin: 0;
-    min-height: 16px;
+    min-height: 22px;
     font-size: var(--screen-font-xs);
-    line-height: 16px;
+    line-height: 22px;
     color: var(--screen-accent-soft);
     .screen-ellipsis();
   }

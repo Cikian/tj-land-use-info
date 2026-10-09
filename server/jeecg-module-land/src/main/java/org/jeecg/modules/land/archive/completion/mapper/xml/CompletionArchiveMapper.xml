@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.completion.mapper.CompletionArchiveMapper">
+
+    <!--
+      竣工验收项目历史工程资料数字化档案 Mapper
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定），
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml。
+    -->
+
+    <!-- ================================================================
+         公用 WHERE 片段：档案列表 / 统计 / 导出 共用同一套条件，
+         保证「档案列表里看到什么，统计与导出就是什么」。
+         所有引用方都必须把档案主表别名为 p。
+         ================================================================ -->
+    <sql id="queryWhere">
+        p.`del_flag` = 0
+        <!-- —— 项目维度 —— -->
+        <if test="q.archiveNo != null and q.archiveNo != ''">
+            AND p.`archive_no` LIKE CONCAT('%', #{q.archiveNo}, '%')
+        </if>
+        <if test="q.projectName != null and q.projectName != ''">
+            AND p.`project_name` LIKE CONCAT('%', #{q.projectName}, '%')
+        </if>
+        <if test="q.projectCode != null and q.projectCode != ''">
+            AND p.`project_code` LIKE CONCAT('%', #{q.projectCode}, '%')
+        </if>
+        <if test="q.xzqh != null and q.xzqh != ''">
+            AND p.`xzqh` = #{q.xzqh}
+        </if>
+        <if test="q.projectType != null and q.projectType != ''">
+            AND p.`project_type` = #{q.projectType}
+        </if>
+        <if test="q.buildUnit != null and q.buildUnit != ''">
+            AND p.`build_unit` LIKE CONCAT('%', #{q.buildUnit}, '%')
+        </if>
+        <if test="q.constructUnit != null and q.constructUnit != ''">
+            AND p.`construct_unit` LIKE CONCAT('%', #{q.constructUnit}, '%')
+        </if>
+        <if test="q.designUnit != null and q.designUnit != ''">
+            AND p.`design_unit` LIKE CONCAT('%', #{q.designUnit}, '%')
+        </if>
+        <if test="q.superviseUnit != null and q.superviseUnit != ''">
+            AND p.`supervise_unit` LIKE CONCAT('%', #{q.superviseUnit}, '%')
+        </if>
+
+        <!-- —— 时间维度 —— -->
+        <if test="q.beginStartDate != null and q.beginStartDate != ''">
+            AND p.`start_date` &gt;= #{q.beginStartDate}
+        </if>
+        <if test="q.endStartDate != null and q.endStartDate != ''">
+            AND p.`start_date` &lt;= #{q.endStartDate}
+        </if>
+        <if test="q.beginCompleteDate != null and q.beginCompleteDate != ''">
+            AND p.`complete_date` &gt;= #{q.beginCompleteDate}
+        </if>
+        <if test="q.endCompleteDate != null and q.endCompleteDate != ''">
+            AND p.`complete_date` &lt;= #{q.endCompleteDate}
+        </if>
+        <if test="q.beginAcceptanceDate != null and q.beginAcceptanceDate != ''">
+            AND p.`acceptance_date` &gt;= #{q.beginAcceptanceDate}
+        </if>
+        <if test="q.endAcceptanceDate != null and q.endAcceptanceDate != ''">
+            AND p.`acceptance_date` &lt;= #{q.endAcceptanceDate}
+        </if>
+
+        <!-- —— ★ 数字化维度 —— -->
+        <if test="q.digitizeStatus != null and q.digitizeStatus != ''">
+            AND p.`digitize_status` = #{q.digitizeStatus}
+        </if>
+        <if test="q.digitizeOrg != null and q.digitizeOrg != ''">
+            AND p.`digitize_org` LIKE CONCAT('%', #{q.digitizeOrg}, '%')
+        </if>
+        <if test="q.beginDigitizeDate != null and q.beginDigitizeDate != ''">
+            AND p.`digitize_date` &gt;= #{q.beginDigitizeDate}
+        </if>
+        <if test="q.endDigitizeDate != null and q.endDigitizeDate != ''">
+            AND p.`digitize_date` &lt;= #{q.endDigitizeDate}
+        </if>
+        <if test="q.beginPageCount != null">
+            AND p.`page_count` &gt;= #{q.beginPageCount}
+        </if>
+        <if test="q.endPageCount != null">
+            AND p.`page_count` &lt;= #{q.endPageCount}
+        </if>
+        <if test="q.scanDpi != null">
+            AND p.`scan_dpi` = #{q.scanDpi}
+        </if>
+        <!--
+          「是否已挂扫描件」：Boolean 只有 true/false 两种取值，
+          用 choose 显式落成 IS NOT NULL / IS NULL，不会出现第三种分支。
+        -->
+        <if test="q.hasArchive != null">
+            <choose>
+                <when test="q.hasArchive">AND p.`archive_id` IS NOT NULL</when>
+                <otherwise>AND p.`archive_id` IS NULL</otherwise>
+            </choose>
+        </if>
+
+        <!-- —— 盘点维度 —— -->
+        <if test="q.beginInvestAmount != null">
+            AND p.`invest_amount` &gt;= #{q.beginInvestAmount}
+        </if>
+        <if test="q.endInvestAmount != null">
+            AND p.`invest_amount` &lt;= #{q.endInvestAmount}
+        </if>
+        <if test="q.retention != null and q.retention != ''">
+            AND p.`retention` = #{q.retention}
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND p.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND p.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.archiveId != null and q.archiveId != ''">
+            AND p.`archive_id` = #{q.archiveId}
+        </if>
+        <if test="q.beginCreateTime != null and q.beginCreateTime != ''">
+            AND p.`create_time` &gt;= CONCAT(#{q.beginCreateTime}, ' 00:00:00')
+        </if>
+        <if test="q.endCreateTime != null and q.endCreateTime != ''">
+            AND p.`create_time` &lt;= CONCAT(#{q.endCreateTime}, ' 23:59:59')
+        </if>
+
+        <!-- 关键词：档案编号 / 历史项目名称 / 项目编号 / 建设与施工单位 的 OR 匹配 -->
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (
+                p.`archive_no` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`project_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`project_code` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`build_unit` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR p.`construct_unit` LIKE CONCAT('%', #{q.keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <!-- ================= 档案分页 ================= -->
+    <!--
+      ★ seq（序号）刻意不在 SQL 里算：
+        用 MySQL 用户变量（@rowNum）算序号虽然省事，但分页插件会对 SQL 做结构分析并
+        生成 COUNT 语句，用户变量很容易被搬进 COUNT、生成非法 SQL；
+        而窗口函数 ROW_NUMBER() 只有 MySQL 8 才支持（本库是 MySQL 5.7）。
+        因此序号交给 Service 层用「分页偏移 + 行号」赋值。
+      ★ 排序按档案编号升序（JG-{yyyy}-{4位} 天然按年度+流水有序），
+        其次按 id 兜底，保证分页在无并发写入时稳定、可复现。
+    -->
+    <select id="selectCompletionPage" resultType="org.jeecg.modules.land.archive.completion.entity.CompletionArchive">
+        SELECT p.*
+        FROM `t_completion_archive` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`archive_no`, p.`id`
+    </select>
+
+    <!-- 导出档案信息：不分页，序号同样由 Service 侧从 1 开始赋值 -->
+    <select id="selectForExport" resultType="org.jeecg.modules.land.archive.completion.entity.CompletionArchive">
+        SELECT p.*
+        FROM `t_completion_archive` p
+        WHERE <include refid="queryWhere"/>
+        ORDER BY p.`archive_no`, p.`id`
+    </select>
+
+    <!-- ================= 汇总指标（一次查询 6 个标量） ================= -->
+    <!--
+      COALESCE 不能省：没有任何命中行时 SUM(...) 返回 NULL，
+      而 Service 侧按 long/BigDecimal 取值，NULL 会被当成 0 处理，但显式兜底更清楚。
+    -->
+    <select id="selectSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(1)                                                              AS `total`,
+            SUM(CASE WHEN p.`archive_id` IS NOT NULL THEN 1 ELSE 0 END)            AS `archivedCount`,
+            SUM(CASE WHEN p.`digitize_status` = '已数字化' THEN 1 ELSE 0 END)      AS `digitizedCount`,
+            COALESCE(SUM(p.`page_count`), 0)                                      AS `pageTotal`,
+            COALESCE(SUM(p.`file_count`), 0)                                      AS `fileTotal`,
+            COALESCE(SUM(p.`invest_amount`), 0)                                   AS `investTotal`
+        FROM `t_completion_archive` p
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <!-- ================= 分类统计 ================= -->
+    <!-- 状态 tab 的角标：只返回库里存在的状态，缺失的 3 值由 Service 补 0 -->
+    <select id="selectCountGroupByStatus" resultType="org.jeecg.modules.land.archive.completion.vo.CompletionStatVO$StatusCount">
+        SELECT p.`digitize_status` AS `status`, COUNT(1) AS `count`
+        FROM `t_completion_archive` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY p.`digitize_status`
+        ORDER BY `count` DESC
+    </select>
+
+    <!--
+      通用「按列分组计数」。
+      ★ ${column} 是字符串替换，只允许调用方（Service）传代码里写死的列名常量：
+        xzqh / project_type / retention。
+        请求参数永远到不了这里。
+    -->
+    <select id="selectStatByColumn" resultType="org.jeecg.modules.land.archive.completion.vo.CompletionStatVO$NameCount">
+        SELECT COALESCE(NULLIF(p.`${column}`, ''), #{emptyLabel}) AS `name`, COUNT(1) AS `count`
+        FROM `t_completion_archive` p
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(p.`${column}`, ''), #{emptyLabel})
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 按档案编号年度：年度取自 JG-{yyyy}-{4位} 的第 2 段；非本格式的编号不计入 -->
+    <select id="selectStatByYear" resultType="org.jeecg.modules.land.archive.completion.vo.CompletionStatVO$NameCount">
+        SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(p.`archive_no`, '-', 2), '-', -1) AS `name`, COUNT(1) AS `count`
+        FROM `t_completion_archive` p
+        WHERE p.`archive_no` LIKE 'JG-%' AND <include refid="queryWhere"/>
+        GROUP BY SUBSTRING_INDEX(SUBSTRING_INDEX(p.`archive_no`, '-', 2), '-', -1)
+        ORDER BY `name`
+    </select>
+
+    <!-- ★按竣工年度：竣工日期为空的档案不计入（图表不画「无年份」点） -->
+    <select id="selectStatByCompleteYear" resultType="org.jeecg.modules.land.archive.completion.vo.CompletionStatVO$NameCount">
+        SELECT DATE_FORMAT(p.`complete_date`, '%Y') AS `name`, COUNT(1) AS `count`
+        FROM `t_completion_archive` p
+        WHERE p.`complete_date` IS NOT NULL AND <include refid="queryWhere"/>
+        GROUP BY DATE_FORMAT(p.`complete_date`, '%Y')
+        ORDER BY `name`
+    </select>
+
+    <!-- ================= 档案编号 ================= -->
+    <!--
+      取某年度已用掉的最大流水号。
+      说明：
+        ① 不按 del_flag 过滤——档案编号是 (archive_no) 单列唯一键，逻辑删除的编号仍占着键位，
+           若把已删记录的号再分配一次会违唯一键，故一律跳号；
+        ② 用 CHAR_LENGTH 精确限定「前缀 + 4 位流水」的格式，避免手工改写过
+           「JG-2026-0001-补充」这类编号被 CAST 成 1 而污染最大值
+           （不用 REGEXP：jeecg 的 JSqlParser 拦截器对非常规语法兼容性更差）。
+    -->
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(p.`archive_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_completion_archive` p
+        WHERE p.`archive_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(p.`archive_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByArchiveNo" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_completion_archive` p
+        WHERE p.`del_flag` = 0
+          AND p.`archive_no` = #{archiveNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND p.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <!-- ================= 写入 ================= -->
+    <!--
+      编辑档案：整体覆盖全部可编辑列。
+      ★ 与 MP 的 updateById 的关键差别：这里没有 <if test="... != null">，
+        所有列都会被赋值 —— 包括写成 NULL 的列。这是「允许把已填字段清空」的实现方式，
+        原因见 Mapper 接口上的注释。
+      ★ 刻意不写 archive_id / archive_count / del_flag / create_*：
+        前两个由关联扫描件接口单独维护，后两个不允许被页面改动。
+    -->
+    <update id="updateCompletionAll">
+        UPDATE `t_completion_archive`
+        <set>
+            `archive_no`      = #{archiveNo},
+            `project_name`    = #{projectName},
+            `project_code`    = #{projectCode},
+            `xzqh`            = #{xzqh},
+            `project_type`    = #{projectType},
+            `land_id`         = #{landId},
+            `facility_id`     = #{facilityId},
+            `crzdbh`          = #{crzdbh},
+            `ptxmmc`          = #{ptxmmc},
+            `dkmc`            = #{dkmc},
+            `ptsslb`          = #{ptsslb},
+            `build_unit`      = #{buildUnit},
+            `construct_unit`  = #{constructUnit},
+            `design_unit`     = #{designUnit},
+            `supervise_unit`  = #{superviseUnit},
+            `start_date`      = #{startDate},
+            `complete_date`   = #{completeDate},
+            `acceptance_date` = #{acceptanceDate},
+            `invest_amount`   = #{investAmount},
+            `retention`       = #{retention},
+            `digitize_status` = #{digitizeStatus},
+            `digitize_date`   = #{digitizeDate},
+            `digitize_org`    = #{digitizeOrg},
+            `page_count`      = #{pageCount},
+            `file_count`      = #{fileCount},
+            `scan_dpi`        = #{scanDpi},
+            `remark`          = #{remark},
+            `update_by`       = #{updateBy},
+            `update_time`     = #{updateTime}
+        </set>
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE `t_completion_archive`
+        SET `digitize_status` = #{status}, `update_by` = #{updateBy}, `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateArchiveLink">
+        UPDATE `t_completion_archive`
+        SET `archive_id` = #{archiveId},
+            `archive_count` = #{archiveCount},
+            `update_by` = #{updateBy},
+            `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <!-- ================= 关联扫描件（只读 t_archive） ================= -->
+    <!-- 该档案对应的全部扫描件：配套项目ID 优先，为空时退回按出让宗地编号匹配 -->
+    <select id="selectRelatedArchives" resultType="org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`               AS id,
+            a.`archive_no`       AS archiveNo,
+            a.`archive_name`     AS archiveName,
+            a.`archive_type`     AS archiveType,
+            a.`secret_level`     AS secretLevel,
+            a.`retention`        AS retention,
+            a.`archive_year`     AS archiveYear,
+            a.`archive_date`     AS archiveDate,
+            a.`status`           AS status,
+            a.`xzqh`             AS xzqh,
+            a.`responsible_dept` AS responsibleDept,
+            a.`facility_id`      AS facilityId,
+            a.`ptxmmc`           AS ptxmmc,
+            a.`crzdbh`           AS crzdbh,
+            a.`dkmc`             AS dkmc,
+            a.`ptsslb`           AS ptsslb,
+            a.`file_count`       AS fileCount,
+            a.`total_size`       AS totalSize,
+            a.`remark`           AS remark,
+            a.`create_time`      AS createTime
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countRelatedArchives" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+    </select>
+
+    <!-- 「挑档案」列表：可按配套项目ID / 宗地编号 过滤，也可只按关键词全局搜 -->
+    <select id="selectArchivesForPick" resultType="org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`           AS id,
+            a.`archive_no`   AS archiveNo,
+            a.`archive_name` AS archiveName,
+            a.`archive_type` AS archiveType,
+            a.`secret_level` AS secretLevel,
+            a.`archive_year` AS archiveYear,
+            a.`archive_date` AS archiveDate,
+            a.`status`       AS status,
+            a.`xzqh`         AS xzqh,
+            a.`facility_id`  AS facilityId,
+            a.`ptxmmc`       AS ptxmmc,
+            a.`crzdbh`       AS crzdbh,
+            a.`dkmc`         AS dkmc,
+            a.`file_count`   AS fileCount,
+            a.`total_size`   AS totalSize
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+        <if test="facilityId != null and facilityId != ''">
+            AND a.`facility_id` = #{facilityId}
+        </if>
+        <if test="crzdbh != null and crzdbh != ''">
+            AND a.`crzdbh` = #{crzdbh}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (a.`archive_no` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`archive_name` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countArchiveById" resultType="int">
+        SELECT COUNT(1) FROM `t_archive` a
+        WHERE a.`del_flag` = 0 AND a.`id` = #{archiveId}
+    </select>
+
+</mapper>

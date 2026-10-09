@@ -66,7 +66,7 @@
 | --- | --- | --- |
 | `ScreenStage` | 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边） | `width` `height` `minDesignWidth` `maxScale` `minScale`；插槽 `map` / 默认；事件 `resize` |
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
-| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `online` |
+| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` |
 | `ScreenPopover` | 浮层容器（挂 body，供下拉/气泡复用） | `open` `anchor` `placement` `width` `maxHeight` `role` |
@@ -86,11 +86,24 @@
 | `ScreenBarList` | 标签条形列表（两行堆叠式，适合分类统计） | `items` `max` `unit` `showPercent` `sortDesc` `clickable` |
 | `ScreenLineChart` | 趋势折线 / 面积图（手写 SVG，无图表库） | `data` `label` `height` `unit` `tone` `showArea` `showPoints` `showAxis` |
 | `ScreenDataTable` | 数据表格 | `columns` `data` `rowKey` `stripe` `minWidth` `maxHeight` `selectable` `selectedKeys` `rowClickable` `loading` |
-| `ScreenDescriptions` | 标签-值描述栅格（替代 a-descriptions） | `items` `columns` `bordered` `size` `labelWidth` |
+| `ScreenDescriptions` | 标签-值描述栅格（替代 a-descriptions） | `items` `columns` `variant` `bordered` `size` `labelWidth`(封顶宽) |
 | `ScreenTabs` | 标签页（胶囊 / 下划线） | `tabs` `value`(`v-model`) `type` `align` |
 | `ScreenTag` | 状态标签（胶囊） | `tone` `size` `outline` |
 | `ScreenEmpty` | 空状态 | `text` `description` `size` `bordered` |
 | `ScreenLoading` | 加载态（遮罩 / 内联） | `loading` `text` `overlay` `size` |
+
+#### `ScreenDescriptions` 的两个必读约定（详情页排版全靠它）
+
+1. **`labelWidth` 是「上限」不是「固定宽」**
+   标签列实际宽 = `min(该组最长标签的内容宽, labelWidth)`。
+   短标签组不会留一片空白，长标签组也不会把值列挤到折行。
+   `variant="flat"` 时单行行高恒为 29px（值默认单行 + 省略号，溢出自动补 `title`）。
+2. **长文本要通读就用 `item.stack: true`**
+   该条目独占整行、标签在上值在下，允许折行 —— 这是唯一会变高的条目。
+   不标 `stack` 的长值会被省略号截断（悬停可看全文）。
+
+详细版面契约与四条禁止回退的老路，见
+`perf/detail-redesign/README.md` 的「版面契约」一节。
 
 ### 2.3 表单控件（档案管理模块新增）
 
@@ -246,6 +259,25 @@ UI 画布缩放后与它完全重合，地图交互坐标也保持正确。
 （`left`/`right` 定边界 + 各项 `flex: 0 1 140px`），设计画布比 1920 窄时等比收窄，
 不会压到标题切图上。
 
+右上角用户区（头像 + 用户名 + 下拉箭头）是**点击展开**的账户菜单，
+菜单项由 `@logout` 抛给页面处理：
+
+```vue
+<screen-header :user-name="user.name" @logout="handleLogout" />
+```
+
+```js
+import { logoutAndGoToLogin } from '@/utils/session'
+
+handleLogout () {
+  // 清中台 + jeecg 两套登录态并回到登录页；与「登录态失效」是同一条出口
+  logoutAndGoToLogin()
+}
+```
+
+> 登录态失效（中台或 jeecg 任一令牌过期 / 无效）也走 `logoutAndGoToLogin`，
+> 由 `src/utils/request.js` 统一触发，不会只弹提示而把人留在页面上。
+
 ---
 
 ## 5. 无障碍与体验约定
@@ -283,10 +315,12 @@ UI 画布缩放后与它完全重合，地图交互坐标也保持正确。
 
 ### 交互层新增的踩坑（2026 年补，都已在代码里修掉）
 
-5. **面板会裁剪浮层**：`ScreenPanel` 有 `overflow: hidden` + `backdrop-filter`，
-   后者还会让面板成为 `position: fixed` 的包含块。所以任何「贴着控件弹出的
-   下拉 / 气泡」都必须走 `ScreenPopover`（它会把自身节点移动到 `document.body`），
-   直接在面板里写 `position: absolute` 的下拉一定会被裁掉或错位。
+5. **面板会裁剪浮层**：`ScreenPanel` 有 `overflow: hidden`
+   （它原先还有 `backdrop-filter`，那会让面板成为 `position: fixed` 的包含块，
+   已因性能原因移除，见 `styles/screen-mixins.less` 里 `.screen-glass` 的实测数据）。
+   所以任何「贴着控件弹出的下拉 / 气泡」都必须走 `ScreenPopover`
+   （它会把自身节点移动到 `document.body`），直接在面板里写 `position: absolute`
+   的下拉一定会被裁掉或错位。
 6. **浮层的 z-index 必须高于弹窗**：`ScreenPopover` 默认 `1260`、
    `ScreenModal` 是 `1200`、`ScreenToast` 是 `1300`。
    低于弹窗会让「弹窗里的下拉」被盖住，看不见也点不到。
@@ -390,7 +424,20 @@ src/components/screen/
 | 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue` |
 | 首页定尺面板 | — | `src/views/screen/home/`：`HomeLeftPanel`（出让地块情况统计）、`HomeLayerTree`（地图管理图层面板）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
 | 档案管理（大屏子页面） | 顶栏「档案管理」，深链 `/screen/archive` | `src/views/screen/archive/index.vue` |
+| 道路交付及养护协议移交事项（方案 2.3.2 第 6 项） | 档案模块内的页签，不占一级导航 | 深链 `/screen/archive?tab=handover`；`src/views/screen/archive/modules/handover/` |
+| 道路设施验收及移交资料台账（方案 2.3.2 第 7 项） | 同上 | 深链 `/screen/archive?tab=ledger`；`src/views/screen/archive/modules/ledger/` |
+| 竣工验收项目历史工程资料数字化档案（方案 2.3.2 第 8 项） | 同上 | 深链 `/screen/archive?tab=completion`；`src/views/screen/archive/modules/completion/` |
 | 收发文 | 不占一级导航，是档案模块内的页签 | 深链 `/screen/archive?tab=doc` |
+
+> 档案管理下的页签顺序：档案维护 → 档案查询 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
+> → 竣工验收历史档案 → 收发文管理 → 档案类别管理。第 6/7/8 项插在统计与收发文之间，
+> 与方案 2.3.2 的条目序号一致。页签 key 的**白名单在 `views/screen/index.vue` 的
+> `ARCHIVE_TABS`**、页签与组件的映射在 `views/screen/archive/index.vue` 的 `tabs` / `PANELS`，
+> 两处必须同步改（漏改白名单的表现是「深链进不去、静默落回默认页签」）。
+>
+> 这三个模块的接口层在 `src/api/land/{ledger,handover,completion}.js`，
+> 与 `admin-client` 的同名文件一一对应（同一套 Java 后端，改接口必须两边同改）。
+> 它们只做展示与增删改查，**没有打印功能**（大屏既有模块都没有）；补录走 Excel 导入。
 
 **首页数据来源（`views/screen/` 三个文件的分工，改动时别搞混）：**
 
@@ -526,7 +573,9 @@ src/api/manageJava.js     # Java 业务后端请求层
    > （`ShiroRealm.jwtTokenRefresh`：登录写 Redis、有效期 2 小时，JWT 自身 1 小时过期后
    > 只要 Redis 里还有 key 就重新签发并重置 2 小时），前端只要每次请求都带同一个
    > `X-Access-Token` 即可。令牌最终失效时后端返回 HTTP 401 + “Token失效”，
-   > `utils/request.js` 会按“业务后端登录已过期”提示**且不会注销中台会话**。
+   > `utils/request.js` 会按“业务后端登录已过期”提示，并**同时清掉中台与 jeecg 两套
+   > 登录态、跳回登录页**（详见 `src/utils/session.js`）——中台侧令牌失效同理，
+   > 任一套不可用都不再只提示而把人留在页面上。
 
 ### 业务接口不再做前端鉴权
 

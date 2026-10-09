@@ -428,7 +428,7 @@ export default {
   align-items: center;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: var(--screen-control-md);
   color: var(--screen-text);
   background: rgba(6, 20, 40, 0.72);
   border: 1px solid var(--screen-border);
@@ -466,12 +466,12 @@ export default {
   &__trigger {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    min-height: 30px;
-    padding: 0 10px;
+    min-height: 34px;
+    padding: 0 12px;
     font-size: var(--screen-font-sm);
     line-height: 1.4;
     cursor: pointer;
@@ -551,7 +551,7 @@ export default {
     display: flex;
     align-items: center;
     gap: var(--screen-space-2);
-    padding: 6px 8px;
+    padding: 8px 10px;
     font-size: var(--screen-font-sm);
     line-height: 1.5;
     color: var(--screen-text-sub);
@@ -595,11 +595,11 @@ export default {
 
   // ---------- 尺寸 ----------
   &.is-sm {
-    min-height: 28px;
+    min-height: var(--screen-control-sm);
 
     .screen-select__trigger {
-      min-height: 26px;
-      padding: 0 8px;
+      min-height: 30px;
+      padding: 0 10px;
       font-size: var(--screen-font-xs);
     }
 

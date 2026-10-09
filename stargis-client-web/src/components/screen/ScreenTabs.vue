@@ -129,10 +129,10 @@ export default {
   }
 
   &__badge {
-    padding: 0 5px;
+    padding: 0 6px;
     font-style: normal;
     font-size: var(--screen-font-xs);
-    line-height: 15px;
+    line-height: 20px;
     border-radius: var(--screen-radius-pill);
     background: rgba(130, 198, 255, 0.16);
     color: var(--screen-accent);

@@ -73,13 +73,25 @@
       </header>
 
       <section class="doc-detail__block">
-        <h4 class="doc-detail__block-title">{{ docType === 'send' ? '发文信息' : '收文信息' }}</h4>
-        <screen-descriptions :items="mainItems" :columns="2" label-width="104px" />
+        <h4 class="doc-detail__block-title">
+          {{ docType === 'send' ? '发文信息' : '收文信息' }}
+        </h4>
+        <screen-descriptions
+          variant="flat"
+          :items="mainItems"
+          :columns="3"
+          label-width="88px"
+        />
       </section>
 
       <section class="doc-detail__block">
         <h4 class="doc-detail__block-title">关联与登记</h4>
-        <screen-descriptions :items="metaItems" :columns="2" label-width="104px" />
+        <screen-descriptions
+          variant="flat"
+          :items="metaItems"
+          :columns="3"
+          label-width="88px"
+        />
       </section>
 
       <section class="doc-detail__block doc-detail__block--grow">
@@ -139,38 +151,39 @@ export default {
         return [
           { key: 'toDept', label: '主送单位', value: d.toDept },
           { key: 'ccDept', label: '抄送单位', value: d.ccDept },
-          { key: 'issueDate', label: '发文日期', value: d.issueDate },
           { key: 'docType', label: '文件类型', value: d.docType },
+          { key: 'issueDate', label: '发文日期', value: d.issueDate, tone: 'number' },
           { key: 'signer', label: '签发人', value: d.signer },
           { key: 'drafter', label: '拟稿人', value: d.drafter },
-          { key: 'copies', label: '份数', value: d.copies },
+          { key: 'copies', label: '份数', value: d.copies, tone: 'number' },
         ]
       }
       return [
         { key: 'fromDept', label: '来文单位', value: d.fromDept },
-        { key: 'fromDocNo', label: '来文字号', value: d.fromDocNo },
-        { key: 'receiveDate', label: '收文日期', value: d.receiveDate },
+        { key: 'fromDocNo', label: '来文字号', value: d.fromDocNo, tone: 'number' },
         { key: 'docType', label: '文件类型', value: d.docType },
+        { key: 'receiveDate', label: '收文日期', value: d.receiveDate, tone: 'number' },
         {
           key: 'pageCopies',
           label: '页数 / 份数',
           // 不能用 `|| '—'`：0 页 / 0 份是合法值，会被误显示成「—」
           value: `${this.displayOrDash(d.pageCount)} / ${this.displayOrDash(d.copies)}`,
+          tone: 'number',
         },
-        { key: 'handleDeadline', label: '办理期限', value: d.handleDeadline },
+        { key: 'handleDeadline', label: '办理期限', value: d.handleDeadline, tone: 'number' },
         { key: 'currentHandlerName', label: '当前处理人', value: d.currentHandlerName },
-        { key: 'finishTime', label: '办结时间', value: d.finishTime },
-        { key: 'finishOpinion', label: '办结说明', value: d.finishOpinion, span: 2 },
+        { key: 'finishTime', label: '办结时间', value: d.finishTime, tone: 'number' },
+        { key: 'finishOpinion', label: '办结说明', value: d.finishOpinion, stack: true },
       ]
     },
     metaItems () {
       const d = this.doc || {}
       return [
-        { key: 'crzdbh', label: '出让宗地编号', value: d.crzdbh },
+        { key: 'crzdbh', label: '出让宗地编号', value: d.crzdbh, tone: 'number' },
         { key: 'ptxmmc', label: '配套项目', value: d.ptxmmc },
         { key: 'createInfo', label: '登记人 / 时间', value: joinInfo(d.createBy, d.createTime) },
         { key: 'updateInfo', label: '最后更新', value: joinInfo(d.updateBy, d.updateTime) },
-        { key: 'remark', label: '备注', value: d.remark, span: 2 },
+        { key: 'remark', label: '备注', value: d.remark, stack: true },
       ]
     },
   },
@@ -262,7 +275,14 @@ export default {
     display: flex;
     flex-direction: column;
     gap: var(--screen-space-2);
-    min-height: 0;
+    min-width: 0;
+    padding: var(--screen-space-3) var(--screen-space-4) var(--screen-space-2);
+    background: var(--screen-panel-bg);
+    border: 1px solid var(--screen-border-soft);
+    border-radius: var(--screen-radius);
+    box-shadow: var(--screen-shadow-inset);
+    // ⚠ 不加 backdrop-filter：没有硬件加速时，弹窗里每一块卡片做一次背景模糊
+    //   会让打开弹窗/切页签掉到 200ms 以上（见 screen-mixins.less 的实测）
 
     &--grow {
       flex: 1 1 auto;
@@ -272,7 +292,7 @@ export default {
 
   &__block-title {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--screen-space-2);
     margin: 0;
     font-size: var(--screen-font-sm);
@@ -281,6 +301,7 @@ export default {
 
     &::before {
       content: '';
+      flex: none;
       width: 3px;
       height: 12px;
       border-radius: var(--screen-radius-pill);

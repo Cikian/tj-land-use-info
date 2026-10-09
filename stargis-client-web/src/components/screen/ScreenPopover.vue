@@ -3,11 +3,13 @@
     ScreenPopover 浮层容器（挂到 document.body）
     --------------------------------
     为什么必须挂到 body：
-      大屏面板 ScreenPanel 用了 `overflow: hidden` + `backdrop-filter`。
-      backdrop-filter 会让面板成为 fixed 定位的包含块，overflow 又会裁掉溢出内容，
-      所以「贴着输入框弹出的下拉/气泡」只要还在面板 DOM 里就一定会被裁掉或错位。
+      大屏面板 ScreenPanel 用了 `overflow: hidden`（原先还有 backdrop-filter，
+      已因为「没有硬件加速时背景模糊把鼠标划过/滚动拖到 100ms 以上」而移除，
+      见 styles/screen-mixins.less 里 .screen-glass 的实测数据）。
+      overflow 会把溢出内容裁掉，所以「贴着输入框弹出的下拉/气泡」
+      只要还在面板 DOM 里就一定会被裁掉。
       这里在 mounted 时把自身节点移动到 document.body，并用 position: fixed
-      按锚点元素的 getBoundingClientRect() 定位，彻底绕开裁剪与包含块问题。
+      按锚点元素的 getBoundingClientRect() 定位，彻底绕开裁剪问题。
       浮层被移出 `.land-screen__ui`（pointer-events: none）之后也不再需要单独开事件。
 
     用法：

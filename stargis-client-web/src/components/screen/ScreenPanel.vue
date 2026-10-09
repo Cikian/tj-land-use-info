@@ -141,7 +141,7 @@ export default {
     align-items: center;
     flex: 0 0 auto;
     gap: var(--screen-space-2);
-    height: 40px;
+    height: 46px;
     padding: 0 var(--screen-space-4) 0 var(--screen-space-3);
     background: var(--screen-panel-head-bg);
     border-bottom: 1px solid var(--screen-border-soft);
@@ -151,7 +151,7 @@ export default {
   &__bar {
     flex: 0 0 auto;
     width: 3px;
-    height: 14px;
+    height: 16px;
     border-radius: var(--screen-radius-pill);
     background: linear-gradient(180deg, var(--screen-accent) 0%, var(--screen-accent-deep) 100%);
     box-shadow: 0 0 8px var(--screen-accent-glow);
@@ -194,8 +194,8 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     padding: 0;
     color: var(--screen-text-sub);
     background: transparent;

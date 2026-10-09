@@ -14,8 +14,9 @@
       </screen-modal>
 
     实现要点（这三点是这个组件存在的理由）：
-      1. **挂到 document.body**：大屏浮层是 pointer-events: none + overflow 裁剪，
-         面板还会因 backdrop-filter 成为 fixed 定位的包含块，弹窗留在里面必然错位。
+      1. **挂到 document.body**：大屏浮层是 pointer-events: none，面板又是 overflow: hidden，
+         弹窗留在里面会被裁掉。（面板原先还有 backdrop-filter、会成为 fixed 的包含块，
+         该属性已因性能原因移除，见 styles/screen-mixins.less。挂 body 的做法保持不动。）
       2. **焦点陷阱**：打开时记住原焦点并移入弹窗，Tab 在弹窗内循环，
          关闭后把焦点还给触发元素——否则大屏上键盘用户会「丢焦点」到地图里。
       3. **滚动锁**：打开时锁掉 body 滚动，并用计数器兼容「弹窗里再开弹窗」。
@@ -277,9 +278,11 @@ export default {
   &__mask {
     position: absolute;
     inset: 0;
-    // 遮罩要足够实，保证弹窗正文在任何背景（含地图）上都读得清
+    // 遮罩要足够实，保证弹窗正文在任何背景（含地图）上都读得清。
+    // ⚠ 这里**不要加 backdrop-filter**：这是整屏大小的一层，没有硬件加速时
+    //   模糊整屏会把「打开弹窗」拖到 200~300ms 才出画面（见 screen-mixins.less
+    //   里 .screen-glass 的实测数据）。0.72 的底色已经足够压暗背景。
     background: rgba(1, 14, 17, 0.72);
-    backdrop-filter: blur(2px);
   }
 
   &__dialog {

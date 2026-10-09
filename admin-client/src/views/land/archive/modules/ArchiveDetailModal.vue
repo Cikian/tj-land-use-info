@@ -32,6 +32,13 @@
             <div class="archive-detail__head-actions">
               <a-button v-has="'land:archive:edit'" icon="edit" @click="$emit('edit', detail)">编辑</a-button>
               <a-button v-has="'land:archive:export'" icon="download" @click="$emit('export', detail)">导出该项目档案</a-button>
+              <!--
+                ★ 档案 → 道路验收移交台账 的下钻（双向跳转的「档案 → 台账」方向）：
+                  档案挂在配套项目上，而台账就是按配套项目（一条道路）建的，
+                  因此带上 facilityId（没有就退回 crzdbh）即可定位到该道路的台账。
+                  台账页会读 $route.query 作为初始条件并展开查询面板。
+              -->
+              <a-button v-has="'land:ledger:list'" icon="car" @click="handleOpenLedger">查看该项台账</a-button>
               <a-button icon="reload" :loading="relatedLoading" @click="loadRelated">刷新收发文</a-button>
             </div>
           </div>
@@ -176,6 +183,7 @@
 
 <script>
   import { queryArchiveById, queryArchiveLogs, queryRelatedDocuments, buildDownloadUrl, archiveUrl } from '@/api/land/archive'
+  import { ledgerPageUrl } from '@/api/land/ledger'
 
   /**
    * 档案详情（全屏弹窗）
@@ -251,6 +259,26 @@
       }
     },
     methods: {
+      /**
+       * 跳到「道路验收移交台账」并定位到该项目的台账（双向跳转的「档案 → 台账」方向）。
+       *
+       * 关联口径与台账自己的反查一致：**配套项目ID 优先，退回出让宗地编号**。
+       * 台账页（RoadAcceptanceLedger）会读 $route.query 作为初始条件、展开查询面板，
+       * 所以用户一眼能看到「为什么只有这几条」。
+       */
+      handleOpenLedger () {
+        if (!this.detail) {
+          return
+        }
+        const params = this.detail.facilityId
+          ? { facilityId: this.detail.facilityId }
+          : { crzdbh: this.detail.crzdbh }
+        if (!params.facilityId && !params.crzdbh) {
+          this.$message.warning('该档案既没有关联配套项目、也没有出让宗地编号，无法定位台账')
+          return
+        }
+        window.open(ledgerPageUrl(params), '_blank')
+      },
       open (record) {
         if (!record || !record.id) {
           this.$message.warning('请选择要查看的档案')

@@ -55,10 +55,10 @@ export default {
     /** 校验错误文案，传入后覆盖提示并标红 */
     error: { type: String, default: '' },
     /** 标签列宽，同一行内的多个字段请传同一个值以保证对齐 */
-    labelWidth: { type: String, default: '96px' },
+    labelWidth: { type: String, default: '112px' },
     /** 关联控件的 id（对应控件的 id 属性），让点击标签能聚焦控件 */
     htmlFor: { type: String, default: '' },
-    /** 尺寸：sm 28 / md 32 */
+    /** 尺寸：sm 32 / md 36（见 --screen-control-*） */
     size: { type: String, default: 'md' },
     /** 标签换到控件上方（窄容器 / 长标签场景） */
     stacked: { type: Boolean, default: false },
@@ -77,7 +77,8 @@ export default {
 
 .screen-field {
   display: grid;
-  grid-template-columns: 96px 1fr;
+  // 与 prop 的默认值保持一致；字号放大后 96px 放不下 6 个中文字标签
+  grid-template-columns: 112px 1fr;
   align-items: start;
   gap: 0 var(--screen-space-3);
   min-width: 0;
@@ -92,8 +93,8 @@ export default {
     align-items: center;
     justify-content: flex-end;
     gap: 2px;
-    // 与控件首行文字垂直居中：控件高度 32/28
-    min-height: 32px;
+    // 与控件首行文字垂直居中：控件高度 md 36 / sm 32（见 --screen-control-*）
+    min-height: var(--screen-control-md);
     font-size: var(--screen-font-sm);
     color: var(--screen-text-sub);
     text-align: right;
@@ -101,7 +102,7 @@ export default {
   }
 
   &.is-sm &__label {
-    min-height: 28px;
+    min-height: var(--screen-control-sm);
     font-size: var(--screen-font-xs);
   }
 

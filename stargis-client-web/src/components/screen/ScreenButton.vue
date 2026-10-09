@@ -39,7 +39,7 @@ export default {
   props: {
     /** 外观：default 描边 / primary 实心青绿 / danger 危险 / text 纯文字 */
     type: { type: String, default: 'default' },
-    /** 尺寸：sm 28 / md 32 / lg 36 */
+    /** 尺寸：sm 32 / md 36 / lg 40（见 --screen-control-*） */
     size: { type: String, default: 'md' },
     /** 前置图标名（见 ScreenIcon） */
     icon: { type: String, default: '' },
@@ -55,7 +55,7 @@ export default {
   },
   computed: {
     iconSize () {
-      return this.size === 'lg' ? 16 : 14
+      return this.size === 'sm' ? 15 : 17
     },
   },
   methods: {
@@ -74,10 +74,10 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 12px;
+  min-height: var(--screen-control-md);
+  padding: 0 16px;
   font-family: inherit;
   font-size: var(--screen-font-sm);
   line-height: 1;
@@ -118,27 +118,27 @@ export default {
 
   // ---------- 尺寸 ----------
   &.is-sm {
-    min-height: 28px;
-    padding: 0 10px;
+    min-height: var(--screen-control-sm);
+    padding: 0 12px;
     font-size: var(--screen-font-xs);
   }
 
   &.is-lg {
-    min-height: 36px;
-    padding: 0 16px;
+    min-height: var(--screen-control-lg);
+    padding: 0 20px;
     font-size: var(--screen-font-md);
   }
 
   &.is-square {
     padding: 0;
-    width: 32px;
+    width: var(--screen-control-md);
 
     &.is-sm {
-      width: 28px;
+      width: var(--screen-control-sm);
     }
 
     &.is-lg {
-      width: 36px;
+      width: var(--screen-control-lg);
     }
   }
 
@@ -189,7 +189,7 @@ export default {
 
   // ---------- 纯文字按钮 ----------
   &.is-text {
-    padding: 0 6px;
+    padding: 0 8px;
     color: var(--screen-accent);
     background: transparent;
     border-color: transparent;

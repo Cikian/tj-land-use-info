@@ -159,8 +159,8 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 26px;
-    padding: 0 12px;
+    min-height: 30px;
+    padding: 0 14px;
     font-family: inherit;
     font-size: var(--screen-font-sm);
     line-height: 1;
@@ -196,8 +196,8 @@ export default {
   }
 
   &.is-sm &__item {
-    min-height: 22px;
-    padding: 0 9px;
+    min-height: 26px;
+    padding: 0 10px;
     font-size: var(--screen-font-xs);
   }
 

@@ -5,8 +5,21 @@
     基本信息 / 档案文件 / 收发文情况 / 操作记录。
 
     为什么用全屏弹窗而不是抽屉：
-      档案详情的信息量很大（两组描述 + 三类表格），抽屉宽度不够会到处折行；
+      档案详情的信息量很大（多组描述 + 三类表格），抽屉宽度不够会到处折行；
       全屏弹窗既保留「浮层」的上下文，又能给表格足够的横向空间。
+
+    版式（本次重做 · 方案 A「左右分栏 + 分组标题」）：
+      - 基本信息改成左右两栏：
+          左栏（1.4fr）档案属性 —— 字段最多，占主要横向空间，内部 2 列排布；
+          右栏（1fr）  关联项目 / 其他信息 —— 纵向叠放，各 1 列，宽度一致便于扫读；
+        两栏之间一条极细竖线，≤1280px 自动降为单栏（竖线转横线）。
+      - 每个分组 = 「青色竖条 + 分组标题 + 可选说明」，不再用卡片套卡片：
+        基本信息的边界靠分组与留白表达，卡片只留给三个表格页签。
+      - 描述列表开 allowWrap：**值不再截断**（旧实现 nowrap + 省略号，长部门名
+        必须悬停看全文）。字号层级在弹窗自己的 `.archive-detail__section` 里收口：
+        标签 14px 弱色 / 值 16px 白色，行距 7px。见文件末尾的样式块。
+      - 档案名称 / 档案类别 不再在属性里重复一遍 —— 弹窗标题行已经展示了它们，
+        重复出现在两处只会增加噪音。
 
     公开方法：
       open(record)  按列表行打开详情（内部再按 id 拉全量数据）
@@ -50,6 +63,23 @@
       >
         导出该项目档案
       </screen-button>
+
+      <!--
+        反向闭环：从档案跳到「同一配套项目/宗地下」的方案 2.3.2 第 6/7/8 项页面。
+        用路由跳转而不是事件穿透：这些页面是档案模块的兄弟页签，
+        档案详情又被「档案维护」「档案查询」两个面板复用，逐层 $emit 要改 4 个文件；
+        改走路由后，页签切换与条件下发由 archive/index.vue 的 `$route.query` watcher 统一处理。
+        没有关联项目的档案（facilityId 与 crzdbh 都为空）不显示按钮，避免跳过去看到空列表。
+      -->
+      <screen-button
+        v-for="link in relatedModuleLinks"
+        :key="link.tab"
+        size="sm"
+        :icon="link.icon"
+        @click="openRelatedTab(link.tab)"
+      >
+        {{ link.label }}
+      </screen-button>
     </template>
 
     <div class="archive-detail">
@@ -68,32 +98,60 @@
         :overlay="false"
       >
         <!-- ================= 基本信息 ================= -->
-        <!--
-          版式：两列「卡片列」，左右各自撑满高度，外框高度对齐 → 页面中心是平衡的。
-            左列：关联项目（按内容） + 其他信息（吃掉剩余高度）
-            右列：档案属性（吃掉剩余高度）
-          原来是把两组描述各占一半宽度并排，结果左边 6 项、右边 15 项，
-          右列拖得很长、左列下方一大片空，视觉重心全偏在右上角。
-          拆出「其他信息」后左右都是 5~6 行，且字段列宽足够（标签 108 + 值 250 以上），
-          长值不再折行。
-        -->
-        <div v-show="activeTab === 'base'" class="archive-detail__pane archive-detail__pane--base">
-          <div class="archive-detail__col">
-            <section class="archive-detail__block">
-              <h4 class="archive-detail__block-title">关联项目</h4>
-              <screen-descriptions :items="projectItems" :columns="2" />
+        <div v-show="activeTab === 'base'" class="archive-detail__pane">
+          <!--
+            方案 A 版式：左右两栏 + 分组标题。
+            左栏（主） 档案属性 —— 档案本体信息，字段最多，占主要横向空间；
+            右栏（侧） 关联项目 / 其他信息 —— 两个短分组纵向叠放，宽度一致便于扫读。
+            两栏之间用极细竖线分隔，窄容器时自动降为单栏。
+          -->
+          <div class="archive-detail__two-col">
+            <section class="archive-detail__section archive-detail__section--main">
+              <h4 class="archive-detail__section-title">
+                档案属性
+                <span class="archive-detail__section-kicker">
+                  档案本体信息，共 {{ attributeItems.length }} 项
+                </span>
+              </h4>
+              <screen-descriptions
+                variant="flat"
+                allow-wrap
+                :items="attributeItems"
+                :columns="2"
+                label-width="112px"
+              />
             </section>
 
-            <section class="archive-detail__block archive-detail__block--grow">
-              <h4 class="archive-detail__block-title">其他信息</h4>
-              <screen-descriptions :items="otherItems" :columns="2" />
-            </section>
+            <div class="archive-detail__sidebar">
+              <section class="archive-detail__section">
+                <h4 class="archive-detail__section-title">
+                  关联项目
+                  <span class="archive-detail__section-kicker">共 {{ projectItems.length }} 项</span>
+                </h4>
+                <screen-descriptions
+                  variant="flat"
+                  allow-wrap
+                  :items="projectItems"
+                  :columns="1"
+                  label-width="104px"
+                />
+              </section>
+
+              <section class="archive-detail__section">
+                <h4 class="archive-detail__section-title">
+                  其他信息
+                  <span class="archive-detail__section-kicker">共 {{ otherItems.length }} 项</span>
+                </h4>
+                <screen-descriptions
+                  variant="flat"
+                  allow-wrap
+                  :items="otherItems"
+                  :columns="1"
+                  label-width="104px"
+                />
+              </section>
+            </div>
           </div>
-
-          <section class="archive-detail__block archive-detail__block--grow">
-            <h4 class="archive-detail__block-title">档案属性</h4>
-            <screen-descriptions :items="attributeItems" :columns="3" />
-          </section>
         </div>
 
         <!-- ================= 档案文件 ================= -->
@@ -335,56 +393,70 @@ export default {
     }
   },
   computed: {
+    /**
+     * 「查看同一项目的台账 / 移交事项 / 竣工档案」入口（方案 2.3.2 第 7 / 6 / 8 项）。
+     * 没有关联项目（facilityId 与 crzdbh 都为空）时不显示，避免跳过去看到空列表。
+     */
+    relatedModuleLinks () {
+      const data = this.detail || {}
+      if (!data.facilityId && !data.crzdbh) {
+        return []
+      }
+      return [
+        { tab: 'ledger', label: '查看该项台账', icon: 'archive' },
+        { tab: 'handover', label: '查看该项移交事项', icon: 'file-text' },
+        { tab: 'completion', label: '查看该项目竣工档案', icon: 'layers' },
+      ]
+    },
+
+    /**
+     * 关联项目。
+     * 只放 4 个短字段：地块名称 / 配套项目 这类长文本移到「档案属性」主栏，
+     * 让左栏（主栏）的高度和右栏对齐，两栏底部不会一边空一大片。
+     */
     projectItems () {
       const data = this.detail || {}
       return [
-        { key: 'ptxmmc', label: '配套项目', value: data.ptxmmc, span: 2 },
-        { key: 'crzdbh', label: '出让宗地编号', value: data.crzdbh },
-        { key: 'dkmc', label: '地块名称', value: data.dkmc },
-        { key: 'ptsslb', label: '配套设施类别', value: data.ptsslb },
+        { key: 'crzdbh', label: '出让宗地编号', value: data.crzdbh, tone: 'number' },
         { key: 'xzqh', label: '所属行政区', value: data.xzqh },
+        { key: 'ptsslb', label: '配套设施类别', value: data.ptsslb },
         { key: 'sourceType', label: '项目来源', value: sourceTypeText(data.sourceType) },
       ]
     },
     attributeItems () {
       const data = this.detail || {}
       const sizeText = formatSize(data.totalSize)
-      // 档案的「本体属性」：档案号/名称/类型/密级/期限/年度/责任/日期/状态
-      // 其余（创建信息、最后更新、备注）属于审计信息，放到左列「其他信息」里，
-      // 让左右两列的行数接近，版面才平衡。
+      // 档案的「本体属性」：档案号/类型/密级/期限/年度/责任/日期/状态。
+      // 档案名称与档案类别**不在这里**：弹窗标题行已经展示了档案名称，
+      // 档案类别在「档案文件」页签的表格里有完整列表，重复只会增加噪音。
+      // 末尾三项是长文本，用 stack 独占整行（跨两列），既填充主栏高度又不挤短字段。
       return [
-        { key: 'archiveNo', label: '档案号', value: data.archiveNo },
-        { key: 'archiveName', label: '档案名称', value: data.archiveName, span: 2 },
+        { key: 'archiveNo', label: '档案号', value: data.archiveNo, tone: 'accent' },
         { key: 'archiveType', label: '档案类型', value: archiveTypeText(data.archiveType) },
         { key: 'secretLevel', label: '密级', value: data.secretLevel },
         { key: 'retention', label: '保管期限', value: data.retention },
-        { key: 'archiveYear', label: '档案年度', value: data.archiveYear },
+        { key: 'archiveYear', label: '档案年度', value: data.archiveYear, tone: 'number' },
+        { key: 'archiveDate', label: '归档日期', value: data.archiveDate, tone: 'number' },
         { key: 'responsibleDept', label: '责任部门', value: data.responsibleDept },
         { key: 'responsibleUser', label: '配套负责人', value: data.responsibleUser },
-        { key: 'archiveDate', label: '归档日期', value: data.archiveDate },
         { key: 'status', label: '档案状态', value: data.status },
         {
           key: 'fileSummary',
           label: '卷内文件',
           value: `${this.files.length} 个${sizeText !== '—' ? ` · ${sizeText}` : ''}`,
         },
-        { key: 'categoryNames', label: '档案类别', value: this.categoryNames, span: 3 },
+        { key: 'dkmc', label: '地块名称', value: data.dkmc, stack: true },
+        { key: 'ptxmmc', label: '配套项目', value: data.ptxmmc, stack: true },
+        { key: 'remark', label: '备注', value: data.remark, stack: true },
       ]
     },
-    /** 左列下半部分：档案的审计/补充信息 */
+    /** 「其他信息」：档案的审计/补充信息 */
     otherItems () {
       const data = this.detail || {}
       return [
         { key: 'createTime', label: '创建信息', value: this.joinInfo(data.createTime, data.createBy) },
         { key: 'updateTime', label: '最后更新', value: this.joinInfo(data.updateTime, data.updateBy) },
-        { key: 'remark', label: '备注', value: data.remark, span: 2 },
       ]
-    },
-    /** 多个卷内文件可能分属不同类别，去重后用「、」连接 */
-    categoryNames () {
-      const names = this.files.map((item) => item.categoryName).filter(Boolean)
-      const unique = Array.from(new Set(names))
-      return unique.length ? unique.join('、') : '未分类'
     },
     totalSizeText () {
       const total = this.files.reduce((sum, item) => sum + (Number(item.fileSize) || 0), 0)
@@ -498,6 +570,25 @@ export default {
       if (this.detail) this.$emit('export', this.detail)
     },
 
+    /**
+     * 跳到「同一配套项目/宗地」的第 6/7/8 项页面（方案 2.3.2）。
+     * 条件优先用 facilityId（准确），没有时退化成 crzdbh（兜底）——
+     * 与后端「关联档案」的匹配口径一致（facility_id 优先、crzdbh 兜底）。
+     */
+    openRelatedTab (tab) {
+      const data = this.detail || {}
+      const query = { tab }
+      if (data.facilityId) {
+        query.facilityId = data.facilityId
+      } else if (data.crzdbh) {
+        query.crzdbh = data.crzdbh
+      }
+      // 同路由换 query 时组件不会重建，页签切换与条件下发由
+      // archive/index.vue 对 `$route.query` 的 watcher 统一处理
+      this.$router.push({ path: '/screen/archive', query })
+      this.handleClose()
+    },
+
     handleClose () {
       this.visible = false
     },
@@ -516,7 +607,7 @@ export default {
 .archive-detail {
   display: flex;
   flex-direction: column;
-  gap: var(--screen-space-3);
+  gap: var(--screen-space-2);
   height: 100%;
   min-height: 0;
 
@@ -571,46 +662,111 @@ export default {
   &__pane {
     display: flex;
     flex-direction: column;
-    gap: var(--screen-space-4);
+    gap: var(--screen-space-2);
     flex: 1 1 auto;
     min-height: 0;
   }
 
-  /**
-   * 基本信息：两列卡片列。
-   *   align-items: stretch  → 左右两列的外框高度始终相等；
-   *   align-content: safe center → 整块内容在正文里垂直居中，上下留白对称，
-   *     而不是贴顶堆着、下面空一大片（safe 保证内容超高时退回顶对齐，不裁切）。
-   */
-  &__pane--base {
+  /*
+    ★ 基本信息专用版式（方案 A：左右分栏 + 分组标题）
+    ------------------------------------------------------------------
+    为什么这里不用 &__block 卡片：基本信息是「一段一段的清单」，
+    卡片套卡片会让边界过多、留白被吃掉，读起来像表格而不是详情。
+    改成「分组标题 + 分隔线」后，重心回到数据本身：
+      two-col  左右两栏，主栏给字段最多的「档案属性」
+      sidebar  右栏，两个短分组纵向叠放，宽度一致便于扫读
+      section  一个分组 = 标题（带青色竖条）+ 内容
+    ------------------------------------------------------------------ */
+  &__two-col {
     display: grid;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    // ★ stretch（而不是 start）：右栏要拉到与左栏等高，
+    //   否则两栏底部会空出一大片、竖分隔线也只有半截长。
+    //   配合 &__sidebar 的 space-between，右栏两个分组分布到上下两端，
+    //   版面立刻从「左上角一坨」变成「一屏铺开的清单」。
     align-items: stretch;
-    align-content: safe center;
-    gap: var(--screen-space-4);
+    gap: var(--screen-space-5);
+    min-width: 0;
+
+    // 窗口变窄时降为单栏：两栏各留 ~560px，值列才不至于被省略号吃掉
+    @media (max-width: 1280px) {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--screen-space-3);
+    }
   }
 
-  &__col {
+  // 右栏：与左栏之间一条极细竖线，用于区分两栏而不增加卡片重量
+  &__sidebar {
     display: flex;
     flex-direction: column;
-    gap: var(--screen-space-4);
+    gap: var(--screen-space-5);
     min-width: 0;
-    min-height: 0;
+    padding-left: var(--screen-space-5);
+    border-left: 1px solid var(--screen-border-soft);
+
+    @media (max-width: 1280px) {
+      padding-left: 0;
+      padding-top: var(--screen-space-3);
+      border-left: 0;
+      border-top: 1px solid var(--screen-border-soft);
+    }
   }
 
-  /* 卡片化：与首页面板同一套玻璃质感，让分区边界一眼可见 */
+  &__section {
+    min-width: 0;
+
+    // 右栏里第二个分组起：加一条细线切开，避免两个分组的字段连成一片
+    & + & {
+      padding-top: var(--screen-space-3);
+      border-top: 1px solid var(--screen-border-soft);
+    }
+  }
+
+  &__section-title {
+    display: flex;
+    align-items: center;
+    gap: var(--screen-space-2);
+    margin: 0 0 var(--screen-space-1);
+    font-size: var(--screen-font-md);
+    font-weight: 600;
+    color: var(--screen-text);
+
+    // 标题前的青色竖条，与首页面板标题同一视觉语言
+    &::before {
+      content: '';
+      flex: none;
+      width: 3px;
+      height: 15px;
+      border-radius: var(--screen-radius-pill);
+      background: linear-gradient(180deg, var(--screen-accent) 0%, var(--screen-accent-deep) 100%);
+      box-shadow: 0 0 8px var(--screen-accent-glow);
+    }
+  }
+
+  // 标题右侧的说明文字：说明数量 / 口径，不抢标题
+  &__section-kicker {
+    font-size: var(--screen-font-xs);
+    font-weight: 400;
+    color: var(--screen-text-mute);
+  }
+
+  /*
+    卡片化：与首页面板同一套玻璃质感，让分区边界一眼可见；边更轻、内边距更紧。
+    只给「档案文件 / 收发文情况 / 操作记录」这三个表格页签用
+    —— 它们的内容本身是表格，需要卡片把表格和页面背景切开。
+  */
   &__block {
     display: flex;
     flex-direction: column;
-    gap: var(--screen-space-3);
+    min-width: 0;
     min-height: 0;
-    padding: var(--screen-space-4);
+    padding: var(--screen-space-2) var(--screen-space-3) var(--screen-space-1);
     background: var(--screen-panel-bg);
-    border: 1px solid var(--screen-border);
+    border: 1px solid var(--screen-border-soft);
     border-radius: var(--screen-radius);
-    box-shadow: var(--screen-shadow), var(--screen-shadow-inset);
-    -webkit-backdrop-filter: blur(var(--screen-blur));
-    backdrop-filter: blur(var(--screen-blur));
+    box-shadow: var(--screen-shadow-inset);
+    // ⚠ 不加 backdrop-filter：没有硬件加速时，弹窗里每一块卡片做一次背景模糊
+    //   会让打开弹窗/切页签掉到 200ms 以上（见 screen-mixins.less 的实测）
 
     // 只让需要的块吃掉剩余高度，避免所有块都被拉高
     &--grow {
@@ -621,15 +777,16 @@ export default {
 
   &__block-title {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--screen-space-2);
-    margin: 0;
+    margin: 0 0 var(--screen-space-1);
     font-size: var(--screen-font-sm);
     font-weight: 600;
     color: var(--screen-text);
 
     &::before {
       content: '';
+      flex: none;
       width: 3px;
       height: 12px;
       border-radius: var(--screen-radius-pill);
@@ -666,10 +823,39 @@ export default {
   min-width: 0;
 }
 
-/* 窄屏（例如把窗口拉窄调试）：基本信息的两列改为一列，避免字段被压得过窄 */
-@media (max-width: 1200px) {
-  .archive-detail__pane--base {
-    grid-template-columns: minmax(0, 1fr);
+/*
+  基本信息的描述列表：字号 / 行距 / 标签与值的间距统一在这里收口，
+  只作用于本弹窗的基本信息两栏（.archive-detail__section 内部），
+  不影响档案文件 / 收发文 / 操作记录三个表格页签。
+
+  层级关系（详情页要「一眼能扫，不喧哗」）：
+    标签与值同为 14px，靠**颜色**分层而不是字号：
+      标签 = 弱色（--screen-text-mute），定位用
+      值   = 白色，主要数据
+    字号相同 + 同一个绝对行高（--sd-wrap-line-h）是**对齐的前提**：
+    两侧字号或行高只要有一个不同，文字基线就会错开（见该组件 <style> 的说明）。
+  这些变量都由 ScreenDescriptions 的 is-wrap 分支消费。
+*/
+.archive-detail__section {
+  // 这些变量会被 ScreenDescriptions 的 is-wrap 分支读取（见该组件 <style>）。
+  // 能生效的前提是组件那边**没有**在 .screen-descriptions 上直接声明同名变量——
+  // 「元素自身的直接声明」永远优先于「继承来的值」，特异性管不了继承。
+  --sd-row-pad: 7px;
+  --sd-pair-gap: var(--screen-space-3);
+  --sd-value-size: 14px;
+  --sd-wrap-line-h: 21px;
+
+  .screen-descriptions__label-text {
+    font-size: 14px;
+    color: var(--screen-text-mute);
+  }
+}
+
+/* 窄窗兜底：两栏本身在 1280px 降为单栏（见 &__two-col），
+   这里再兜一层——极窄时「档案属性」的两列并排也收成一列。 */
+@media (max-width: 900px) {
+  .archive-detail__section {
+    --sd-cols: 1;
   }
 }
 </style>

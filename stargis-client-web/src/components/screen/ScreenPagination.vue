@@ -265,9 +265,9 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 26px;
-    height: 26px;
-    padding: 0 6px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
     font-family: inherit;
     font-size: var(--screen-font-xs);
     font-variant-numeric: tabular-nums;
@@ -307,15 +307,15 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 18px;
-    height: 26px;
+    min-width: 20px;
+    height: 30px;
     color: var(--screen-text-mute);
   }
 
   &__jumper-input {
-    width: 48px;
-    height: 26px;
-    padding: 0 6px;
+    width: 56px;
+    height: 30px;
+    padding: 0 8px;
     font-family: inherit;
     font-size: var(--screen-font-xs);
     font-variant-numeric: tabular-nums;

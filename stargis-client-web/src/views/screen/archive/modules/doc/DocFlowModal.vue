@@ -45,7 +45,12 @@
           </div>
         </div>
 
-        <screen-descriptions :items="summaryItems" :columns="3" label-width="96px" />
+        <screen-descriptions
+          variant="flat"
+          :items="summaryItems"
+          :columns="3"
+          label-width="96px"
+        />
 
         <!-- ================= 流转时间轴 ================= -->
         <section class="doc-flow__section">

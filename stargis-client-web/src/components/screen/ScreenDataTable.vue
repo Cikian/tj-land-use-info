@@ -442,7 +442,7 @@ export default {
     position: sticky;
     top: 0;
     z-index: 2;
-    height: 34px;
+    height: var(--screen-row-height-head);
     padding: 0 var(--screen-space-3);
     font-weight: 500;
     text-align: left;
@@ -462,7 +462,7 @@ export default {
   }
 
   tbody td {
-    height: 44px;
+    height: var(--screen-row-height);
     padding: 4px var(--screen-space-3);
     color: var(--screen-text-sub);
     border-bottom: 1px solid var(--screen-divider);
@@ -523,8 +523,8 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     cursor: pointer;
 
     // 原生 checkbox 保留在无障碍树里，只是视觉上隐藏
@@ -563,8 +563,8 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 15px;
-    height: 15px;
+    width: 18px;
+    height: 18px;
     color: transparent;
     background: rgba(6, 20, 40, 0.72);
     border: 1px solid var(--screen-border);

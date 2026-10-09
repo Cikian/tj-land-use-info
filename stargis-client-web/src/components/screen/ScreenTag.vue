@@ -58,9 +58,9 @@ export default {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  padding: 1px 8px;
+  padding: 2px 10px;
   font-size: var(--screen-font-xs);
-  line-height: 18px;
+  line-height: 20px;
   color: var(--screen-accent-soft);
   background: rgba(130, 198, 255, 0.08);
   border: 1px solid var(--screen-border);
@@ -74,8 +74,8 @@ export default {
 
   // ---------- 尺寸 ----------
   &.is-sm {
-    padding: 0 6px;
-    line-height: 16px;
+    padding: 0 8px;
+    line-height: 20px;
   }
 
   // ---------- 语气 ----------

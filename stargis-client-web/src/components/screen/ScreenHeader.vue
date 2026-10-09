@@ -6,7 +6,7 @@
       底图      bg-top_u6.png           (0, 0)    1920×128（横向跟随拉伸）
       系统标题  大标题切图 title.png      (34, 18)   599×35
       导航项    nav-*.png              y=6      宽 140 高 54，右对齐到设计右边界 -140
-      用户区    头像/用户名/下拉箭头      设计右边界 -130 起
+      用户区    头像/用户名/下拉箭头      设计右边界 -130 起（点击展开下拉：退出登录）
       时钟      15:36 + 星期 + 日期      (477, 115) 起
 
     ⚠ 自适应：顶栏宽度随设计画布宽度变化（见 ScreenStage），
@@ -52,12 +52,52 @@
       </button>
     </nav>
 
-    <!-- 用户区 -->
-    <div class="screen-header__user stage-hit">
+    <!--
+      用户区（设计稿：头像 + 用户名 + 下拉箭头）
+      ----------------------------------------------------------------
+      点击展开下拉，菜单里是账户操作（当前只有「退出登录」）。
+      ⚠ 之前这里只有头像和箭头、**没有实现下拉**：箭头看着能点，点下去却什么都
+        不发生，用户因此没法自己退出登录。退出动作不在这里做，通过 @logout
+        抛给页面处理（组件保持纯展示，不依赖 store / 路由）。
+      浮层用 ScreenPopover（挂 body），避免被顶栏或画布的 overflow 裁掉。
+    -->
+    <div
+      ref="user"
+      class="screen-header__user stage-hit"
+      :class="{ 'is-open': userMenuOpen }"
+      role="button"
+      tabindex="0"
+      :aria-expanded="userMenuOpen ? 'true' : 'false'"
+      aria-haspopup="menu"
+      :aria-label="userMenuLabel"
+      @click="toggleUserMenu"
+      @keydown="handleUserKeydown"
+    >
       <img class="screen-header__avatar" :src="hf.avatar" alt="" aria-hidden="true" />
       <span class="screen-header__user-name">{{ userName }}</span>
       <img class="screen-header__caret" :src="hf.caretDown" alt="" aria-hidden="true" />
     </div>
+
+    <screen-popover
+      :open="userMenuOpen"
+      :anchor="$refs.user"
+      placement="bottom-end"
+      :width="148"
+      :match-width="false"
+      :max-height="null"
+      role="menu"
+      @close="userMenuOpen = false"
+    >
+      <button
+        type="button"
+        class="screen-header__user-menu-item"
+        role="menuitem"
+        @click="handleLogout"
+      >
+        <screen-icon name="logout" :size="14" />
+        <span>{{ logoutText }}</span>
+      </button>
+    </screen-popover>
 
     <!--
       实时时钟（高保真：大号时间 + 右侧星期 / 日期两行小字）
@@ -88,6 +128,8 @@
 <script>
 import { padIndex } from './utils'
 import { hf } from '@/assets/screen-blue'
+import ScreenIcon from './ScreenIcon'
+import ScreenPopover from './ScreenPopover'
 
 const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
 
@@ -98,12 +140,15 @@ const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '
  *   userRightMargin 用户区右边界到设计画布右边界的距离（设计稿收尾于 1890）
  * 导航用「弹性收缩的 flex 行」实现：设计画布比 1920 窄时，
  * 各项等比收窄而不是跟标题切图重叠。
+ *
+ * ⚠ 尺寸已随全局字号上移一档：导航项 54 → 60 高、宽 140 → 150，
+ *   保证 17px 的导航文字有足够的左右留白（中文菜单最长 6 字 ≈ 102px）。
  */
 export const HEADER_LAYOUT = {
   height: 128,
   navTop: 6,
-  navItemWidth: 140,
-  navItemHeight: 54,
+  navItemWidth: 150,
+  navItemHeight: 60,
   navLeft: 660,
   navRightMargin: 140,
   userRightMargin: 30,
@@ -111,6 +156,7 @@ export const HEADER_LAYOUT = {
 
 export default {
   name: 'ScreenHeader',
+  components: { ScreenIcon, ScreenPopover },
   props: {
     /** 系统标题（用于无障碍文本；视觉标题来自切图） */
     title: { type: String, default: '' },
@@ -126,6 +172,8 @@ export default {
     showWeekday: { type: Boolean, default: true },
     /** 用户名 */
     userName: { type: String, default: '' },
+    /** 用户区下拉里「退出登录」的文案 */
+    logoutText: { type: String, default: '退出登录' },
     /** 在线状态：true 在线 / false 离线 / null 不展示 */
     online: { type: Boolean, default: null },
     onlineText: { type: String, default: '在线' },
@@ -136,9 +184,14 @@ export default {
       hf,
       now: new Date(),
       timer: null,
+      /** 用户区下拉是否展开 */
+      userMenuOpen: false,
     }
   },
   computed: {
+    userMenuLabel () {
+      return this.userName ? `${this.userName}，点击展开账户菜单` : '点击展开账户菜单'
+    },
     clockTime () {
       const d = this.now
       return [padIndex(d.getHours()), padIndex(d.getMinutes())].join(':')
@@ -211,6 +264,20 @@ export default {
       if (item.key === this.activeMenu) return
       this.$emit('menu-change', item.key, item)
     },
+    toggleUserMenu () {
+      this.userMenuOpen = !this.userMenuOpen
+    },
+    /** 触发器是 role="button"，键盘 Enter / Space 也要能展开 */
+    handleUserKeydown (event) {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return
+      event.preventDefault()
+      this.toggleUserMenu()
+    },
+    handleLogout () {
+      this.userMenuOpen = false
+      // 退出动作由页面处理（组件本身不认识 store / 路由，保持纯展示）
+      this.$emit('logout')
+    },
   },
 }
 </script>
@@ -264,7 +331,7 @@ export default {
     min-width: 0;
     padding: 0;
     font-family: inherit;
-    font-size: 16px;
+    font-size: var(--screen-font-md);
     font-weight: 500;
     color: #66afd4;
     background: transparent;
@@ -309,26 +376,41 @@ export default {
   &__user {
     position: absolute;
     right: 30px;
-    top: 22px;
+    top: 20px;
     display: flex;
     align-items: center;
-    height: 26px;
+    height: 32px;
     cursor: pointer;
+    border-radius: var(--screen-radius-sm);
+    .screen-focus-ring();
+
+    /* 展开时给一点反馈，避免点下去「没反应」的观感 */
+    &.is-open {
+      .screen-header__caret {
+        transform: rotate(180deg);
+      }
+    }
+
+    &:hover .screen-header__user-name,
+    &.is-open .screen-header__user-name {
+      color: #ffffff;
+    }
   }
 
   &__avatar {
-    width: 26px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
     display: block;
   }
 
   &__user-name {
     margin-left: 10px;
-    font-size: 14px;
+    font-size: var(--screen-font-sm);
     font-weight: 500;
-    line-height: 14px;
+    line-height: 1.2;
     color: #b8d5ea;
     white-space: nowrap;
+    transition: color var(--screen-duration) var(--screen-ease);
   }
 
   &__caret {
@@ -336,6 +418,33 @@ export default {
     width: 8px;
     height: 5px;
     display: block;
+    transition: transform var(--screen-duration) var(--screen-ease);
+  }
+
+  /* 用户区下拉里的条目（浮层内容在 ScreenPopover 中，样式随 scoped 生效） */
+  &__user-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: var(--screen-font-sm);
+    line-height: 1.4;
+    color: var(--screen-text-sub);
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: var(--screen-radius-sm);
+    cursor: pointer;
+    transition: color var(--screen-duration) var(--screen-ease),
+      background-color var(--screen-duration) var(--screen-ease);
+    .screen-focus-ring();
+
+    &:hover {
+      color: #ffffff;
+      background: var(--screen-elevate);
+    }
   }
 
   /* ---------- 时钟 ---------- */
@@ -360,9 +469,9 @@ export default {
     font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', var(--screen-font-number-family);
     // Bahnschrift 是可变字体，默认落在 Normal 字宽（并不窄），要显式取窄体实例
     font-stretch: 75%;
-    font-size: 52px;
+    font-size: 56px;
     font-weight: 400;
-    line-height: 39px;
+    line-height: 42px;
     color: #ffffff;
     letter-spacing: 0;
     font-variant-numeric: tabular-nums;
@@ -379,8 +488,8 @@ export default {
   }
 
   &__weekday {
-    font-size: 16px;
-    line-height: 16px;
+    font-size: var(--screen-font-md);
+    line-height: 1.25;
     color: #66afd4;
     white-space: nowrap;
   }
@@ -388,8 +497,8 @@ export default {
   &__date {
     // 设计稿：星期 117..133，日期 141 起，间隔 8px
     margin-top: 8px;
-    font-size: 16px;
-    line-height: 16px;
+    font-size: var(--screen-font-md);
+    line-height: 1.25;
     color: #66afd4;
     white-space: nowrap;
   }

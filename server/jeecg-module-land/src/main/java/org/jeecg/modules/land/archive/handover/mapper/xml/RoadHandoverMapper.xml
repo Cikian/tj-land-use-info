@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.archive.handover.mapper.RoadHandoverMapper">
+
+    <!--
+      道路交付及养护协议移交事项 Mapper
+      注意：本文件必须放在 src/main/java 的 mapper/xml 下（jeecg 约定），
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml。
+    -->
+
+    <!-- ================================================================
+         公用 WHERE 片段：列表 / 统计 / 导出 共用；
+         引用方必须把主表别名为 h。
+         ================================================================ -->
+    <sql id="queryWhere">
+        h.`del_flag` = 0
+        <if test="q.handoverNo != null and q.handoverNo != ''">
+            AND h.`handover_no` LIKE CONCAT('%', #{q.handoverNo}, '%')
+        </if>
+        <if test="q.roadName != null and q.roadName != ''">
+            AND h.`road_name` LIKE CONCAT('%', #{q.roadName}, '%')
+        </if>
+        <if test="q.roadCode != null and q.roadCode != ''">
+            AND h.`road_code` LIKE CONCAT('%', #{q.roadCode}, '%')
+        </if>
+        <if test="q.dldj != null and q.dldj != ''">
+            AND h.`dldj` = #{q.dldj}
+        </if>
+        <if test="q.xzqh != null and q.xzqh != ''">
+            AND h.`xzqh` = #{q.xzqh}
+        </if>
+        <if test="q.gnq != null and q.gnq != ''">
+            AND h.`gnq` = #{q.gnq}
+        </if>
+        <if test="q.crzdbh != null and q.crzdbh != ''">
+            AND h.`crzdbh` LIKE CONCAT('%', #{q.crzdbh}, '%')
+        </if>
+        <if test="q.dkmc != null and q.dkmc != ''">
+            AND h.`dkmc` LIKE CONCAT('%', #{q.dkmc}, '%')
+        </if>
+        <if test="q.facilityId != null and q.facilityId != ''">
+            AND h.`facility_id` = #{q.facilityId}
+        </if>
+        <if test="q.handoverType != null and q.handoverType != ''">
+            AND h.`handover_type` = #{q.handoverType}
+        </if>
+        <if test="q.status != null and q.status != ''">
+            AND h.`status` = #{q.status}
+        </if>
+        <if test="q.beginAgreementDate != null and q.beginAgreementDate != ''">
+            AND h.`agreement_date` &gt;= #{q.beginAgreementDate}
+        </if>
+        <if test="q.endAgreementDate != null and q.endAgreementDate != ''">
+            AND h.`agreement_date` &lt;= #{q.endAgreementDate}
+        </if>
+        <if test="q.beginHandoverDate != null and q.beginHandoverDate != ''">
+            AND h.`handover_date` &gt;= #{q.beginHandoverDate}
+        </if>
+        <if test="q.endHandoverDate != null and q.endHandoverDate != ''">
+            AND h.`handover_date` &lt;= #{q.endHandoverDate}
+        </if>
+        <if test="q.beginMaintenanceEnd != null and q.beginMaintenanceEnd != ''">
+            AND h.`maintenance_end` &gt;= #{q.beginMaintenanceEnd}
+        </if>
+        <if test="q.endMaintenanceEnd != null and q.endMaintenanceEnd != ''">
+            AND h.`maintenance_end` &lt;= #{q.endMaintenanceEnd}
+        </if>
+        <if test="q.receiveUnit != null and q.receiveUnit != ''">
+            AND h.`receive_unit` LIKE CONCAT('%', #{q.receiveUnit}, '%')
+        </if>
+        <if test="q.buildUnit != null and q.buildUnit != ''">
+            AND h.`build_unit` LIKE CONCAT('%', #{q.buildUnit}, '%')
+        </if>
+        <if test="q.archiveId != null and q.archiveId != ''">
+            AND h.`archive_id` = #{q.archiveId}
+        </if>
+        <if test="q.hasArchive != null">
+            <choose>
+                <when test="q.hasArchive">
+                    AND h.`archive_id` IS NOT NULL
+                </when>
+                <otherwise>
+                    AND h.`archive_id` IS NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="q.beginCreateTime != null and q.beginCreateTime != ''">
+            AND h.`create_time` &gt;= CONCAT(#{q.beginCreateTime}, ' 00:00:00')
+        </if>
+        <if test="q.endCreateTime != null and q.endCreateTime != ''">
+            AND h.`create_time` &lt;= CONCAT(#{q.endCreateTime}, ' 23:59:59')
+        </if>
+        <if test="q.keyword != null and q.keyword != ''">
+            AND (
+                h.`handover_no` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR h.`road_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR h.`crzdbh` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR h.`dkmc` LIKE CONCAT('%', #{q.keyword}, '%')
+                OR h.`agreement_no` LIKE CONCAT('%', #{q.keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <!-- ================= 分页列表（序号由 Service 层赋值） ================= -->
+    <select id="selectHandoverPage" resultType="org.jeecg.modules.land.archive.handover.entity.RoadHandover">
+        SELECT h.*
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+        ORDER BY h.`handover_no`, h.`id`
+    </select>
+
+    <select id="selectForExport" resultType="org.jeecg.modules.land.archive.handover.entity.RoadHandover">
+        SELECT h.*
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+        ORDER BY h.`handover_no`, h.`id`
+    </select>
+
+    <!-- ================= 汇总指标 ================= -->
+    <select id="selectSummary" resultType="java.util.Map">
+        SELECT
+            COUNT(1)                                                              AS `total`,
+            SUM(CASE WHEN h.`source_facility_id` IS NOT NULL THEN 1 ELSE 0 END)     AS `migratedCount`,
+            SUM(CASE WHEN h.`source_facility_id` IS NULL THEN 1 ELSE 0 END)         AS `manualCount`,
+            SUM(CASE WHEN h.`archive_id` IS NOT NULL THEN 1 ELSE 0 END)             AS `archivedCount`,
+            SUM(CASE WHEN (h.`agreement_no` IS NULL OR h.`agreement_no` = '')
+                      AND h.`agreement_date` IS NULL THEN 1 ELSE 0 END)             AS `missingAgreementCount`,
+            SUM(CASE WHEN h.`maintenance_end` IS NOT NULL
+                      AND h.`maintenance_end` &gt;= CURDATE()
+                      AND h.`maintenance_end` &lt;= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+                     THEN 1 ELSE 0 END)                                            AS `maintenanceExpiringCount`,
+            SUM(CASE WHEN h.`maintenance_end` IS NOT NULL AND h.`maintenance_end` &lt; CURDATE()
+                     THEN 1 ELSE 0 END)                                            AS `maintenanceExpiredCount`,
+            SUM(CASE WHEN h.`remark` LIKE '%无匹配记录%' THEN 1 ELSE 0 END)          AS `orphanCount`
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <!-- ================= 分类统计 ================= -->
+    <select id="selectCountGroupByStatus" resultType="org.jeecg.modules.land.archive.handover.vo.HandoverStatVO$StatusCount">
+        SELECT h.`status` AS `status`, COUNT(1) AS `count`
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+        GROUP BY h.`status`
+        ORDER BY `count` DESC
+    </select>
+
+    <!--
+      通用按列分组计数。
+      ★ ${column} 是字符串替换，只允许调用方（Service）传代码里写死的列名常量：
+        handover_type / xzqh / gnq / dldj。请求参数永远到不了这里。
+    -->
+    <select id="selectStatByColumn" resultType="org.jeecg.modules.land.archive.handover.vo.HandoverStatVO$NameCount">
+        SELECT COALESCE(NULLIF(h.`${column}`, ''), #{emptyLabel}) AS `name`, COUNT(1) AS `count`
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(h.`${column}`, ''), #{emptyLabel})
+        ORDER BY `count` DESC
+    </select>
+
+    <!-- 按移交年度：年度取自移交编号 YJ-{yyyy}- 的第 2 段；非本格式的编号不计入 -->
+    <select id="selectStatByYear" resultType="org.jeecg.modules.land.archive.handover.vo.HandoverStatVO$NameCount">
+        SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(h.`handover_no`, '-', 2), '-', -1) AS `name`, COUNT(1) AS `count`
+        FROM `t_road_handover` h
+        WHERE h.`handover_no` LIKE 'YJ-%' AND <include refid="queryWhere"/>
+        GROUP BY SUBSTRING_INDEX(SUBSTRING_INDEX(h.`handover_no`, '-', 2), '-', -1)
+        ORDER BY `name`
+    </select>
+
+    <!-- 按接收管养单位（谁接管得最多，取 Top N） -->
+    <select id="selectStatByReceiveUnit" resultType="org.jeecg.modules.land.archive.handover.vo.HandoverStatVO$NameCount">
+        SELECT COALESCE(NULLIF(h.`receive_unit`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+        GROUP BY COALESCE(NULLIF(h.`receive_unit`, ''), '未填写')
+        ORDER BY `count` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- ================= 移交编号 ================= -->
+    <!--
+      取某年度已用掉的最大流水号。
+      ① 不按 del_flag 过滤：编号是单列唯一键，逻辑删除的编号仍占键位，一律跳号；
+      ② 用 CHAR_LENGTH 精确限定「前缀 + 4 位流水」，避免手工改写过的编号被 CAST 成 1 污染最大值。
+    -->
+    <select id="selectMaxSeqOfYear" resultType="java.lang.Integer">
+        SELECT MAX(CAST(SUBSTRING(h.`handover_no`, CHAR_LENGTH(#{prefix}) + 1) AS UNSIGNED))
+        FROM `t_road_handover` h
+        WHERE h.`handover_no` LIKE CONCAT(#{prefix}, '%')
+          AND CHAR_LENGTH(h.`handover_no`) = CHAR_LENGTH(#{prefix}) + 4
+    </select>
+
+    <select id="countByHandoverNo" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_road_handover` h
+        WHERE h.`del_flag` = 0 AND h.`handover_no` = #{handoverNo}
+        <if test="excludeId != null and excludeId != ''">
+            AND h.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
+    <!-- ================= 写入 ================= -->
+    <update id="updateHandoverAll">
+        UPDATE `t_road_handover`
+        <set>
+            `handover_no`       = #{handoverNo},
+            `road_name`         = #{roadName},
+            `road_code`         = #{roadCode},
+            `dldj`              = #{dldj},
+            `start_point`       = #{startPoint},
+            `end_point`         = #{endPoint},
+            `length_m`          = #{lengthM},
+            `red_line_width`    = #{redLineWidth},
+            `xzqh`              = #{xzqh},
+            `gnq`               = #{gnq},
+            `ptsslb`            = #{ptsslb},
+            `crzdbh`            = #{crzdbh},
+            `land_id`           = #{landId},
+            `dkmc`              = #{dkmc},
+            `facility_id`       = #{facilityId},
+            `ptxmmc`            = #{ptxmmc},
+            `handover_type`     = #{handoverType},
+            `agreement_no`      = #{agreementNo},
+            `agreement_name`    = #{agreementName},
+            `agreement_date`    = #{agreementDate},
+            `build_unit`        = #{buildUnit},
+            `receive_unit`      = #{receiveUnit},
+            `handover_date`     = #{handoverDate},
+            `maintenance_start` = #{maintenanceStart},
+            `maintenance_end`   = #{maintenanceEnd},
+            `status`            = #{status},
+            `remark`            = #{remark},
+            `update_by`         = #{updateBy},
+            `update_time`       = #{updateTime}
+        </set>
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE `t_road_handover`
+        SET `status` = #{status}, `update_by` = #{updateBy}, `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <update id="updateArchiveLink">
+        UPDATE `t_road_handover`
+        SET `archive_id` = #{archiveId}, `archive_count` = #{archiveCount},
+            `update_by` = #{updateBy}, `update_time` = #{updateTime}
+        WHERE `id` = #{id} AND `del_flag` = 0
+    </update>
+
+    <!-- ================= 关联档案（只读 t_archive） ================= -->
+    <select id="selectRelatedArchives" resultType="org.jeecg.modules.land.archive.ledger.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`               AS id,
+            a.`archive_no`       AS archiveNo,
+            a.`archive_name`     AS archiveName,
+            a.`archive_type`     AS archiveType,
+            a.`secret_level`     AS secretLevel,
+            a.`retention`        AS retention,
+            a.`archive_year`     AS archiveYear,
+            a.`archive_date`     AS archiveDate,
+            a.`status`           AS status,
+            a.`xzqh`             AS xzqh,
+            a.`responsible_dept` AS responsibleDept,
+            a.`facility_id`      AS facilityId,
+            a.`ptxmmc`           AS ptxmmc,
+            a.`crzdbh`           AS crzdbh,
+            a.`dkmc`             AS dkmc,
+            a.`ptsslb`           AS ptsslb,
+            a.`file_count`       AS fileCount,
+            a.`total_size`       AS totalSize,
+            a.`remark`           AS remark,
+            a.`create_time`      AS createTime
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countRelatedArchives" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+          AND (
+            <choose>
+                <when test="facilityId != null and facilityId != ''">
+                    a.`facility_id` = #{facilityId}
+                </when>
+                <when test="crzdbh != null and crzdbh != ''">
+                    a.`crzdbh` = #{crzdbh}
+                </when>
+                <otherwise>1 = 0</otherwise>
+            </choose>
+          )
+    </select>
+
+    <select id="selectArchivesForPick" resultType="org.jeecg.modules.land.archive.ledger.vo.RelatedArchiveVO">
+        SELECT
+            a.`id`           AS id,
+            a.`archive_no`   AS archiveNo,
+            a.`archive_name` AS archiveName,
+            a.`archive_type` AS archiveType,
+            a.`archive_year` AS archiveYear,
+            a.`archive_date` AS archiveDate,
+            a.`status`       AS status,
+            a.`xzqh`         AS xzqh,
+            a.`facility_id`  AS facilityId,
+            a.`ptxmmc`       AS ptxmmc,
+            a.`crzdbh`       AS crzdbh,
+            a.`dkmc`         AS dkmc,
+            a.`file_count`   AS fileCount,
+            a.`total_size`   AS totalSize
+        FROM `t_archive` a
+        WHERE a.`del_flag` = 0
+        <if test="facilityId != null and facilityId != ''">
+            AND a.`facility_id` = #{facilityId}
+        </if>
+        <if test="crzdbh != null and crzdbh != ''">
+            AND a.`crzdbh` = #{crzdbh}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (a.`archive_no` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`archive_name` LIKE CONCAT('%', #{keyword}, '%')
+                 OR a.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <select id="countArchiveById" resultType="int">
+        SELECT COUNT(1) FROM `t_archive` a WHERE a.`del_flag` = 0 AND a.`id` = #{archiveId}
+    </select>
+
+</mapper>

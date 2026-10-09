@@ -158,11 +158,11 @@ export default {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
-  min-height: 32px;
-  padding: 0 10px;
+  min-height: var(--screen-control-md);
+  padding: 0 12px;
   color: var(--screen-text);
   background: rgba(6, 20, 40, 0.72);
   border: 1px solid var(--screen-border);
@@ -195,7 +195,7 @@ export default {
 
   &.is-textarea {
     align-items: flex-start;
-    padding: 7px 10px;
+    padding: 8px 12px;
   }
 
   &__icon {
@@ -207,7 +207,7 @@ export default {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    height: 30px;
+    height: 34px;
     padding: 0;
     font-family: inherit;
     font-size: var(--screen-font-sm);
@@ -283,16 +283,16 @@ export default {
 
   // ---------- 尺寸 ----------
   &.is-sm {
-    min-height: 28px;
-    padding: 0 8px;
+    min-height: var(--screen-control-sm);
+    padding: 0 10px;
 
     .screen-input__control {
-      height: 26px;
+      height: 30px;
       font-size: var(--screen-font-xs);
     }
 
     &.is-textarea {
-      padding: 6px 8px;
+      padding: 7px 10px;
     }
   }
 }
