@@ -146,7 +146,7 @@ export default {
         { key: 'xzqh', title: '行政区划', width: 100, type: 'slot' },
         { key: 'xmfl', title: '项目分类', width: 110, type: 'slot', align: 'center' },
         { key: 'ghydxz', title: '规划用地性质', width: 140, ellipsis: true },
-        { key: 'crj', title: '出让金(亿元)', width: 120, type: 'slot', align: 'right' },
+        { key: 'crj', title: '出让金(亿元)', width: 120, type: 'slot', align: 'center' },
         { key: 'crsj', title: '出让时间', width: 120, type: 'slot' },
         { key: 'ptsfqq', title: '配套齐全', width: 100, align: 'center' },
         { key: 'facilityCount', title: '配套数', width: 100, type: 'slot', align: 'center' },

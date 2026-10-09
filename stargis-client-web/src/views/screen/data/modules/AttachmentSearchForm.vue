@@ -4,13 +4,22 @@
     --------------------------------
     条件字段与后端 `AttachmentQueryDTO` 逐个对应（后端不用 QueryGenerator，
     没声明的字段名会被静默忽略）：
-      bizType            业务类型（land / facility / process）
-      bizId              业务主键（精确；从配套详情跳过来时自动带上）
-      bizKey             业务可读键（模糊：宗地编号 / 配套项目名称）
-      fileType           附件类型码（精确：01~13、99）
+      bizType            归属类型（land / facility / process）
+      bizId              归属对象的唯一 id（精确）—— ★ 只由下钻预置，**不给用户填**
+      bizKey             所属对象（模糊：出让宗地编号 / 配套项目名称）
+      fileType           材料类型码（精确：01~13、99）
       keyword            ★ 文件名模糊 —— 后端字段名是 keyword 不是 fileName
       uploadBy           上传人账号（精确）
       beginDate / endDate 上传时间区间
+
+    ★ 界面文案原则（2026-10-09 按反馈统一）：**不出现「id / 主键 / 可读键」这类数据库概念**。
+      用户看到的是「归属类型」「所属对象（名称）」；bizId 只是下钻时的一个隐形过滤条件，
+      需要让用户知道「当前正筛着哪个对象」时，回显的是**名称**而不是 id。
+
+    ★ 为什么「所属对象」用名称模糊检索就能满足需求：
+      落库时 biz_key 存的就是可读名称（宗地编号 / 配套项目名称），后端对该列 LIKE，
+      所以用户输入「凯苑路」或「津西青(挂)2024-01号」都能搜到 ——
+      原来的「业务主键」文本框要求用户粘贴数据库 id，对用户毫无意义。
 
     ★ 为什么「上传人」是**文本输入**而不是人员下拉：
       后端要的是账号（uploadBy）精确匹配，而这个接口没有人员列表可查；
@@ -27,12 +36,12 @@
   -->
   <div class="attachment-search">
     <div class="attachment-search__grid">
-      <screen-field label="业务类型" label-width="96px">
+      <screen-field label="归属类型" label-width="96px">
         <screen-select
           v-model="query.bizType"
           :options="bizTypeOptions"
-          placeholder="全部业务"
-          aria-label="业务类型"
+          placeholder="全部"
+          aria-label="归属类型"
         />
       </screen-field>
 
@@ -41,26 +50,26 @@
           id="as-keyword"
           v-model="query.keyword"
           clearable
-          placeholder="按文件名模糊检索"
+          placeholder="按文件名搜索"
           @enter="handleSearch"
         />
       </screen-field>
 
-      <screen-field label="附件类型" label-width="96px">
+      <screen-field label="材料类型" label-width="96px">
         <screen-select
           v-model="query.fileType"
           :options="typeOptions"
-          placeholder="全部类型"
-          aria-label="附件类型"
+          placeholder="全部"
+          aria-label="材料类型"
         />
       </screen-field>
 
-      <screen-field label="业务可读键" label-width="96px" html-for="as-bizKey" tip="宗地编号 / 配套项目名称">
+      <screen-field label="所属对象" label-width="96px" html-for="as-bizKey">
         <screen-input
           id="as-bizKey"
           v-model="query.bizKey"
           clearable
-          placeholder="宗地编号或配套项目名称"
+          placeholder="出让宗地编号或配套项目名称"
           @enter="handleSearch"
         />
       </screen-field>
@@ -71,22 +80,12 @@
           <screen-date-input v-model="dateRange" mode="range" @change="handleDateChange" />
         </screen-field>
 
-        <screen-field label="上传人账号" label-width="96px" html-for="as-uploadBy">
+        <screen-field label="上传人" label-width="96px" html-for="as-uploadBy">
           <screen-input
             id="as-uploadBy"
             v-model="query.uploadBy"
             clearable
-            placeholder="填登录账号（精确匹配）"
-            @enter="handleSearch"
-          />
-        </screen-field>
-
-        <screen-field label="业务主键" label-width="96px" html-for="as-bizId" tip="从配套详情跳过来时已自动带上">
-          <screen-input
-            id="as-bizId"
-            v-model="query.bizId"
-            clearable
-            placeholder="某一个宗地 / 配套 / 环节的 id"
+            placeholder="登录账号"
             @enter="handleSearch"
           />
         </screen-field>
@@ -151,16 +150,48 @@ export default {
   },
   props: {
     defaultExpanded: { type: Boolean, default: false },
+    /**
+     * 下钻条件。★ 用户看到的是 bizKey/bizName（可读名称，落在「所属对象」输入框里），
+     * bizId 只是跟随它的精确过滤；两者由下面 watch 保持同步。
+     */
     initialQuery: { type: Object, default: () => ({}) }
   },
   data () {
     return {
       expanded: this.defaultExpanded,
       query: Object.assign(buildEmptyQuery(), this.initialQuery || {}),
+      /**
+       * 下钻带入的「所属对象」名称原值。
+       * 用它判断用户是否动过名称框（见 watch）：名称仍是这个值时，
+       * 跟着它的 bizId 过滤就是有效的，应当保留。
+       */
+      presetBizKey: (this.initialQuery || {}).bizKey || '',
       dateRange: [],
       bizTypeOptions: ATTACHMENT_BIZ_TYPES,
       // 先用本地兜底（01~13、99），created 里再用字典 / allowedTypes 覆盖
       typeOptions: ATTACHMENT_TYPES_FALLBACK.map((item) => ({ value: item.value, label: item.text }))
+    }
+  },
+  watch: {
+    /**
+     * ★ bizId 必须跟着「所属对象」输入框走，否则会出现**用户看不见却仍在生效**的过滤。
+     *
+     * 背景：下钻进来时父组件会带上 {@code bizId}（精确 id，只列这个对象的附件）。
+     * 但 id 是数据库内部值、界面上不显示；用户唯一能看到的相关控件就是「所属对象」
+     * 文本框（对应 bizKey，落库时存的就是可读名称）。若是两者脱钩：
+     *   ① 用户清空「所属对象」→ bizId 还留着，列表仍被悄悄过滤（用户以为清空了）；
+     *   ② 用户改成别的名称 → 变成了 {@code biz_id = 旧对象 AND biz_key LIKE 新名称}，
+     *      这个组合**永远搜不到东西**，用户会以为「系统坏了」。
+     *
+     * 处理规则：**名称框一旦偏离下钻带入的那个值（改了或清空），就撤掉隐性 id 过滤**，
+     * 让「界面上看到什么，就按什么筛」始终成立。
+     * 只有名称仍是下钻那个值时才保留 bizId —— 那时它是对的（同一个对象，精确比模糊更准）。
+     */
+    'query.bizKey' (value) {
+      if (String(value || '').trim() === String(this.presetBizKey || '').trim()) {
+        return
+      }
+      this.query.bizId = ''
     }
   },
   created () {
