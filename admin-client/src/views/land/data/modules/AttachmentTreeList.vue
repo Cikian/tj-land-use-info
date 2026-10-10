@@ -118,15 +118,15 @@ export default {
 <style scoped lang="less">
 .attach-tree {
   /*
-   * ★ 目录树自己滚动。
-   *   展开几个项目后内容会很高，若不限制高度就会把整页撑长 ——
-   *   管理端的 a-card 不滚动，用户只能靠浏览器滚动条，很容易「滚不到底」。
-   *   vh 系数按管理端布局估算（顶栏 + 面包屑 + 检索表单 + 卡片内边距）。
+   * ★ 这里**故意不做**自己的滚动。
+   *
+   *   之前给树加了 max-height + overflow-y: auto，结果是两个滚动条打架：
+   *   树被自己的 max-height 截断（内容看着"被切了"），
+   *   而页面级滚动条同时存在 —— 一个页面两条滚动条，观感很怪。
+   *
+   *   现在滚动统一交给页面内容区（PageLayout 的 .page-layout-root），
+   *   整页只保留一条滚动条。
    */
-  max-height: calc(100vh - 360px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
   &__project {
     margin-bottom: 16px;
     border: 1px solid #e8e8e8;

@@ -68,8 +68,15 @@
         @updateMenuTitle="handleUpdateMenuTitle"
       />
 
-      <!-- layout content -->
-      <a-layout-content :style="{ height: '100%', paddingTop: fixedHeader ? '59px' : '0' }">
+      <!--
+        layout content
+        ★ 这里刻意**不加** height:100% 的内联样式，改由 CSS 用 flex 让它自己占满
+          剩余高度（见样式里的 .layout / .ant-layout-content 规则）。
+          原因：原来那行 `height: '100%'` 在父级没有确定高度时会退化成 auto，
+          内容多高它就多高 → 整页被撑高 → 出现**整页滚动条**，
+          于是「页面滚动条 + 面板内滚动条」两条并存（管理端实测就是这个现象）。
+      -->
+      <a-layout-content :style="{ paddingTop: fixedHeader ? '59px' : '0' }">
         <slot></slot>
       </a-layout-content>
 
@@ -199,9 +206,19 @@
     }
   }
 
+  /*
+   * ★ 应用外壳高度锁死在视口内，让「滚动」只发生在页面自己的内容区，
+   *   而不是整个文档 —— 否则会出现「整页滚动条 + 面板内滚动条」两条并存。
+   *
+   *   原来 .layout 只有 min-height:100vh（没有上限）：内容一多，文档就被撑高，
+   *   浏览器的整页滚动条就出来了；面板内部再滚一次，就是两条。
+   *   改成 height:100vh + overflow:hidden 之后，外层定高，
+   *   滚动交回给页面根元素（见 PageLayout.vue）。
+   */
   .layout {
-    min-height: 100vh !important;
-    overflow-x: hidden;
+    height: 100vh !important;
+    min-height: 0 !important;
+    overflow: hidden;
 
     &.mobile {
 

@@ -1,5 +1,8 @@
 <template>
-  <div :style="!$route.meta.pageHeader ? 'margin: -10px -24px 0;' : null">
+  <div
+    :style="!$route.meta.pageHeader ? 'margin: -10px -24px 0;' : null"
+    class="page-layout-root"
+  >
     <!-- pageHeader , route meta hideHeader:true on hide -->
     <page-header v-if="!$route.meta.pageHeader" :title="title" :logo="logo" :avatar="avatar">
       <slot slot="action" name="action"></slot>
@@ -123,5 +126,35 @@
   }
   .page-header[data-v-6740ec88] {
     margin: 0px 24px 0;
+  }
+
+  /*
+   * ★ 页面根：铺满内容区，并**由它自己承担滚动**。
+   *
+   *   为什么要这样：应用外壳已锁死视口高度（GlobalLayout 的 .layout），
+   *   如果页面根不限定高度、只是自然增长，内容就会溢出外壳被裁掉（看不见也滚不到）。
+   *   让页面根撑满剩余高度 + overflow-y:auto，
+   *   滚动条就只出现一次 —— 在页面内容区，而不是整个文档。
+   *
+   *   display:flex + flex-direction:column + min-height:0 是**必须**的：
+   *   flex 子项默认 min-height:auto 会按内容撑开，导致 overflow 失效
+   *   （flex 布局里最常踩的一条）。
+   *   height:100% 与 max-height:100% 一起给，是为了不论父级是
+   *   「确定高度」还是「flex 剩余空间」都能兜住。
+   */
+  .page-layout-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* 内容区跟着长而不是被压扁 */
+  .page-layout-root > .content {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>
