@@ -81,7 +81,7 @@
           :key="group.key"
           class="attach-upload__group"
           :class="{ 'is-uploading': uploadingType === group.fileType }">
-          <!-- 材料类型节点：点「上传」即归到该类型，不需要再选类型 -->
+          <!-- 材料类型节点：在哪个类型下上传就归到哪个类型，不需要再选类型 -->
           <div class="attach-upload__group-head">
             <a class="attach-upload__group-toggle" @click="toggle(group.key)">
               <a-icon :type="isExpanded(group.key) ? 'down' : 'right'" />
@@ -91,14 +91,35 @@
             <span class="attach-upload__group-badge">
               {{ group.fileCount }} 个 / {{ formatSize(group.totalSize) }}
             </span>
-            <a-button
-              size="small"
-              icon="upload"
-              :loading="uploadingType === group.fileType"
-              :disabled="uploadingType !== '' && uploadingType !== group.fileType"
-              @click="pickFiles(group)">
-              {{ uploadingType === group.fileType ? '上传中…' : '上传' }}
-            </a-button>
+            <!--
+              ★ 两个独立的触发点，对应两种选择器：
+                · 选择文件：普通多选文件框 —— **不会**触发浏览器「是否上传文件夹」的确认弹窗
+                · 选择文件夹：加 webkitdirectory，拿到的是一整个目录
+              一个输入框加不加 webkitdirectory 是二选一的（加了就只能选目录），
+              而用户两种都要用，所以要两个入口。
+            -->
+            <span class="attach-upload__group-ops">
+              <a-button
+                size="small"
+                icon="file-add"
+                :disabled="busy"
+                :title="`选择文件上传到「${group.fileTypeName}」`"
+                @click="pickFiles('file', group)">选择文件</a-button>
+              <a-button
+                size="small"
+                icon="folder-open"
+                :disabled="busy"
+                :title="`选择文件夹上传到「${group.fileTypeName}」（内部文件会转到该类型下）`"
+                @click="pickFiles('folder', group)">选择文件夹</a-button>
+            </span>
+          </div>
+
+          <!-- 正在传这个类型时的整批进度 -->
+          <div v-if="uploadingType === group.fileType" class="attach-upload__progress">
+            <div class="attach-upload__track" aria-hidden="true">
+              <i class="attach-upload__fill" :style="{ width: percent + '%' }" />
+            </div>
+            <span class="attach-upload__percent">{{ percent }}%</span>
           </div>
 
           <!-- 该类型已有的文件 -->
@@ -155,17 +176,33 @@
     </div>
 
     <!--
-      隐藏的文件输入：树里每个类型共用一个（节点只负责「用我的类型触发它」）。
-      webkitdirectory 让用户能选整个文件夹；不支持时退化成多选文件。
+      ★ 两个原生输入对应两种选择器，而不是一个：
+        · fileInput  普通多选文件框（**不加** webkitdirectory）→ 不触发浏览器
+                     「是否将 N 个文件上传到此站点？」的确认弹窗
+        · dirInput   加 webkitdirectory → 一次拿到整个目录（含各层级）
+      一个输入框加不加 webkitdirectory 是二选一的：加了就只能选目录。
+      用户两种都要用，所以必须有两个入口、两个输入。
+      ★ 用 clip 而不是 display:none：display:none 的 input 在部分浏览器里
+        无法被 .click() 唤起选择框。
     -->
     <input
       ref="fileInput"
       class="attach-upload__input"
       type="file"
       multiple
-      webkitdirectory
       :accept="acceptAttr"
-      @change="handleFilesPicked" />
+      aria-hidden="true"
+      tabindex="-1"
+      @change="handleFilesPicked($event, 'file')" />
+    <input
+      ref="dirInput"
+      class="attach-upload__input"
+      type="file"
+      multiple
+      webkitdirectory
+      aria-hidden="true"
+      tabindex="-1"
+      @change="handleFilesPicked($event, 'folder')" />
   </a-modal>
 </template>
 
@@ -304,6 +341,10 @@
       },
       acceptAttr () {
         return ALLOWED_EXT.map(ext => '.' + ext).join(',')
+      },
+      /** 是否正在上传（节点上的两个按钮据此禁用，避免中途换类型） */
+      busy () {
+        return !!this.uploadingType
       }
     },
     methods: {
@@ -470,12 +511,13 @@
       /* ---------------- 在某个材料类型下上传 ---------------- */
 
       /**
-       * 点某个类型的「上传」：记下目标类型，唤起文件选择。
+       * 点某个类型的「选择文件 / 选择文件夹」：记下目标类型，唤起对应的选择器。
        * ★ 用户不需要选材料类型 —— 点哪个类型就归到哪个类型。
        * ★ 取消选择也要复位：用户在系统文件框点「取消」时 change 不触发，
-       *   用 window 的 focus 兜底（文件框关闭后窗口重新获得焦点）。
+       *   用 window 的 focus 兜底（文件框关闭后窗口重新获得焦点），
+       *   否则这个节点会一直停在「上传中」并把其它节点全禁用。
        */
-      pickFiles (group) {
+      pickFiles (mode, group) {
         this.uploadingType = group.fileType
         this.errorMessage = ''
         const typeCode = group.fileType
@@ -489,7 +531,7 @@
         }
         window.addEventListener('focus', resetOnCancel)
         this.$nextTick(() => {
-          const input = this.$refs.fileInput
+          const input = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
           if (input) {
             input.value = ''
             input.click()
@@ -497,9 +539,10 @@
         })
       },
 
-      /** 原生 change：校验 → 串行上传 */
-      handleFilesPicked (event) {
-        const input = event && event.target ? event.target : this.$refs.fileInput
+      /** 原生 change：校验 → 串行上传（mode 用于区分是哪个输入触发的） */
+      handleFilesPicked (event, mode) {
+        const fallback = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
+        const input = event && event.target ? event.target : fallback
         const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
         if (!selected.length) {
           this.uploadingType = ''
@@ -750,6 +793,44 @@
     }
 
     &__group-badge {
+      flex: 0 0 auto;
+      color: @text-weak;
+      font-size: 12px;
+    }
+
+    /* 两个上传入口：选择文件 / 选择文件夹 */
+    &__group-ops {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 当前在传类型的整批进度 */
+    &__progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px 8px 32px;
+    }
+
+    &__track {
+      flex: 1 1 auto;
+      height: 4px;
+      overflow: hidden;
+      background: #eef1f5;
+      border-radius: 2px;
+    }
+
+    &__fill {
+      display: block;
+      height: 100%;
+      background: @primary;
+      border-radius: 2px;
+      transition: width 0.2s;
+    }
+
+    &__percent {
       flex: 0 0 auto;
       color: @text-weak;
       font-size: 12px;

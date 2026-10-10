@@ -61,14 +61,24 @@
     />
 
     <div class="screen-upload__bar">
-      <screen-button
-        icon="upload"
-        :loading="uploading"
-        :disabled="disabled"
-        @click="handleTriggerClick"
-      >
-        {{ buttonText }}
-      </screen-button>
+      <!--
+        触发按钮插槽：默认渲染内置的「选择文件上传」按钮。
+        ★ 为什么要有插槽：附件上传弹窗的树里，每个材料类型都要有一个独立的
+          触发点（按钮很小、在行内），但上传逻辑（校验、串行队列、进度聚合、
+          abort）应该只有一套 —— 让调用方换掉按钮外观、复用整套上传逻辑。
+        ★ 插槽透传 uploading / trigger：按钮要自己反映「正在传」，
+          否则用户会重复点击。
+      -->
+      <slot name="trigger" :uploading="uploading" :disabled="disabled" :trigger="handleTriggerClick">
+        <screen-button
+          icon="upload"
+          :loading="uploading"
+          :disabled="disabled"
+          @click="handleTriggerClick"
+        >
+          {{ buttonText }}
+        </screen-button>
+      </slot>
 
       <span v-if="allowedExtText" class="screen-upload__hint">{{ allowedExtText }}</span>
     </div>

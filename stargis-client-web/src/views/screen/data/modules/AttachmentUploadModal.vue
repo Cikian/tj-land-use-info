@@ -125,16 +125,54 @@
                 {{ group.fileCount }} 个 · {{ formatSize(group.totalSize) }}
               </span>
 
-              <screen-button
-                size="sm"
-                icon="upload"
-                :loading="uploadingType === group.fileType"
-                :disabled="uploadingType !== '' && uploadingType !== group.fileType"
-                @click="pickFiles(group)"
-              >
-                {{ uploadingType === group.fileType ? '上传中…' : '上传' }}
-              </screen-button>
+              <!--
+                ★ 两个独立的触发点，对应两种选择器：
+                  · 选择文件：普通多选文件框 —— **不会**触发浏览器「是否上传文件夹」的确认弹窗
+                  · 选择文件夹：加 webkitdirectory，拿到的是一整个目录
+                为什么要分成两个按钮而不是一个：一个输入框加不加 webkitdirectory
+                是二选一的（加了就只能选目录），而用户需要两种都能用。
+                浏览器那个确认弹窗只有目录模式才会出现，所以把「选文件」单列一个入口
+                就是「不想要那个弹窗」的正解。
+              -->
+              <span class="attachment-upload__group-ops">
+                <button
+                  type="button"
+                  class="attachment-upload__op"
+                  :disabled="busy"
+                  :title="`选择文件上传到「${group.fileTypeName}」`"
+                  @click="triggerPick('file', group)"
+                >
+                  <screen-icon name="file-plus" :size="13" />
+                  选择文件
+                </button>
+                <button
+                  type="button"
+                  class="attachment-upload__op"
+                  :disabled="busy"
+                  :title="`选择文件夹上传到「${group.fileTypeName}」（内部文件会转到该类型下）`"
+                  @click="triggerPick('folder', group)"
+                >
+                  <screen-icon name="folder" :size="13" />
+                  选择文件夹
+                </button>
+              </span>
             </div>
+
+            <!--
+              正在传这个类型时，把该实例的进度/校验清单显示在节点下面。
+              ★ 进度必须跟着「哪个类型在传」走，否则用户看不出传的是哪一类。
+            -->
+            <div v-if="uploadingType === group.fileType" class="attachment-upload__progress">
+              <div class="attachment-upload__track" aria-hidden="true">
+                <i class="attachment-upload__fill" :style="{ width: percent + '%' }" />
+              </div>
+              <span class="attachment-upload__percent">{{ percent }}%</span>
+            </div>
+            <ul v-if="rejected.length" class="attachment-upload__rejects">
+              <li v-for="(item, index) in rejected" :key="`${item.name}-${index}`">
+                {{ item.name }} —— {{ item.reason }}
+              </li>
+            </ul>
 
             <!-- 该类型已有的文件（上传前先看到已有什么，避免重复上传） -->
             <ul v-if="isExpanded(group.key)" class="attachment-upload__files">
@@ -163,25 +201,6 @@
             该对象还没有任何附件；上传第一份文件后，这里会按材料类型列出目录
           </p>
         </template>
-
-        <!--
-          隐藏的文件输入：树里每个类型共用一个。
-          ★ 为什么不用 ScreenUpload 组件：那是「一个按钮配一个输入框」的形态，
-            而这里每个材料类型都要有独立的触发点，但上传逻辑（分片进度、
-            校验、串行队列）应该是同一套 —— 所以由本弹窗持有输入与逻辑，
-            节点只负责「用我的类型触发它」。
-          ★ webkitdirectory + multiple 同时放着：Chromium 下 directory 优先，
-            用户选目录时拿到该目录下所有层级的文件；不支持时退化成多选文件。
-        -->
-        <input
-          ref="fileInput"
-          class="attachment-upload__input"
-          type="file"
-          multiple
-          :webkitdirectory="true"
-          :accept="acceptAttr"
-          @change="handleFilesPicked"
-        />
       </section>
 
       <!-- ============ 结果反馈 ============ -->
@@ -204,6 +223,63 @@
         </screen-button>
       </footer>
     </div>
+
+    <!--
+      ★ 上传控件复用 ScreenUpload，而不是自己写 XMLHttpRequest。
+        理由：jeecg 通用上传接口的 multipart 约定（字段名 file、响应里
+        storePath 放在 message 而非 result）、令牌头名、进度聚合、abort，
+        ScreenUpload 已经踩过一遍且线上在用；自己重写一份等于把这些坑再踩一次。
+        这里用它的 trigger 插槽把按钮外观换成树里的小按钮，
+        并把它的 bar / 进度 / 校验清单隐藏（改为由本弹窗按类型渲染）。
+
+      ★ 两个实例 = 两种选择器：
+        · fileInputRef  普通多选文件框（不加 webkitdirectory）→ 不触发浏览器确认弹窗
+        · 目录模式加 webkitdirectory → 一次拿到整个目录
+        一个输入框加不加 webkitdirectory 是二选一的，所以要两个实例。
+    -->
+    <div class="attachment-upload__uploaders" aria-hidden="true">
+      <screen-upload
+        ref="fileUploader"
+        :action="uploadAction"
+        :headers="uploadHeaders"
+        :data="{ biz: bizPath }"
+        :multiple="true"
+        :directory="false"
+        :allowed-ext="ALLOWED_EXT"
+        :max-size-mb="MAX_SIZE_MB"
+        button-text="选择文件"
+        @success="handleUploaded"
+        @reject="handleRejected"
+        @error="handleUploadError"
+        @progress="handleProgress"
+        @uploading-change="handleUploadingChange"
+      >
+        <template #trigger="{ trigger }">
+          <button ref="fileTrigger" type="button" class="attachment-upload__hidden-trigger" @click="trigger">选择文件</button>
+        </template>
+      </screen-upload>
+
+      <screen-upload
+        ref="folderUploader"
+        :action="uploadAction"
+        :headers="uploadHeaders"
+        :data="{ biz: bizPath }"
+        :directory="true"
+        :max-files="MAX_FILES"
+        :allowed-ext="ALLOWED_EXT"
+        :max-size-mb="MAX_SIZE_MB"
+        button-text="选择文件夹"
+        @success="handleUploaded"
+        @reject="handleRejected"
+        @error="handleUploadError"
+        @progress="handleProgress"
+        @uploading-change="handleUploadingChange"
+      >
+        <template #trigger="{ trigger }">
+          <button ref="folderTrigger" type="button" class="attachment-upload__hidden-trigger" @click="trigger">选择文件夹</button>
+        </template>
+      </screen-upload>
+    </div>
   </screen-modal>
 </template>
 
@@ -213,9 +289,9 @@ import {
   ScreenField,
   ScreenSelect,
   ScreenButton,
-  ScreenIcon
+  ScreenIcon,
+  ScreenUpload
 } from '@/components/screen'
-import { toast } from '@/components/screen/toast'
 import {
   saveAttachment,
   queryAttachmentTree,
@@ -292,7 +368,8 @@ export default {
     ScreenField,
     ScreenSelect,
     ScreenButton,
-    ScreenIcon
+    ScreenIcon,
+    ScreenUpload
   },
   data () {
     return {
@@ -312,8 +389,12 @@ export default {
       typeOptions: fallbackTypesOf('facility'),
       /** 当前正在上传的材料类型码（'' = 没有在上传） */
       uploadingType: '',
-      /** 是否有一批正在跑（用于「取消选择时不要复位进度」的判断） */
+      /** 整批进度 0-100（由 ScreenUpload 的 progress 事件给出） */
+      percent: 0,
+      /** 是否有一批正在跑 */
       batchRunning: false,
+      /** 校验未通过的文件（ScreenUpload 内部也有清单，这里汇总到弹窗级别） */
+      rejected: [],
       /** 展开的材料类型 key 集合（收起的在里面） */
       collapsed: [],
       /** 本次会话刚上传成功的（按材料类型分组），用于即时反馈 */
@@ -321,7 +402,9 @@ export default {
       /** 本次会话成功总数 */
       doneCount: 0,
       errorMessage: '',
-      ALLOWED_EXT
+      ALLOWED_EXT,
+      MAX_SIZE_MB,
+      MAX_FILES
     }
   },
   computed: {
@@ -337,9 +420,9 @@ export default {
     uploadHeaders () {
       return attachmentUploadHeaders()
     },
-    /** accept 属性：让系统文件框默认只显示允许的扩展名（真正的校验仍在提交前做） */
-    acceptAttr () {
-      return ALLOWED_EXT.map(ext => '.' + ext).join(',')
+    /** 是否正在上传（两个 ScreenUpload 任一个在传都算） */
+    busy () {
+      return !!this.uploadingType
     },
     /**
      * 树上要显示的材料类型：**以材料清单为准，而不是只看已有附件**。
@@ -405,9 +488,17 @@ export default {
       this.errorMessage = ''
       this.collapsed = []
       this.uploadingType = ''
+      this.percent = 0
+      this.batchRunning = false
+      this.rejected = []
       this.pickedName = record.bizName || record.bizKey || ''
       this.objectOptions = []
       this.visible = true
+      // 两个上传控件复位：清队列、清进度、清校验清单
+      this.$nextTick(() => {
+        if (this.$refs.fileUploader) this.$refs.fileUploader.clear()
+        if (this.$refs.folderUploader) this.$refs.folderUploader.clear()
+      })
       this.loadTypes()
       if (this.form.bizType) {
         this.loadObjectOptions('')
@@ -453,6 +544,8 @@ export default {
       this.tree = { groups: [] }
       this.justUploaded = {}
       this.errors = {}
+      this.uploadingType = ''
+      this.rejected = []
       this.loadTypes()
       this.loadObjectOptions('')
     },
@@ -550,174 +643,92 @@ export default {
     /* ---------------- 在某个材料类型下上传 ---------------- */
 
     /**
-     * 点某个类型的「上传」：记下目标类型，唤起文件选择。
+     * 点某个类型的「选择文件 / 选择文件夹」：记下目标类型，唤起对应的选择器。
      * ★ 用户不需要选材料类型 —— 点哪个类型就归到哪个类型。
      *
-     * ★ 取消选择也要复位：用户在系统文件框点「取消」时 change 不触发，
-     *   若不复位，这个节点会一直停在「上传中…」并把其它节点全禁用。
-     *   用 window 的 focus 兜底 —— 文件框关闭后窗口会重新获得焦点。
+     * ★ 为什么要「先记类型，再异步等 success」：
+     *   ScreenUpload 自己维护队列与进度，success 是**逐个文件**抛出的，
+     *   它并不知道这些文件属于哪个材料类型 —— 类型是「点哪个按钮」决定的，
+     *   所以点的时候记下来，success 时用这个记录去登记。
+     *   中途不许换类型（busy 时按钮禁用），避免记错。
      */
-    pickFiles (group) {
+    triggerPick (mode, group) {
       this.uploadingType = group.fileType
+      this.rejected = []
       this.errorMessage = ''
-      const typeCode = group.fileType
-      const resetOnCancel = () => {
-        window.removeEventListener('focus', resetOnCancel)
-        window.setTimeout(() => {
-          // 正在跑批量时不能复位（那会把进度标记擦掉）
-          if (this.uploadingType === typeCode && !this.batchRunning) {
-            this.uploadingType = ''
-          }
-        }, 400)
+      const uploader = mode === 'folder' ? this.$refs.folderUploader : this.$refs.fileUploader
+      if (!uploader) {
+        return
       }
-      window.addEventListener('focus', resetOnCancel)
-      this.$nextTick(() => {
-        const input = this.$refs.fileInput
-        if (input) {
-          input.value = ''
-          input.click()
-        }
-      })
+      // ScreenUpload 的公开触发方法：清空 value 后 click，保证再选同一文件仍触发 change
+      uploader.handleTriggerClick()
     },
 
-    /** 原生 change：校验 → 串行上传 */
-    handleFilesPicked (event) {
-      const input = event && event.target ? event.target : this.$refs.fileInput
-      const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
-      if (!selected.length) {
-        this.uploadingType = ''
-        return
-      }
-      if (selected.length > MAX_FILES) {
-        this.errorMessage = `所选文件夹含 ${selected.length} 个文件，超过一次最多 ${MAX_FILES} 个的限制，请分批上传`
-        this.uploadingType = ''
-        return
-      }
-      const accepted = []
-      const rejected = []
-      selected.forEach(file => {
-        const reason = this.validateFile(file)
-        if (reason) {
-          rejected.push(`${file.name}（${reason}）`)
-        } else {
-          accepted.push(file)
-        }
-      })
-      if (rejected.length) {
-        this.errorMessage = `以下 ${rejected.length} 个文件未通过校验：${rejected.slice(0, 5).join('；')}` +
-          (rejected.length > 5 ? ' 等' : '')
-      }
-      if (!accepted.length) {
-        this.uploadingType = ''
-        return
-      }
-      this.uploadBatch(accepted)
+    /** 校验未通过（ScreenUpload 已把清单显示在自己内部，这里汇总到弹窗级别） */
+    handleRejected (reason) {
+      this.errorMessage = reason || '有文件未通过校验'
     },
 
-    /** 单文件校验：扩展名 + 体积 */
-    validateFile (file) {
-      const ext = resolveExt(file.name || '')
-      if (ALLOWED_EXT.length && ALLOWED_EXT.indexOf(ext) < 0) {
-        return '不支持的格式'
-      }
-      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-        return `超过 ${MAX_SIZE_MB}MB`
-      }
-      return ''
+    /** 网络层/服务端失败：ScreenUpload 会终止整批 */
+    handleUploadError (message) {
+      this.batchRunning = false
+      this.uploadingType = ''
+      this.errorMessage = message || '上传失败'
+    },
+
+    /** 整批进度（0-100）：由当前在传的那个 ScreenUpload 抛出 */
+    handleProgress (percent) {
+      this.percent = Number(percent) || 0
+      this.batchRunning = true
     },
 
     /**
-     * 串行上传整批（单份失败不中断）。
-     * ★ 为什么串行：每份要跑两步（落盘 + 登记），并发会让进度与失败定位都不可解释。
-     * ★ 为什么失败不中断：用户选的可能是一整个文件夹，因一个文件格式不对就丢弃其余，
-     *   代价太大；失败的汇总在末尾提示。
+     * ScreenUpload 的上传态变化。
+     *
+     * ★ 必须有这个处理：整批结束后要把 uploadingType 清掉，
+     *   否则 busy 会一直是 true，树上所有节点的两个按钮全被禁用 ——
+     *   表现就是「传完一次以后再也传不了」。
+     * ★ 用 ScreenUpload 自己的 uploading-change 而不是在 success 里清：
+     *   传多个文件时 success 是逐个抛的，中途清掉会让后续文件归错类型。
      */
-    uploadBatch (files) {
+    handleUploadingChange (uploading) {
+      if (uploading) {
+        this.batchRunning = true
+        return
+      }
+      this.batchRunning = false
+      this.uploadingType = ''
+      this.percent = 0
+      // 整批结束后刷新树，让「刚刚上传」并入「已有文件」
+      this.loadTree()
+    },
+
+    /**
+     * 单个文件**第一步成功后**（字节已落盘）触发：立刻登记元数据。
+     *
+     * ★ 这里承接的是「第二步」：文件已经在服务器上，把它挂到业务对象与材料类型上。
+     *   登记失败不会让 ScreenUpload 重传字节（那样会浪费一次上传），
+     *   而是记进失败清单、由用户在列表里看到「文件在盘上但没登记」。
+     */
+    handleUploaded (payload) {
+      const file = payload && payload.file
+      const storePath = payload && payload.storePath
       const typeCode = this.uploadingType
-      const pending = files.slice()
-      const failed = []
-      let ok = 0
-      this.batchRunning = true
-      const step = () => {
-        const file = pending.shift()
-        if (!file) {
-          this.batchRunning = false
-          this.uploadingType = ''
-          this.doneCount += ok
-          if (failed.length) {
-            this.errorMessage = `成功 ${ok} 个，失败 ${failed.length} 个：` +
-              failed.slice(0, 5).join('；') + (failed.length > 5 ? ' 等' : '')
-          } else if (ok > 0) {
-            this.errorMessage = ''
-            toast.success(`已上传 ${ok} 个文件`)
-          }
-          // 树上的「已有文件」要刷新（后端已落库），否则与「刚刚上传」并列显示会重复
-          this.loadTree()
+      if (!file || !storePath || !typeCode) {
+        return
+      }
+      this.doneCount += 1
+      this.pushJustUploaded(typeCode, file, storePath)
+      this.saveMeta(file, typeCode, storePath).then((saved) => {
+        if (!saved) {
           return
         }
-        this.uploadOne(file, typeCode).then(success => {
-          if (success) {
-            ok += 1
-          } else {
-            failed.push(file.name)
-          }
-        }).then(step)
-      }
-      step()
-    },
-
-    /** 单份文件：落盘 → 登记，并把成功的那条就地显示在对应类型下 */
-    uploadOne (file, typeCode) {
-      return this.uploadBytes(file).then(uploaded => {
-        return this.saveMeta(file, typeCode, uploaded.storePath).then(saved => {
-          if (saved) {
-            this.pushJustUploaded(typeCode, file, uploaded.storePath)
-          }
-          return saved
-        })
-      }).catch(() => false)
-    },
-
-    /** 第一步：字节流上传（用 ScreenUpload 的同一套接口约定） */
-    uploadBytes (file) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', this.uploadAction, true)
-        const headers = this.uploadHeaders || {}
-        Object.keys(headers).forEach(key => {
-          if (headers[key] !== undefined && headers[key] !== null) {
-            xhr.setRequestHeader(key, headers[key])
-          }
-        })
-        xhr.onload = () => {
-          if (xhr.status < 200 || xhr.status >= 300) {
-            reject(new Error(`文件上传失败（HTTP ${xhr.status}）`))
-            return
-          }
-          let body = null
-          try {
-            body = JSON.parse(xhr.responseText)
-          } catch (e) {
-            reject(new Error('文件上传失败：返回内容无法解析'))
-            return
-          }
-          if (!body || !body.success) {
-            reject(new Error((body && body.message) || '文件上传失败'))
-            return
-          }
-          // ★ storePath 在 message 里（jeecg 通用上传接口的历史行为，不是 result）
-          const storePath = body.message || body.result
-          if (!storePath) {
-            reject(new Error('文件上传成功但没有返回存储路径'))
-            return
-          }
-          resolve({ storePath, fileName: file.name, fileSize: file.size })
-        }
-        xhr.onerror = () => reject(new Error('文件上传失败（网络错误）'))
-        const form = new FormData()
-        form.append('file', file)
-        form.append('biz', this.bizPath)
-        xhr.send(form)
+        // 每成功一份就通知父组件刷新：批量中途关掉弹窗，已传上去的也该出现在列表里
+        this.$emit('ok')
+        // 树上「已有文件」要刷新，否则与「刚刚上传」并列显示会重复
+        this.loadTree()
+      }).catch((e) => {
+        this.errorMessage = `${file.name}：${(e && e.message) || '附件登记失败'}`
       })
     },
 
@@ -906,6 +917,82 @@ export default {
     color: var(--screen-text-mute);
   }
 
+  /* 两个上传入口：选择文件 / 选择文件夹 */
+  &__group-ops {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__op {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-family: inherit;
+    font-size: var(--screen-font-xs);
+    color: var(--screen-accent-soft);
+    background: rgba(103, 178, 255, 0.1);
+    border: 1px solid rgba(103, 178, 255, 0.28);
+    border-radius: var(--screen-radius-sm);
+    cursor: pointer;
+    transition: background var(--screen-duration) var(--screen-ease),
+      border-color var(--screen-duration) var(--screen-ease);
+    .screen-focus-ring();
+
+    &:hover:not(:disabled) {
+      background: rgba(103, 178, 255, 0.2);
+      border-color: rgba(103, 178, 255, 0.5);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  /* 当前在传类型的整批进度 */
+  &__progress {
+    display: flex;
+    align-items: center;
+    gap: var(--screen-space-2);
+    padding: 0 var(--screen-space-2) 6px 30px;
+  }
+
+  &__track {
+    flex: 1 1 auto;
+    height: 4px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--screen-radius-pill);
+  }
+
+  &__fill {
+    display: block;
+    height: 100%;
+    background: var(--screen-accent);
+    border-radius: var(--screen-radius-pill);
+    transition: width 200ms var(--screen-ease);
+  }
+
+  &__percent {
+    flex: 0 0 auto;
+    font-family: var(--screen-font-number-family);
+    font-size: var(--screen-font-xs);
+    color: var(--screen-text-mute);
+  }
+
+  /* 校验未通过的清单 */
+  &__rejects {
+    margin: 0;
+    padding: 0 var(--screen-space-2) 6px 30px;
+    list-style: none;
+    font-size: var(--screen-font-xs);
+    line-height: 1.7;
+    color: var(--screen-danger);
+  }
+
   /* ---------- 文件行 ---------- */
   &__files {
     margin: 0;
@@ -981,6 +1068,37 @@ export default {
     clip-path: inset(50%);
     white-space: nowrap;
     border: 0;
+  }
+
+  /*
+   * 上传控件容器：只保留 ScreenUpload 的「隐藏 input」，
+   * 它的按钮（trigger 插槽里那个）与进度/校验清单由本弹窗自己渲染 ——
+   * 否则同一份信息会在界面上出现两遍。
+   * 用 clip 而不是 display:none：display:none 的 input 在部分浏览器里
+   * 无法被 .click() 唤起选择框。
+   */
+  &__uploaders {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+
+    /deep/ .screen-upload__input {
+      width: 1px;
+      height: 1px;
+    }
+  }
+
+  &__hidden-trigger {
+    // 这个按钮只作为 ScreenUpload 的 trigger 插槽占位，实际点击由树上的按钮代理
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* ---------- 反馈 ---------- */
