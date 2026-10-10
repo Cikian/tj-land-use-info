@@ -75,7 +75,7 @@
         请先选择归属类型与所属对象，然后在这里按材料类型上传文件
       </p>
 
-      <a-spin v-else :spinning="treeLoading">
+      <a-spin v-else :spinning="treeLoading && !treeReady">
         <div
           v-for="group in groups"
           :key="group.key"
@@ -122,27 +122,31 @@
             <span class="attach-upload__percent">{{ percent }}%</span>
           </div>
 
-          <!-- 该类型已有的文件 -->
+          <!--
+            该类型下的文件：**已有文件与刚上传的合并成一份列表**。
+            ★ 合并是必须的：分开渲染时同一条附件会出现两次
+              （服务端刷新回来一次、「刚刚上传」本地记一次），
+              而且两处的体积来源不同（服务端存的字节 vs 浏览器报的 file.size），
+              显示出来就是「两个文件、大小还不一样」。
+              合并规则见 visibleFilesOf：按 id 去重，服务端记录优先。
+          -->
           <ul v-if="isExpanded(group.key)" class="attach-upload__files">
-            <li v-for="file in group.files" :key="file.id" class="attach-upload__file">
-              <a-icon type="file" class="attach-upload__file-icon" />
+            <li
+              v-for="file in visibleFilesOf(group)"
+              :key="file.id || file.key"
+              class="attach-upload__file"
+              :class="{ 'is-new': file.local }">
+              <a-icon
+                :type="file.local ? 'check-circle' : 'file-text'"
+                class="attach-upload__file-icon"
+                :class="{ 'is-new': file.local }" />
               <span class="attach-upload__file-name" :title="file.fileName">{{ file.fileName }}</span>
               <span class="attach-upload__file-size">{{ file.readableSize || formatSize(file.fileSize) }}</span>
-              <span class="attach-upload__file-tag">已上传</span>
+              <span class="attach-upload__file-tag" :class="{ 'is-new': file.local }">
+                {{ file.local ? '刚刚上传' : '已上传' }}
+              </span>
             </li>
-            <!-- 本次会话刚传上去的：先就地显示，给即时反馈 -->
-            <li
-              v-for="item in justUploaded[group.fileType] || []"
-              :key="item.key"
-              class="attach-upload__file is-new">
-              <a-icon type="check-circle" class="attach-upload__file-icon is-new" />
-              <span class="attach-upload__file-name" :title="item.fileName">{{ item.fileName }}</span>
-              <span class="attach-upload__file-size">{{ formatSize(item.fileSize) }}</span>
-              <span class="attach-upload__file-tag is-new">刚刚上传</span>
-            </li>
-            <li
-              v-if="!group.fileCount && !(justUploaded[group.fileType] || []).length"
-              class="attach-upload__file is-empty">
+            <li v-if="!visibleFilesOf(group).length" class="attach-upload__file is-empty">
               <span>该类型还没有文件</span>
             </li>
           </ul>
@@ -286,6 +290,8 @@
         /** 该归属对象的材料目录：{ groups:[...], totalFiles, totalSize, typeCount } */
         tree: { groups: [] },
         treeLoading: false,
+        /** 本对象是否已经成功取过一次树（决定首次是否显示加载态） */
+        treeReady: false,
         /** 收起的材料类型 key（默认全展开，结构一眼可见） */
         collapsed: [],
         // ---- 上传 ----
@@ -293,6 +299,8 @@
         uploadingType: '',
         batchRunning: false,
         justUploaded: {},
+        /** 本次会话刚上传成功的附件 id（用于在服务端记录上标「刚刚上传」） */
+        recentIds: {},
         doneCount: 0,
         errorMessage: '',
         ALLOWED_EXT
@@ -393,10 +401,12 @@
         this.bizKey = ''
         this.bizOptions = []
         this.tree = { groups: [] }
+        this.treeReady = false
         this.collapsed = []
         this.uploadingType = ''
         this.batchRunning = false
         this.justUploaded = {}
+        this.recentIds = {}
         this.doneCount = 0
         this.errorMessage = ''
       },
@@ -434,7 +444,10 @@
         this.bizKey = ''
         this.bizOptions = []
         this.tree = { groups: [] }
+        this.treeReady = false
         this.justUploaded = {}
+        this.recentIds = {}
+        this.uploadingType = ''
         this.loadTypes()
       },
 
@@ -461,6 +474,7 @@
           this.bizId = undefined
           this.bizKey = ''
           this.tree = { groups: [] }
+          this.treeReady = false
           return
         }
         const hit = this.bizOptions.filter(item => item.id === value)[0]
@@ -468,7 +482,9 @@
         // 业务可读键：宗地用编号、配套用名称 —— 列表里直接展示，避免每次联表
         this.bizKey = hit ? (this.bizType === 'facility' ? hit.ptxmmc : hit.crzdbh) : ''
         this.tree = { groups: [] }
+        this.treeReady = false
         this.justUploaded = {}
+        this.recentIds = {}
         this.loadTree()
       },
 
@@ -481,17 +497,39 @@
 
       /* ---------------- 材料目录树 ---------------- */
 
-      loadTree () {
+      /**
+       * 加载该归属对象的材料目录（含已有文件）。
+       *
+       * @param {boolean} [silent] true = 后台静默刷新：不摆 loading、不清空列表。
+       *
+       * ★ 为什么必须有 silent：上传成功后每落库一份就要刷新一次树，
+       *   如果每次都走「loading 遮罩 → 请求 → 重建」，传一个多文件批次时
+       *   界面会连续闪烁十几次。静默刷新只替换数据，结构原地更新。
+       */
+      loadTree (silent) {
         if (!this.bizId) {
           return
         }
-        this.treeLoading = true
-        queryAttachmentTree(this.bizType, this.bizId).then(res => {
+        if (!silent) {
+          this.treeLoading = true
+        }
+        const bizId = this.bizId
+        return queryAttachmentTree(this.bizType, bizId).then(res => {
+          // 请求期间用户可能已经换了归属对象：丢弃过期响应
+          if (bizId !== this.bizId) {
+            return
+          }
           this.tree = (res && res.success && res.result) ? res.result : { groups: [] }
+          this.treeReady = true
         }).catch(() => {
-          this.tree = { groups: [] }
+          if (bizId === this.bizId) {
+            this.tree = { groups: [] }
+            this.treeReady = true
+          }
         }).finally(() => {
-          this.treeLoading = false
+          if (!silent) {
+            this.treeLoading = false
+          }
         })
       },
 
@@ -611,8 +649,8 @@
               this.$message.success(`已上传 ${ok} 个文件`)
               this.$emit('ok')
             }
-            // 树上的「已有文件」要刷新，否则与「刚刚上传」并列显示会重复
-            this.loadTree()
+            // ★ 静默刷新（不摆 loading），否则每传一份就整棵树重建一次 —— 界面闪烁
+            this.loadTree(true)
             return
           }
           this.uploadOne(file, typeCode).then(success => {
@@ -629,16 +667,19 @@
       /** 单份文件：落盘 → 登记，并把成功的那条就地显示在对应类型下 */
       uploadOne (file, typeCode) {
         return uploadFileBytes(file, buildUploadBiz(this.bizType)).then(uploaded => {
-          return this.saveMeta(file, typeCode, uploaded.storePath).then(saved => {
-            if (saved) {
-              this.pushJustUploaded(typeCode, file, uploaded.storePath)
+          return this.saveMeta(file, typeCode, uploaded.storePath).then(record => {
+            if (record) {
+              this.upsertRecent(typeCode, record)
             }
-            return saved
+            return !!record
           })
         }).catch(() => false)
       },
 
-      /** 第 2 步：登记（材料类型由「点哪个类型」决定） */
+      /**
+       * 第 2 步：登记（材料类型由「点哪个类型」决定）。
+       * @returns {Promise<object|null>} 落库后的附件记录
+       */
       saveMeta (file, typeCode, storePath) {
         const meta = {
           bizType: this.bizType,
@@ -656,17 +697,54 @@
           if (!res || !res.success) {
             throw new Error((res && res.message) || '附件登记失败')
           }
-          return true
+          return res.result || null
         })
       },
 
-      /** 就地显示「刚刚上传」，给即时反馈（树刷新后会并入已有文件列表） */
-      pushJustUploaded (typeCode, file, storePath) {
+      /**
+       * 某个类型下要显示的文件：**已有文件与刚上传的合并成一份**。
+       *
+       * ★ 为什么要合并：分开渲染会让同一条附件出现两次 ——
+       *   服务端刷新回来一次、「刚刚上传」本地记一次；
+       *   而且两处的体积来源不同（服务端存的字节 vs 浏览器报的 file.size），
+       *   显示出来就是「两个文件、大小还不一样」。
+       * ★ 去重按 id：saveAttachmentMeta 返回的就是落库后的记录（带 id），
+       *   合并时以服务端那份为准，只保留「刚上传」标记用于显示绿色。
+       */
+      visibleFilesOf (group) {
+        const serverFiles = (group && group.files) || []
+        const serverIds = {}
+        serverFiles.forEach(file => { serverIds[file.id] = true })
+        const merged = serverFiles.map(file => Object.assign({}, file, {
+          local: !!this.recentIds[file.id]
+        }))
+        const pending = this.justUploaded[group && group.fileType] || []
+        pending.forEach(item => {
+          if (item.id && serverIds[item.id]) {
+            return
+          }
+          merged.push(item)
+        })
+        return merged
+      },
+
+      /**
+       * 记下「刚上传」的一条（幂等：同一条重复回调不会变成两条）。
+       * @param {string} typeCode 材料类型码
+       * @param {object} record   落库后的附件记录（含 id 与服务端算出的字节数）
+       */
+      upsertRecent (typeCode, record) {
+        if (!typeCode || !record) {
+          return
+        }
         const next = Object.assign({}, this.justUploaded)
-        const list = (next[typeCode] || []).slice()
-        list.push({ key: storePath, fileName: file.name, fileSize: file.size })
+        const list = (next[typeCode] || []).filter(item => item.id !== record.id)
+        list.push(Object.assign({}, record, { local: true }))
         next[typeCode] = list
         this.justUploaded = next
+        if (record.id) {
+          this.recentIds = Object.assign({}, this.recentIds, { [record.id]: true })
+        }
       }
     }
   }
