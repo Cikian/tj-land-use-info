@@ -28,6 +28,7 @@ public interface LandAttachmentMapper extends BaseMapper<LandAttachment> {
 
     /** 附件全部列（表别名 a） */
     String COLUMNS = " a.id, a.biz_type AS bizType, a.biz_id AS bizId, a.biz_key AS bizKey, "
+            + " a.dir_path AS dirPath, "
             + " a.file_type AS fileType, a.file_name AS fileName, a.file_ext AS fileExt, "
             + " a.file_size AS fileSize, a.file_md5 AS fileMd5, a.content_type AS contentType, "
             + " a.store_type AS storeType, a.store_path AS storePath, a.remark, a.sort_no AS sortNo, "

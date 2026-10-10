@@ -70,6 +70,18 @@ public class LandAttachment implements Serializable {
     /** 业务可读键（宗地编号 / 配套项目名称）：列表与搜索直接展示，避免每次联表 */
     private String bizKey;
 
+    /**
+     * 所在目录的相对路径（相对 {@code bizType + bizId} 指定的业务对象）。
+     *
+     * <p>★ 根目录是**空字符串**（不是 null）：这样「按 dir_path 分组」时不用额外判空，
+     * 树的根节点也天然对得上。上传文件夹时，前端把浏览器的
+     * {@code webkitRelativePath} 去掉文件名后填进来（例如 {@code 招标文件/2024}）。
+     *
+     * <p>★ 目录节点本身存在 {@code t_land_attachment_dir}：本字段只冗余路径，
+     * 所以**重命名目录只需改目录表**，不必逐条更新附件。
+     */
+    private String dirPath;
+
     /** 附件类型码（走字典 land_attach_type：01 土地整理计划 … 99 其他） */
     private String fileType;
 

@@ -9,6 +9,7 @@ import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.attachment.entity.LandAttachment;
 import org.jeecg.modules.land.data.attachment.mapper.LandAttachmentMapper;
+import org.jeecg.modules.land.data.attachment.service.ILandAttachmentDirService;
 import org.jeecg.modules.land.data.attachment.service.ILandAttachmentService;
 import org.jeecg.modules.land.data.attachment.vo.AttachmentQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
@@ -144,6 +145,14 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
 
     @Autowired
     private DataSupport dataSupport;
+
+    /**
+     * 目录服务。
+     * ★ 依赖方向是单向的（附件服务 → 目录服务）：目录服务只碰
+     * {@code t_land_attachment} 的 dir_path 列，不注入附件服务，所以不会形成循环依赖。
+     */
+    @Autowired
+    private ILandAttachmentDirService dirService;
 
     // ==================================================================
     // 一、查询
@@ -337,6 +346,13 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             bizKeyValue = DataSupport.cleanAndCap(displayName, 100);
         }
         entity.setBizKey(bizKeyValue);
+        // ★ 所在目录：归一后落库；目录表里缺的层级顺手补建 ——
+        //   上传文件夹时前端只带路径，不能要求用户先手工建三级目录
+        String dirPath = dirService.normalizePath(meta == null ? null : meta.getDirPath());
+        entity.setDirPath(dirPath);
+        if (!dirPath.isEmpty()) {
+            dirService.ensureDirs(type, id, dirPath, bizKeyValue);
+        }
         entity.setFileType(code);
         String fileName = DataSupport.clean(meta.getFileName());
         if (fileName == null) {
