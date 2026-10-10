@@ -26,7 +26,13 @@
       />
     </screen-panel>
 
-    <screen-panel class="attachment-panel__list" title="附件管理">
+    <!--
+      scrollable：内容超出时由面板内容区自己滚动。
+      ★ 必须显式打开：ScreenPanel 的 scrollable 默认是 false，而面板外框是
+        overflow: hidden —— 不打开的话内容高了只会被裁掉，**无法滚动**
+        （实测就是这个现象：展开目录树后下半截看不见也滚不到）。
+    -->
+    <screen-panel class="attachment-panel__list" title="附件管理" scrollable>
       <template #extra>
         <span class="attachment-panel__overview">
           <template v-if="viewMode === 'tree'">
@@ -81,8 +87,20 @@
           @download="handleDownload"
           @remove="handleRemove"
         />
+      </template>
 
+      <!--
+        分页放 footer 而不是内容流里。
+        ★ 为什么：目录树展开后内容会很高，分页若跟在内容后面就会被推出面板外
+          （实测正是这个现象 —— 超出屏幕后滚不到底）。
+          放进 footer 后 footer 固定在面板底部，滚动只发生在内容区。
+        ★ v-if 写在插槽**内容**里而不是插槽 template 上：
+          template 上的 v-if 只是不渲染，插槽本身仍然存在，
+          会让 ScreenPanel 的 $slots.footer 为真 → 目录树视图下多出一条空底栏。
+      -->
+      <template #footer>
         <screen-pagination
+          v-if="viewMode === 'flat'"
           :current="pagination.current"
           :page-size="pagination.pageSize"
           :total="pagination.total"

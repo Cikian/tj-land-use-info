@@ -108,6 +108,16 @@ export default {
 
 <style scoped lang="less">
 .attach-tree {
+  /*
+   * ★ 目录树自己滚动。
+   *   展开几个项目后内容会很高，若不限制高度就会把整页撑长 ——
+   *   管理端的 a-card 不滚动，用户只能靠浏览器滚动条，很容易「滚不到底」。
+   *   vh 系数按管理端布局估算（顶栏 + 面包屑 + 检索表单 + 卡片内边距）。
+   */
+  max-height: calc(100vh - 360px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
   &__project {
     margin-bottom: 16px;
     border: 1px solid #e8e8e8;

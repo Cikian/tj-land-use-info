@@ -42,7 +42,12 @@
       </span>
 
       <span v-if="editable" class="type-group__ops">
-        <button type="button" class="type-group__link" @click.stop="$emit('upload', group)">
+        <button
+          type="button"
+          class="type-group__link"
+          :title="`上传到「${group.fileTypeName}」（在弹窗里选择文件或文件夹）`"
+          @click.stop="$emit('upload', group)"
+        >
           上传到该类型
         </button>
       </span>
@@ -88,8 +93,13 @@ export default {
   },
   data () {
     return {
-      /** 默认展开：目录结构一眼可见，不用一个个点开 */
-      expanded: true
+      /**
+       * 是否展开。
+       * ★ 默认**收起**：一个项目的材料类型可能十几个，默认全展开会把列表拉得
+       *   很长（用户第一眼看到的是一屏文件名，而不是「有哪些材料类型」）。
+       *   收起来先给出目录全貌，要看文件再点开。
+       */
+      expanded: false
     }
   },
   methods: {

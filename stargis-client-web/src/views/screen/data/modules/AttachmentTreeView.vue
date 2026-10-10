@@ -56,6 +56,7 @@
               <button
                 type="button"
                 class="attachment-tree__link"
+                title="上传到该项目（在弹窗里选择文件或文件夹）"
                 @click.stop="$emit('upload-project', project)"
               >上传到该项目</button>
             </span>
@@ -122,27 +123,18 @@ export default {
   },
   data () {
     return {
-      /** 收起的项目 id（默认全展开） */
-      collapsedProjects: []
+      /**
+       * **已展开**的项目 id。
+       * ★ 为什么记「展开的」而不是「收起的」：默认要全收起，
+       *   记收起集合就得在数据到达时把每个 id 都塞进去；
+       *   记展开集合时初始为空数组，天然就是全收起。
+       */
+      expandedProjects: []
     }
   },
   computed: {
     groups () {
       return (this.tree && this.tree.groups) || []
-    }
-  },
-  watch: {
-    /**
-     * 项目集合变了（切换检索条件 / 刷新）就恢复全展开。
-     * ★ 只在集合真的变化时重置，避免用户收起某个项目后一次刷新被强行展开。
-     */
-    projects: {
-      handler (next) {
-        const ids = (next || []).map(p => p.bizId)
-        if (!this.collapsedProjects.every(id => ids.indexOf(id) > -1)) {
-          this.collapsedProjects = []
-        }
-      }
     }
   },
   methods: {
@@ -154,15 +146,15 @@ export default {
     },
 
     isProjectExpanded (bizId) {
-      return this.collapsedProjects.indexOf(bizId) < 0
+      return this.expandedProjects.indexOf(bizId) > -1
     },
 
     toggleProject (bizId) {
-      const index = this.collapsedProjects.indexOf(bizId)
+      const index = this.expandedProjects.indexOf(bizId)
       if (index > -1) {
-        this.collapsedProjects.splice(index, 1)
+        this.expandedProjects.splice(index, 1)
       } else {
-        this.collapsedProjects.push(bizId)
+        this.expandedProjects.push(bizId)
       }
     }
   }
@@ -177,6 +169,19 @@ export default {
   flex-direction: column;
   gap: var(--screen-space-2);
   min-width: 0;
+
+  /*
+   * ★ 兜底滚动：面板内容区已经打开了滚动（ScreenPanel scrollable），
+   *   但树的展开不受控 —— 一个项目展开后可能有上百个文件，
+   *   这里再兜一层 max-height + 自己滚动，保证任何情况下都够得到底部。
+   *   vh 系数按实际视口链算：内容区 top:104 + bottom:40，
+   *   减掉检索面板、工具条、面板内边距后约 320px 留给分页与页签。
+   */
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  .screen-scrollbar();
 
   &__loading,
   &__empty {

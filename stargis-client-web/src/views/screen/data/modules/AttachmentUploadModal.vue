@@ -126,19 +126,21 @@
               </span>
 
               <!--
-                ★ 两个独立的触发点，对应两种选择器：
-                  · 选择文件：普通多选文件框 —— **不会**触发浏览器「是否上传文件夹」的确认弹窗
-                  · 选择文件夹：加 webkitdirectory，拿到的是一整个目录
-                一个输入框加不加 webkitdirectory 是二选一的（加了就只能选目录），
-                而两种都要能用；浏览器那个确认弹窗只有目录模式才会出现，
-                所以把「选文件」单列一个入口就是「不想要那个弹窗」的正解。
+                ★ 两个独立的触发点，对应两种选择器 —— 这是「不想要浏览器确认弹窗」的正解：
+                  · 选择文件：普通多选文件框（**不加** webkitdirectory）
+                    → 不触发任何浏览器弹窗，可选单个或 Ctrl 多选
+                  · 选择文件夹：加 webkitdirectory → 只能选目录，
+                    且浏览器**必然**弹出一次「是否将 N 个文件上传到此站点？」
+                    的确认（Chromium 的 folder_upload_confirmation_view）——
+                    这是浏览器的安全机制，页面侧无法关闭、也无法绕过，
+                    所以只能把两种入口分清，让用户只在真的要传整个目录时才看到它。
               -->
               <span class="attachment-upload__group-ops">
                 <button
                   type="button"
                   class="attachment-upload__op"
                   :disabled="busy"
-                  :title="`选择文件上传到「${group.fileTypeName}」`"
+                  :title="`选择文件上传到「${group.fileTypeName}」（可多选；不会触发浏览器确认弹窗）`"
                   @click="triggerPick('file', group)"
                 >
                   <screen-icon name="file-plus" :size="13" />
@@ -148,7 +150,7 @@
                   type="button"
                   class="attachment-upload__op"
                   :disabled="busy"
-                  :title="`选择文件夹上传到「${group.fileTypeName}」（内部文件会转到该类型下）`"
+                  :title="`选择文件夹上传到「${group.fileTypeName}」（浏览器会先确认一次「是否上传此文件夹」，这是浏览器行为，无法关闭）`"
                   @click="triggerPick('folder', group)"
                 >
                   <screen-icon name="folder" :size="13" />
@@ -231,7 +233,8 @@
 
       <footer class="attachment-upload__foot">
         <span class="attachment-upload__foot-hint">
-          可以选单个文件，也可以直接选整个文件夹；文件夹里的文件会转到对应材料类型下
+          「选择文件」可多选、不会有浏览器弹窗；「选择文件夹」会先被浏览器确认一次
+          （浏览器行为，无法关闭），选中的文件夹内部文件会转到对应材料类型下
         </span>
         <screen-button type="primary" @click="handleClose">
           {{ doneCount ? '完成' : '关闭' }}
