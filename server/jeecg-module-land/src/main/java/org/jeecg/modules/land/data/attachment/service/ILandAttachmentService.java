@@ -85,8 +85,30 @@ public interface ILandAttachmentService {
      */
     Map<String, Object> summary(String bizType);
 
-    /** 允许的附件类型（码 + 中文名），前端下拉与校验提示共用 */
-    List<Map<String, String>> allowedFileTypes();
+    /**
+     * 可用的附件类型（材料类型）列表，**按业务类型取对应那套**。
+     *
+     * <p>★ 必须区分业务类型：宗地与配套是两套不同的材料清单
+     * （宗地 5 类 / 配套 13 类，名称均逐字取自旧系统存储目录的类型目录名）。
+     * 不带 bizType 的话前端只能拿到一半，或者看到与自己无关的选项。
+     *
+     * @param bizType land / facility / process；为空按宗地那一套返回
+     * @return [{ value: 码, text: 中文名 }]，顺序即字典排序
+     */
+    List<Map<String, String>> allowedFileTypes(String bizType);
+
+    /**
+     * 附件目录树：按**材料类型**分组（只有一层）。
+     *
+     * <p>★ 树是派生结果，不落地：目录名就是材料类型名，类型码存在附件的 file_type 里。
+     * 空类型（没有附件的材料类型）不进结果。
+     *
+     * <p>★ 用哪套材料清单由 bizType 决定（land/process → 宗地 5 类；facility → 配套 13 类）。
+     *
+     * @param bizType land / facility / process
+     * @param bizId   业务对象 id
+     */
+    org.jeecg.modules.land.data.attachment.vo.AttachmentTreeVO tree(String bizType, String bizId);
 
     // ==================================================================
     // 二、保存 / 删除
@@ -108,7 +130,8 @@ public interface ILandAttachmentService {
      *   <li>{@code storePath} 由 Service **归一成相对路径**：jeecg 上传接口返回的路径
      *       带前导斜杠，会被去掉；但含 {@code ..}（路径穿越）或 {@code :}（盘符绝对路径）
      *       仍然一律拒绝。见 {@code LandAttachmentServiceImpl#normalizeStorePath}。</li>
-     *   <li>{@code fileType} 必须在允许集合内（见 {@link #allowedFileTypes()}）。</li>
+     *   <li>{@code fileType} 必须在**该业务类型对应的**材料清单内
+     *       （见 {@link #allowedFileTypes(String)}）。</li>
      * </ol>
      *
      * <p>★ 为什么校验放在「入库」这一步而不是「上传」那一步：

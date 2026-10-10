@@ -39,6 +39,7 @@ import {
 export const attachmentUrl = {
   list: '/land/data/attachment/list',
   byBiz: '/land/data/attachment/byBiz',
+  tree: '/land/data/attachment/tree',
   summary: '/land/data/attachment/summary',
   typeDistribution: '/land/data/attachment/typeDistribution',
   allowedTypes: '/land/data/attachment/allowedTypes',
@@ -48,67 +49,23 @@ export const attachmentUrl = {
   delete: '/land/data/attachment/delete'
 }
 
-/** 附件目录相关接口（目录树 + 目录维护，见 LandAttachmentDirController） */
-export const attachmentDirUrl = {
-  tree: '/land/data/attachmentDir/tree',
-  list: '/land/data/attachmentDir/list',
-  add: '/land/data/attachmentDir/add',
-  rename: '/land/data/attachmentDir/rename',
-  delete: '/land/data/attachmentDir/delete'
-}
-
 /**
- * 附件目录树（含每个目录下的文件）。
+ * 附件目录树（按**材料类型**分组，两层）。
  *
  * @param {string} bizType land / facility / process
+ *                        ★ 必传：宗地与配套是两套不同的材料清单（5 类 / 13 类）
  * @param {string} bizId   业务对象 id
- * @param {boolean} [withFile=true] 是否带文件节点；只要目录骨架时传 false
  * @returns {Promise} result 为
- *   { nodes:[{key,nodeType,label,dirPath,depth,fileCount,totalSize,empty,file,children}],
- *     rootFiles:[附件实体], totalFiles, totalSize, totalDirs }
+ *   { bizType, bizKey,
+ *     groups:[{ key, fileType, fileTypeName, files:[附件], fileCount, totalSize }],
+ *     totalFiles, totalSize, typeCount }
  *
- * ★ 一次返回整棵树（不逐层懒加载）：单个业务对象下的附件量可控（几十到几百），
- *   一次给全能让「展开即见文件」，省掉每层一个 loading 态。
+ * ★ 只返回「有附件的材料类型」——空类型不进树，所以前端不需要处理空节点。
+ * ★ 树是派生结果（目录名 = 材料类型名，类型码存在附件的 file_type 里），
+ *   没有任何需要单独维护的目录数据。
  */
-export function queryAttachmentTree (bizType, bizId, withFile) {
-  return javaGetAction(attachmentDirUrl.tree, {
-    bizType,
-    bizId,
-    // 默认 true；只有显式传 false 才只要目录骨架
-    withFile: withFile !== false
-  })
-}
-
-/** 某业务对象的目录列表（扁平，供「上传时选目录」用） */
-export function queryAttachmentDirs (bizType, bizId) {
-  return javaGetAction(attachmentDirUrl.list, { bizType, bizId })
-}
-
-/**
- * 新建目录（可多级，例如 招标文件/2024；中间层由服务端自动补建，幂等）。
- * 路径里带 `/` 表示建多级，不是错误。
- */
-export function createAttachmentDir (bizType, bizId, dirPath, bizKey) {
-  return javaPostAction(attachmentDirUrl.add, { bizType, bizId, dirPath, bizKey })
-}
-
-/** 重命名目录（只改末段名；子目录与目录下附件的路径由服务端一起改） */
-export function renameAttachmentDir (bizType, bizId, oldPath, newName, bizKey) {
-  return javaPostAction(attachmentDirUrl.rename, { bizType, bizId, oldPath, newName, bizKey })
-}
-
-/**
- * 删除目录（**不删文件**：目录下的文件移到父目录）。
- *
- * @param {boolean} [recursive=false] 有子目录时必须是 true，否则服务端会拒绝并提示
- */
-export function deleteAttachmentDir (bizType, bizId, dirPath, recursive) {
-  return javaDeleteAction(attachmentDirUrl.delete, {
-    bizType,
-    bizId,
-    dirPath,
-    recursive: recursive === true
-  })
+export function queryAttachmentTree (bizType, bizId) {
+  return javaGetAction(attachmentUrl.tree, { bizType, bizId })
 }
 
 /** 业务类型取值（与后端 LandAttachment 的常量一致） */
@@ -189,14 +146,18 @@ export function queryAttachmentTypeDistribution (bizType) {
 }
 
 /**
- * 允许的附件类型（码 + 中文名），上传表单的类型下拉用它。
+ * 可用的附件类型（材料类型）列表 —— **按业务类型取对应那套**。
  *
- * ★ 不硬编码这 13 类：后端可以在「系统管理 → 数据字典」里调整（附件类型是最会扩的一类），
- *   前端写死会出现「字典里加了 14 类、页面还只能选 13 类」。
- * @returns {Promise} result 为 [{ value, text }]
+ * ★ 必须传 bizType：宗地与配套是两套不同的材料清单
+ *   （宗地 5 类：土地整理计划 / 配套方案 / 配套情况函 / 配套筹备函 / 出让宗地图形数据（SHP）；
+ *    配套 13 类：项建批复文件 / 道路规划 / 竣工文件 … 均取自旧系统存储目录名）。
+ *   不区分的话用户会在下拉里看到一半无关选项。
+ *
+ * @param {string} bizType land / facility / process（process 与 land 同一套）
+ * @returns {Promise} result 为 [{ value, text }]，顺序即字典排序
  */
-export function queryAllowedAttachmentTypes () {
-  return javaGetAction(attachmentUrl.allowedTypes, {})
+export function queryAllowedAttachmentTypes (bizType) {
+  return javaGetAction(attachmentUrl.allowedTypes, { bizType })
 }
 
 /* ==========================================================================
@@ -293,7 +254,6 @@ export function resolveExt (fileName) {
 
 export default {
   attachmentUrl,
-  attachmentDirUrl,
   ATTACHMENT_BIZ_TYPES,
   ATTACHMENT_TYPES_FALLBACK,
   buildAttachmentDownloadUrl,
@@ -306,10 +266,6 @@ export default {
   queryAttachmentTypeDistribution,
   queryAllowedAttachmentTypes,
   queryAttachmentTree,
-  queryAttachmentDirs,
-  createAttachmentDir,
-  renameAttachmentDir,
-  deleteAttachmentDir,
   saveAttachment,
   deleteAttachment,
   queryAttachmentPreviewUrl,

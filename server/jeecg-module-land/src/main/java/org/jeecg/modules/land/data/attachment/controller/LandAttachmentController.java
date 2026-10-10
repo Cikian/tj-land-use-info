@@ -149,13 +149,39 @@ public class LandAttachmentController {
         return Result.OK(attachmentService.typeDistribution(bizType));
     }
 
-    /** 允许的附件类型（码 + 中文名），前端上传表单的类型下拉用它 */
+    /**
+     * 允许的附件类型（材料类型），**按业务类型返回对应那套**。
+     *
+     * <p>★ bizType 必传（或至少前端要传）：宗地 5 类与配套 13 类是两套清单，
+     * 不区分的话前端下拉会混进一半无关选项。
+     */
     @AutoLog(value = "配套附件-允许类型")
-    @ApiOperation(value = "配套附件-允许类型", notes = "01 土地整理计划 … 12 竣工与移交文件 / 99 其他")
+    @ApiOperation(value = "配套附件-允许类型",
+            notes = "按 bizType 返回：land/process → 宗地 5 类；facility → 配套 13 类")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/allowedTypes")
-    public Result<List<Map<String, String>>> allowedTypes() {
-        return Result.OK(attachmentService.allowedFileTypes());
+    public Result<List<Map<String, String>>> allowedTypes(
+            @RequestParam(name = "bizType", required = false) String bizType) {
+        return Result.OK(attachmentService.allowedFileTypes(bizType));
+    }
+
+    /**
+     * 附件目录树：按<b>材料类型</b>分组。
+     *
+     * <p>★ 树只有一层（业务对象 → 材料类型 → 文件）：
+     * 目录名就是材料类型名，且**空目录不显示** —— 所以树是「该业务对象下
+     * 实际有附件的材料类型」这一个派生结果，没有任何需要单独维护的目录数据。
+     *
+     * <p>★ 用哪一个材料清单由 bizType 决定：land/process 用宗地那套，facility 用配套那套。
+     */
+    @AutoLog(value = "配套附件-目录树")
+    @ApiOperation(value = "配套附件-目录树", notes = "按材料类型分组的附件树；只含有文件的类型")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/tree")
+    public Result<org.jeecg.modules.land.data.attachment.vo.AttachmentTreeVO> tree(
+            @RequestParam(name = "bizType") String bizType,
+            @RequestParam(name = "bizId") String bizId) {
+        return Result.OK(attachmentService.tree(bizType, bizId));
     }
 
     // ==================================================================

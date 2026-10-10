@@ -71,18 +71,21 @@ public class LandAttachment implements Serializable {
     private String bizKey;
 
     /**
-     * 所在目录的相对路径（相对 {@code bizType + bizId} 指定的业务对象）。
+     * 附件类型码（材料类型）。
      *
-     * <p>★ 根目录是**空字符串**（不是 null）：这样「按 dir_path 分组」时不用额外判空，
-     * 树的根节点也天然对得上。上传文件夹时，前端把浏览器的
-     * {@code webkitRelativePath} 去掉文件名后填进来（例如 {@code 招标文件/2024}）。
+     * <p>★ <b>这一列同时就是「目录」</b>：附件树按它分组，树上每个目录节点
+     * 就是一个材料类型，节点下的文件就是该类型的附件。
+     * 所以本模块**不需要**再单独存一份目录路径 —— 同一事实存两份，
+     * 迟早会不一致（2026-10-10 曾短暂加过 dir_path，随后按此原则回收）。
      *
-     * <p>★ 目录节点本身存在 {@code t_land_attachment_dir}：本字段只冗余路径，
-     * 所以**重命名目录只需改目录表**，不必逐条更新附件。
+     * <p>取值来自两套字典（按 {@link #bizType} 区分）：
+     * <ul>
+     *   <li>{@code land} / {@code process} → {@code land_attach_type}（宗地 5 类）</li>
+     *   <li>{@code facility} → {@code land_facility_attach_type}（配套 13 类）</li>
+     * </ul>
+     * 两套字典的名称逐字取自旧系统存储目录
+     * {@code docs/基础设施配套动态监管工作站/} 下的类型目录名。
      */
-    private String dirPath;
-
-    /** 附件类型码（走字典 land_attach_type：01 土地整理计划 … 99 其他） */
     private String fileType;
 
     /** 原始文件名 */

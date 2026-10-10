@@ -106,7 +106,7 @@ public abstract class LandIntegrationTestBase {
     @AfterTransaction
     public void cleanTestRows() {
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        // ★ 用 ConnectionCallback 把 9 条 DELETE 收进同一个连接：
+        // ★ 用 ConnectionCallback 把 8 条 DELETE 收进同一个连接：
         //   DriverManagerDataSource 每条语句一次建连，收成一次是这里最有效的优化
         ConnectionCallback<Void> clean = connection -> {
             try (PreparedStatement ps = connection.prepareStatement(
@@ -117,16 +117,6 @@ public abstract class LandIntegrationTestBase {
             try (PreparedStatement ps = connection.prepareStatement(
                     "DELETE FROM `t_land_attachment` WHERE `biz_key` LIKE ?")) {
                 ps.setString(1, TEST_DATA_KEY_PREFIX + "%");
-                ps.executeUpdate();
-            }
-            // ★ 附件目录表：靠 biz_id 关联测试宗地/配套（biz_key 可能为空，不能只按它清）。
-            //   必须在删 t_land / t_supporting_facilities 之前执行，否则子查询已查不到 id。
-            try (PreparedStatement ps = connection.prepareStatement(
-                    "DELETE FROM `t_land_attachment_dir` WHERE `biz_id` IN "
-                            + "(SELECT `id` FROM `t_land` WHERE `crzdbh` LIKE ? UNION "
-                            + " SELECT `id` FROM `t_supporting_facilities` WHERE `crzdbh` LIKE ?)")) {
-                ps.setString(1, TEST_DATA_CRZDBH_PREFIX + "%");
-                ps.setString(2, TEST_DATA_CRZDBH_PREFIX + "%");
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = connection.prepareStatement(

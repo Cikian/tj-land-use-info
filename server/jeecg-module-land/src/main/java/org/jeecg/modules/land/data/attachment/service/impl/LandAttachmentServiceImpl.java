@@ -9,9 +9,9 @@ import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.attachment.entity.LandAttachment;
 import org.jeecg.modules.land.data.attachment.mapper.LandAttachmentMapper;
-import org.jeecg.modules.land.data.attachment.service.ILandAttachmentDirService;
 import org.jeecg.modules.land.data.attachment.service.ILandAttachmentService;
 import org.jeecg.modules.land.data.attachment.vo.AttachmentQueryDTO;
+import org.jeecg.modules.land.data.attachment.vo.AttachmentTreeVO;
 import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.mapper.FacilityMapper;
@@ -93,30 +93,62 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
                     DataSupport.BIZ_PROCESS)));
 
     /**
-     * 附件类型白名单（码 → 中文名），逐字对应 {@code sql/data/01_data_dict.sql}
-     * 的 {@code land_attach_type} 字典（01~12 + 99，共 13 项）。
+     * 附件类型白名单：**宗地 / 环节**用这一套（码 → 中文名）。
      *
-     * <p>01~04 沿用旧系统宗地侧的 4 个槽位目录名；05~13 是配套侧/环节侧扩展。
-     * 用 LinkedHashMap 保证顺序 = 字典的 {@code sort_order}，前端下拉直接照序渲染。
+     * <p>逐字对应 {@code sql/data/01_data_dict.sql} 的 {@code land_attach_type} 字典（5 项），
+     * 而字典的名称又逐字取自旧系统存储目录
+     * {@code docs/基础设施配套动态监管工作站/经营性用地附件/<项目>/} 下的类型目录名。
+     * 用 LinkedHashMap 保证顺序 = 字典的 {@code sort_order}，前端目录树直接照序渲染。
      */
-    private static final Map<String, String> ALLOWED_FILE_TYPES;
+    private static final Map<String, String> TYPE_NAMES_LAND;
+
+    /**
+     * 附件类型白名单：**配套项目**用这一套（码 → 中文名）。
+     *
+     * <p>逐字对应 {@code land_facility_attach_type} 字典（13 项），
+     * 名称取自 {@code 市政配套项目附件/<项目>/} 下的 13 个类型目录名。
+     *
+     * <p>★ 为什么宗地与配套要分成两套而不是共用一张表：
+     * 两者的材料清单本来就不一样（宗地是「土地整理计划 / 配套方案 / 出让宗地图形数据」，
+     * 配套是「项建批复文件 / 道路规划 / 竣工文件」…），
+     * 混在一起会让用户在一个下拉里看到一半与自己无关的选项。
+     */
+    private static final Map<String, String> TYPE_NAMES_FACILITY;
 
     static {
-        Map<String, String> types = new LinkedHashMap<>();
-        types.put("01", "土地整理计划");
-        types.put("02", "配套情况函");
-        types.put("03", "配套筹备函");
-        types.put("04", "出让宗地图形数据");
-        types.put("05", "项建批复");
-        types.put("06", "可研批复");
-        types.put("07", "初设及概算批复");
-        types.put("08", "道路规划");
-        types.put("09", "管线综合矢量数据");
-        types.put("10", "专业配套方案");
-        types.put("11", "施工许可");
-        types.put("12", "竣工与移交文件");
-        types.put("99", "其他");
-        ALLOWED_FILE_TYPES = Collections.unmodifiableMap(types);
+        Map<String, String> land = new LinkedHashMap<>();
+        land.put("01", "土地整理计划");
+        land.put("02", "配套方案");
+        land.put("03", "配套情况函");
+        land.put("04", "配套筹备函");
+        land.put("05", "出让宗地图形数据（SHP）");
+        TYPE_NAMES_LAND = Collections.unmodifiableMap(land);
+
+        Map<String, String> facility = new LinkedHashMap<>();
+        facility.put("01", "项建批复文件");
+        facility.put("02", "可研批复文件");
+        facility.put("03", "初设及概算批复文件");
+        facility.put("04", "道路规划");
+        facility.put("05", "专业配套方案");
+        facility.put("06", "施工许可");
+        facility.put("07", "专业管理意见");
+        facility.put("08", "配套项目核定用地与地籍调查");
+        facility.put("09", "规划工程许可");
+        facility.put("10", "规划用地许可与划拨手续办理");
+        facility.put("11", "不动产登记");
+        facility.put("12", "竣工文件");
+        facility.put("13", "移交文件");
+        TYPE_NAMES_FACILITY = Collections.unmodifiableMap(facility);
+    }
+
+    /**
+     * 取某个业务类型可用的附件类型集合。
+     *
+     * <p>环节进度（{@code process}）挂在配套项目下，但环节的佐证材料属于项目自身资料，
+     * 按宗地那一套走（产品口径：环节附件的类型与所属项目的用地侧资料一致）。
+     */
+    private static Map<String, String> typeNamesOf(String bizType) {
+        return DataSupport.BIZ_FACILITY.equals(bizType) ? TYPE_NAMES_FACILITY : TYPE_NAMES_LAND;
     }
 
     /** 可预览的扩展名 → 预览方式（图片） */
@@ -145,14 +177,6 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
 
     @Autowired
     private DataSupport dataSupport;
-
-    /**
-     * 目录服务。
-     * ★ 依赖方向是单向的（附件服务 → 目录服务）：目录服务只碰
-     * {@code t_land_attachment} 的 dir_path 列，不注入附件服务，所以不会形成循环依赖。
-     */
-    @Autowired
-    private ILandAttachmentDirService dirService;
 
     // ==================================================================
     // 一、查询
@@ -292,16 +316,104 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         return result;
     }
 
+    /**
+     * 按业务类型返回可用的附件类型（材料类型）。
+     *
+     * <p>★ 必须带 bizType：宗地与配套是**两套不同的材料清单**（见 TYPE_NAMES_* 注释），
+     * 不带的话前端只能拿到一半或看到无关选项。
+     *
+     * @param bizType land / facility / process；为空时按宗地那一套返回
+     */
     @Override
-    public List<Map<String, String>> allowedFileTypes() {
+    public List<Map<String, String>> allowedFileTypes(String bizType) {
+        Map<String, String> types = typeNamesOf(DataSupport.clean(bizType));
         List<Map<String, String>> list = new ArrayList<>();
-        for (Map.Entry<String, String> entry : ALLOWED_FILE_TYPES.entrySet()) {
+        for (Map.Entry<String, String> entry : types.entrySet()) {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("value", entry.getKey());
             item.put("text", entry.getValue());
             list.add(item);
         }
         return list;
+    }
+
+    /**
+     * 附件目录树：按材料类型分组。
+     *
+     * <p>算法很直：取该业务对象的全部附件 → 按 file_type 分组 →
+     * 按「材料清单的顺序」输出（字典顺序，不是按文件数），
+     * 只输出有文件的类型（空类型不出现）。
+     *
+     * <p>★ 为什么按清单顺序而不是按文件数排序：
+     * 材料类型是审批流程的自然顺序（项建 → 可研 → 初设 → 施工 → 竣工），
+     * 按文件数排会让不同项目看到的目录顺序都不一样，用户找位置靠猜。
+     */
+    @Override
+    public AttachmentTreeVO tree(String bizType, String bizId) {
+        String type = cleanBizType(bizType);
+        AttachmentTreeVO result = new AttachmentTreeVO().setBizType(type);
+        if (type == null || DataSupport.clean(bizId) == null) {
+            return result;
+        }
+        String id = DataSupport.clean(bizId);
+        // enrichAll 补上展示字段（可读大小 / 类型中文名 / 预览方式 / url），
+        // 与列表接口同一口径 —— 树上的文件行也要能直接渲染
+        List<LandAttachment> files = enrichAll(baseMapper.selectByBiz(type, id));
+        if (files.isEmpty()) {
+            return result;
+        }
+
+        // 按类型码分桶（LinkedHashMap 保持不了清单顺序，所以要按清单再遍历一次）
+        Map<String, List<LandAttachment>> buckets = new LinkedHashMap<>();
+        long totalSize = 0L;
+        String bizKey = null;
+        for (LandAttachment file : files) {
+            String code = DataSupport.clean(file.getFileType());
+            if (code == null) {
+                // 理论上进不来（保存时已校验），但历史数据可能有；归到「未分类」而不是丢掉
+                code = "";
+            }
+            buckets.computeIfAbsent(code, k -> new ArrayList<>()).add(file);
+            totalSize += file.getFileSize() == null ? 0L : file.getFileSize();
+            if (bizKey == null) {
+                bizKey = file.getBizKey();
+            }
+        }
+
+        // 按清单顺序输出；清单外的码值（历史数据）追加在最后，不丢文件
+        List<AttachmentTreeVO.TypeGroup> groups = new ArrayList<>();
+        Map<String, String> typeNames = typeNamesOf(type);
+        for (Map.Entry<String, String> entry : typeNames.entrySet()) {
+            List<LandAttachment> bucket = buckets.remove(entry.getKey());
+            if (bucket != null && !bucket.isEmpty()) {
+                groups.add(buildGroup(entry.getKey(), entry.getValue(), bucket));
+            }
+        }
+        for (Map.Entry<String, List<LandAttachment>> rest : buckets.entrySet()) {
+            groups.add(buildGroup(rest.getKey(), typeText(rest.getKey()), rest.getValue()));
+        }
+
+        result.setGroups(groups);
+        result.setBizKey(bizKey);
+        result.setTotalFiles(files.size());
+        result.setTotalSize(totalSize);
+        result.setTypeCount(groups.size());
+        return result;
+    }
+
+    /** 组装一个材料类型节点（含该类型的小计） */
+    private AttachmentTreeVO.TypeGroup buildGroup(String code, String name, List<LandAttachment> files) {
+        long size = 0L;
+        for (LandAttachment file : files) {
+            size += file.getFileSize() == null ? 0L : file.getFileSize();
+        }
+        return new AttachmentTreeVO.TypeGroup()
+                .setKey("type:" + code)
+                .setFileType(code)
+                .setFileTypeName(name)
+                .setFiles(files)
+                .setFileCount(files.size())
+                .setTotalSize(size);
     }
 
     // ==================================================================
@@ -323,11 +435,12 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         }
         // ① 业务对象必须真实存在（软删的不算），并顺带取出它的可读名称
         String displayName = requireBizDisplayName(type, id);
-        // ② 附件类型必须在允许集合内
+        // ② 附件类型必须在「该业务类型对应的那套材料清单」里
         String code = DataSupport.clean(fileType);
-        if (code == null || !ALLOWED_FILE_TYPES.containsKey(code)) {
+        Map<String, String> types = typeNamesOf(type);
+        if (code == null || !types.containsKey(code)) {
             throw new JeecgBootException("附件类型「" + fileType + "」不在允许的范围内，可选："
-                    + allowedTypeText());
+                    + allowedTypeText(type));
         }
         if (meta == null) {
             throw new JeecgBootException("缺少附件信息，请重新上传");
@@ -346,13 +459,6 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             bizKeyValue = DataSupport.cleanAndCap(displayName, 100);
         }
         entity.setBizKey(bizKeyValue);
-        // ★ 所在目录：归一后落库；目录表里缺的层级顺手补建 ——
-        //   上传文件夹时前端只带路径，不能要求用户先手工建三级目录
-        String dirPath = dirService.normalizePath(meta == null ? null : meta.getDirPath());
-        entity.setDirPath(dirPath);
-        if (!dirPath.isEmpty()) {
-            dirService.ensureDirs(type, id, dirPath, bizKeyValue);
-        }
         entity.setFileType(code);
         String fileName = DataSupport.clean(meta.getFileName());
         if (fileName == null) {
@@ -716,19 +822,29 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         return path;
     }
 
-    /** 附件类型码 → 中文名（未登记时回退为码值本身，保证页面上不会出现空白） */
+    /**
+     * 附件类型码 → 中文名（未登记时回退为码值本身，保证页面上不会出现空白）。
+     *
+     * <p>两套清单都要查一遍：调用点常常只拿到附件实体（fileType），
+     * 而单个业务对象下的附件不会混用两套码值，所以「先按归属查、查不到再查另一套」
+     * 既准确又不需要调用方多传一个 bizType。
+     */
     private static String typeText(String code) {
         if (StringUtils.isBlank(code)) {
             return "未分类";
         }
-        String text = ALLOWED_FILE_TYPES.get(code.trim());
-        return text == null ? code.trim() : text;
+        String key = code.trim();
+        String text = TYPE_NAMES_LAND.get(key);
+        if (text == null) {
+            text = TYPE_NAMES_FACILITY.get(key);
+        }
+        return text == null ? key : text;
     }
 
-    /** 允许类型的中文提示文案（错误信息里用） */
-    private static String allowedTypeText() {
+    /** 允许类型的中文提示文案（错误信息里用，按业务类型取对应那套） */
+    private static String allowedTypeText(String bizType) {
         List<String> items = new ArrayList<>();
-        for (Map.Entry<String, String> entry : ALLOWED_FILE_TYPES.entrySet()) {
+        for (Map.Entry<String, String> entry : typeNamesOf(bizType).entrySet()) {
             items.add(entry.getKey() + " " + entry.getValue());
         }
         return String.join(" / ", items);
