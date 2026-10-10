@@ -184,6 +184,27 @@ public class LandAttachmentController {
         return Result.OK(attachmentService.tree(bizType, bizId));
     }
 
+    /**
+     * 跨项目的附件树（附件管理页用）：先按项目分组，组内再按材料类型分组。
+     *
+     * <p>★ 附件管理页是跨项目的，而「目录 = 材料类型」只在单个项目内部有意义 ——
+     * 不同项目的「道路规划」是两个不同的目录，混在一棵树下会看不出归属。
+     *
+     * <p>★ 不返回没有任何附件的项目（否则树上会挂着一堆空项目）。
+     *
+     * @param limit 最多返回多少个项目（按附件数倒序；默认 200）
+     */
+    @AutoLog(value = "配套附件-按项目分组树")
+    @ApiOperation(value = "配套附件-按项目分组树",
+            notes = "项目 → 材料类型 → 文件；无附件的项目不返回")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/byProject")
+    public Result<List<Map<String, Object>>> byProject(
+            @RequestParam(name = "bizType", required = false) String bizType,
+            @RequestParam(name = "limit", required = false) Integer limit) {
+        return Result.OK(attachmentService.treeByProject(bizType, limit));
+    }
+
     // ==================================================================
     // 二、保存 / 删除
     // ==================================================================

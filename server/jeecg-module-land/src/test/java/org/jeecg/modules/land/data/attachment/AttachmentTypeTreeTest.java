@@ -165,7 +165,13 @@ public class AttachmentTypeTreeTest extends LandIntegrationTestBase {
         assertEquals("土地整理计划", plan.getFileTypeName());
         assertEquals(2, plan.getFileCount().intValue());
         assertEquals(300L, plan.getTotalSize().longValue(), "100+200");
-        assertEquals("type:01", plan.getKey());
+        // key 形如 land:<bizId>:01 —— 带上业务对象 id 是为了跨项目视图下不撞 key
+        //（多个项目都会有「01」这个码）
+        assertTrue(plan.getKey().endsWith(":" + landId + ":01"),
+                "分组 key 应带上业务对象 id，实际：" + plan.getKey());
+        assertEquals(landId, plan.getBizId(),
+                "分组应冗余业务对象 id —— 前端「上传到该类型」要用它定归属");
+        assertEquals("land", plan.getBizType());
 
         // 分组里的文件要带展示字段（可读大小 / 预览方式），否则前端渲染不出来
         LandAttachment first = plan.getFiles().get(0);
@@ -275,5 +281,97 @@ public class AttachmentTypeTreeTest extends LandIntegrationTestBase {
         assertEquals(flat.size(), tree.getTotalFiles().intValue(),
                 "树的文件总数必须与按业务查到的条数一致（两个入口不能各算一套）");
         assertFalse(flat.isEmpty());
+    }
+
+    // ==================================================================
+    // 三、跨项目树（附件管理页用）
+    // ==================================================================
+
+    /**
+     * ★ 跨项目树：按业务对象分组，组内再按材料类型分组，
+     * 且**与单项目树的口径完全一致**（同一个 buildTree，不会出现两套算法）。
+     */
+    @Test
+    public void treeByProjectGroupsAndMatchesSingleTree() {
+        String landA = createLand("PA");
+        String landB = createLand("PB");
+        save("land", landA, TEST_DATA_CRZDBH_PREFIX + "TREE-PA", "01", "a1.pdf", 100);
+        save("land", landA, TEST_DATA_CRZDBH_PREFIX + "TREE-PA", "03", "a2.pdf", 200);
+        save("land", landB, TEST_DATA_CRZDBH_PREFIX + "TREE-PB", "01", "b1.pdf", 50);
+
+        List<Map<String, Object>> projects = attachmentService.treeByProject("land", 200);
+        assertNotNull(projects);
+        assertFalse(projects.isEmpty());
+
+        // 至少包含这两个项目（库里可能有其它测试残留，所以按 id 找而不是断言总数）
+        Map<String, Object> itemA = findProject(projects, landA);
+        Map<String, Object> itemB = findProject(projects, landB);
+        assertNotNull(itemA, "应包含项目 A");
+        assertNotNull(itemB, "应包含项目 B");
+
+        assertEquals(2, ((Number) itemA.get("totalFiles")).intValue());
+        assertEquals(300L, ((Number) itemA.get("totalSize")).longValue());
+        assertEquals(2, ((Number) itemA.get("typeCount")).intValue());
+        assertEquals(1, ((Number) itemB.get("totalFiles")).intValue());
+
+        // ★ 与单项目树逐项一致：两个入口共用同一套分组逻辑
+        AttachmentTreeVO single = attachmentService.tree("land", landA);
+        AttachmentTreeVO inProject = (AttachmentTreeVO) itemA.get("tree");
+        assertEquals(single.getTotalFiles(), inProject.getTotalFiles());
+        assertEquals(single.getTotalSize(), inProject.getTotalSize());
+        assertEquals(single.getTypeCount(), inProject.getTypeCount());
+        assertEquals(
+                single.getGroups().stream().map(AttachmentTreeVO.TypeGroup::getFileType)
+                        .collect(Collectors.toList()),
+                inProject.getGroups().stream().map(AttachmentTreeVO.TypeGroup::getFileType)
+                        .collect(Collectors.toList()),
+                "跨项目视图里的分组顺序必须与单项目视图一致");
+
+        // ★ 分组要带归属信息，否则前端「上传到该类型」不知道该传到哪个项目
+        AttachmentTreeVO.TypeGroup group = inProject.getGroups().get(0);
+        assertEquals(landA, group.getBizId());
+        assertEquals("land", group.getBizType());
+    }
+
+    /** 项目按附件数倒序（用户最可能先看资料齐全的项目；limit 截断时丢的也该是少的） */
+    @Test
+    public void treeByProjectSortsByFileCountDesc() {
+        String few = createLand("PF");
+        String many = createLand("PM");
+        save("land", few, TEST_DATA_CRZDBH_PREFIX + "TREE-PF", "01", "f.pdf", 10);
+        for (int i = 0; i < 4; i++) {
+            save("land", many, TEST_DATA_CRZDBH_PREFIX + "TREE-PM", "01", "m" + i + ".pdf", 10);
+        }
+
+        List<Map<String, Object>> projects = attachmentService.treeByProject("land", 200);
+        int indexMany = indexOfProject(projects, many);
+        int indexFew = indexOfProject(projects, few);
+        assertTrue(indexMany > -1 && indexFew > -1, "两个项目都应在结果里");
+        assertTrue(indexMany < indexFew,
+                "附件多的项目应排在前面（多的在第 " + indexMany + " 位，少的在第 " + indexFew + " 位）");
+    }
+
+    /** 没有任何附件时返回空列表，不报错 */
+    @Test
+    public void treeByProjectEmptyWhenNoAttachment() {
+        assertNotNull(attachmentService.treeByProject("land", 200));
+        // 未知业务类型也要安全返回空
+        assertTrue(attachmentService.treeByProject("unknown", 200).isEmpty());
+        assertTrue(attachmentService.treeByProject(null, 200).isEmpty());
+    }
+
+    private Map<String, Object> findProject (List<Map<String, Object>> projects, String bizId) {
+        return projects.stream()
+                .filter(p -> bizId.equals(p.get("bizId")))
+                .findFirst().orElse(null);
+    }
+
+    private int indexOfProject (List<Map<String, Object>> projects, String bizId) {
+        for (int i = 0; i < projects.size(); i++) {
+            if (bizId.equals(projects.get(i).get("bizId"))) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

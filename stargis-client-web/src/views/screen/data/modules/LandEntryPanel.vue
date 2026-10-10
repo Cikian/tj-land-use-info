@@ -63,6 +63,7 @@
         @select-change="handleSelectChange"
         @detail="handleDetail"
         @history="handleHistory"
+        @attachments="handleAttachments"
         @edit="handleEdit"
         @remove="handleRemove"
         @facilities="handleFacilities"
@@ -272,6 +273,11 @@ export default {
 
     handleHistory (record) {
       this.$refs.detailModal.open(record, 'history')
+    },
+
+    /** 附件：直接打开详情弹窗的「附件」页签（按材料类型分组的目录树） */
+    handleAttachments (record) {
+      this.$refs.detailModal.open(record, 'files')
     },
 
     /** 单条移除：也走原因弹窗（原因会写进履历） */

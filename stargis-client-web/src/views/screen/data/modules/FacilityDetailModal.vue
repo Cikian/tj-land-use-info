@@ -152,47 +152,31 @@
         </div>
       </div>
 
-      <!-- ================= 附件 ================= -->
+      <!-- ================= 附件（按材料类型分组的目录树） ================= -->
       <div v-show="activeTab === 'files'" class="facility-detail__pane">
         <section class="facility-detail__block facility-detail__block--grow">
           <h4 class="facility-detail__block-title">
             配套附件
             <span class="facility-detail__block-sub">
-              共 {{ attachments.length }} 个 · {{ attachmentSizeText }}
-              · 上传/删除请到「配套附件管理」页签
+              共 {{ attachmentTree.totalFiles || 0 }} 个 · {{ attachmentSizeText }}
+              · 按材料类型分组；上传/删除请到「配套附件管理」页签
             </span>
           </h4>
 
-          <screen-data-table
-            :columns="attachmentColumns"
-            :data="attachments"
+          <!--
+            ★ 这里用目录树而不是平铺表格：详情页回答的是「这个项目的材料
+              按类型齐不齐」，分组后一眼能看出缺哪类材料；平铺表格给不出这个结构。
+            ★ editable=false：详情页保持只读（上传/删除统一在附件管理页做），
+              避免详情弹窗与附件管理两处都能写、留痕口径不一致。
+          -->
+          <attachment-tree-view
+            :tree="attachmentTree"
             :loading="attachmentLoading"
-            row-key="id"
-            :min-width="1120"
-            :animated="false"
+            :editable="false"
             empty-text="该配套项目还没有附件"
-          >
-            <template #fileName="{ row }">
-              <button type="button" class="facility-detail__link" @click="downloadAttachment(row)">
-                {{ row.fileName || '—' }}
-              </button>
-            </template>
-            <template #fileType="{ row }">
-              <screen-tag tone="muted" size="sm">{{ row.fileTypeText || row.fileType || '—' }}</screen-tag>
-            </template>
-            <template #fileSize="{ row }">
-              {{ row.readableSize || formatSize(row.fileSize) }}
-            </template>
-            <template #uploadTime="{ row }">
-              {{ formatTime(row.uploadTime) }}
-            </template>
-            <template #downloadCount="{ row }">
-              <span class="facility-detail__num">{{ row.downloadCount || 0 }}</span>
-            </template>
-            <template #action="{ row }">
-              <button type="button" class="facility-detail__link" @click="downloadAttachment(row)">下载</button>
-            </template>
-          </screen-data-table>
+            @preview="previewAttachment"
+            @download="downloadAttachment"
+          />
         </section>
       </div>
 
@@ -303,8 +287,9 @@ import {
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import ProcessTreePanel from './ProcessTreePanel.vue'
+import AttachmentTreeView from './AttachmentTreeView.vue'
 import { queryFacilityAdminById } from '@/api/land/facilityAdmin'
-import { queryAttachmentsByBiz, buildAttachmentDownloadUrl } from '@/api/land/attachment'
+import { queryAttachmentTree, buildAttachmentDownloadUrl } from '@/api/land/attachment'
 import { queryChangeHistory } from '@/api/land/dataRecycle'
 import {
   formatSize,
@@ -341,7 +326,8 @@ export default {
     ScreenLoading,
     ScreenEmpty,
     ScreenPopconfirm,
-    ProcessTreePanel
+    ProcessTreePanel,
+    AttachmentTreeView
   },
   data () {
     return {
@@ -351,7 +337,8 @@ export default {
       historyLoading: false,
       activeTab: 'base',
       detail: null,
-      attachments: [],
+      /** 附件树（按材料类型分组）：{ groups:[...], totalFiles, totalSize, typeCount } */
+      attachmentTree: { groups: [] },
       history: [],
       processVisible: false,
       detailVisible: false,
@@ -362,15 +349,6 @@ export default {
         { key: 'process', label: '六阶段进度' },
         { key: 'files', label: '附件' },
         { key: 'history', label: '变更履历' }
-      ],
-      attachmentColumns: [
-        { key: 'fileName', title: '文件名', width: 320, type: 'slot' },
-        { key: 'fileType', title: '附件类型', width: 170, type: 'slot', align: 'center' },
-        { key: 'fileSize', title: '大小', width: 110, type: 'slot', align: 'right' },
-        { key: 'uploadName', title: '上传人', width: 120, formatter: (value, row) => value || row.uploadBy || '—' },
-        { key: 'uploadTime', title: '上传时间', width: 170, type: 'slot' },
-        { key: 'downloadCount', title: '下载次数', width: 100, type: 'slot', align: 'right' },
-        { key: 'action', title: '操作', width: 90, type: 'slot', align: 'center' }
       ],
       historyColumns: [
         { key: 'createTime', title: '时间', width: 170, type: 'slot' },
@@ -479,7 +457,7 @@ export default {
       return (this.history || []).map((item, index) => Object.assign({ key: item.id || `h-${index}` }, item))
     },
     attachmentSizeText () {
-      const total = this.attachments.reduce((sum, item) => sum + (Number(item.fileSize) || 0), 0)
+      const total = Number(this.attachmentTree.totalSize || 0)
       return formatSize(total)
     }
   },
@@ -499,7 +477,7 @@ export default {
       this.visible = true
       this.activeTab = tab || 'base'
       this.detail = null
-      this.attachments = []
+      this.attachmentTree = { groups: [] }
       this.history = []
       this.detailVisible = false
       this.processVisible = false
@@ -525,18 +503,24 @@ export default {
         })
     },
 
+    /**
+     * 附件树（按材料类型分组）。
+     * ★ 用 /attachment/tree 而不是按业务查列表：详情页要的是「这个项目的附件
+     *   按材料类型怎么分布」，列表给不出这个结构；而且树里已经带了
+     *   每个类型的小计与总数，不必再前端累加。
+     */
     loadAttachments (bizId) {
       this.attachmentLoading = true
-      queryAttachmentsByBiz('facility', bizId)
+      queryAttachmentTree('facility', bizId)
         .then((res) => {
           if (!res || !res.success) {
-            this.attachments = []
+            this.attachmentTree = { groups: [] }
             return
           }
-          this.attachments = res.result || []
+          this.attachmentTree = res.result || { groups: [] }
         })
         .catch(() => {
-          this.attachments = []
+          this.attachmentTree = { groups: [] }
         })
         .finally(() => {
           this.attachmentLoading = false
@@ -599,6 +583,18 @@ export default {
         return
       }
       window.open(buildAttachmentDownloadUrl(row.id), '_blank')
+    },
+
+    /**
+     * 预览附件。
+     * ★ 详情页没有内嵌预览弹窗（那是附件管理页的职责），
+     *   所以这里复用「下载」打开同一个地址：浏览器能直接渲染的
+     *   （图片 / PDF）会当场显示，不能渲染的（dwg / zip）会走下载 ——
+     *   对用户来说「点一下就看到内容」这个预期是满足的。
+     *   不新引一个预览弹窗，是为了避免详情页与附件管理两套预览实现。
+     */
+    previewAttachment (row) {
+      this.downloadAttachment(row)
     },
 
     handleHistoryRowClick (row) {

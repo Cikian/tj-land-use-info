@@ -26,35 +26,62 @@
       />
     </screen-panel>
 
-    <screen-panel class="attachment-panel__list" title="附件列表">
+    <screen-panel class="attachment-panel__list" title="附件管理">
       <template #extra>
         <span class="attachment-panel__overview">
-          共 <b>{{ summary.num }}</b> 个 · <b>{{ summary.readableSize || formatSize(summary.totalSize) }}</b>
-          · <b>{{ summary.typeCount || 0 }}</b> 类
-          <template v-if="selectedRowKeys.length">
-            · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 个
+          <template v-if="viewMode === 'tree'">
+            共 <b>{{ treeSummary.files }}</b> 个 · <b>{{ formatSize(treeSummary.size) }}</b>
+            · <b>{{ treeProjects.length }}</b> 个项目
+          </template>
+          <template v-else>
+            共 <b>{{ summary.num }}</b> 个 · <b>{{ formatSize(summary.totalSize) }}</b>
+            · <b>{{ summary.typeCount || 0 }}</b> 类
+            <template v-if="selectedRowKeys.length">
+              · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 个
+            </template>
           </template>
         </span>
 
+        <!-- 视图切换：目录树（按项目/材料类型）与平铺列表（可按文件名等检索） -->
+        <screen-tabs
+          v-model="viewMode"
+          :tabs="viewOptions"
+          @change="handleViewChange"
+        />
+
         <screen-button type="primary" size="sm" icon="upload" @click="handleUpload">上传附件</screen-button>
 
-        <screen-button size="sm" icon="reload" :loading="loading" @click="loadSummary(); loadData()">
+        <screen-button size="sm" icon="reload" :loading="loading" @click="handleRefresh">
           刷新
         </screen-button>
       </template>
 
-      <attachment-table
-        :data-source="dataSource"
-        :loading="loading"
-        selectable
-        :selected-row-keys="selectedRowKeys"
-        @select-change="handleSelectChange"
-        @preview="handlePreview"
-        @download="handleDownload"
-        @remove="handleRemove"
-      />
+      <!-- ---------- 目录树视图 ---------- -->
+      <template v-if="viewMode === 'tree'">
+        <attachment-tree-view
+          :projects="treeProjects"
+          :loading="loading"
+          @upload="handleUploadToType"
+          @upload-project="handleUploadToProject"
+          @preview="handlePreview"
+          @download="handleDownload"
+          @remove="handleRemove"
+        />
+      </template>
 
-      <template #footer>
+      <!-- ---------- 平铺列表视图 ---------- -->
+      <template v-else>
+        <attachment-table
+          :data-source="dataSource"
+          :loading="loading"
+          selectable
+          :selected-row-keys="selectedRowKeys"
+          @select-change="handleSelectChange"
+          @preview="handlePreview"
+          @download="handleDownload"
+          @remove="handleRemove"
+        />
+
         <screen-pagination
           :current="pagination.current"
           :page-size="pagination.pageSize"
@@ -74,16 +101,19 @@
 import {
   ScreenPanel,
   ScreenButton,
-  ScreenPagination
+  ScreenPagination,
+  ScreenTabs
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import AttachmentSearchForm from './AttachmentSearchForm.vue'
 import AttachmentTable from './AttachmentTable.vue'
+import AttachmentTreeView from './AttachmentTreeView.vue'
 import AttachmentUploadModal from './AttachmentUploadModal.vue'
 import AttachmentPreviewModal from './AttachmentPreviewModal.vue'
 import {
   queryAttachmentPage,
   queryAttachmentSummary,
+  queryAttachmentTreeByProject,
   deleteAttachment,
   buildAttachmentDownloadUrl
 } from '@/api/land/attachment'
@@ -95,8 +125,10 @@ export default {
     ScreenPanel,
     ScreenButton,
     ScreenPagination,
+    ScreenTabs,
     AttachmentSearchForm,
     AttachmentTable,
+    AttachmentTreeView,
     AttachmentUploadModal,
     AttachmentPreviewModal
   },
@@ -110,22 +142,80 @@ export default {
   },
   data () {
     return {
+      /**
+       * 视图模式。
+       * ★ 默认目录树：本次需求就是要「按项目 → 材料类型」展示，
+       *   平铺列表用于「按文件名/类型/时间检索」这种树做不了的事，
+       *   所以它降级为可切换的辅助视图。
+       */
+      viewMode: 'tree',
+      viewOptions: [
+        { key: 'tree', label: '目录树' },
+        { key: 'flat', label: '平铺列表' }
+      ],
       loading: false,
       query: Object.assign({}, this.initialQuery || {}),
       dataSource: [],
       selectedRowKeys: [],
       pagination: defaultPagination(10),
-      summary: { num: 0, totalSize: 0, readableSize: '', typeCount: 0 }
+      summary: { num: 0, totalSize: 0, readableSize: '', typeCount: 0 },
+      /** 跨项目树：[{ bizId, bizKey, totalFiles, totalSize, typeCount, tree }] */
+      treeProjects: []
+    }
+  },
+  computed: {
+    /** 树模式下的总览（从项目列表汇总，避免再拉一次 summary） */
+    treeSummary () {
+      let files = 0
+      let size = 0
+      this.treeProjects.forEach((project) => {
+        files += Number(project.totalFiles || 0)
+        size += Number(project.totalSize || 0)
+      })
+      return { files, size }
     }
   },
   created () {
-    this.loadData()
-    this.loadSummary()
+    this.loadCurrentView()
   },
   methods: {
     formatSize,
 
     /* ---------------- 数据 ---------------- */
+
+    /** 按当前视图加载数据（两个视图的数据源不同，切换时各自加载） */
+    loadCurrentView () {
+      if (this.viewMode === 'tree') {
+        return this.loadTree()
+      }
+      return this.loadData()
+    },
+
+    /**
+     * 跨项目附件树。
+     * ★ 只按 bizType 过滤，不带其它检索条件：目录树的语义是「有哪些项目、
+     *   每个项目有哪些材料」——把文件名之类的条件也带上，会把树剪得七零八落
+     *   （某个项目只剩一个类型、另一个项目整体消失），反而看不出结构。
+     *   需要按文件名等精细检索时切到「平铺列表」。
+     */
+    loadTree () {
+      this.loading = true
+      const bizType = String(this.query.bizType || '').trim()
+      return queryAttachmentTreeByProject(bizType || undefined)
+        .then((res) => {
+          if (!res || !res.success) {
+            toast.error((res && res.message) || '附件目录树加载失败')
+            return
+          }
+          this.treeProjects = res.result || []
+        })
+        .catch(() => {
+          // 请求层已提示
+        })
+        .finally(() => {
+          this.loading = false
+        })
+    },
 
     loadData () {
       this.loading = true
@@ -176,11 +266,28 @@ export default {
 
     /* ---------------- 检索与分页 ---------------- */
 
+    /**
+     * 切换视图。
+     * ★ 两个视图的数据源不同（树是跨项目全量、列表是分页 + 检索条件），
+     *   所以切换时必须各自加载一次，不能共用缓存。
+     */
+    handleViewChange (mode) {
+      this.viewMode = mode
+      this.selectedRowKeys = []
+      this.pagination.current = 1
+      this.loadCurrentView()
+    },
+
+    handleRefresh () {
+      this.loadCurrentView()
+      this.loadSummary()
+    },
+
     handleSearch (query) {
       this.query = query || {}
       this.pagination.current = 1
       this.selectedRowKeys = []
-      this.loadData()
+      this.loadCurrentView()
       this.loadSummary()
     },
 
@@ -193,10 +300,10 @@ export default {
       this.selectedRowKeys = keys || []
     },
 
-    /* ---------------- 行操作 ---------------- */
+    /* ---------------- 上传 ---------------- */
 
+    /** 工具条上的「上传附件」：用当前检索条件预置归属 */
     handleUpload () {
-      // 用当前检索条件预置归属：用户已经按某个配套筛过一次时，上传多半就是给它传
       this.$refs.uploadModal.open({
         bizType: this.query.bizType || 'facility',
         bizId: this.query.bizId || '',
@@ -204,9 +311,31 @@ export default {
       })
     },
 
+    /**
+     * 上传到某个材料类型（树上的「上传到该类型」）。
+     * ★ 材料类型**由分组定死**，用户不需要再选 —— 这正是本次需求的核心便利点。
+     */
+    handleUploadToType (group) {
+      this.$refs.uploadModal.open({
+        bizType: group.bizType || this.query.bizType || 'facility',
+        bizId: group.bizId || '',
+        bizKey: group.bizKey || '',
+        fileType: group.fileType || ''
+      })
+    },
+
+    /** 上传到某个项目（项目头上的按钮）：只预置归属，材料类型在弹窗里选 */
+    handleUploadToProject (project) {
+      this.$refs.uploadModal.open({
+        bizType: project.bizType || this.query.bizType || 'facility',
+        bizId: project.bizId || '',
+        bizKey: project.bizKey || ''
+      })
+    },
+
     handleUploaded () {
       this.pagination.current = 1
-      this.loadData()
+      this.loadCurrentView()
       this.loadSummary()
     },
 

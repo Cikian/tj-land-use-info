@@ -78,6 +78,22 @@ public class AttachmentTreeVO implements Serializable {
         /** 材料类型名（字典里的中文名；字典缺失时回退为码值） */
         private String fileTypeName;
 
+        /**
+         * 归属业务类型与业务对象 id（冗余）。
+         *
+         * <p>★ 为什么要冗余：树上前端的「上传到该类型」按钮需要知道
+         * 「传到哪个项目的哪个材料类型」，而分组节点在跨项目视图里本身不带归属信息 ——
+         * 让前端从 {@code files[0]} 去推是可以，但那是个隐式约定（列表为空时就取不到），
+         * 显式带上更可靠，也少一层前端推理。
+         */
+        private String bizType;
+
+        /** 归属业务对象 id */
+        private String bizId;
+
+        /** 归属业务可读键（宗地编号 / 配套项目名称） */
+        private String bizKey;
+
         /** 该类型下的文件（按排序号 + 上传时间） */
         private List<LandAttachment> files = new ArrayList<>();
 

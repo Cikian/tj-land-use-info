@@ -40,6 +40,7 @@ export const attachmentUrl = {
   list: '/land/data/attachment/list',
   byBiz: '/land/data/attachment/byBiz',
   tree: '/land/data/attachment/tree',
+  byProject: '/land/data/attachment/byProject',
   summary: '/land/data/attachment/summary',
   typeDistribution: '/land/data/attachment/typeDistribution',
   allowedTypes: '/land/data/attachment/allowedTypes',
@@ -66,6 +67,23 @@ export const attachmentUrl = {
  */
 export function queryAttachmentTree (bizType, bizId) {
   return javaGetAction(attachmentUrl.tree, { bizType, bizId })
+}
+
+/**
+ * 跨项目的附件树（附件管理页用）：项目 → 材料类型 → 文件。
+ *
+ * @param {string} [bizType] 只取某一类业务；为空表示全部
+ * @param {number} [limit]   最多返回多少个项目（按附件数倒序，默认 200）
+ * @returns {Promise} result 为
+ *   [{ bizId, bizKey, totalFiles, totalSize, typeCount,
+ *      tree:{ groups:[{ key, fileType, fileTypeName, files, fileCount, totalSize }] } }]
+ *
+ * ★ 不返回没有任何附件的项目，所以前端不需要过滤空项目。
+ * ★ 一次返回整棵树：单类业务的附件量可控（实测几百条），
+ *   这样「展开即见文件」，也不会出现某棵子树被分页截断的假象。
+ */
+export function queryAttachmentTreeByProject (bizType, limit) {
+  return javaGetAction(attachmentUrl.byProject, { bizType, limit })
 }
 
 /** 业务类型取值（与后端 LandAttachment 的常量一致） */
@@ -266,6 +284,7 @@ export default {
   queryAttachmentTypeDistribution,
   queryAllowedAttachmentTypes,
   queryAttachmentTree,
+  queryAttachmentTreeByProject,
   saveAttachment,
   deleteAttachment,
   queryAttachmentPreviewUrl,

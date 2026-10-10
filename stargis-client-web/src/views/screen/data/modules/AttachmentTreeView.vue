@@ -1,90 +1,96 @@
 <template>
   <!--
-    AttachmentTreeView 附件目录树（按材料类型分组）
+    AttachmentTreeView 附件目录树
     --------------------------------
-    结构只有两层：**业务对象 → 材料类型 → 文件**。
+    两种用法（二选一）：
 
-      ▸ 项建批复文件                    3 个 · 12.4 MB
-          立项批复.pdf                            4.1 MB   预览 下载 删除
-          批复附件.docx                           8.3 MB   预览 下载 删除
-      ▸ 道路规划                        1 个 · 3.1 MB
-          道路规划图.dwg                          3.1 MB   预览 下载 删除
+    ① 单业务对象（地块/配套详情弹窗内）—— 传 tree：
+         项建批复文件      3 个 · 12.4 MB
+           立项批复.pdf
+         道路规划          1 个 · 3.1 MB
+           道路规划图.dwg
 
-    ★ 目录名就是材料类型名：材料类型码本来就存在附件的 file_type 里，
-      所以树是「该业务对象下实际有附件的材料类型」这一个**派生结果**，
-      没有任何需要单独维护的目录数据，也就不可能出现「目录与附件不一致」。
-    ★ 空类型不进树（后端 /attachment/tree 只返回有文件的类型），
-      所以这里不需要处理空节点。
-    ★ 因此不需要递归组件：层级固定两层。
+    ② 多项目（附件管理页）—— 传 projects：
+         ▾ 义安路（永顺道-永尚道）   29 个 · 88.4 MB · 5 类
+             项建批复文件             1 个 · 1.2 MB
+             专业管理意见             9 个 · 31.0 MB
+         ▸ 秀清路（光兴道-光谷道）    3 个 · 4.1 MB · 2 类
 
-    ★ 上传入口就在每个类型分组上：「上传到该类型」→ 自动把材料类型定死，
-      用户不需要在下拉里选类型（这是本次需求的核心便利点）。
+    ★ 为什么附件管理页要按项目分组：
+      那个页面是**跨项目**的（能筛所有宗地/配套的附件），
+      而「目录 = 材料类型」只在单个项目内部有意义 —— 不同项目的
+      「道路规划」是两个不同的目录，混在一棵树下会看不出归属。
+
+    ★ 空类型不进树（后端只返回有文件的类型）。
 
     事件：
-      upload (group)   上传到某个材料类型
-      preview (file)   预览附件
-      download (file)  下载附件
-      remove (file)    删除附件
+      upload (group)            上传到某个材料类型
+      upload-project (project)  上传到整个项目（材料类型在弹窗里选）
+      preview / download / remove (file)
   -->
   <div class="attachment-tree">
     <div v-if="loading" class="attachment-tree__loading">加载中…</div>
 
     <template v-else>
-      <div v-for="group in groups" :key="group.key" class="attachment-tree__group">
-        <!-- 材料类型分组头 -->
-        <div class="attachment-tree__head">
-          <button
-            type="button"
-            class="attachment-tree__toggle"
-            :aria-expanded="isExpanded(group.key) ? 'true' : 'false'"
-            :title="group.fileTypeName"
-            @click="toggle(group.key)"
-          >
-            <screen-icon :name="isExpanded(group.key) ? 'chevron-down' : 'chevron-right'" :size="12" />
-            <screen-icon :name="isExpanded(group.key) ? 'folder-open' : 'folder'" :size="13" class="attachment-tree__folder" />
-            <span class="attachment-tree__name">{{ group.fileTypeName }}</span>
-          </button>
-
-          <span class="attachment-tree__badge">
-            {{ group.fileCount }} 个 · {{ formatSize(group.totalSize) }}
-          </span>
-
-          <span v-if="editable" class="attachment-tree__ops">
-            <button type="button" class="attachment-tree__link" @click.stop="$emit('upload', group)">
-              上传到该类型
+      <!-- ① 多项目模式 -->
+      <template v-if="projects.length">
+        <div v-for="project in projects" :key="project.bizId" class="attachment-tree__project">
+          <div class="attachment-tree__project-head">
+            <button
+              type="button"
+              class="attachment-tree__project-toggle"
+              :aria-expanded="isProjectExpanded(project.bizId) ? 'true' : 'false'"
+              :title="project.bizKey"
+              @click="toggleProject(project.bizId)"
+            >
+              <screen-icon :name="isProjectExpanded(project.bizId) ? 'chevron-down' : 'chevron-right'" :size="12" />
+              <screen-icon name="layers" :size="13" class="attachment-tree__project-icon" />
+              <span class="attachment-tree__project-name">{{ project.bizKey || '未命名' }}</span>
             </button>
-          </span>
-        </div>
 
-        <!-- 该类型下的文件 -->
-        <ul v-if="isExpanded(group.key)" class="attachment-tree__files">
-          <li v-for="file in group.files" :key="file.id" class="attachment-tree__file">
-            <screen-icon name="file" :size="13" class="attachment-tree__icon" />
-            <span class="attachment-tree__file-name" :title="file.fileName">{{ file.fileName }}</span>
-            <span class="attachment-tree__size">
-              {{ file.readableSize || formatSize(file.fileSize) }}
+            <span class="attachment-tree__badge">
+              {{ project.totalFiles }} 个 · {{ formatSize(project.totalSize) }} · {{ project.typeCount }} 类
             </span>
-            <span class="attachment-tree__actions">
-              <button type="button" class="attachment-tree__link" @click.stop="$emit('preview', file)">
-                预览
-              </button>
-              <button type="button" class="attachment-tree__link" @click.stop="$emit('download', file)">
-                下载
-              </button>
+
+            <span v-if="editable" class="attachment-tree__ops">
               <button
-                v-if="editable"
                 type="button"
-                class="attachment-tree__link is-danger"
-                @click.stop="$emit('remove', file)"
-              >删除</button>
+                class="attachment-tree__link"
+                @click.stop="$emit('upload-project', project)"
+              >上传到该项目</button>
             </span>
-          </li>
-        </ul>
-      </div>
+          </div>
 
-      <p v-if="!groups.length" class="attachment-tree__empty">
-        {{ emptyText }}
-      </p>
+          <div v-if="isProjectExpanded(project.bizId)" class="attachment-tree__project-body">
+            <attachment-type-group
+              v-for="group in groupListOf(project)"
+              :key="group.key"
+              :group="group"
+              :editable="editable"
+              @upload="$emit('upload', $event)"
+              @preview="$emit('preview', $event)"
+              @download="$emit('download', $event)"
+              @remove="$emit('remove', $event)"
+            />
+          </div>
+        </div>
+      </template>
+
+      <!-- ② 单业务对象模式 -->
+      <template v-else>
+        <attachment-type-group
+          v-for="group in groups"
+          :key="group.key"
+          :group="group"
+          :editable="editable"
+          @upload="$emit('upload', $event)"
+          @preview="$emit('preview', $event)"
+          @download="$emit('download', $event)"
+          @remove="$emit('remove', $event)"
+        />
+
+        <p v-if="!groups.length" class="attachment-tree__empty">{{ emptyText }}</p>
+      </template>
     </template>
   </div>
 </template>
@@ -92,17 +98,23 @@
 <script>
 import { ScreenIcon } from '@/components/screen'
 import { formatSize } from '@/views/screen/data/constants'
+import AttachmentTypeGroup from './AttachmentTypeGroup.vue'
 
 export default {
   name: 'AttachmentTreeView',
-  components: { ScreenIcon },
+  components: { ScreenIcon, AttachmentTypeGroup },
   props: {
     /**
-     * 后端 /land/data/attachment/tree 的 result：
+     * 单业务对象的树：后端 /attachment/tree 的 result
      * { bizType, bizKey, groups:[{key,fileType,fileTypeName,files,fileCount,totalSize}],
      *   totalFiles, totalSize, typeCount }
      */
     tree: { type: Object, default: () => ({ groups: [] }) },
+    /**
+     * 多项目的树：后端 /attachment/byProject 的 result
+     * [{ bizId, bizKey, tree:{ groups:[...], totalFiles, totalSize, typeCount } }, ...]
+     */
+    projects: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
     /** 是否显示上传 / 删除按钮。详情页只读时传 false */
     editable: { type: Boolean, default: true },
@@ -110,8 +122,8 @@ export default {
   },
   data () {
     return {
-      /** 收起的类型 key 集合（默认全展开，让目录结构一眼可见） */
-      collapsed: []
+      /** 收起的项目 id（默认全展开） */
+      collapsedProjects: []
     }
   },
   computed: {
@@ -121,15 +133,14 @@ export default {
   },
   watch: {
     /**
-     * 数据换了（切换业务对象 / 刷新）就恢复全展开。
-     * ★ 只在**分组集合变化**时重置，避免用户收起某个类型后一次刷新被强行展开。
+     * 项目集合变了（切换检索条件 / 刷新）就恢复全展开。
+     * ★ 只在集合真的变化时重置，避免用户收起某个项目后一次刷新被强行展开。
      */
-    groups: {
+    projects: {
       handler (next) {
-        const keys = (next || []).map(g => g.key)
-        const staleOnly = this.collapsed.every(k => keys.indexOf(k) > -1)
-        if (!staleOnly) {
-          this.collapsed = []
+        const ids = (next || []).map(p => p.bizId)
+        if (!this.collapsedProjects.every(id => ids.indexOf(id) > -1)) {
+          this.collapsedProjects = []
         }
       }
     }
@@ -137,16 +148,21 @@ export default {
   methods: {
     formatSize,
 
-    isExpanded (key) {
-      return this.collapsed.indexOf(key) < 0
+    /** 某个项目下要渲染的材料类型分组 */
+    groupListOf (project) {
+      return (project && project.tree && project.tree.groups) || []
     },
 
-    toggle (key) {
-      const index = this.collapsed.indexOf(key)
+    isProjectExpanded (bizId) {
+      return this.collapsedProjects.indexOf(bizId) < 0
+    },
+
+    toggleProject (bizId) {
+      const index = this.collapsedProjects.indexOf(bizId)
       if (index > -1) {
-        this.collapsed.splice(index, 1)
+        this.collapsedProjects.splice(index, 1)
       } else {
-        this.collapsed.push(key)
+        this.collapsedProjects.push(bizId)
       }
     }
   }
@@ -171,25 +187,23 @@ export default {
     text-align: center;
   }
 
-  &__group {
-    border-bottom: 1px solid var(--screen-border-soft);
-
-    &:last-child {
-      border-bottom: 0;
-    }
+  &__project {
+    border: 1px solid var(--screen-border-soft);
+    border-radius: var(--screen-radius-sm);
+    overflow: hidden;
   }
 
-  &__head {
+  &__project-head {
     display: flex;
     align-items: center;
     gap: 6px;
     min-width: 0;
     padding: 7px var(--screen-space-2);
-    border-radius: var(--screen-radius-sm);
+    background: rgba(255, 255, 255, 0.03);
     transition: background var(--screen-duration) var(--screen-ease);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.06);
 
       .attachment-tree__ops {
         opacity: 1;
@@ -197,7 +211,7 @@ export default {
     }
   }
 
-  &__toggle {
+  &__project-toggle {
     flex: 0 1 auto;
     display: inline-flex;
     align-items: center;
@@ -214,14 +228,18 @@ export default {
     .screen-focus-ring();
   }
 
-  &__folder {
+  &__project-icon {
     flex: 0 0 auto;
-    color: var(--screen-accent);
+    color: var(--screen-accent-bright);
   }
 
-  &__name {
+  &__project-name {
     min-width: 0;
     .screen-ellipsis();
+  }
+
+  &__project-body {
+    padding: 0 var(--screen-space-2) var(--screen-space-2);
   }
 
   &__badge {
@@ -238,59 +256,18 @@ export default {
     transition: opacity var(--screen-duration) var(--screen-ease);
   }
 
-  &__files {
-    margin: 0;
-    padding: 0 0 4px;
-    list-style: none;
-  }
-
-  &__file {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    // 缩进一级，体现「文件属于上面那个材料类型」
-    padding: 4px var(--screen-space-2) 4px 30px;
-    border-radius: var(--screen-radius-sm);
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.03);
-    }
-  }
-
-  &__icon {
-    flex: 0 0 auto;
-    color: var(--screen-text-mute);
-  }
-
-  &__file-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: var(--screen-font-xs);
-    color: var(--screen-text-sub);
-    .screen-ellipsis();
-  }
-
-  &__size {
-    flex: 0 0 auto;
-    font-family: var(--screen-font-number-family);
-    font-size: var(--screen-font-xs);
-    color: var(--screen-text-mute);
-  }
-
-  &__actions {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--screen-space-2);
-  }
-
   &__link {
     .screen-link-action();
 
     &.is-danger {
       color: var(--screen-danger);
     }
+  }
+}
+
+@media (max-width: 1400px) {
+  .attachment-tree__project-head {
+    flex-wrap: wrap;
   }
 }
 </style>

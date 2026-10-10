@@ -87,6 +87,7 @@ const FILES = [
   'src/views/screen/data/modules/AttachmentPreviewModal.vue',
   'src/views/screen/data/modules/AttachmentPanel.vue',
   'src/views/screen/data/modules/AttachmentTreeView.vue',
+  'src/views/screen/data/modules/AttachmentTypeGroup.vue',
   'src/views/screen/data/modules/RecycleTable.vue',
   'src/views/screen/data/modules/ChangeLogTable.vue',
   'src/views/screen/data/modules/HistoryDrawer.vue',

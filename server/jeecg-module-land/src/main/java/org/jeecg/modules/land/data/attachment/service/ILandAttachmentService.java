@@ -110,6 +110,21 @@ public interface ILandAttachmentService {
      */
     org.jeecg.modules.land.data.attachment.vo.AttachmentTreeVO tree(String bizType, String bizId);
 
+    /**
+     * 跨项目的附件树：先按业务对象分组，组内再按材料类型分组。
+     *
+     * <p>★ 为什么附件管理页需要这个：那个页面是跨项目的（能筛所有宗地/配套的附件），
+     * 而「目录 = 材料类型」只在单个项目内部有意义 —— 不同项目的「道路规划」
+     * 是两个不同的目录，混在一棵树下会看不出归属。
+     *
+     * <p>★ 不返回没有任何附件的项目（否则树上会出现一堆空项目）。
+     *
+     * @param bizType land / facility / process
+     * @param limit   最多返回多少个项目（按附件数倒序，避免一次渲染上千个项目）
+     * @return [{ bizId, bizKey, tree:{groups:[...], totalFiles, totalSize, typeCount} }, ...]
+     */
+    List<Map<String, Object>> treeByProject(String bizType, Integer limit);
+
     // ==================================================================
     // 二、保存 / 删除
     // ==================================================================

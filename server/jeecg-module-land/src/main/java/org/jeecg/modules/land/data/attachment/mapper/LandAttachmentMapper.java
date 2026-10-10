@@ -51,6 +51,21 @@ public interface LandAttachmentMapper extends BaseMapper<LandAttachment> {
                                         @Param("bizIds") List<String> bizIds);
 
     /**
+     * 某业务类型下的全部附件（跨项目），按业务对象 + 类型码 + 排序号。
+     *
+     * <p>★ 供「附件管理页」按项目分组建树用：那个页面是跨项目的，
+     * 一次取回全部再在服务端分组，避免「先查项目列表、再逐项目查附件」的 N+1。
+     *
+     * <p>★ 不加分页：单个业务类型下的附件量是可控的（实测几百条），
+     * 而且树形展示本身要求完整结构 —— 分页会把某棵子树截断，看起来像数据丢了。
+     * 真到了需要分页的量级，应该改成「先选项目再看树」的交互。
+     */
+    @Select("SELECT " + COLUMNS + " FROM t_land_attachment a "
+            + "WHERE a.del_flag = 0 AND a.biz_type = #{bizType} "
+            + "ORDER BY a.biz_id ASC, a.file_type ASC, IFNULL(a.sort_no, 9999) ASC, a.upload_time ASC")
+    List<LandAttachment> selectByType(@Param("bizType") String bizType);
+
+    /**
      * 按业务主键统计附件数与总大小。
      *
      * <p>返回列：{@code bizId} / {@code num} / {@code totalSize}

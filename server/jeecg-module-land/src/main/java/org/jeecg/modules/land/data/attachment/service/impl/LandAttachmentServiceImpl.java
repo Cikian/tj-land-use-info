@@ -362,6 +362,71 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         if (files.isEmpty()) {
             return result;
         }
+        return buildTree(type, files);
+    }
+
+    /**
+     * 跨项目的附件树：先按业务对象分组，组内再按材料类型分组。
+     *
+     * <p>算法：一次取回该业务类型的全部附件（不分页，见 Mapper 注释）→
+     * 按 bizId 分桶 → 每个桶复用 {@link #buildTree} 的同一套分组逻辑。
+     *
+     * <p>★ 复用是为了让「单项目视图」与「跨项目视图」的材料类型分组口径**必然一致** ——
+     * 两处各写一遍算法，迟早会出现「同一条附件在两个入口归到不同类型」的怪事。
+     */
+    @Override
+    public List<Map<String, Object>> treeByProject(String bizType, Integer limit) {
+        String type = cleanBizType(bizType);
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (type == null) {
+            return result;
+        }
+        List<LandAttachment> all = enrichAll(baseMapper.selectByType(type));
+        if (all.isEmpty()) {
+            return result;
+        }
+
+        Map<String, List<LandAttachment>> byBiz = new LinkedHashMap<>();
+        for (LandAttachment file : all) {
+            byBiz.computeIfAbsent(file.getBizId(), k -> new ArrayList<>()).add(file);
+        }
+
+        List<Map<String, Object>> projects = new ArrayList<>();
+        for (Map.Entry<String, List<LandAttachment>> entry : byBiz.entrySet()) {
+            AttachmentTreeVO tree = buildTree(type, entry.getValue());
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("bizId", entry.getKey());
+            item.put("bizKey", tree.getBizKey());
+            item.put("tree", tree);
+            item.put("totalFiles", tree.getTotalFiles());
+            item.put("totalSize", tree.getTotalSize());
+            item.put("typeCount", tree.getTypeCount());
+            projects.add(item);
+        }
+
+        // 附件多的项目排前面：用户最可能先看资料齐全的项目，
+        // 而且 limit 截断时被丢掉的应该是资料最少的那几个
+        projects.sort((a, b) -> Integer.compare(
+                ((Number) b.get("totalFiles")).intValue(),
+                ((Number) a.get("totalFiles")).intValue()));
+
+        int max = (limit == null || limit <= 0) ? 200 : Math.min(limit, 1000);
+        return projects.size() <= max ? projects : new ArrayList<>(projects.subList(0, max));
+    }
+
+    /**
+     * 用「已取好的附件列表」构建材料类型分组（单项目与跨项目共用）。
+     *
+     * <p>顺序按材料清单（审批流程顺序）而不是文件数：
+     * 材料类型是流程的自然顺序（项建 → 可研 → 初设 → 施工 → 竣工），
+     * 按文件数排会让不同项目看到的目录顺序都不一样，用户找位置靠猜。
+     * 清单外的码值（历史数据）追加在最后，不丢文件。
+     */
+    private AttachmentTreeVO buildTree(String type, List<LandAttachment> files) {
+        AttachmentTreeVO result = new AttachmentTreeVO().setBizType(type);
+        if (files == null || files.isEmpty()) {
+            return result;
+        }
 
         // 按类型码分桶（LinkedHashMap 保持不了清单顺序，所以要按清单再遍历一次）
         Map<String, List<LandAttachment>> buckets = new LinkedHashMap<>();
@@ -380,17 +445,16 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             }
         }
 
-        // 按清单顺序输出；清单外的码值（历史数据）追加在最后，不丢文件
         List<AttachmentTreeVO.TypeGroup> groups = new ArrayList<>();
         Map<String, String> typeNames = typeNamesOf(type);
         for (Map.Entry<String, String> entry : typeNames.entrySet()) {
             List<LandAttachment> bucket = buckets.remove(entry.getKey());
             if (bucket != null && !bucket.isEmpty()) {
-                groups.add(buildGroup(entry.getKey(), entry.getValue(), bucket));
+                groups.add(buildGroup(type, entry.getKey(), entry.getValue(), bucket));
             }
         }
         for (Map.Entry<String, List<LandAttachment>> rest : buckets.entrySet()) {
-            groups.add(buildGroup(rest.getKey(), typeText(rest.getKey()), rest.getValue()));
+            groups.add(buildGroup(type, rest.getKey(), typeText(rest.getKey()), rest.getValue()));
         }
 
         result.setGroups(groups);
@@ -402,15 +466,23 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
     }
 
     /** 组装一个材料类型节点（含该类型的小计） */
-    private AttachmentTreeVO.TypeGroup buildGroup(String code, String name, List<LandAttachment> files) {
+    private AttachmentTreeVO.TypeGroup buildGroup(String type, String code, String name,
+                                                   List<LandAttachment> files) {
         long size = 0L;
         for (LandAttachment file : files) {
             size += file.getFileSize() == null ? 0L : file.getFileSize();
         }
+        LandAttachment first = files.get(0);
         return new AttachmentTreeVO.TypeGroup()
-                .setKey("type:" + code)
+                // key 里带上业务对象 id：跨项目视图下多个项目会有同名类型码，
+                // 只用 type:01 会让不同项目的分组撞 key
+                .setKey(type + ":" + first.getBizId() + ":" + code)
                 .setFileType(code)
                 .setFileTypeName(name)
+                // 冗余归属信息，供前端「上传到该类型」直接使用
+                .setBizType(type)
+                .setBizId(first.getBizId())
+                .setBizKey(first.getBizKey())
                 .setFiles(files)
                 .setFileCount(files.size())
                 .setTotalSize(size);

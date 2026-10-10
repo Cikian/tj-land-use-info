@@ -120,6 +120,33 @@
           </div>
         </div>
 
+        <!-- ================= 附件（按材料类型分组的目录树） ================= -->
+        <div v-show="activeTab === 'files'" class="land-detail__pane">
+          <section class="land-detail__block land-detail__block--grow">
+            <h4 class="land-detail__block-title">
+              宗地附件
+              <span class="land-detail__block-sub">
+                共 {{ attachmentTree.totalFiles || 0 }} 个 · {{ attachmentSizeText }}
+                · 按材料类型分组；上传/删除请到「配套附件管理」页签
+              </span>
+            </h4>
+
+            <!--
+              ★ 与配套详情同一口径：按材料类型分组展示，一眼看出缺哪类材料。
+              ★ editable=false：详情页只读，写操作统一在附件管理页，
+                这样留痕与权限口径只有一处。
+            -->
+            <attachment-tree-view
+              :tree="attachmentTree"
+              :loading="attachmentLoading"
+              :editable="false"
+              empty-text="该宗地还没有附件"
+              @preview="previewAttachment"
+              @download="downloadAttachment"
+            />
+          </section>
+        </div>
+
         <!-- ================= 变更履历 ================= -->
         <div v-show="activeTab === 'history'" class="land-detail__pane">
           <section class="land-detail__block land-detail__block--grow">
@@ -225,7 +252,9 @@ import {
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { queryLandAdminById, queryLandHistory } from '@/api/land/landAdmin'
-import { actionTone, formatTime, joinInfo } from '../constants'
+import { queryAttachmentTree, buildAttachmentDownloadUrl } from '@/api/land/attachment'
+import AttachmentTreeView from './AttachmentTreeView.vue'
+import { actionTone, formatTime, formatSize, joinInfo } from '../constants'
 
 /** 履历表格里展示的时间格式（后端给的是 yyyy-MM-dd HH:mm:ss） */
 function historyTime (value) {
@@ -242,7 +271,8 @@ export default {
     ScreenDescriptions,
     ScreenButton,
     ScreenLoading,
-    ScreenEmpty
+    ScreenEmpty,
+    AttachmentTreeView
   },
   data () {
     return {
@@ -250,6 +280,9 @@ export default {
       loading: false,
       historyLoading: false,
       activeTab: 'base',
+      /** 附件树（按材料类型分组）：{ groups:[...], totalFiles, totalSize, typeCount } */
+      attachmentTree: { groups: [] },
+      attachmentLoading: false,
       detail: null,
       history: [],
       detailVisible: false,
@@ -257,6 +290,7 @@ export default {
       activeDetails: [],
       tabs: [
         { key: 'base', label: '基本信息' },
+        { key: 'files', label: '附件' },
         { key: 'history', label: '变更履历' }
       ],
       historyColumns: [
@@ -365,6 +399,10 @@ export default {
     /** 履历行加稳定 key（ScreenDataTable 的 row-key 需要唯一值） */
     historyRows () {
       return (this.history || []).map((item, index) => Object.assign({ key: item.id || `h-${index}` }, item))
+    },
+    /** 附件合计大小的可读文本（后端已算好 totalSize，前端只负责格式化） */
+    attachmentSizeText () {
+      return formatSize(Number(this.attachmentTree.totalSize || 0))
     }
   },
   methods: {
@@ -378,9 +416,11 @@ export default {
         return
       }
       this.visible = true
-      this.activeTab = tab === 'history' ? 'history' : 'base'
+      // ★ 三个页签都要能直接打开（列表上「附件」入口会传 'files'）
+      this.activeTab = (tab === 'history' || tab === 'files') ? tab : 'base'
       this.detail = null
       this.history = []
+      this.attachmentTree = { groups: [] }
       this.detailVisible = false
       this.load(record.id)
     },
@@ -395,12 +435,53 @@ export default {
             return
           }
           this.detail = res.result || {}
-          // 履历不阻塞主信息展示，并行拉取
+          // 履历与附件都不阻塞主信息展示，并行拉取
           this.loadHistory(id)
+          this.loadAttachments(id)
         })
         .finally(() => {
           this.loading = false
         })
+    },
+
+    /**
+     * 附件树（按材料类型分组）。
+     * ★ 走 /attachment/tree 而不是按业务查列表：详情页要的是
+     *   「这个宗地的材料按类型怎么分布」，列表给不出这个结构；
+     *   树里已带每个类型的小计与总数，前端不必再累加。
+     */
+    loadAttachments (bizId) {
+      this.attachmentLoading = true
+      queryAttachmentTree('land', bizId)
+        .then((res) => {
+          if (!res || !res.success) {
+            this.attachmentTree = { groups: [] }
+            return
+          }
+          this.attachmentTree = res.result || { groups: [] }
+        })
+        .catch(() => {
+          this.attachmentTree = { groups: [] }
+        })
+        .finally(() => {
+          this.attachmentLoading = false
+        })
+    },
+
+    downloadAttachment (row) {
+      if (!row || !row.id) {
+        toast.warning('该附件还没有落库，无法下载')
+        return
+      }
+      window.open(buildAttachmentDownloadUrl(row.id), '_blank')
+    },
+
+    /**
+     * 预览附件：复用下载地址（浏览器能渲染的当场显示，不能渲染的走下载）。
+     * 详情页不内嵌预览弹窗，避免与附件管理页出现两套预览实现。
+     */
+    previewAttachment (row) {
+      this.downloadAttachment(row)
     },
 
     loadHistory (id) {

@@ -81,10 +81,18 @@
       <span v-else class="land-table__mute">—</span>
     </template>
 
+    <!-- 附件数：有附件时可点，直接跳到详情弹窗的「附件」页签看目录树 -->
     <template #attachmentCount="{ row }">
-      <span class="land-table__num">
-        {{ row.attachmentCount === undefined || row.attachmentCount === null ? '—' : row.attachmentCount }}
-      </span>
+      <button
+        v-if="row.attachmentCount"
+        type="button"
+        class="land-table__link"
+        title="查看该宗地的附件（按材料类型分组）"
+        @click.stop="$emit('attachments', row)"
+      >
+        {{ row.attachmentCount }}
+      </button>
+      <span v-else class="land-table__num">—</span>
     </template>
 
     <template #changeCount="{ row }">

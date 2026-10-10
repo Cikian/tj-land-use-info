@@ -210,6 +210,44 @@ function emptyForm () {
   }
 }
 
+/**
+ * 本地兜底的材料类型清单，**按归属类型给对应那套**。
+ *
+ * ★ 为什么兜底也要分两套：宗地 5 类与配套 13 类是不同的清单
+ *   （名称逐字取自旧系统存储目录）。兜底时若两边共用一套，
+ *   接口一挂用户就会看到与自己无关的类型 —— 而兜底恰恰是
+ *   「接口不可用」时唯一能指望的东西，它必须是对的。
+ */
+const LAND_TYPE_FALLBACK = [
+  { value: '01', text: '土地整理计划' },
+  { value: '02', text: '配套方案' },
+  { value: '03', text: '配套情况函' },
+  { value: '04', text: '配套筹备函' },
+  { value: '05', text: '出让宗地图形数据（SHP）' }
+]
+
+const FACILITY_TYPE_FALLBACK = [
+  { value: '01', text: '项建批复文件' },
+  { value: '02', text: '可研批复文件' },
+  { value: '03', text: '初设及概算批复文件' },
+  { value: '04', text: '道路规划' },
+  { value: '05', text: '专业配套方案' },
+  { value: '06', text: '施工许可' },
+  { value: '07', text: '专业管理意见' },
+  { value: '08', text: '配套项目核定用地与地籍调查' },
+  { value: '09', text: '规划工程许可' },
+  { value: '10', text: '规划用地许可与划拨手续办理' },
+  { value: '11', text: '不动产登记' },
+  { value: '12', text: '竣工文件' },
+  { value: '13', text: '移交文件' }
+]
+
+/** 按归属类型取本地兜底清单（process 与 land 同一套） */
+function fallbackTypesOf (bizType) {
+  const list = bizType === 'facility' ? FACILITY_TYPE_FALLBACK : LAND_TYPE_FALLBACK
+  return list.map(item => ({ value: item.value, label: item.text }))
+}
+
 export default {
   name: 'AttachmentUploadModal',
   components: {
@@ -278,9 +316,9 @@ export default {
       return this.objectOptions.some((item) => item.value === this.form.bizId)
     }
   },
-  created () {
-    this.loadTypes()
-  },
+  // ★ 不在 created 里预加载材料类型：类型清单**依赖 bizType**（宗地 5 类 / 配套 13 类），
+  //   而 bizType 只有 open(preset) 时才知道。在 created 里按默认值加载一次，
+  //   紧接着 open 又要按真实归属重载，是白跑一次请求。
   methods: {
     formatSize,
 
@@ -291,6 +329,8 @@ export default {
       this.form = Object.assign(emptyForm(), {
         bizType: record.bizType || 'facility',
         bizId: record.bizId || '',
+        // ★ 树上点「上传到该类型」时会预置材料类型：用户不需要在下拉里再选一次
+        //   （这正是本次需求的核心便利点），只在类型上显示已归类的提示
         fileType: record.fileType || '',
         remark: ''
       })
@@ -302,6 +342,9 @@ export default {
       this.objectOptions = []
       this.visible = true
       this.resetUploader()
+      // ★ 材料类型清单**按 bizType 取对应那套**（宗地 5 类 / 配套 13 类），
+      //   所以归属类型定了（或变了）之后必须重新加载，否则会显示另一半的选项
+      this.loadTypes()
       // 已带出归属：预取一次候选，让下拉里能看到并切换
       if (this.form.bizType) {
         this.loadObjectOptions('')
@@ -332,11 +375,16 @@ export default {
     },
 
     /**
-     * 附件类型。
+     * 材料类型清单。
+     * ★ **必须带 bizType**：宗地 5 类与配套 13 类是两套不同的清单，
+     *   不带就会拿到另一半的选项（用户会看到与自己无关的类型）。
      * 三层兜底：专用接口 → 字典 → 本地常量（见组件头注释）。
      */
     loadTypes () {
-      queryAllowedAttachmentTypes()
+      const bizType = this.form.bizType || 'facility'
+      // 本地兜底先按当前归属过滤（接口挂了也要能选到合理的类型）
+      this.typeOptions = fallbackTypesOf(bizType)
+      queryAllowedAttachmentTypes(bizType)
         .then((res) => {
           if (res && res.success && res.result && res.result.length) {
             this.typeOptions = dictToOptions(res.result)
@@ -348,7 +396,9 @@ export default {
         .then((done) => {
           if (done) return
           queryLandDictItems(dictDefinitions()).then((dicts) => {
-            if (dicts.attachType) this.typeOptions = dicts.attachType
+            // 字典兜底同样按归属挑对应那套
+            const key = bizType === 'facility' ? 'facilityAttachType' : 'attachType'
+            if (dicts && dicts[key]) this.typeOptions = dicts[key]
           })
         })
     },
@@ -357,9 +407,13 @@ export default {
 
     handleBizTypeChange () {
       this.form.bizId = ''
+      // ★ 归属类型变了，材料类型清单也要换（宗地 5 类 ↔ 配套 13 类），
+      //   并把已选的材料类型清掉 —— 旧码值在新清单里可能根本不存在
+      this.form.fileType = ''
       this.pickedName = ''
       this.objectOptions = []
-      this.errors = Object.assign({}, this.errors, { bizId: '' })
+      this.errors = Object.assign({}, this.errors, { bizId: '', fileType: '' })
+      this.loadTypes()
       this.loadObjectOptions('')
     },
 
