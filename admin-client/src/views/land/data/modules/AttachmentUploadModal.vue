@@ -1,138 +1,196 @@
 <template>
+  <!--
+    AttachmentUploadModal 附件上传（管理端）
+    --------------------------------
+    ★ 界面结构（2026-10-10 按要求重做，与大屏端保持一致）：
+      第一段：选归属 —— 归属类型 + 所属对象（两个下拉并排）
+      第二段：**材料类型目录树** —— 选完归属对象后立刻展示，
+              每个材料类型就是一个目录节点，节点右侧有「上传」按钮，
+              节点下面是该类型已有的文件。
+
+      用户的操作只有两件事：① 选归属；② 在某个类型上点「上传」。
+      **不需要选材料类型** —— 点哪个类型的上传，文件就归到那个类型。
+
+    ★ 为什么树要在弹窗里而不是只放在管理页：
+      用户传附件时心里想的是「给这个项目的这一类材料补文件」，
+      在弹窗里直接看到「这个项目有哪些材料、哪类还空着」才顺。
+
+    ★ 为什么树里要显示**已有文件**：上传前先看到已有什么，才判断得出该补哪一类。
+
+    ★ 为什么选文件夹时内部文件**拉平**到该类型目录：
+      旧系统的存储结构就只有「项目/材料类型/文件」两层；按目录层级重建会造出
+      旧系统从来没有的结构，历史对照也就无从谈起。
+
+    ★ 上传是两步（见 doSaveMeta / uploadBytes 的注释）：
+      第 1 步落盘、第 2 步登记。两步的失败原因完全不同，
+      所以提示与重试也要分开（字节失败重传；登记失败只重跑第 2 步）。
+  -->
   <a-modal
     title="上传附件"
-    :width="720"
+    :width="920"
     :visible="visible"
     :footer="null"
     :mask-closable="false"
     @cancel="handleClose">
-    <!-- ============ 两步流程（失败时能直接看出卡在哪一步） ============ -->
-    <a-steps :current="currentStep" :status="stepStatus" size="small" class="attach-upload__steps">
-      <a-step title="第 1 步 · 文件落盘" description="字节流上传到文件服务，返回相对存储路径" />
-      <a-step title="第 2 步 · 登记入库" description="把路径与业务信息登记到附件表" />
-    </a-steps>
-
-    <div class="attach-upload__block">
-      <div class="attach-upload__row">
-        <span class="attach-upload__label">业务类型</span>
+    <!-- ============ 第一段：选择归属 ============ -->
+    <div class="attach-upload__head">
+      <div class="attach-upload__field">
+        <span class="attach-upload__label">归属类型<i>*</i></span>
         <a-select
           v-model="bizType"
-          placeholder="必选：这份附件挂在哪种业务上"
-          style="width: 260px"
+          placeholder="请选择"
+          style="width: 100%"
           :options="bizTypeOptions"
           @change="handleBizTypeChange" />
-        <span class="attach-upload__hint">
-          业务类型决定「附件挂在谁身上」：先选类型，再选具体的宗地 / 配套项目
-        </span>
       </div>
-
-      <div class="attach-upload__row">
-        <span class="attach-upload__label">业务对象</span>
+      <div class="attach-upload__field">
+        <span class="attach-upload__label">所属对象<i>*</i></span>
         <a-select
           v-model="bizId"
           show-search
           allow-clear
           :disabled="!bizType || bizType === 'process'"
           :placeholder="bizPlaceholder"
-          style="width: 360px"
+          style="width: 100%"
           :filter-option="false"
           :default-active-first-option="false"
-          :not-found-content="bizLoading ? '搜索中…' : '输入编号 / 名称后回车搜索'"
+          :not-found-content="bizLoading ? '搜索中…' : '输入编号 / 名称后搜索'"
           @search="handleBizSearch"
           @change="handleBizChange">
           <a-select-option v-for="item in bizOptions" :key="item.id" :value="item.id">
             {{ optionLabel(item) }}
           </a-select-option>
         </a-select>
-        <span class="attach-upload__hint">
-          ★ 必须输入关键词后再选（一次拉回几百条既慢又容易选错）；
-          选中的「宗地编号 / 配套名称」会作为附件列表里的业务可读键存下来
-        </span>
-      </div>
-
-      <div class="attach-upload__row">
-        <span class="attach-upload__label">附件类型</span>
-        <a-select
-          v-model="fileType"
-          placeholder="必选：这份文件属于哪一类资料"
-          style="width: 260px"
-          :options="fileTypeOptions" />
-        <span class="attach-upload__hint">
-          类型清单由后端白名单给出（与字典 land_attach_type 同源），
-          前端另写一份必然漂移 —— 漂移的后果是「下拉里能选、提交被拒」
-        </span>
-      </div>
-
-      <div class="attach-upload__row">
-        <span class="attach-upload__label">选择文件</span>
-        <a-upload
-          :file-list="fileList"
-          :before-upload="handleBeforeUpload"
-          :remove="handleRemove"
-          multiple
-          directory
-          :disabled="!canPickFile || uploading">
-          <a-button icon="upload" :disabled="!canPickFile || uploading">
-            {{ canPickFile ? '选择文件 / 文件夹上传' : '请先填完上面三项' }}
-          </a-button>
-        </a-upload>
-        <span class="attach-upload__hint">
-          可一次选多个文件，也可直接<b>选整个文件夹</b>；文件夹里的文件会<b>不分层级</b>归到上面选的材料类型下
-        </span>
-      </div>
-
-      <div class="attach-upload__row attach-upload__row--top">
-        <span class="attach-upload__label">备注</span>
-        <a-textarea
-          v-model="remark"
-          :rows="2"
-          :max-length="500"
-          style="width: 520px"
-          placeholder="选填；例如「同一份规划条件函同时支撑本项目两期」" />
       </div>
     </div>
 
-    <!-- ============ 结果 ============ -->
+    <!-- ============ 第二段：材料类型目录树 ============ -->
+    <div class="attach-upload__tree">
+      <div class="attach-upload__tree-head">
+        <span class="attach-upload__tree-title">材料目录</span>
+        <span class="attach-upload__tree-hint">{{ treeHint }}</span>
+      </div>
+
+      <p v-if="!bizId" class="attach-upload__placeholder">
+        请先选择归属类型与所属对象，然后在这里按材料类型上传文件
+      </p>
+
+      <a-spin v-else :spinning="treeLoading">
+        <div
+          v-for="group in groups"
+          :key="group.key"
+          class="attach-upload__group"
+          :class="{ 'is-uploading': uploadingType === group.fileType }">
+          <!-- 材料类型节点：点「上传」即归到该类型，不需要再选类型 -->
+          <div class="attach-upload__group-head">
+            <a class="attach-upload__group-toggle" @click="toggle(group.key)">
+              <a-icon :type="isExpanded(group.key) ? 'down' : 'right'" />
+              <a-icon :type="isExpanded(group.key) ? 'folder-open' : 'folder'" class="attach-upload__folder" />
+              <span class="attach-upload__group-name">{{ group.fileTypeName }}</span>
+            </a>
+            <span class="attach-upload__group-badge">
+              {{ group.fileCount }} 个 / {{ formatSize(group.totalSize) }}
+            </span>
+            <a-button
+              size="small"
+              icon="upload"
+              :loading="uploadingType === group.fileType"
+              :disabled="uploadingType !== '' && uploadingType !== group.fileType"
+              @click="pickFiles(group)">
+              {{ uploadingType === group.fileType ? '上传中…' : '上传' }}
+            </a-button>
+          </div>
+
+          <!-- 该类型已有的文件 -->
+          <ul v-if="isExpanded(group.key)" class="attach-upload__files">
+            <li v-for="file in group.files" :key="file.id" class="attach-upload__file">
+              <a-icon type="file" class="attach-upload__file-icon" />
+              <span class="attach-upload__file-name" :title="file.fileName">{{ file.fileName }}</span>
+              <span class="attach-upload__file-size">{{ file.readableSize || formatSize(file.fileSize) }}</span>
+              <span class="attach-upload__file-tag">已上传</span>
+            </li>
+            <!-- 本次会话刚传上去的：先就地显示，给即时反馈 -->
+            <li
+              v-for="item in justUploaded[group.fileType] || []"
+              :key="item.key"
+              class="attach-upload__file is-new">
+              <a-icon type="check-circle" class="attach-upload__file-icon is-new" />
+              <span class="attach-upload__file-name" :title="item.fileName">{{ item.fileName }}</span>
+              <span class="attach-upload__file-size">{{ formatSize(item.fileSize) }}</span>
+              <span class="attach-upload__file-tag is-new">刚刚上传</span>
+            </li>
+            <li
+              v-if="!group.fileCount && !(justUploaded[group.fileType] || []).length"
+              class="attach-upload__file is-empty">
+              <span>该类型还没有文件</span>
+            </li>
+          </ul>
+        </div>
+
+        <p v-if="!groups.length" class="attach-upload__placeholder">
+          该对象还没有任何附件；上传第一份文件后，这里会按材料类型列出目录
+        </p>
+      </a-spin>
+    </div>
+
+    <!-- ============ 反馈 ============ -->
     <a-alert
       v-if="errorMessage"
       class="attach-upload__alert"
       type="error"
       show-icon
-      :message="errorStep === 'bytes' ? '第 1 步失败：文件没有上传成功（没有产生任何存储路径，也没有登记）' : '第 2 步失败：文件已经在服务器上，但没有登记到附件表'"
-      :description="errorMessage" />
+      :message="errorMessage" />
     <a-alert
-      v-if="done"
+      v-if="doneCount"
       class="attach-upload__alert"
       type="success"
       show-icon
-      :message="`上传成功：${lastFileName}`"
-      description="已登记到附件列表；本页刷新后即可看到这条记录（可预览 / 下载 / 删除）。" />
+      :message="`本次已上传 ${doneCount} 个文件`" />
 
     <div class="attach-upload__foot">
-      <span v-if="errorStep === 'meta'" class="attach-upload__foot-hint">
-        ★ 重试登记只重跑第 2 步：不会重复占用存储、也不会产生第二份文件
+      <span class="attach-upload__foot-hint">
+        可以选单个文件，也可以直接选整个文件夹；文件夹里的文件会转到对应材料类型下
       </span>
-      <span v-else-if="errorStep === 'bytes'" class="attach-upload__foot-hint">
-        ★ 重试上传会重新走完整的两步（第 1 步失败时服务器上没有留下文件）
-      </span>
-      <span v-else class="attach-upload__foot-hint"></span>
-      <a-button v-if="errorStep === 'bytes'" icon="reload" :loading="uploading" @click="handleRetryUpload">重试上传</a-button>
-      <a-button v-if="errorStep === 'meta'" icon="reload" :loading="uploading" @click="handleRetryMeta">重试登记</a-button>
-      <a-button type="primary" @click="handleClose">{{ done ? '完成' : '关闭' }}</a-button>
+      <a-button type="primary" @click="handleClose">{{ doneCount ? '完成' : '关闭' }}</a-button>
     </div>
+
+    <!--
+      隐藏的文件输入：树里每个类型共用一个（节点只负责「用我的类型触发它」）。
+      webkitdirectory 让用户能选整个文件夹；不支持时退化成多选文件。
+    -->
+    <input
+      ref="fileInput"
+      class="attach-upload__input"
+      type="file"
+      multiple
+      webkitdirectory
+      :accept="acceptAttr"
+      @change="handleFilesPicked" />
   </a-modal>
 </template>
 
 <script>
   import {
-    ATTACH_TYPES_FALLBACK,
     buildUploadBiz,
     queryAllowedTypes,
+    queryAttachmentTree,
     saveAttachmentMeta,
     uploadFileBytes
   } from '@/api/land/attachment'
   import { BIZ_TYPE_REQUIRED_OPTIONS } from '@/api/land/dataRecycle'
   import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
+
+  /** 允许的扩展名（与后端白名单同源口径；这里只用于文件框的 accept 提示与前端预校验） */
+  const ALLOWED_EXT = [
+    'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv', 'ofd',
+    'rar', 'zip', '7z',
+    'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
+    'mp4', 'avi', 'mov', 'wmv'
+  ]
+  const MAX_SIZE_MB = 200
+  /** 单次选择的文件数上限：上传是串行的，几千个文件会让用户以为界面卡死 */
+  const MAX_FILES = 300
 
   /** 取小写扩展名（服务端也会兜底推导，这里显式给出，避免库里出现 "JPG" 与 "jpg" 两种写法） */
   function extractExt (fileName) {
@@ -142,131 +200,131 @@
   }
 
   /**
-   * 配套附件 - 上传弹窗
-   *
-   * ★★★ 上传是**两步**，这是本弹窗与「一个接口搞定上传」的常见做法最大的差别：
-   *
-   *   第 1 步 `uploadFileBytes(file, buildUploadBiz(bizType))`
-   *           → POST /sys/common/upload，把**文件字节**落到文件服务，
-   *             返回一个相对存储路径（jeecg 把它放在响应的 message 字段里，不是 result）。
-   *             这一步失败意味着：服务器上什么都没有，重试就是从头再传一次。
-   *   第 2 步 `saveAttachmentMeta({...})`
-   *           → POST /land/data/attachment/save，把「路径 + 业务信息」登记进附件表，
-   *             后端在这一步校验业务对象是否存在、类型是否在白名单内、路径是否是安全相对路径。
-   *             这一步失败意味着：**文件已经在服务器上了，只是没登记** ——
-   *             用户看到的列表里不会有它，但磁盘上确实多了一个文件。
-   *
-   *   为什么要拆两步（不是本页面能决定的，但必须解释给用户）：
-   *   同一份文件（例如一份规划条件函）可能同时支撑多个地块，把「存文件」与「挂业务」
-   *   耦合在一个接口里就没法复用；而且两步的失败原因完全不同，
-   *   拆开后前端才能准确告诉用户「是没传上去，还是传上去了没登记」。
-   *
-   *   ★ 因此错误提示分成两种口径（见 errorStep）：
-   *     bytes → 「重试上传」：重跑完整两步；
-   *     meta  → 「重试登记」：只重跑第 2 步，复用已经落盘的路径，不会产生第二份文件。
-   *
-   * ★ 为什么选文件就立刻上传，而不是先「保存」再上传：
-   *   附件没有「草稿」概念 —— 没登记成功的字节流对用户毫无意义。
-   *   所以要求先填齐业务类型 / 业务对象 / 附件类型（未填齐时文件选择框是禁用的），
-   *   选完文件即走两步流程，成功就是成功，失败就明确告诉用户卡在哪一步。
+   * 本地兜底的材料类型清单，**按归属类型给对应那套**。
+   * ★ 兜底也要分两套：宗地 5 类与配套 13 类是不同的清单（逐字取自旧系统存储目录），
+   *   接口一挂就给错清单的话，用户会选到一个根本不存在的类型。
    */
+  const LAND_TYPE_FALLBACK = [
+    { value: '01', label: '土地整理计划' },
+    { value: '02', label: '配套方案' },
+    { value: '03', label: '配套情况函' },
+    { value: '04', label: '配套筹备函' },
+    { value: '05', label: '出让宗地图形数据（SHP）' }
+  ]
+  const FACILITY_TYPE_FALLBACK = [
+    { value: '01', label: '项建批复文件' },
+    { value: '02', label: '可研批复文件' },
+    { value: '03', label: '初设及概算批复文件' },
+    { value: '04', label: '道路规划' },
+    { value: '05', label: '专业配套方案' },
+    { value: '06', label: '施工许可' },
+    { value: '07', label: '专业管理意见' },
+    { value: '08', label: '配套项目核定用地与地籍调查' },
+    { value: '09', label: '规划工程许可' },
+    { value: '10', label: '规划用地许可与划拨手续办理' },
+    { value: '11', label: '不动产登记' },
+    { value: '12', label: '竣工文件' },
+    { value: '13', label: '移交文件' }
+  ]
+
+  function fallbackTypesOf (bizType) {
+    return (bizType === 'facility' ? FACILITY_TYPE_FALLBACK : LAND_TYPE_FALLBACK).slice()
+  }
+
   export default {
     name: 'AttachmentUploadModal',
     data () {
       return {
         visible: false,
-        uploading: false,
-        done: false,
-        // ---- 表单 ----
+        // ---- 归属 ----
         bizType: undefined,
         bizId: undefined,
         bizKey: '',
-        fileType: undefined,
-        remark: '',
-        file: null,
-        fileList: [],
-        // ---- 远程业务对象 ----
         bizOptions: [],
         bizLoading: false,
-        // ---- 附件类型 ----
-        allowedTypes: [],
-        // ---- 两步结果 ----
-        storePath: '',
-        bytesFileName: '',
-        bytesFileSize: null,
-        lastFileName: '',
-        errorStep: '',
+        bizTypeOptions: BIZ_TYPE_REQUIRED_OPTIONS,
+        // ---- 材料类型目录 ----
+        /** 材料类型清单（决定树上列哪些类型，含还没有文件的） */
+        typeOptions: fallbackTypesOf('facility'),
+        /** 该归属对象的材料目录：{ groups:[...], totalFiles, totalSize, typeCount } */
+        tree: { groups: [] },
+        treeLoading: false,
+        /** 收起的材料类型 key（默认全展开，结构一眼可见） */
+        collapsed: [],
+        // ---- 上传 ----
+        /** 当前正在上传的材料类型码 */
+        uploadingType: '',
+        batchRunning: false,
+        justUploaded: {},
+        doneCount: 0,
         errorMessage: '',
-        // ---- 批量（含文件夹）上传 ----
-        /** 本批已成功份数 */
-        uploadedCount: 0,
-        /** 本批失败的文件名（末尾汇总提示用） */
-        failedFiles: []
+        ALLOWED_EXT
       }
     },
     computed: {
       /**
-       * 业务类型下拉。
+       * 树上要显示的材料类型：**以材料清单为准，而不是只看已有附件**。
        *
-       * ★ 用 `BIZ_TYPE_REQUIRED_OPTIONS`（不含「全部」）而不是 BIZ_TYPE_OPTIONS：
-       *   表单里第一项是「全部」会让人以为可以不选，结果提交一个空 bizType 被后端拒绝。
-       * ★ 「环节进度」在这里置灰：本页能拿到的下拉数据源只有宗地（queryLandOptions）
-       *   与配套项目（searchFacilityOptions），没有可靠的环节进度选项接口。
-       *   与其让用户手抄一个 id 挂错对象，不如明确指向正确的入口。
+       * ★ 这是与「管理页树」的关键差别：管理页只显示有文件的类型（空目录不显示），
+       *   而上传弹窗必须把**所有类型都列出来**，否则用户没法给「还没有文件的类型」
+       *   传第一份文件 —— 而那恰恰是上传弹窗最常见的用途。
        */
-      bizTypeOptions () {
-        return BIZ_TYPE_REQUIRED_OPTIONS.map(item => ({
-          value: item.value,
-          label: item.label,
-          disabled: item.value === 'process'
-        }))
+      groups () {
+        const treeGroups = (this.tree && this.tree.groups) || []
+        const byCode = {}
+        treeGroups.forEach(group => { byCode[group.fileType] = group })
+        return (this.typeOptions || []).map(option => {
+          const hit = byCode[option.value]
+          if (hit) {
+            return hit
+          }
+          return {
+            key: 'empty:' + option.value,
+            fileType: option.value,
+            fileTypeName: option.label,
+            files: [],
+            fileCount: 0,
+            totalSize: 0
+          }
+        })
       },
-      fileTypeOptions () {
-        if (this.allowedTypes.length) {
-          return this.allowedTypes
+      treeHint () {
+        if (!this.bizId) {
+          return '选好归属对象后，这里会按材料类型列出目录'
         }
-        return ATTACH_TYPES_FALLBACK
+        const total = Number((this.tree && this.tree.totalFiles) || 0)
+        return total > 0
+          ? `该对象已有 ${total} 个附件，按材料类型分布如下`
+          : '该对象还没有附件，可在任意材料类型下上传第一份'
       },
       bizPlaceholder () {
-        if (!this.bizType) {
-          return '请先选择业务类型'
-        }
-        if (this.bizType === 'process') {
-          return '环节进度附件请在「配套信息录入」的环节进度里上传'
-        }
-        return this.bizType === 'land' ? '输入出让宗地编号 / 地块名称搜索' : '输入配套项目名称搜索'
+        if (!this.bizType) return '请先选择归属类型'
+        if (this.bizType === 'process') return '请输入或选择环节'
+        return this.bizType === 'land' ? '输入编号 / 地块名称搜索' : '输入配套项目名称搜索'
       },
-      canPickFile () {
-        return !!(this.bizType && this.bizId && this.fileType)
-      },
-      /** 0 = 第 1 步进行中；1 = 第 1 步已完成、正在第 2 步；2 = 两步都完成 */
-      currentStep () {
-        if (this.done) {
-          return 2
-        }
-        if (this.errorStep === 'meta' || this.storePath) {
-          return 1
-        }
-        return 0
-      },
-      stepStatus () {
-        if (this.errorStep) {
-          return 'error'
-        }
-        return this.done ? 'finish' : 'process'
+      acceptAttr () {
+        return ALLOWED_EXT.map(ext => '.' + ext).join(',')
       }
     },
-    mounted () {
-      this.loadAllowedTypes()
-    },
     methods: {
+      formatSize (bytes) {
+        const size = Number(bytes || 0)
+        if (size <= 0) return '0 B'
+        const units = ['B', 'KB', 'MB', 'GB']
+        let value = size
+        let unit = 0
+        while (value >= 1024 && unit < units.length - 1) {
+          value /= 1024
+          unit += 1
+        }
+        return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+      },
+
+      /* ---------------- 对外入口 ---------------- */
+
       /**
-       * 打开弹窗。
-       *
-       * @param {object} [preset] 预置条件（树上的「上传到该类型 / 上传到该项目」传进来）
-       *   { bizType, bizId, bizKey, fileType, fileName? }
-       * ★ 传了 fileType 就把它定死：用户是在某个材料类型下点的上传，
-       *   不该再让他选一次（这是本次需求的核心便利点）。
+       * @param {object} [preset] 预置 { bizType, bizId, bizKey }
+       * ★ 不再需要 fileType：材料类型由「点哪个类型的上传」决定
        */
       open (preset) {
         const record = preset || {}
@@ -282,60 +340,66 @@
             this.bizOptions = [{ id: record.bizId, crzdbh: record.bizKey, dkmc: '', ptxmmc: record.bizKey }]
           }
         }
-        if (record.fileType) {
-          this.fileType = record.fileType
-        }
         this.visible = true
+        this.loadTypes()
+        if (this.bizId) {
+          this.loadTree()
+        }
       },
+
       reset () {
-        this.uploading = false
-        this.done = false
-        this.bizType = undefined
         this.bizId = undefined
         this.bizKey = ''
-        this.fileType = undefined
-        this.remark = ''
-        this.file = null
-        this.fileList = []
         this.bizOptions = []
-        this.storePath = ''
-        this.bytesFileName = ''
-        this.bytesFileSize = null
-        this.lastFileName = ''
-        this.errorStep = ''
+        this.tree = { groups: [] }
+        this.collapsed = []
+        this.uploadingType = ''
+        this.batchRunning = false
+        this.justUploaded = {}
+        this.doneCount = 0
         this.errorMessage = ''
       },
+
       handleClose () {
         this.visible = false
-      },
-      loadAllowedTypes () {
-        // ★ 材料类型清单按 bizType 取对应那套（宗地 5 类 / 配套 13 类）
-        queryAllowedTypes(this.bizType || undefined).then(res => {
-          if (res.success && res.result && res.result.length) {
-            // 后端给的是 {value, text}（与 land_attach_type 字典同源的 {value,label} 不同）
-            this.allowedTypes = res.result.map(item => ({ value: item.value, label: item.text || item.label }))
-          }
-        }).catch(() => { /* 接口不可用时用本地兜底清单 */ })
+        if (this.doneCount > 0) {
+          this.$emit('ok')
+        }
       },
 
-      // ---------------- 业务对象远程搜索 ----------------
+      /* ---------------- 材料类型清单 ---------------- */
+
+      loadTypes () {
+        const bizType = this.bizType || 'facility'
+        this.typeOptions = fallbackTypesOf(bizType)
+        queryAllowedTypes(bizType).then(res => {
+          if (res && res.success && res.result && res.result.length) {
+            // 后端给的是 {value, text}（与字典同源），统一成 {value,label}
+            this.typeOptions = res.result.map(item => ({
+              value: item.value,
+              label: item.text || item.label
+            }))
+          }
+        }).catch(() => {
+          // 接口不可用时保留本地兜底清单（按归属分两套，与字典逐字一致）
+        })
+      },
+
+      /* ---------------- 业务对象远程搜索 ---------------- */
 
       handleBizTypeChange () {
-        // 换类型后原来选中的业务对象已经不属于当前类型，必须清掉，
-        // 否则会把一份附件挂到「上一个类型 + 新的 bizId」这种不存在的组合上
+        // 换类型后原来选中的业务对象已不属于当前类型，必须清掉
         this.bizId = undefined
         this.bizKey = ''
         this.bizOptions = []
-        // ★ 材料类型清单也要换，并清掉已选的旧码值（旧码值在新清单里可能不存在）
-        this.fileType = undefined
-        this.loadAllowedTypes()
+        this.tree = { groups: [] }
+        this.justUploaded = {}
+        this.loadTypes()
       },
+
       handleBizSearch (keyword) {
         this.bizOptions = []
-        if (!this.bizType || this.bizType === 'process') {
-          return
-        }
-        if (!keyword) {
+        if (!this.bizType || this.bizType === 'process' || !keyword) {
           return
         }
         this.bizLoading = true
@@ -348,16 +412,25 @@
           this.bizLoading = false
         })
       },
+
+      /** 选中归属对象：记下可读键，并**立刻加载该对象的材料目录树** */
       handleBizChange (value) {
-        const hit = this.bizOptions.filter(item => item.id === value)[0]
-        if (!hit) {
-          this.bizId = value
+        this.errorMessage = ''
+        if (!value) {
+          this.bizId = undefined
+          this.bizKey = ''
+          this.tree = { groups: [] }
           return
         }
-        this.bizId = hit.id
+        const hit = this.bizOptions.filter(item => item.id === value)[0]
+        this.bizId = value
         // 业务可读键：宗地用编号、配套用名称 —— 列表里直接展示，避免每次联表
-        this.bizKey = this.bizType === 'facility' ? hit.ptxmmc : hit.crzdbh
+        this.bizKey = hit ? (this.bizType === 'facility' ? hit.ptxmmc : hit.crzdbh) : ''
+        this.tree = { groups: [] }
+        this.justUploaded = {}
+        this.loadTree()
       },
+
       optionLabel (item) {
         if (this.bizType === 'facility') {
           return item.ptxmmc + (item.crzdbh ? `（${item.crzdbh}）` : '')
@@ -365,181 +438,192 @@
         return (item.crzdbh || '') + (item.dkmc ? `（${item.dkmc}）` : '')
       },
 
-      // ---------------- 选文件 → 两步上传 ----------------
+      /* ---------------- 材料目录树 ---------------- */
 
-      /**
-       * 选中文件（支持一次多个 / 选择整个文件夹）。
-       *
-       * ★ 文件夹上传：把每个文件的相对路径去掉文件名作为它的目录 —— 不过当前
-       *   业务口径是**拉平**：文件夹里的文件不分层级，全部归到当前材料类型下，
-       *   所以这里只记路径用于展示，不参与归属计算。
-       */
-      handleBeforeUpload (file) {
-        if (!this.canPickFile) {
-          this.$message.warning('请先选择业务类型、业务对象与附件类型')
-          return false
-        }
-        const next = this.fileList.slice()
-        next.push(file)
-        this.fileList = next
-        this.done = false
-        this.errorStep = ''
-        this.errorMessage = ''
-        // 立刻开始逐份上传（a-upload 的自动上传已被 return false 阻止，
-        // 两步流程由本组件按顺序手动调用）
-        this.uploadQueue(next.slice())
-        return false
-      },
-      handleRemove (file) {
-        if (!file) {
-          this.fileList = []
+      loadTree () {
+        if (!this.bizId) {
           return
         }
-        this.fileList = this.fileList.filter(item => item.uid !== file.uid)
+        this.treeLoading = true
+        queryAttachmentTree(this.bizType, this.bizId).then(res => {
+          this.tree = (res && res.success && res.result) ? res.result : { groups: [] }
+        }).catch(() => {
+          this.tree = { groups: [] }
+        }).finally(() => {
+          this.treeLoading = false
+        })
+      },
+
+      isExpanded (key) {
+        return this.collapsed.indexOf(key) < 0
+      },
+
+      toggle (key) {
+        const index = this.collapsed.indexOf(key)
+        if (index > -1) {
+          this.collapsed.splice(index, 1)
+        } else {
+          this.collapsed.push(key)
+        }
+      },
+
+      /* ---------------- 在某个材料类型下上传 ---------------- */
+
+      /**
+       * 点某个类型的「上传」：记下目标类型，唤起文件选择。
+       * ★ 用户不需要选材料类型 —— 点哪个类型就归到哪个类型。
+       * ★ 取消选择也要复位：用户在系统文件框点「取消」时 change 不触发，
+       *   用 window 的 focus 兜底（文件框关闭后窗口重新获得焦点）。
+       */
+      pickFiles (group) {
+        this.uploadingType = group.fileType
+        this.errorMessage = ''
+        const typeCode = group.fileType
+        const resetOnCancel = () => {
+          window.removeEventListener('focus', resetOnCancel)
+          window.setTimeout(() => {
+            if (this.uploadingType === typeCode && !this.batchRunning) {
+              this.uploadingType = ''
+            }
+          }, 400)
+        }
+        window.addEventListener('focus', resetOnCancel)
+        this.$nextTick(() => {
+          const input = this.$refs.fileInput
+          if (input) {
+            input.value = ''
+            input.click()
+          }
+        })
+      },
+
+      /** 原生 change：校验 → 串行上传 */
+      handleFilesPicked (event) {
+        const input = event && event.target ? event.target : this.$refs.fileInput
+        const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
+        if (!selected.length) {
+          this.uploadingType = ''
+          return
+        }
+        if (selected.length > MAX_FILES) {
+          this.errorMessage = `所选文件夹含 ${selected.length} 个文件，超过一次最多 ${MAX_FILES} 个的限制，请分批上传`
+          this.uploadingType = ''
+          return
+        }
+        const accepted = []
+        const rejected = []
+        selected.forEach(file => {
+          const reason = this.validateFile(file)
+          if (reason) {
+            rejected.push(`${file.name}（${reason}）`)
+          } else {
+            accepted.push(file)
+          }
+        })
+        if (rejected.length) {
+          this.errorMessage = `以下 ${rejected.length} 个文件未通过校验：${rejected.slice(0, 5).join('；')}` +
+            (rejected.length > 5 ? ' 等' : '')
+        }
+        if (!accepted.length) {
+          this.uploadingType = ''
+          return
+        }
+        this.uploadBatch(accepted)
+      },
+
+      validateFile (file) {
+        const ext = extractExt(file.name)
+        if (ALLOWED_EXT.length && ALLOWED_EXT.indexOf(ext) < 0) {
+          return '不支持的格式'
+        }
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+          return `超过 ${MAX_SIZE_MB}MB`
+        }
+        return ''
       },
 
       /**
-       * 逐份串行上传整个队列。
-       *
-       * ★ 为什么串行而不是并发：每份都要跑两步（落盘 + 登记），
-       *   并发会让进度条与失败定位都变得不可解释；而且服务端的下载计数、
-       *   变更留痕是按条写的，串行更容易对账。
-       * ★ 单份失败不中断整批：用户选的是一整个文件夹，因为其中一个文件
-       *   格式不对就把其余全部丢弃，代价太大。失败的会汇总在末尾提示。
+       * 串行上传整批（单份失败不中断）。
+       * ★ 为什么串行：每份要跑两步（落盘 + 登记），并发会让进度与失败定位都不可解释。
+       * ★ 为什么失败不中断：用户选的可能是一整个文件夹，因一个文件格式不对就丢弃其余，
+       *   代价太大；失败的汇总在末尾提示。
        */
-      uploadQueue (queue) {
-        if (this.uploading) {
-          // 上一批还在跑：提示而不是静默排队（否则用户以为没反应）
-          this.$message.warning('上一批还在上传中，请稍候再选')
-          return
-        }
-        const pending = queue.slice()
-        this.uploadedCount = 0
-        this.failedFiles = []
-        this.uploading = true
-        this.errorStep = ''
-        this.errorMessage = ''
+      uploadBatch (files) {
+        const typeCode = this.uploadingType
+        const pending = files.slice()
+        const failed = []
+        let ok = 0
+        this.batchRunning = true
         const step = () => {
           const file = pending.shift()
           if (!file) {
-            this.uploading = false
-            this.finishBatch()
+            this.batchRunning = false
+            this.uploadingType = ''
+            this.doneCount += ok
+            if (failed.length) {
+              this.errorMessage = `成功 ${ok} 个，失败 ${failed.length} 个：` +
+                failed.slice(0, 5).join('；') + (failed.length > 5 ? ' 等' : '')
+            } else if (ok > 0) {
+              this.errorMessage = ''
+              this.$message.success(`已上传 ${ok} 个文件`)
+              this.$emit('ok')
+            }
+            // 树上的「已有文件」要刷新，否则与「刚刚上传」并列显示会重复
+            this.loadTree()
             return
           }
-          this.uploadOne(file).then(ok => {
-            if (ok) {
-              this.uploadedCount += 1
+          this.uploadOne(file, typeCode).then(success => {
+            if (success) {
+              ok += 1
             } else {
-              this.failedFiles.push(file.name)
+              failed.push(file.name)
             }
           }).then(step)
         }
         step()
       },
 
-      /** 整批结束：给出可读结论（成功几条 / 失败哪几个） */
-      finishBatch () {
-        const total = this.uploadedCount + this.failedFiles.length
-        if (total === 0) {
-          return
-        }
-        if (!this.failedFiles.length) {
-          this.done = true
-          this.lastFileName = total === 1 ? this.fileList[0].name : `共 ${total} 个文件`
-          return
-        }
-        this.errorStep = this.uploadedCount > 0 ? 'meta' : 'bytes'
-        this.errorMessage = `成功 ${this.uploadedCount} 个，失败 ${this.failedFiles.length} 个：` +
-          this.failedFiles.join('、') +
-          '。失败的文件可重新选择上传（已成功的不会重复登记）。'
-      },
-
-      /**
-       * 单份文件的两步上传。
-       *
-       * @returns {Promise<boolean>} true = 该份成功
-       */
-      uploadOne (file) {
-        this.storePath = ''
-        this.bytesFileName = ''
-        this.bytesFileSize = null
+      /** 单份文件：落盘 → 登记，并把成功的那条就地显示在对应类型下 */
+      uploadOne (file, typeCode) {
         return uploadFileBytes(file, buildUploadBiz(this.bizType)).then(uploaded => {
-          this.storePath = uploaded.storePath
-          this.bytesFileName = uploaded.fileName || file.name
-          this.bytesFileSize = uploaded.fileSize
-          return this.doSaveMeta(file, true)
-        }).catch(e => {
-          // 第 1 步失败：没有产生存储路径，也没有登记
-          this.errorMessage = `${file.name}：${(e && e.message) || '文件上传失败'}`
-          return false
-        })
+          return this.saveMeta(file, typeCode, uploaded.storePath).then(saved => {
+            if (saved) {
+              this.pushJustUploaded(typeCode, file, uploaded.storePath)
+            }
+            return saved
+          })
+        }).catch(() => false)
       },
 
-      /** 只重跑第 2 步（复用已落盘的路径） */
-      handleRetryMeta () {
-        if (!this.storePath) {
-          this.$message.warning('没有可复用的存储路径，请重新上传文件')
-          this.errorStep = 'bytes'
-          return
-        }
-        this.uploading = true
-        this.errorMessage = ''
-        this.doSaveMeta(null, false).finally(() => {
-          this.uploading = false
-        })
-      },
-      handleRetryUpload () {
-        this.uploadQueue(this.fileList.slice())
-      },
-      /**
-       * 第 2 步：把路径与业务信息登记到附件表。
-       *
-       * @param {File} [file]        当前这一份文件（批量时逐份传入）
-       * @param {boolean} [inBatch]  true = 批量中的一份：出错只返回 false，
-       *                             由调用方汇总提示；不在这里写 errorStep
-       * @returns {Promise<boolean>} true = 登记成功
-       */
-      doSaveMeta (file, inBatch) {
-        const source = file || this.file
-        const fileName = this.bytesFileName || (source ? source.name : '')
+      /** 第 2 步：登记（材料类型由「点哪个类型」决定） */
+      saveMeta (file, typeCode, storePath) {
         const meta = {
           bizType: this.bizType,
           bizId: this.bizId,
           bizKey: this.bizKey,
-          fileType: this.fileType,
-          fileName,
-          fileSize: this.bytesFileSize,
-          fileExt: extractExt(fileName),
-          contentType: source ? source.type : '',
-          storePath: this.storePath,
-          remark: this.remark
+          fileType: typeCode,
+          fileName: file.name,
+          fileSize: file.size,
+          fileExt: extractExt(file.name),
+          contentType: file.type || '',
+          storePath,
+          remark: ''
         }
         return saveAttachmentMeta(meta).then(res => {
-          if (!res.success) {
-            if (!inBatch) {
-              this.errorStep = 'meta'
-              this.errorMessage = `文件已上传成功（存储路径 ${this.storePath}），但登记失败：` +
-                `${res.message || '后端未说明原因'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
-            }
-            return false
+          if (!res || !res.success) {
+            throw new Error((res && res.message) || '附件登记失败')
           }
-          if (!inBatch) {
-            this.done = true
-            this.lastFileName = fileName
-            this.$message.success('附件上传成功')
-          }
-          // ★ 每成功一份就通知父组件刷新：批量上传中途关掉弹窗，
-          //   已经传上去的那些也应该出现在列表里
-          this.$emit('ok')
           return true
-        }).catch(e => {
-          if (!inBatch) {
-            this.errorStep = 'meta'
-            this.errorMessage = `文件已上传成功（存储路径 ${this.storePath}），但登记失败：` +
-              `${(e && e.message) || '网络异常'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
-          }
-          return false
         })
+      },
+
+      /** 就地显示「刚刚上传」，给即时反馈（树刷新后会并入已有文件列表） */
+      pushJustUploaded (typeCode, file, storePath) {
+        const next = Object.assign({}, this.justUploaded)
+        const list = (next[typeCode] || []).slice()
+        list.push({ key: storePath, fileName: file.name, fileSize: file.size })
+        next[typeCode] = list
+        this.justUploaded = next
       }
     }
   }
@@ -547,72 +631,224 @@
 
 <style lang="less" scoped>
   @border-color: #e2e8f0;
-  @text-muted: #475569;
   @text-weak: #94a3b8;
+  @primary: #2563eb;
 
+  /*
+   * 设计口径（来自 ui-ux-pro-max 的企业级密集面板建议）：
+   *   · 目录用主色蓝、文件用中性灰 —— 一眼分得清「容器」与「内容」
+   *   · 8px 间距节奏；hover 150-250ms；不做多余装饰与重阴影
+   */
   .attach-upload {
-    &__steps {
-      margin-bottom: 14px;
+    &__head {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 20px;
+      margin-bottom: 16px;
     }
 
-    &__block {
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      background: #fff;
-      border: 1px solid @border-color;
-      border-radius: 8px;
-    }
-
-    &__row {
+    &__field {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 12px;
-
-      &:last-child {
-        margin-bottom: 0;
-      }
-
-      &--top {
-        align-items: flex-start;
-      }
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
     }
 
     &__label {
-      flex: 0 0 72px;
       font-size: 13px;
+      color: #0f172a;
+
+      i {
+        margin-left: 4px;
+        color: #dc2626;
+        font-style: normal;
+      }
+    }
+
+    &__tree {
+      padding: 12px;
+      background: #fafbfd;
+      border: 1px solid @border-color;
+      border-radius: 4px;
+      // 材料类型较多时这一段自己滚动，不把弹窗撑高
+      max-height: 46vh;
+      overflow-y: auto;
+    }
+
+    &__tree-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    &__tree-title {
+      font-size: 13px;
+      font-weight: 600;
       color: #0f172a;
     }
 
-    &__hint {
-      flex: 1 1 auto;
-      min-width: 220px;
+    &__tree-hint {
       font-size: 12px;
-      line-height: 18px;
       color: @text-weak;
     }
 
+    &__placeholder {
+      margin: 0;
+      padding: 24px 0;
+      color: @text-weak;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    /* ---------- 材料类型节点 ---------- */
+    &__group {
+      border-bottom: 1px solid #f0f0f0;
+
+      &:last-of-type {
+        border-bottom: 0;
+      }
+
+      &.is-uploading {
+        background: rgba(37, 99, 235, 0.05);
+        border-radius: 4px;
+      }
+    }
+
+    &__group-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      transition: background 0.2s;
+
+      &:hover {
+        background: #f5f7fa;
+      }
+    }
+
+    &__group-toggle {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: #0f172a;
+      font-weight: 500;
+
+      > .anticon + .anticon {
+        margin-left: 6px;
+      }
+    }
+
+    &__folder {
+      // 目录用主色：与下面的文件行形成「容器 / 内容」的层级差
+      color: @primary;
+    }
+
+    &__group-name {
+      margin-left: 4px;
+    }
+
+    &__group-badge {
+      flex: 0 0 auto;
+      color: @text-weak;
+      font-size: 12px;
+    }
+
+    /* ---------- 文件行 ---------- */
+    &__files {
+      margin: 0;
+      padding: 0 0 8px;
+      list-style: none;
+    }
+
+    &__file {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 8px 3px 32px;
+      font-size: 12px;
+
+      &.is-new {
+        color: #16a34a;
+      }
+
+      &.is-empty {
+        color: @text-weak;
+      }
+    }
+
+    &__file-icon {
+      // 文件用中性灰，把主色留给目录
+      color: @text-weak;
+
+      &.is-new {
+        color: #16a34a;
+      }
+    }
+
+    &__file-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #475569;
+    }
+
+    &__file-size {
+      flex: 0 0 auto;
+      color: @text-weak;
+    }
+
+    &__file-tag {
+      flex: 0 0 auto;
+      padding: 0 6px;
+      font-size: 12px;
+      color: @text-weak;
+      background: #f0f2f5;
+      border-radius: 10px;
+
+      &.is-new {
+        color: #16a34a;
+        background: rgba(22, 163, 74, 0.1);
+      }
+    }
+
+    /* ---------- 隐藏的文件输入 ---------- */
+    &__input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     &__alert {
-      margin-bottom: 12px;
+      margin-top: 12px;
     }
 
     &__foot {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
       align-items: center;
-      justify-content: flex-end;
-      padding-top: 10px;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      padding-top: 12px;
       border-top: 1px solid @border-color;
     }
 
     &__foot-hint {
-      flex: 1 1 auto;
-      min-width: 200px;
+      flex: 1 1 320px;
+      min-width: 0;
       font-size: 12px;
       line-height: 18px;
-      color: @text-muted;
+      color: @text-weak;
     }
   }
 </style>

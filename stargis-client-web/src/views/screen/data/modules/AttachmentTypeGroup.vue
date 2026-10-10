@@ -50,7 +50,7 @@
 
     <ul v-if="expanded" class="type-group__files">
       <li v-for="file in group.files" :key="file.id" class="type-group__file">
-        <screen-icon name="file" :size="13" class="type-group__icon" />
+        <screen-icon name="file-text" :size="13" class="type-group__icon" />
         <span class="type-group__file-name" :title="file.fileName">{{ file.fileName }}</span>
         <span class="type-group__size">
           {{ file.readableSize || formatSize(file.fileSize) }}
