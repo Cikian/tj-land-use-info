@@ -34,7 +34,9 @@
     <template v-else>
       <!-- ① 多项目模式 -->
       <template v-if="projects.length">
-        <div v-for="project in projects" :key="project.bizId" class="attachment-tree__project">
+        <!-- ★ key 带上 bizType：不限归属类型时 land 与 facility 会同时出现，
+                 同一个 bizId 理论上可能撞（两者来自不同的表） -->
+        <div v-for="project in projects" :key="`${project.bizType}:${project.bizId}`" class="attachment-tree__project">
           <div class="attachment-tree__project-head">
             <button
               type="button"
@@ -45,6 +47,10 @@
             >
               <screen-icon :name="isProjectExpanded(project.bizId) ? 'chevron-down' : 'chevron-right'" :size="12" />
               <screen-icon name="layers" :size="13" class="attachment-tree__project-icon" />
+              <!-- 归属类型标签：不限类型时同一棵树下混着宗地与配套，不标出来分不清 -->
+              <span v-if="project.bizType" class="attachment-tree__type">
+                {{ bizTypeText(project.bizType) }}
+              </span>
               <span class="attachment-tree__project-name">{{ project.bizKey || '未命名' }}</span>
             </button>
 
@@ -75,6 +81,24 @@
             />
           </div>
         </div>
+
+        <!--
+          「显示更多」而不是分页。
+          ★ 树视图里分页是**不可用**的：分页会把某个项目截成两半
+            （第 1 页有它的 3 个类型、第 2 页有另外 2 个），
+            树的结构就断了 —— 而树的价值正是「一眼看全这个项目有什么」。
+            所以这里用「载入更多项目」：已加载的项目保持完整，只是继续往后取。
+          ★ 只在真的还有更多时才出现，避免无意义的按钮。
+        -->
+        <button
+          v-if="hasMore"
+          type="button"
+          class="attachment-tree__more"
+          :disabled="loading"
+          @click="$emit('load-more')"
+        >
+          显示更多项目（已显示 {{ projects.length }} 个）
+        </button>
       </template>
 
       <!-- ② 单业务对象模式 -->
@@ -98,7 +122,7 @@
 
 <script>
 import { ScreenIcon } from '@/components/screen'
-import { formatSize } from '@/views/screen/data/constants'
+import { formatSize, bizTypeText } from '@/views/screen/data/constants'
 import AttachmentTypeGroup from './AttachmentTypeGroup.vue'
 
 export default {
@@ -117,6 +141,8 @@ export default {
      */
     projects: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
+    /** 后端还有没有更多项目（配合 load-more 事件做「显示更多」） */
+    hasMore: { type: Boolean, default: false },
     /** 是否显示上传 / 删除按钮。详情页只读时传 false */
     editable: { type: Boolean, default: true },
     emptyText: { type: String, default: '还没有附件' }
@@ -139,6 +165,7 @@ export default {
   },
   methods: {
     formatSize,
+    bizTypeText,
 
     /** 某个项目下要渲染的材料类型分组 */
     groupListOf (project) {
@@ -171,17 +198,12 @@ export default {
   min-width: 0;
 
   /*
-   * ★ 兜底滚动：面板内容区已经打开了滚动（ScreenPanel scrollable），
-   *   但树的展开不受控 —— 一个项目展开后可能有上百个文件，
-   *   这里再兜一层 max-height + 自己滚动，保证任何情况下都够得到底部。
-   *   vh 系数按实际视口链算：内容区 top:104 + bottom:40，
-   *   减掉检索面板、工具条、面板内边距后约 320px 留给分页与页签。
+   * ★ 这里**故意不做**自己的滚动，交给面板内容区（ScreenPanel scrollable）。
+   *   之前给树加了 max-height + overflow-y: auto，结果是两个滚动容器打架：
+   *   树被自己的 max-height 截断，而面板内容区又几乎不溢出（不显示自己的滚动条），
+   *   表现就是「内容被切掉、又找不到滚动条」。
+   *   只留一个滚动容器，行为才是可预期的。
    */
-  max-height: calc(100vh - 320px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-  .screen-scrollbar();
 
   &__loading,
   &__empty {
@@ -190,6 +212,31 @@ export default {
     font-size: var(--screen-font-xs);
     color: var(--screen-text-mute);
     text-align: center;
+  }
+
+  /* 「显示更多项目」——详见模板里的说明：树视图不能用分页 */
+  &__more {
+    align-self: center;
+    margin-top: var(--screen-space-2);
+    padding: 4px var(--screen-space-3);
+    font-family: inherit;
+    font-size: var(--screen-font-xs);
+    color: var(--screen-accent-soft);
+    background: rgba(103, 178, 255, 0.1);
+    border: 1px solid rgba(103, 178, 255, 0.28);
+    border-radius: var(--screen-radius-sm);
+    cursor: pointer;
+    transition: background var(--screen-duration) var(--screen-ease);
+    .screen-focus-ring();
+
+    &:hover:not(:disabled) {
+      background: rgba(103, 178, 255, 0.2);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
   }
 
   &__project {
@@ -241,6 +288,17 @@ export default {
   &__project-name {
     min-width: 0;
     .screen-ellipsis();
+  }
+
+  /* 归属类型标签（不限类型时同树下混着宗地与配套） */
+  &__type {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    font-size: var(--screen-font-xs);
+    font-weight: 400;
+    color: var(--screen-accent-soft);
+    background: rgba(103, 178, 255, 0.12);
+    border-radius: var(--screen-radius-sm);
   }
 
   &__project-body {

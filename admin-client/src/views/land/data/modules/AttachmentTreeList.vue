@@ -25,8 +25,14 @@
     <a-spin :spinning="loading">
       <!-- ============ 多项目模式（附件管理页） ============ -->
       <template v-if="projects.length">
-        <div v-for="project in projects" :key="project.bizId" class="attach-tree__project">
+        <!-- ★ key 带上 bizType：不限归属类型时 land 与 facility 会同时出现，
+                 同一个 bizId 理论上可能撞（两者来自不同的表） -->
+        <div v-for="project in projects" :key="`${project.bizType}:${project.bizId}`" class="attach-tree__project">
           <div class="attach-tree__project-head">
+            <!-- 归属类型标签：不限类型时同一棵树下会混着宗地与配套，不标出来分不清 -->
+            <a-tag v-if="project.bizType" :color="bizTypeColor(project.bizType)" class="attach-tree__type">
+              {{ bizTypeText(project.bizType) }}
+            </a-tag>
             <span class="attach-tree__project-name" :title="project.bizKey">
               {{ project.bizKey || '未命名' }}
             </span>
@@ -68,7 +74,8 @@
 
 <script>
 // ★ formatSize 与上传/查询接口同属 @/api/land/attachment（admin-client 里没有公共的 util 版本）
-import { formatSize } from '@/api/land/attachment'
+import { formatSize, bizTypeText } from '@/api/land/attachment'
+import { bizTypeColor } from '@/api/land/dataRecycle'
 import TypeGroups from './AttachmentTypeGroups.vue'
 
 export default {
@@ -98,6 +105,8 @@ export default {
   },
   methods: {
     formatSize,
+    bizTypeText,
+    bizTypeColor,
 
     groupListOf (project) {
       return (project && project.tree && project.tree.groups) || []
@@ -141,6 +150,11 @@ export default {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__type {
+    flex: 0 0 auto;
+    margin: 0;
   }
 
   &__meta {

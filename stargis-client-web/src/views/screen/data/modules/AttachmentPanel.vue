@@ -67,8 +67,10 @@
         <attachment-tree-view
           :projects="treeProjects"
           :loading="loading"
+          :has-more="treeHasMore"
           @upload="handleUploadToType"
           @upload-project="handleUploadToProject"
+          @load-more="handleLoadMore"
           @preview="handlePreview"
           @download="handleDownload"
           @remove="handleRemove"
@@ -137,6 +139,15 @@ import {
 } from '@/api/land/attachment'
 import { defaultPagination, compactQuery, formatSize } from '../constants'
 
+/**
+ * 树视图每次向服务端要多少个项目。
+ *
+ * ★ 树不做分页（分页会把一个项目截成两半，结构就断了），
+ *   所以这里给一个一屏放得下的初值：40 个项目的**项目行**本身就能滚一屏，
+ *   用户看完再点「显示更多」把后面 40 个并进来 —— 已加载的项目始终完整。
+ */
+const TREE_PAGE_SIZE = 40
+
 export default {
   name: 'AttachmentPanel',
   components: {
@@ -178,7 +189,11 @@ export default {
       pagination: defaultPagination(10),
       summary: { num: 0, totalSize: 0, readableSize: '', typeCount: 0 },
       /** 跨项目树：[{ bizId, bizKey, totalFiles, totalSize, typeCount, tree }] */
-      treeProjects: []
+      treeProjects: [],
+      /** 树当前请求了多少个项目（「显示更多」时累加） */
+      treeLimit: TREE_PAGE_SIZE,
+      /** 后端还有没有更多项目 */
+      treeHasMore: false
     }
   },
   computed: {
@@ -215,17 +230,27 @@ export default {
      *   每个项目有哪些材料」——把文件名之类的条件也带上，会把树剪得七零八落
      *   （某个项目只剩一个类型、另一个项目整体消失），反而看不出结构。
      *   需要按文件名等精细检索时切到「平铺列表」。
+     *
+     * ★ 为什么用「显示更多」而不是分页：分页会把某个项目截成两半
+     *   （第 1 页有它的 3 个类型、第 2 页有另外 2 个），树的结构就断了 ——
+     *   而树的价值正是「一眼看全这个项目有什么」。所以按项目数往后累加。
      */
-    loadTree () {
+    loadTree (append) {
       this.loading = true
       const bizType = String(this.query.bizType || '').trim()
-      return queryAttachmentTreeByProject(bizType || undefined)
+      const limit = append ? this.treeLimit + TREE_PAGE_SIZE : TREE_PAGE_SIZE
+      return queryAttachmentTreeByProject(bizType || undefined, limit)
         .then((res) => {
           if (!res || !res.success) {
             toast.error((res && res.message) || '附件目录树加载失败')
             return
           }
-          this.treeProjects = res.result || []
+          const list = res.result || []
+          this.treeLimit = limit
+          this.treeProjects = list
+          // 后端按 limit 截断时「取回数 == limit」说明可能还有更多；
+          // 取回数少于 limit 就到底了
+          this.treeHasMore = list.length >= limit
         })
         .catch(() => {
           // 请求层已提示
@@ -293,6 +318,8 @@ export default {
       this.viewMode = mode
       this.selectedRowKeys = []
       this.pagination.current = 1
+      // 视图切换等同重新加载，树的「已加载多少」也复位
+      this.treeLimit = TREE_PAGE_SIZE
       this.loadCurrentView()
     },
 
@@ -301,10 +328,21 @@ export default {
       this.loadSummary()
     },
 
+    /**
+     * 树视图的「显示更多项目」：把 limit 加大后重新拉（不重置 treeLimit 以外的状态）。
+     * ★ 重新拉而不是本地追加：项目的排序是「附件多的在前」，只在服务端一致；
+     *   本地追加会拼出与服务端不一致的顺序，用户下次刷新看到的次序又变了。
+     */
+    handleLoadMore () {
+      this.loadTree(true)
+    },
+
     handleSearch (query) {
       this.query = query || {}
       this.pagination.current = 1
       this.selectedRowKeys = []
+      // 检索条件变了，树的「已加载多少」要从头算
+      this.treeLimit = TREE_PAGE_SIZE
       this.loadCurrentView()
       this.loadSummary()
     },
@@ -459,5 +497,35 @@ export default {
 .attachment-panel__list /deep/ .screen-panel__extra {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/*
+ * ★ 让滚动条**看得见**。
+ *   ScreenPanel 自带的滚动条是 4px + 极淡的边框色，在深色玻璃面板上几乎分辨不出，
+ *   用户的感受就是「没有滚动条、内容被切了」（这正是反馈里的现象）。
+ *   这里加宽到 8px 并提高对比度 —— 「可以滚」这件事必须是看得见的。
+ */
+.attachment-panel__list /deep/ .screen-panel__body.is-scroll {
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--screen-accent);
+    border-radius: var(--screen-radius-pill);
+    // 用内描边制造「细滑块 + 留白」的观感，而不是一根填满的粗条
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--screen-accent-bright);
+    background-clip: padding-box;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--screen-radius-pill);
+  }
 }
 </style>

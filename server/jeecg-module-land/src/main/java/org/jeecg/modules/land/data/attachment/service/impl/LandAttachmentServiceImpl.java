@@ -376,26 +376,49 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
      */
     @Override
     public List<Map<String, Object>> treeByProject(String bizType, Integer limit) {
+        String raw = DataSupport.clean(bizType);
         String type = cleanBizType(bizType);
         List<Map<String, Object>> result = new ArrayList<>();
-        if (type == null) {
+
+        // ★ 三种入参要区分开（混淆了就会「明明没数据却返回全部」这种危险行为）：
+        //   · 空/未传   → 附件管理页的「归属类型：全部」，取所有类型
+        //   · 合法类型   → 只取该类型
+        //   · 非法类型   → 返回空。**绝不能**退化成「全部」：
+        //                 拼错类型名时把全部业务的附件都返回出去，是越权式的结果。
+        boolean allTypes = (raw == null);
+        if (!allTypes && type == null) {
             return result;
         }
-        List<LandAttachment> all = enrichAll(baseMapper.selectByType(type));
+
+        List<LandAttachment> all = allTypes
+                ? enrichAll(baseMapper.selectAll())
+                : enrichAll(baseMapper.selectByType(type));
         if (all.isEmpty()) {
             return result;
         }
 
+        // key = bizType + ':' + bizId
+        // ★ 不能只用 bizId：land 与 facility 各自的 bizId 来自不同的表，
+        //   理论上可能相同；而且同一个项目在「宗地」与「配套」两套材料清单下
+        //   本来就是两条不同的树（材料类型清单不同），必须分开建。
         Map<String, List<LandAttachment>> byBiz = new LinkedHashMap<>();
+        Map<String, String> bizTypes = new LinkedHashMap<>();
         for (LandAttachment file : all) {
-            byBiz.computeIfAbsent(file.getBizId(), k -> new ArrayList<>()).add(file);
+            String fileType = DataSupport.clean(file.getBizType());
+            if (fileType == null) {
+                continue;
+            }
+            String key = fileType + ":" + file.getBizId();
+            byBiz.computeIfAbsent(key, k -> new ArrayList<>()).add(file);
+            bizTypes.put(key, fileType);
         }
 
         List<Map<String, Object>> projects = new ArrayList<>();
         for (Map.Entry<String, List<LandAttachment>> entry : byBiz.entrySet()) {
-            AttachmentTreeVO tree = buildTree(type, entry.getValue());
+            AttachmentTreeVO tree = buildTree(bizTypes.get(entry.getKey()), entry.getValue());
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("bizId", entry.getKey());
+            item.put("bizType", tree.getBizType());
+            item.put("bizId", tree.getGroups().isEmpty() ? null : tree.getGroups().get(0).getBizId());
             item.put("bizKey", tree.getBizKey());
             item.put("tree", tree);
             item.put("totalFiles", tree.getTotalFiles());

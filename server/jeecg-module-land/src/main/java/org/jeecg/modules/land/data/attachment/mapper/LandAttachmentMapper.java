@@ -66,6 +66,21 @@ public interface LandAttachmentMapper extends BaseMapper<LandAttachment> {
     List<LandAttachment> selectByType(@Param("bizType") String bizType);
 
     /**
+     * 全部业务类型的附件（不加 biz_type 条件）。
+     *
+     * <p>★ 用途：附件管理页的「归属类型 = 全部」默认视图 ——
+     * 那个页面允许不限业务类型，此时树要覆盖所有类型。
+     *
+     * <p>★ 仍然不分页，理由同 {@link #selectByType}：
+     * 树形展示要求完整结构，分页会把某棵子树截断，看起来像数据丢了。
+     */
+    @Select("SELECT " + COLUMNS + " FROM t_land_attachment a "
+            + "WHERE a.del_flag = 0 "
+            + "ORDER BY a.biz_type ASC, a.biz_id ASC, a.file_type ASC, "
+            + "IFNULL(a.sort_no, 9999) ASC, a.upload_time ASC")
+    List<LandAttachment> selectAll();
+
+    /**
      * 按业务主键统计附件数与总大小。
      *
      * <p>返回列：{@code bizId} / {@code num} / {@code totalSize}

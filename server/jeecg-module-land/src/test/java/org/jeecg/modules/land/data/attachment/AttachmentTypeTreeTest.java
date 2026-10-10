@@ -351,13 +351,52 @@ public class AttachmentTypeTreeTest extends LandIntegrationTestBase {
                 "附件多的项目应排在前面（多的在第 " + indexMany + " 位，少的在第 " + indexFew + " 位）");
     }
 
-    /** 没有任何附件时返回空列表，不报错 */
+    /** 未知业务类型安全返回空（不能抛异常） */
     @Test
-    public void treeByProjectEmptyWhenNoAttachment() {
+    public void treeByProjectEmptyWhenUnknownType() {
         assertNotNull(attachmentService.treeByProject("land", 200));
-        // 未知业务类型也要安全返回空
         assertTrue(attachmentService.treeByProject("unknown", 200).isEmpty());
-        assertTrue(attachmentService.treeByProject(null, 200).isEmpty());
+    }
+
+    /**
+     * ★ bizType 为空 = 附件管理页的「归属类型：全部」。
+     *
+     * <p>回归：原来 `type == null` 直接返回空列表，导致不带类型时树永远是空的 ——
+     * 而前端在不限类型时正是**不带**这个参数，页面就一片空白。
+     * 现在应当返回**所有类型**的项目，且每个项目带上自己的 bizType。
+     */
+    @Test
+    public void treeByProjectWithoutBizTypeCoversAllTypes() {
+        String landId = createLand("AL");
+        save("land", landId, TEST_DATA_CRZDBH_PREFIX + "TREE-AL", "01", "land.pdf", 30);
+
+        List<Map<String, Object>> all = attachmentService.treeByProject(null, 200);
+        assertFalse(all.isEmpty(), "不传 bizType 应返回全部类型的项目，而不是空列表");
+
+        // 该项目必须能找到，且带 bizType
+        Map<String, Object> hit = all.stream()
+                .filter(p -> landId.equals(p.get("bizId")))
+                .findFirst().orElse(null);
+        assertNotNull(hit, "不传 bizType 时也应包含刚建的宗地项目");
+        assertEquals("land", hit.get("bizType"));
+
+        // 与按类型查的结果应一致（同一条项目在两个入口不能算出不同数字）
+        Map<String, Object> byType = findProject(attachmentService.treeByProject("land", 200), landId);
+        assertNotNull(byType);
+        assertEquals(byType.get("totalFiles"), hit.get("totalFiles"));
+        assertEquals(byType.get("totalSize"), hit.get("totalSize"));
+    }
+
+    /** 项目行必须带 bizType —— 前端「上传到该项目」要靠它决定归属 */
+    @Test
+    public void treeByProjectRowsCarryBizType() {
+        String facilityId = createFacility("BT");
+        save("facility", facilityId, TEST_DATA_CRZDBH_PREFIX + "TREE-BT", "01", "f.pdf", 20);
+
+        Map<String, Object> hit = findProject(attachmentService.treeByProject("facility", 200), facilityId);
+        assertNotNull(hit, "应包含刚建的配套项目");
+        assertEquals("facility", hit.get("bizType"));
+        assertNotNull(hit.get("bizKey"), "项目行要有可读名称（界面直接展示它）");
     }
 
     private Map<String, Object> findProject (List<Map<String, Object>> projects, String bizId) {
