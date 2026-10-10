@@ -196,6 +196,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         if (dto == null) {
             throw new JeecgBootException("提交内容为空");
         }
+        normalizeNameFields(dto);
         String crzdbh = DataSupport.clean(dto.getCrzdbh());
         if (StringUtils.isBlank(crzdbh)) {
             throw new JeecgBootException("出让宗地编号不能为空");
@@ -243,6 +244,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         if (before == null) {
             throw new JeecgBootException("未找到对应的出让宗地（可能已被移除）");
         }
+        normalizeNameFields(dto);
         String crzdbh = DataSupport.clean(dto.getCrzdbh());
         if (StringUtils.isBlank(crzdbh)) {
             throw new JeecgBootException("出让宗地编号不能为空");
@@ -428,6 +430,26 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
     }
 
     /**
+     * 把「用户录入的名称类字段」里的半角括号统一成中文括号。
+     *
+     * <p><b>★ 为什么必须在入口归一</b>：宗地编号本身就带括号
+     * （{@code 津西青（挂）2024-01号}），半角 {@code ()} 与中文 {@code （）}
+     * 是不同的字符，不归一就会出现「同一宗地两条记录」：判重失效、
+     * 附件挂到另一个 id 上、统计翻倍。
+     * 实测库里 847 条编号有 2 条用了半角，就是这么来的。
+     *
+     * <p>归一发生在**判重与落库之前**，所以两种写法提交进来的结果一致。
+     * 只动括号，其余字符（含空格、大小写）一律不碰 —— 编号的书写习惯归用户，
+     * 只统一「看起来一样却是不同字符」的那一处。
+     */
+    private void normalizeNameFields(LandSaveDTO dto) {
+        dto.setCrzdbh(DataSupport.normalizeBrackets(dto.getCrzdbh()));
+        dto.setDkmc(DataSupport.normalizeBrackets(dto.getDkmc()));
+        dto.setSrr(DataSupport.normalizeBrackets(dto.getSrr()));
+        dto.setLpmc(DataSupport.normalizeBrackets(dto.getLpmc()));
+    }
+
+    /**
      * 业务字段搬运：DTO → 实体。
      *
      * <p>★ <b>刻意不用 BeanUtils.copyProperties</b>：它会连带复制
@@ -437,6 +459,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
      *
      * <p>文本字段统一走 {@link DataSupport#cleanAndCap}：去控制字符 + 去空白 + 按列宽截断
      * （列宽取自建表脚本 01_t_land.sql，与批量导入模板的长度校验同源）。
+     * 名称类字段（编号 / 地块名称 / 受让人 / 楼盘名称）已在入口做过括号归一。
      */
     private void copyBusinessFields(LandSaveDTO dto, Land land) {
         // ---- 文本 ----

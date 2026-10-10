@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.entity.Facility;
+import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.imports.facility.FacilityDuplicateStrategy;
 import org.jeecg.modules.land.data.imports.facility.FacilityImportField;
@@ -976,13 +977,15 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     private void applyValue(Facility facility, String column, Object value) {
         switch (column) {
             case "crzdbh":
-                facility.setCrzdbh((String) value);
+                // 半角括号归一成中文括号，与单个录入（FacilityAdminServiceImpl）同一口径 ——
+                // 否则同一个配套会因括号写法不同而变成两条记录
+                facility.setCrzdbh(DataSupport.normalizeBrackets((String) value));
                 break;
             case "ptxmmc":
-                facility.setPtxmmc((String) value);
+                facility.setPtxmmc(DataSupport.normalizeBrackets((String) value));
                 break;
             case "dkmc":
-                facility.setDkmc((String) value);
+                facility.setDkmc(DataSupport.normalizeBrackets((String) value));
                 break;
             case "ptsslb":
                 facility.setPtsslb((String) value);

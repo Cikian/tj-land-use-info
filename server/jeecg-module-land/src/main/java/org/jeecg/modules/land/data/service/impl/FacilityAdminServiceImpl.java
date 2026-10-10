@@ -215,6 +215,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (dto == null) {
             throw new JeecgBootException("提交内容为空");
         }
+        normalizeNameFields(dto);
         String crzdbh = DataSupport.clean(dto.getCrzdbh());
         String ptxmmc = DataSupport.clean(dto.getPtxmmc());
         if (crzdbh == null) {
@@ -273,6 +274,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (before == null) {
             throw new JeecgBootException("未找到对应的配套项目（可能已被移除）");
         }
+        normalizeNameFields(dto);
         String crzdbh = DataSupport.clean(dto.getCrzdbh());
         String ptxmmc = DataSupport.clean(dto.getPtxmmc());
         if (crzdbh == null) {
@@ -747,6 +749,24 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
      * 两者<b>参数顺序相反</b>（Spring 是 {@code (源, 目标)}，commons 是 {@code (目标, 源)}），
      * 混用会让「字段一个都没拷过去」这种问题静默发生 —— 保存成功但数据全空。
      */
+    /**
+     * 把「用户录入的名称类字段」里的半角括号统一成中文括号。
+     *
+     * <p><b>★ 为什么必须在入口归一</b>：配套项目名称本身就带括号
+     * （{@code 义安路（永顺道-永尚道）}），半角 {@code ()} 与中文 {@code （）}
+     * 是不同的字符，不归一就会出现「同一个配套两条记录」：
+     * 宗地内同名判重失效、附件挂到另一个 id 上。
+     *
+     * <p>归一发生在**判重与落库之前**，所以两种写法提交进来的结果一致。
+     * 只动括号，其余字符（含中间的空格、大小写）一律不碰。
+     */
+    private void normalizeNameFields(FacilitySaveDTO dto) {
+        dto.setPtxmmc(DataSupport.normalizeBrackets(dto.getPtxmmc()));
+        dto.setCrzdbh(DataSupport.normalizeBrackets(dto.getCrzdbh()));
+        dto.setDkmc(DataSupport.normalizeBrackets(dto.getDkmc()));
+        dto.setJsdw(DataSupport.normalizeBrackets(dto.getJsdw()));
+    }
+
     private void copyBusinessFields(FacilitySaveDTO dto, Facility facility) {
         BeanUtils.copyProperties(dto, facility);
         // 剥掉客户端不可信的字段（由 Service 显式决定）

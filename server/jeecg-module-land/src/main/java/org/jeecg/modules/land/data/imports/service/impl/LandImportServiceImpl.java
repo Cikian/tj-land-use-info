@@ -13,6 +13,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.entity.Land;
+import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.imports.LandDuplicateStrategy;
 import org.jeecg.modules.land.data.imports.LandImportField;
 import org.jeecg.modules.land.data.imports.LandImportResultVO;
@@ -727,13 +728,15 @@ public class LandImportServiceImpl implements ILandImportService {
     private void applyValue(Land land, String column, Object value) {
         switch (column) {
             case "crzdbh":
-                land.setCrzdbh((String) value);
+                // 半角括号归一成中文括号，与单个录入（LandAdminServiceImpl）同一口径 ——
+                // 否则同一宗地会因括号写法不同而变成两条记录
+                land.setCrzdbh(DataSupport.normalizeBrackets((String) value));
                 break;
             case "xmfl":
                 land.setXmfl((String) value);
                 break;
             case "dkmc":
-                land.setDkmc((String) value);
+                land.setDkmc(DataSupport.normalizeBrackets((String) value));
                 break;
             case "xzqh":
                 land.setXzqh((String) value);

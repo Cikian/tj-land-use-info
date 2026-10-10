@@ -162,6 +162,57 @@ public class DataSupport {
         return capLength(clean(value), maxLength);
     }
 
+    /**
+     * 把用户录入名称里的**半角括号统一成中文括号**，其余字符不动。
+     *
+     * <p><b>★ 为什么要归一（不是洁癖，是在防重复记录）</b>：
+     * 宗地编号、配套项目名称这些「用户录入的业务标识」里都带括号
+     * （{@code 津西青（挂）2024-01号}、{@code 义安路（永顺道-永尚道）}）。
+     * 半角 {@code ()} 与中文 {@code （）} 看起来几乎一样，但**是不同的字符**，
+     * 于是同一宗地会变成两条记录，判重失效、附件也会挂到不同的 id 上。
+     *
+     * <p>实测库里就有这种情况：847 条宗地编号里 846 条用中文括号，
+     * 2 条用了半角（{@code 津西浯(挂)2025-07}、{@code 津辰青(挂)2025-008号}）。
+     *
+     * <p><b>★ 只在「写入」侧归一</b>：查询与匹配仍然按归一方后的值比较，
+     * 所以历史数据必须一并刷成中文括号（见 sql/data/11_normalize_brackets.sql）。
+     * 若只在读侧宽松匹配（两种都认），库里会长期并存两种写法，
+     * 每次查询都要做一次「宽松比较」，且导出的表格里两种括号混着很难看。
+     *
+     * <p><b>★ 旧系统本来就是中文括号</b>：旧存储目录名如
+     * {@code 津北辰仓（挂）2018-015}、{@code 义安路（永顺道-永尚道）} 全用中文括号，
+     * 所以归一成中文括号是「向旧系统口径对齐」，不是新发明的规则。
+     *
+     * @param value 原始文本；null 原样返回
+     * @return 括号已改为中文括号的文本
+     */
+    public static String normalizeBrackets(String value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.indexOf('(') < 0 && value.indexOf(')') < 0) {
+            // 绝大多数值没有半角括号，直接原样返回，省掉一次字符串构造
+            return value;
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '(') {
+                sb.append('（');
+            } else if (c == ')') {
+                sb.append('）');
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    /** 清洗 + 括号归一 + 按列宽截断（用户录入的名称类字段统一走这个） */
+    public static String cleanName(String value, int maxLength) {
+        return capLength(normalizeBrackets(clean(value)), maxLength);
+    }
+
     // ==================================================================
     // 四、其它小工具
     // ==================================================================
