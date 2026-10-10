@@ -69,12 +69,16 @@
           :file-list="fileList"
           :before-upload="handleBeforeUpload"
           :remove="handleRemove"
-          :max-count="1"
+          multiple
+          directory
           :disabled="!canPickFile || uploading">
           <a-button icon="upload" :disabled="!canPickFile || uploading">
-            {{ canPickFile ? '选择文件并上传' : '请先填完上面三项' }}
+            {{ canPickFile ? '选择文件 / 文件夹上传' : '请先填完上面三项' }}
           </a-button>
         </a-upload>
+        <span class="attach-upload__hint">
+          可一次选多个文件，也可直接<b>选整个文件夹</b>；文件夹里的文件会<b>不分层级</b>归到上面选的材料类型下
+        </span>
       </div>
 
       <div class="attach-upload__row attach-upload__row--top">
@@ -192,7 +196,12 @@
         bytesFileSize: null,
         lastFileName: '',
         errorStep: '',
-        errorMessage: ''
+        errorMessage: '',
+        // ---- 批量（含文件夹）上传 ----
+        /** 本批已成功份数 */
+        uploadedCount: 0,
+        /** 本批失败的文件名（末尾汇总提示用） */
+        failedFiles: []
       }
     },
     computed: {
@@ -251,8 +260,31 @@
       this.loadAllowedTypes()
     },
     methods: {
-      open () {
+      /**
+       * 打开弹窗。
+       *
+       * @param {object} [preset] 预置条件（树上的「上传到该类型 / 上传到该项目」传进来）
+       *   { bizType, bizId, bizKey, fileType, fileName? }
+       * ★ 传了 fileType 就把它定死：用户是在某个材料类型下点的上传，
+       *   不该再让他选一次（这是本次需求的核心便利点）。
+       */
+      open (preset) {
+        const record = preset || {}
         this.reset()
+        if (record.bizType) {
+          this.bizType = record.bizType
+        }
+        if (record.bizId) {
+          this.bizId = record.bizId
+          this.bizKey = record.bizKey || ''
+          // 预置的业务对象不在远程搜索结果里，补一个选项让下拉能显示出来
+          if (record.bizKey) {
+            this.bizOptions = [{ id: record.bizId, crzdbh: record.bizKey, dkmc: '', ptxmmc: record.bizKey }]
+          }
+        }
+        if (record.fileType) {
+          this.fileType = record.fileType
+        }
         this.visible = true
       },
       reset () {
@@ -277,7 +309,8 @@
         this.visible = false
       },
       loadAllowedTypes () {
-        queryAllowedTypes().then(res => {
+        // ★ 材料类型清单按 bizType 取对应那套（宗地 5 类 / 配套 13 类）
+        queryAllowedTypes(this.bizType || undefined).then(res => {
           if (res.success && res.result && res.result.length) {
             // 后端给的是 {value, text}（与 land_attach_type 字典同源的 {value,label} 不同）
             this.allowedTypes = res.result.map(item => ({ value: item.value, label: item.text || item.label }))
@@ -293,6 +326,9 @@
         this.bizId = undefined
         this.bizKey = ''
         this.bizOptions = []
+        // ★ 材料类型清单也要换，并清掉已选的旧码值（旧码值在新清单里可能不存在）
+        this.fileType = undefined
+        this.loadAllowedTypes()
       },
       handleBizSearch (keyword) {
         this.bizOptions = []
@@ -331,46 +367,114 @@
 
       // ---------------- 选文件 → 两步上传 ----------------
 
+      /**
+       * 选中文件（支持一次多个 / 选择整个文件夹）。
+       *
+       * ★ 文件夹上传：把每个文件的相对路径去掉文件名作为它的目录 —— 不过当前
+       *   业务口径是**拉平**：文件夹里的文件不分层级，全部归到当前材料类型下，
+       *   所以这里只记路径用于展示，不参与归属计算。
+       */
       handleBeforeUpload (file) {
         if (!this.canPickFile) {
           this.$message.warning('请先选择业务类型、业务对象与附件类型')
           return false
         }
-        this.file = file
-        this.fileList = [file]
+        const next = this.fileList.slice()
+        next.push(file)
+        this.fileList = next
         this.done = false
         this.errorStep = ''
         this.errorMessage = ''
-        this.doUpload()
-        // 阻止 a-upload 自动上传：两步流程由本组件手动按顺序调用
+        // 立刻开始逐份上传（a-upload 的自动上传已被 return false 阻止，
+        // 两步流程由本组件按顺序手动调用）
+        this.uploadQueue(next.slice())
         return false
       },
-      handleRemove () {
-        this.file = null
-        this.fileList = []
-      },
-      /** 完整两步上传（第 1 步 + 第 2 步） */
-      doUpload () {
-        if (!this.file || !this.canPickFile) {
+      handleRemove (file) {
+        if (!file) {
+          this.fileList = []
           return
         }
+        this.fileList = this.fileList.filter(item => item.uid !== file.uid)
+      },
+
+      /**
+       * 逐份串行上传整个队列。
+       *
+       * ★ 为什么串行而不是并发：每份都要跑两步（落盘 + 登记），
+       *   并发会让进度条与失败定位都变得不可解释；而且服务端的下载计数、
+       *   变更留痕是按条写的，串行更容易对账。
+       * ★ 单份失败不中断整批：用户选的是一整个文件夹，因为其中一个文件
+       *   格式不对就把其余全部丢弃，代价太大。失败的会汇总在末尾提示。
+       */
+      uploadQueue (queue) {
+        if (this.uploading) {
+          // 上一批还在跑：提示而不是静默排队（否则用户以为没反应）
+          this.$message.warning('上一批还在上传中，请稍候再选')
+          return
+        }
+        const pending = queue.slice()
+        this.uploadedCount = 0
+        this.failedFiles = []
         this.uploading = true
         this.errorStep = ''
         this.errorMessage = ''
+        const step = () => {
+          const file = pending.shift()
+          if (!file) {
+            this.uploading = false
+            this.finishBatch()
+            return
+          }
+          this.uploadOne(file).then(ok => {
+            if (ok) {
+              this.uploadedCount += 1
+            } else {
+              this.failedFiles.push(file.name)
+            }
+          }).then(step)
+        }
+        step()
+      },
+
+      /** 整批结束：给出可读结论（成功几条 / 失败哪几个） */
+      finishBatch () {
+        const total = this.uploadedCount + this.failedFiles.length
+        if (total === 0) {
+          return
+        }
+        if (!this.failedFiles.length) {
+          this.done = true
+          this.lastFileName = total === 1 ? this.fileList[0].name : `共 ${total} 个文件`
+          return
+        }
+        this.errorStep = this.uploadedCount > 0 ? 'meta' : 'bytes'
+        this.errorMessage = `成功 ${this.uploadedCount} 个，失败 ${this.failedFiles.length} 个：` +
+          this.failedFiles.join('、') +
+          '。失败的文件可重新选择上传（已成功的不会重复登记）。'
+      },
+
+      /**
+       * 单份文件的两步上传。
+       *
+       * @returns {Promise<boolean>} true = 该份成功
+       */
+      uploadOne (file) {
         this.storePath = ''
-        uploadFileBytes(this.file, buildUploadBiz(this.bizType)).then(uploaded => {
+        this.bytesFileName = ''
+        this.bytesFileSize = null
+        return uploadFileBytes(file, buildUploadBiz(this.bizType)).then(uploaded => {
           this.storePath = uploaded.storePath
-          this.bytesFileName = uploaded.fileName
+          this.bytesFileName = uploaded.fileName || file.name
           this.bytesFileSize = uploaded.fileSize
-          return this.doSaveMeta()
+          return this.doSaveMeta(file, true)
         }).catch(e => {
-          // 只可能是第 1 步失败：doSaveMeta 自己吞掉第 2 步的错误并记在 errorStep 上
-          this.errorStep = 'bytes'
-          this.errorMessage = (e && e.message) || '文件上传失败'
-        }).finally(() => {
-          this.uploading = false
+          // 第 1 步失败：没有产生存储路径，也没有登记
+          this.errorMessage = `${file.name}：${(e && e.message) || '文件上传失败'}`
+          return false
         })
       },
+
       /** 只重跑第 2 步（复用已落盘的路径） */
       handleRetryMeta () {
         if (!this.storePath) {
@@ -380,15 +484,24 @@
         }
         this.uploading = true
         this.errorMessage = ''
-        this.doSaveMeta().finally(() => {
+        this.doSaveMeta(null, false).finally(() => {
           this.uploading = false
         })
       },
       handleRetryUpload () {
-        this.doUpload()
+        this.uploadQueue(this.fileList.slice())
       },
-      doSaveMeta () {
-        const fileName = this.bytesFileName || (this.file ? this.file.name : '')
+      /**
+       * 第 2 步：把路径与业务信息登记到附件表。
+       *
+       * @param {File} [file]        当前这一份文件（批量时逐份传入）
+       * @param {boolean} [inBatch]  true = 批量中的一份：出错只返回 false，
+       *                             由调用方汇总提示；不在这里写 errorStep
+       * @returns {Promise<boolean>} true = 登记成功
+       */
+      doSaveMeta (file, inBatch) {
+        const source = file || this.file
+        const fileName = this.bytesFileName || (source ? source.name : '')
         const meta = {
           bizType: this.bizType,
           bizId: this.bizId,
@@ -397,25 +510,35 @@
           fileName,
           fileSize: this.bytesFileSize,
           fileExt: extractExt(fileName),
-          contentType: this.file ? this.file.type : '',
+          contentType: source ? source.type : '',
           storePath: this.storePath,
           remark: this.remark
         }
         return saveAttachmentMeta(meta).then(res => {
           if (!res.success) {
+            if (!inBatch) {
+              this.errorStep = 'meta'
+              this.errorMessage = `文件已上传成功（存储路径 ${this.storePath}），但登记失败：` +
+                `${res.message || '后端未说明原因'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
+            }
+            return false
+          }
+          if (!inBatch) {
+            this.done = true
+            this.lastFileName = fileName
+            this.$message.success('附件上传成功')
+          }
+          // ★ 每成功一份就通知父组件刷新：批量上传中途关掉弹窗，
+          //   已经传上去的那些也应该出现在列表里
+          this.$emit('ok')
+          return true
+        }).catch(e => {
+          if (!inBatch) {
             this.errorStep = 'meta'
             this.errorMessage = `文件已上传成功（存储路径 ${this.storePath}），但登记失败：` +
-              `${res.message || '后端未说明原因'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
-            return
+              `${(e && e.message) || '网络异常'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
           }
-          this.done = true
-          this.lastFileName = fileName
-          this.$message.success('附件上传成功')
-          this.$emit('ok')
-        }).catch(e => {
-          this.errorStep = 'meta'
-          this.errorMessage = `文件已上传成功（存储路径 ${this.storePath}），但登记失败：` +
-            `${(e && e.message) || '网络异常'}。可点「重试登记」只重跑第 2 步，不必重新上传文件。`
+          return false
         })
       }
     }

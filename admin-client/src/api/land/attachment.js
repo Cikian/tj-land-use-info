@@ -34,6 +34,8 @@ import { compact, buildDownloadUrl } from '@/api/land/landAdmin'
 export const attachmentUrl = {
   list: '/land/data/attachment/list',
   byBiz: '/land/data/attachment/byBiz',
+  tree: '/land/data/attachment/tree',
+  byProject: '/land/data/attachment/byProject',
   summary: '/land/data/attachment/summary',
   typeDistribution: '/land/data/attachment/typeDistribution',
   allowedTypes: '/land/data/attachment/allowedTypes',
@@ -79,8 +81,33 @@ export function queryTypeDistribution (bizType) {
  *   `land_attach_type` 是同一份，前端另写一份必然漂移 ——
  *   漂移的后果是「下拉里能选、提交被拒」。
  */
-export function queryAllowedTypes () {
-  return getAction(attachmentUrl.allowedTypes, {})
+export function queryAllowedTypes (bizType) {
+  return getAction(attachmentUrl.allowedTypes, compact({ bizType }))
+}
+
+/**
+ * 附件目录树：按**材料类型**分组（单业务对象）。
+ *
+ * @param {string} bizType land / facility / process
+ * @param {string} bizId   业务对象 id
+ * @returns {Promise} result 为
+ *   { bizType, bizKey, groups:[{ key, fileType, fileTypeName, files, fileCount, totalSize }],
+ *     totalFiles, totalSize, typeCount }
+ *
+ * ★ 只返回「有附件的材料类型」，空类型不进树。
+ */
+export function queryAttachmentTree (bizType, bizId) {
+  return getAction(attachmentUrl.tree, compact({ bizType, bizId }))
+}
+
+/**
+ * 跨项目的附件树（附件管理页）：项目 → 材料类型 → 文件。
+ *
+ * @param {string} [bizType] 只取某一类业务；为空表示全部
+ * @param {number} [limit]   最多返回多少个项目（按附件数倒序，默认 200）
+ */
+export function queryAttachmentTreeByProject (bizType, limit) {
+  return getAction(attachmentUrl.byProject, compact({ bizType, limit }))
 }
 
 /* ==========================================================================
@@ -322,6 +349,8 @@ export default {
   queryAttachmentSummary,
   queryTypeDistribution,
   queryAllowedTypes,
+  queryAttachmentTree,
+  queryAttachmentTreeByProject,
   uploadUrl,
   uploadHeaders,
   uploadFileBytes,

@@ -120,8 +120,33 @@
       </a-row>
     </a-form>
 
+    <!-- ============ 视图切换 ============ -->
+    <div class="attach-view">
+      <a-radio-group v-model="viewMode" button-style="solid" size="small" @change="handleViewChange">
+        <a-radio-button value="tree">目录树</a-radio-button>
+        <a-radio-button value="flat">平铺列表</a-radio-button>
+      </a-radio-group>
+      <span class="attach-view__hint">
+        {{ viewMode === 'tree'
+          ? '按「项目 → 材料类型」展示；点某个类型的「上传到该类型」即自动归类，不用再选材料类型'
+          : '按文件名 / 材料类型 / 上传时间检索（树做不了这类精细检索）' }}
+      </span>
+    </div>
+
+    <!-- ============ 目录树视图 ============ -->
+    <attachment-tree-list
+      v-if="viewMode === 'tree'"
+      :projects="treeProjects"
+      :loading="treeLoading"
+      @upload="handleUploadToType"
+      @upload-project="handleUploadToProject"
+      @preview="handlePreview"
+      @download="handleDownload"
+      @remove="handleDelete" />
+
     <!-- ============ 附件列表 ============ -->
     <a-table
+      v-else
       row-key="id"
       size="small"
       :columns="columns"
@@ -171,6 +196,7 @@
 <script>
   import AttachmentUploadModal from './modules/AttachmentUploadModal'
   import AttachmentPreviewModal from './modules/AttachmentPreviewModal'
+  import AttachmentTreeList from './modules/AttachmentTreeList'
   import {
     ATTACH_TYPES_FALLBACK,
     BIZ_TYPE_OPTIONS,
@@ -181,6 +207,7 @@
     queryAllowedTypes,
     queryAttachmentPage,
     queryAttachmentSummary,
+    queryAttachmentTreeByProject,
     queryTypeDistribution
   } from '@/api/land/attachment'
   import { bizTypeColor } from '@/api/land/dataRecycle'
@@ -214,10 +241,18 @@
    */
   export default {
     name: 'AttachmentList',
-    components: { AttachmentUploadModal, AttachmentPreviewModal },
+    components: { AttachmentUploadModal, AttachmentPreviewModal, AttachmentTreeList },
     data () {
       return {
         loading: false,
+        /**
+         * 视图模式。★ 默认目录树：本次需求就是要「按项目 → 材料类型」展示；
+         * 平铺列表用于「按文件名 / 类型 / 时间」这类树做不了的精细检索。
+         */
+        viewMode: 'tree',
+        treeLoading: false,
+        /** 跨项目树：[{ bizId, bizKey, totalFiles, totalSize, typeCount, tree }] */
+        treeProjects: [],
         rows: [],
         total: 0,
         expanded: false,
@@ -316,7 +351,7 @@
     },
     mounted () {
       this.loadAllowedTypes()
-      this.loadData()
+      this.loadCurrentView()
       this.loadSummary()
     },
     methods: {
@@ -336,8 +371,68 @@
           endDate: undefined
         }
       },
-      loadAllowedTypes () {
-        queryAllowedTypes().then(res => {
+      /** 按当前视图加载（两个视图数据源不同，切换时各自加载） */
+      loadCurrentView () {
+        if (this.viewMode === 'tree') {
+          return this.loadTree()
+        }
+        return this.loadData()
+      },
+
+      /**
+       * 跨项目附件树。
+       * ★ 只按 bizType 过滤，不带其它检索条件：目录树的语义是「有哪些项目、
+       *   每个项目有哪些材料」；把文件名之类的条件也带上会把树剪得七零八落，
+       *   反而看不出结构。需要精细检索时切「平铺列表」。
+       */
+      loadTree () {
+        this.treeLoading = true
+        return queryAttachmentTreeByProject(this.query.bizType || undefined)
+          .then(res => {
+            if (!res || !res.success) {
+              this.treeProjects = []
+              return
+            }
+            this.treeProjects = res.result || []
+          })
+          .catch(() => {
+            this.treeProjects = []
+          })
+          .finally(() => {
+            this.treeLoading = false
+          })
+      },
+
+      /** 切换视图：数据源不同，必须各自加载一次 */
+      handleViewChange () {
+        this.loadCurrentView()
+      },
+
+      /**
+       * 上传到某个材料类型（树上的「上传到该类型」）：
+       * ★ 材料类型由分组定死，用户不需要再选 —— 这是本次需求的核心便利点。
+       */
+      handleUploadToType (group) {
+        this.$refs.uploadModal.open({
+          bizType: group.bizType || this.query.bizType || 'facility',
+          bizId: group.bizId || '',
+          bizKey: group.bizKey || '',
+          fileType: group.fileType || ''
+        })
+      },
+
+      /** 上传到某个项目：只预置归属，材料类型在弹窗里选 */
+      handleUploadToProject (project) {
+        this.$refs.uploadModal.open({
+          bizType: this.query.bizType || 'facility',
+          bizId: project.bizId || '',
+          bizKey: project.bizKey || ''
+        })
+      },
+
+      loadAllowedTypes (bizType) {
+        // ★ 材料类型清单按 bizType 取对应那套（宗地 5 类 / 配套 13 类）
+        queryAllowedTypes(bizType).then(res => {
           if (res.success && res.result && res.result.length) {
             // 后端给的是 {value, text}（不是字典的 {value,label}），统一成 label 供下拉使用
             this.allowedTypes = res.result.map(item => ({ value: item.value, label: item.text || item.label }))
@@ -403,7 +498,8 @@
       },
       handleSearch () {
         this.pagination.current = 1
-        this.loadData()
+        // ★ 按当前视图刷新：树视图与列表视图数据源不同
+        this.loadCurrentView()
         this.loadSummary()
       },
       handleReset () {
@@ -422,7 +518,8 @@
         this.loadData()
       },
       refresh () {
-        this.loadData()
+        // ★ 按当前视图刷新（上传/删除后两个视图都要能看到变化）
+        this.loadCurrentView()
         this.loadSummary()
       },
 
@@ -435,6 +532,8 @@
         this.bizOptions = []
         // 概览卡片的统计口径跟随业务类型；这里连带列表一起刷新，
         // 否则会出现「卡片上是配套的数量、列表还是全部业务的记录」这种自相矛盾的显示
+        // ★ 材料类型清单也要跟着换：宗地 5 类与配套 13 类是两套不同的清单
+        this.loadAllowedTypes(this.query.bizType || undefined)
         this.handleSearch()
       },
       handleBizSearch (keyword) {
@@ -527,8 +626,21 @@
       padding: 16px;
     }
 
-    .page-head {
+    /* 视图切换条：靠左放开关，右侧一行说明当前视图的用途 */
+    .attach-view {
       display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .attach-view__hint {
+      color: @text-muted;
+      font-size: 12px;
+    }
+
+    .page-head {      display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 16px;

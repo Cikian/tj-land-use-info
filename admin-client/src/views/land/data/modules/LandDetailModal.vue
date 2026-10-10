@@ -128,6 +128,28 @@
             <a-descriptions-item label="最后更新">{{ joinInfo(detail.updateBy, detail.updateTime) }}</a-descriptions-item>
           </a-descriptions>
         </section>
+
+        <!-- ============ 八、附件（按材料类型分组的目录树） ============ -->
+        <section class="land-detail__block">
+          <div class="land-detail__block-title">
+            宗地附件
+            <span class="land-detail__block-sub">
+              共 {{ attachmentTree.totalFiles || 0 }} 个 / {{ formatSize(attachmentTree.totalSize) }}
+              · 按材料类型分组；上传/删除请到「配套附件管理」
+            </span>
+          </div>
+          <!--
+            ★ 与配套详情同一口径：按材料类型分组，一眼看出缺哪类材料。
+            ★ editable=false：详情页只读，写操作统一在附件管理页。
+          -->
+          <attachment-tree-list
+            :tree="attachmentTree"
+            :loading="attachmentLoading"
+            :editable="false"
+            empty-text="该宗地还没有附件"
+            @preview="handlePreview"
+            @download="handleDownload" />
+        </section>
       </div>
 
       <a-empty v-else-if="!loading" description="未取到宗地详情（可能已被移除）" />
@@ -137,6 +159,8 @@
 
 <script>
   import { queryLandDetail } from '@/api/land/landAdmin'
+  import { queryAttachmentTree, downloadAttachment, formatSize } from '@/api/land/attachment'
+  import AttachmentTreeList from './AttachmentTreeList.vue'
 
   /**
    * 经营性用地 - 详情弹窗
@@ -157,23 +181,57 @@
    */
   export default {
     name: 'LandDetailModal',
+    components: { AttachmentTreeList },
     data () {
       return {
         visible: false,
         loading: false,
         landId: '',
-        detail: null
+        detail: null,
+        /** 附件树（按材料类型分组）：{ groups:[...], totalFiles, totalSize, typeCount } */
+        attachmentTree: { groups: [] },
+        attachmentLoading: false
       }
     },
     methods: {
+      formatSize: formatSize,
+
       open (id) {
         if (!id) {
           return
         }
         this.landId = id
         this.detail = null
+        this.attachmentTree = { groups: [] }
         this.visible = true
         this.load()
+        // 附件不阻塞主信息展示，并行拉取
+        this.loadAttachments(id)
+      },
+
+      /** 附件树（按材料类型分组）：走 /attachment/tree，与附件管理页同一口径 */
+      loadAttachments (bizId) {
+        this.attachmentLoading = true
+        queryAttachmentTree('land', bizId).then(res => {
+          this.attachmentTree = (res && res.success && res.result) ? res.result : { groups: [] }
+        }).catch(() => {
+          this.attachmentTree = { groups: [] }
+        }).finally(() => {
+          this.attachmentLoading = false
+        })
+      },
+
+      handlePreview (file) {
+        // 详情页不内嵌预览弹窗：复用下载地址，浏览器能渲染的当场显示
+        this.handleDownload(file)
+      },
+
+      handleDownload (file) {
+        if (!file || !file.id) {
+          this.$message.warning('该附件还没有落库，无法下载')
+          return
+        }
+        downloadAttachment(file.id, file.fileName)
       },
       handleClose () {
         this.visible = false
@@ -288,6 +346,14 @@
       font-size: 12px;
       font-weight: 400;
       line-height: 18px;
+      color: @text-weak;
+    }
+
+    /* 标题右侧的一句统计（附件数 / 大小） */
+    &__block-sub {
+      margin-left: 8px;
+      font-size: 12px;
+      font-weight: 400;
       color: @text-weak;
     }
 

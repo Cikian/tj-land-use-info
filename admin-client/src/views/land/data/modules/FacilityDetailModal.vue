@@ -57,6 +57,30 @@
             </a-descriptions>
           </a-collapse-panel>
         </a-collapse>
+
+        <!-- ============ 附件（按材料类型分组的目录树） ============ -->
+        <div class="facility-detail__files">
+          <div class="facility-detail__files-head">
+            <span class="group-title">配套附件</span>
+            <span class="facility-detail__files-meta">
+              共 {{ attachmentTree.totalFiles || 0 }} 个 / {{ formatSize(attachmentTree.totalSize) }}
+              · 按材料类型分组；上传/删除请到「配套附件管理」
+            </span>
+          </div>
+          <!--
+            ★ 详情页用目录树而不是平铺表格：这里回答的是「材料按类型齐不齐」，
+              分组后一眼能看出缺哪类；平铺表格给不出这个结构。
+            ★ editable=false：详情页保持只读，写操作统一在附件管理页，
+              这样留痕与权限口径只有一处。
+          -->
+          <attachment-tree-list
+            :tree="attachmentTree"
+            :loading="attachmentLoading"
+            :editable="false"
+            empty-text="该配套项目还没有附件"
+            @preview="handlePreview"
+            @download="handleDownload" />
+        </div>
       </template>
       <a-empty v-else-if="!loading" description="未取到配套项目详情" />
     </a-spin>
@@ -70,6 +94,8 @@
 
 <script>
   import { queryFacilityDetail } from '@/api/land/facilityAdmin'
+  import { queryAttachmentTree, downloadAttachment, formatSize } from '@/api/land/attachment'
+  import AttachmentTreeList from './AttachmentTreeList.vue'
 
   /**
    * 配套项目详情弹窗
@@ -86,11 +112,15 @@
    */
   export default {
     name: 'FacilityDetailModal',
+    components: { AttachmentTreeList },
     data () {
       return {
         visible: false,
         loading: false,
         detail: null,
+        /** 附件树（按材料类型分组）：{ groups:[...], totalFiles, totalSize, typeCount } */
+        attachmentTree: { groups: [] },
+        attachmentLoading: false,
         activeGroups: ['base', 'units'],
         groups: [
           {
@@ -164,6 +194,8 @@
       }
     },
     methods: {
+      formatSize: formatSize,
+
       open (id) {
         if (!id) {
           this.$message.warning('缺少配套项目ID')
@@ -171,6 +203,7 @@
         }
         this.visible = true
         this.detail = null
+        this.attachmentTree = { groups: [] }
         this.loading = true
         queryFacilityDetail(id).then(res => {
           if (!res.success || !res.result) {
@@ -183,6 +216,33 @@
         }).finally(() => {
           this.loading = false
         })
+        // 附件不阻塞主信息展示，并行拉取
+        this.loadAttachments(id)
+      },
+
+      /** 附件树（按材料类型分组）：走 /attachment/tree，与附件管理页同一口径 */
+      loadAttachments (bizId) {
+        this.attachmentLoading = true
+        queryAttachmentTree('facility', bizId).then(res => {
+          this.attachmentTree = (res && res.success && res.result) ? res.result : { groups: [] }
+        }).catch(() => {
+          this.attachmentTree = { groups: [] }
+        }).finally(() => {
+          this.attachmentLoading = false
+        })
+      },
+
+      handlePreview (file) {
+        // 详情页不内嵌预览弹窗：复用下载地址，浏览器能渲染的当场显示
+        this.handleDownload(file)
+      },
+
+      handleDownload (file) {
+        if (!file || !file.id) {
+          this.$message.warning('该附件还没有落库，无法下载')
+          return
+        }
+        downloadAttachment(file.id, file.fileName)
       },
       handleClose () {
         this.visible = false
@@ -305,6 +365,27 @@
       font-size: 13px;
       font-weight: 600;
       color: #0f172a;
+    }
+
+    /* 附件区：与上面的字段分组用一条分隔线隔开，视觉上分成「字段」与「材料」两块 */
+    &__files {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid @border-color;
+    }
+
+    &__files-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    &__files-meta {
+      font-size: 12px;
+      font-weight: 400;
+      color: @text-weak;
     }
 
     .is-empty {

@@ -47,6 +47,10 @@ const files = [
   'src/views/land/document/DocSendList.vue',
   'src/views/land/document/modules/DocArchiveModal.vue',
   'src/views/land/document/modules/DocAttachmentTable.vue',
+  // 配套附件管理（附件目录树按材料类型分组）
+  'src/views/land/data/AttachmentList.vue',
+  'src/views/land/data/modules/AttachmentTreeList.vue',
+  'src/views/land/data/modules/AttachmentTypeGroups.vue',
   'src/views/land/document/modules/DocDetailModal.vue',
   'src/views/land/document/modules/DocFlowModal.vue',
   'src/views/land/document/modules/DocReceiveModal.vue',
