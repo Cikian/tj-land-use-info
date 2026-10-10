@@ -14,12 +14,12 @@
         :key="tool.key"
         type="button"
         class="map-tools__card"
-        :class="{ 'is-active': index === activeIndex }"
+        :class="{ 'is-active': isCardActive(index, tool) }"
         :style="cardStyle(index)"
-        :aria-pressed="String(index === activeIndex)"
-        @click="activeIndex = index"
+        :aria-pressed="String(isCardActive(index, tool))"
+        @click="handleCardClick(index, tool)"
       >
-        <img class="map-tools__card-bg" :src="index === activeIndex ? hf.toolCardActive : hf.toolCard" alt="" aria-hidden="true" />
+        <img class="map-tools__card-bg" :src="isCardActive(index, tool) ? hf.toolCardActive : hf.toolCard" alt="" aria-hidden="true" />
         <img class="map-tools__icon" :src="tool.icon" alt="" aria-hidden="true" />
         <span class="map-tools__label">{{ tool.label }}</span>
       </button>
@@ -38,11 +38,19 @@ const CARD_PITCH = 139
 
 export default {
   name: 'MapToolPanel',
+  props: {
+    /**
+     * 「拾取查询」是否处于拾取模式。
+     * 与其它 17 个工具不同，它的选中态由插件引擎的开关决定（还可能被
+     * 其它工具通过总线间接取消），所以由父组件传入而不是本地维护。
+     */
+    pickActive: { type: Boolean, default: false },
+  },
   data () {
     return {
       hf,
-      /** 默认选中第一个工具「拾取查询」，与设计稿一致 */
-      activeIndex: 0,
+      /** 本地选中：只服务尚未接功能的 17 个工具（默认第二个「地名定位」） */
+      activeIndex: 1,
       /** 18 个工具，按设计稿行优先排列；icon 用 hf 里的 key 动态取 */
       tools: [
         { key: 'pick', label: '拾取查询', icon: hf.toolPick },
@@ -67,6 +75,17 @@ export default {
     }
   },
   methods: {
+    isCardActive (index, tool) {
+      return tool.key === 'pick' ? this.pickActive : index === this.activeIndex
+    },
+    handleCardClick (index, tool) {
+      if (tool.key === 'pick') {
+        // 拾取查询：交给父组件去切换 stargis-function 的拾取引擎
+        this.$emit('toggle-pick')
+        return
+      }
+      this.activeIndex = index
+    },
     cardStyle (index) {
       const row = Math.floor(index / 3)
       const col = index % 3

@@ -1,6 +1,24 @@
 <template>
   <!--
-    MapPickPanel 地图管理页右面板「拾取查询」
+    MapPickPanel 地图管理页右面板「拾取查询」（高保真还原 + 接原插件拾取）
+    ==================================================================
+    定尺取自高保真模型 地图管理.html（右面板与首页图层面板同一框架）：
+      标题装饰 大标题-右_u24.png   (1491, 95)   420×46
+      标题文字 拾取查询（右对齐）    (1765, 100)  18px #FFFFFF
+      面板底   panel-right-bg.png  (1490, 149)  400×881
+      当前图层框 pick-layer-box.png (1510, 169) 360×120
+        立方体图标 pick-layer-icon.png (1526, 186) 131×93
+        「当前图层」 16px #82C6FF  (1669, 194)
+        「图层001」  18px #FFFFFF 500 (1669, 224)
+      字段表头 pick-table-head.png (1510, 299) 360×36
+        「字段名」(1540, 307) /「字段值」(1671, 307) 14px #FFFFFF
+      字段表底 pick-table-body.png (1510, 345) 360×651
+        行高 46；首行文字 y=357；字段名 x=1540 / 字段值 x=1671，14px #82C6FF
+        隔行高亮 table-row.png（与首页明细表同一张切图），落在第 1/3/5 行
+
+    数据来源：父组件监听 stargis-function 拾取结果（总线事件 showPickQueryPop，
+    payload 即 {name, value} 行数组）后经 props 传入；没有拾取结果时回退到
+    设计稿演示数据，保证空态下版式与高保真一致。
   -->
   <div class="map-pick">
     <img class="map-pick__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
@@ -24,10 +42,9 @@
       <div class="map-pick__body">
         <img class="map-pick__body-bg" :src="hf.pickTableBody" alt="" aria-hidden="true" />
         <div
-          v-for="(row, index) in rows"
-          :key="row.name"
+          v-for="(row, index) in displayRows"
+          :key="`${index}-${row.name}`"
           class="map-pick__row"
-          :style="{ top: `${index * rowHeight}px` }"
         >
           <img
             v-if="index % 2 === 0"
@@ -47,28 +64,43 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 
-/** 字段行高（设计稿 46px，首行文字距行顶 12px） */
-const ROW_HEIGHT = 46
+/** 设计稿演示数据：仅在还没有真实拾取结果时展示（空态版式与高保真一致） */
+const DEMO_ROWS = [
+  { name: 'OID', value: '153' },
+  { name: 'FID', value: '152' },
+  { name: 'CRZDBH', value: '津武（挂）2023-014' },
+  { name: '地块名', value: '地块001' },
+  { name: 'Shape_Leng', value: '1047.673' },
+  { name: 'Shape_Area', value: '34017.238' },
+]
+const DEMO_LAYER = '图层001'
 
 export default {
   name: 'MapPickPanel',
+  props: {
+    /**
+     * 真实拾取结果：{name, value} 行数组（stargis-function 的 QueryPick
+     * 插件拾中要素后经总线抛出）。null / 空数组 = 尚未拾中或已取消。
+     */
+    result: { type: Array, default: null },
+    /**
+     * 拾中要素所在图层名（父组件在地图点击时从 Cesium pick 结果里取，
+     * 取不到时保持 null，面板显示演示图层名）。
+     */
+    layerName: { type: String, default: '' },
+  },
   data () {
     return {
       hf,
-      /** 字段行高（设计稿 46px） */
-      rowHeight: ROW_HEIGHT,
-      /** 当前图层名：设计稿演示值，接入拾取功能后由地图选中要素替换 */
-      currentLayer: '图层001',
-      /** 字段表：设计稿演示数据（静态展示，不取接口） */
-      rows: [
-        { name: 'OID', value: '153' },
-        { name: 'FID', value: '152' },
-        { name: 'CRZDBH', value: '津武（挂）2023-014' },
-        { name: '地块名', value: '地块001' },
-        { name: 'Shape_Leng', value: '1047.673' },
-        { name: 'Shape_Area', value: '34017.238' },
-      ],
     }
+  },
+  computed: {
+    displayRows () {
+      return this.result && this.result.length ? this.result : DEMO_ROWS
+    },
+    currentLayer () {
+      return this.layerName || DEMO_LAYER
+    },
   },
 }
 </script>
@@ -200,7 +232,8 @@ export default {
     width: 360px;
     // 面板高 881 - 196 - 底部留白 30（同图层树的 body 收边）
     bottom: 30px;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   &__body-bg {
@@ -214,8 +247,9 @@ export default {
   }
 
   &__row {
-    position: absolute;
-    left: 0;
+    // 文档流布局（而非绝对定位）：真实拾取结果的字段数不定，
+    // 行数超过表体高度时靠 body 的 overflow-y 滚动；行高仍是设计稿的 46px
+    position: relative;
     width: 100%;
     height: 46px;
   }
