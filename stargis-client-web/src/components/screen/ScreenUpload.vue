@@ -53,6 +53,7 @@
       type="file"
       :accept="accept"
       :multiple="multiple"
+      :webkitdirectory="directory || undefined"
       :disabled="disabled || uploading"
       aria-hidden="true"
       tabindex="-1"
@@ -172,6 +173,27 @@ export default {
     accept: { type: String, default: '' },
     /** 隐藏 input 的 id，留空自动生成（需要外部 label 关联时才传） */
     id: { type: String, default: '' },
+    /**
+     * 选择**文件夹**（递归）。
+     *
+     * <p>★ 实现要点：给原生 input 加 {@code webkitdirectory}。
+     * 它会让选择框只能选目录，并把目录下**所有层级**的文件一次性给到
+     * {@code input.files}；每个文件额外带一个
+     * {@code webkitRelativePath}（形如 {@code 招标文件/2024/合同.pdf}），
+     * 这就是「目录结构」的唯一来源 —— 服务端拿不到它，必须由前端带上来。
+     *
+     * <p>★ 与 {@link #multiple} 的关系：目录模式天然是多选，multiple 无效。
+     * 浏览器支持：Chromium / Edge / Safari / Firefox 50+ 都支持；
+     * 不支持时该属性被忽略，退化成普通多选文件（此时 webkitRelativePath 为空，
+     * 文件全部落根目录）—— 是安全退化，不会报错。
+     */
+    directory: { type: Boolean, default: false },
+    /**
+     * 目录模式下单次允许的文件数上限。
+     * ★ 必须有：上传是**串行**的（见 uploadNext），一个几千文件的目录会让人
+     * 以为界面卡死；而且这通常意味着选错了目录。
+     */
+    maxFiles: { type: Number, default: 300 }
   },
   data () {
     return {
@@ -201,7 +223,7 @@ export default {
        * 会让该 computed 自我失效，属于典型的副作用陷阱（eslint 的
        * vue/no-side-effects-in-computed-properties 也会报错）。
        */
-      localId: `screen-upload-${(uploadSeed += 1)}`,
+      localId: `screen-upload-${(uploadSeed += 1)}`
     }
   },
   computed: {
@@ -231,7 +253,7 @@ export default {
       const done = this.formatSize(this.completedBytes)
       const total = this.formatSize(this.totalBytes)
       return `已上传 ${this.percent}%（${done} / ${total}）`
-    },
+    }
   },
   /**
    * 组件销毁：
@@ -273,6 +295,23 @@ export default {
       input.click()
     },
     /**
+     * 取文件在「所选文件夹」里的相对路径（形如 {@code 招标文件/2024/合同.pdf}）。
+     *
+     * <p>★ 浏览器差异：{@code webkitRelativePath} 是 Chromium 系的私有属性，
+     * 选择文件夹时一定有值；普通多选文件时是空串。
+     * 老版 Edge/IE 给的是**反斜杠**分隔，所以这里统一转成正斜杠 ——
+     * 否则「招标文件\2024」会被当成一个目录名（含反斜杠），
+     * 服务端归一后目录层级就丢了。
+     *
+     * @param {File} file
+     * @returns {string} 无相对路径时返回空串（表示文件在根目录）
+     */
+    relativePathOf (file) {
+      const raw = file && file.webkitRelativePath ? String(file.webkitRelativePath) : ''
+      if (!raw) return ''
+      return raw.replace(/\\/g, '/').replace(/^\/+/, '')
+    },
+    /**
      * 原生 change 的处理顺序：校验、入队、顺序上传。
      * @param {Event} event 原生 change 事件
      */
@@ -284,9 +323,22 @@ export default {
       // 每次重新选择都清空上一轮的错误清单，避免错误信息与新选择混杂
       this.errors = []
 
+      // ★ 目录模式的文件数上限：上传是串行的，几千个文件会让用户以为卡死
+      //   （而且这通常意味着选错了目录）。整批拒绝，让他重新选 ——
+      //   比「偷偷只传前 300 个」诚实。
+      if (this.directory && selected.length > this.maxFiles) {
+        this.errors = [{
+          name: `所选文件夹含 ${selected.length} 个文件`,
+          reason: `超过一次最多 ${this.maxFiles} 个的限制，请改选更小的文件夹分批上传`
+        }]
+        this.resetInput()
+        this.$emit('reject', `文件夹内文件过多（${selected.length} 个，上限 ${this.maxFiles}）`)
+        return
+      }
+
       // 单选模式下多选了文件：只取第一个，其余通过 exceed 告知父组件
       let files = selected
-      if (!this.multiple && selected.length > 1) {
+      if (!this.multiple && !this.directory && selected.length > 1) {
         files = selected.slice(0, 1)
         this.$emit('exceed', selected)
       }
@@ -522,7 +574,15 @@ export default {
         return
       }
 
-      this.$emit('success', { file, storePath, response: res })
+      // ★ relativePath 只在「选择文件夹」时有值（形如 招标文件/2024/合同.pdf）：
+      //   它是目录结构的唯一来源，必须原样交给父组件 ——
+      //   服务端拿不到相对路径，落库的 dir_path 全靠它推导。
+      this.$emit('success', {
+        file,
+        storePath,
+        relativePath: this.relativePathOf(file),
+        response: res
+      })
       // 该文件已经计入 setFileLoaded，这里只累加计数（供总字节为 0 时兜底算进度）
       this.completedFiles += 1
       this.currentFile = null
@@ -668,8 +728,8 @@ export default {
         unit++
       }
       return unit === 0 ? `${size} B` : `${size.toFixed(2)} ${units[unit]}`
-    },
-  },
+    }
+  }
 }
 </script>
 

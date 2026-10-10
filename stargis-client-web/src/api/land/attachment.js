@@ -48,6 +48,69 @@ export const attachmentUrl = {
   delete: '/land/data/attachment/delete'
 }
 
+/** 附件目录相关接口（目录树 + 目录维护，见 LandAttachmentDirController） */
+export const attachmentDirUrl = {
+  tree: '/land/data/attachmentDir/tree',
+  list: '/land/data/attachmentDir/list',
+  add: '/land/data/attachmentDir/add',
+  rename: '/land/data/attachmentDir/rename',
+  delete: '/land/data/attachmentDir/delete'
+}
+
+/**
+ * 附件目录树（含每个目录下的文件）。
+ *
+ * @param {string} bizType land / facility / process
+ * @param {string} bizId   业务对象 id
+ * @param {boolean} [withFile=true] 是否带文件节点；只要目录骨架时传 false
+ * @returns {Promise} result 为
+ *   { nodes:[{key,nodeType,label,dirPath,depth,fileCount,totalSize,empty,file,children}],
+ *     rootFiles:[附件实体], totalFiles, totalSize, totalDirs }
+ *
+ * ★ 一次返回整棵树（不逐层懒加载）：单个业务对象下的附件量可控（几十到几百），
+ *   一次给全能让「展开即见文件」，省掉每层一个 loading 态。
+ */
+export function queryAttachmentTree (bizType, bizId, withFile) {
+  return javaGetAction(attachmentDirUrl.tree, {
+    bizType,
+    bizId,
+    // 默认 true；只有显式传 false 才只要目录骨架
+    withFile: withFile !== false
+  })
+}
+
+/** 某业务对象的目录列表（扁平，供「上传时选目录」用） */
+export function queryAttachmentDirs (bizType, bizId) {
+  return javaGetAction(attachmentDirUrl.list, { bizType, bizId })
+}
+
+/**
+ * 新建目录（可多级，例如 招标文件/2024；中间层由服务端自动补建，幂等）。
+ * 路径里带 `/` 表示建多级，不是错误。
+ */
+export function createAttachmentDir (bizType, bizId, dirPath, bizKey) {
+  return javaPostAction(attachmentDirUrl.add, { bizType, bizId, dirPath, bizKey })
+}
+
+/** 重命名目录（只改末段名；子目录与目录下附件的路径由服务端一起改） */
+export function renameAttachmentDir (bizType, bizId, oldPath, newName, bizKey) {
+  return javaPostAction(attachmentDirUrl.rename, { bizType, bizId, oldPath, newName, bizKey })
+}
+
+/**
+ * 删除目录（**不删文件**：目录下的文件移到父目录）。
+ *
+ * @param {boolean} [recursive=false] 有子目录时必须是 true，否则服务端会拒绝并提示
+ */
+export function deleteAttachmentDir (bizType, bizId, dirPath, recursive) {
+  return javaDeleteAction(attachmentDirUrl.delete, {
+    bizType,
+    bizId,
+    dirPath,
+    recursive: recursive === true
+  })
+}
+
 /** 业务类型取值（与后端 LandAttachment 的常量一致） */
 export const ATTACHMENT_BIZ_TYPES = [
   { value: 'land', label: '经营性用地' },
@@ -230,6 +293,7 @@ export function resolveExt (fileName) {
 
 export default {
   attachmentUrl,
+  attachmentDirUrl,
   ATTACHMENT_BIZ_TYPES,
   ATTACHMENT_TYPES_FALLBACK,
   buildAttachmentDownloadUrl,
@@ -241,6 +305,11 @@ export default {
   queryAttachmentSummary,
   queryAttachmentTypeDistribution,
   queryAllowedAttachmentTypes,
+  queryAttachmentTree,
+  queryAttachmentDirs,
+  createAttachmentDir,
+  renameAttachmentDir,
+  deleteAttachmentDir,
   saveAttachment,
   deleteAttachment,
   queryAttachmentPreviewUrl,
