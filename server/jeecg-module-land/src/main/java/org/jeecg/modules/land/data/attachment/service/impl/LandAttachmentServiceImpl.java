@@ -312,8 +312,8 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         if (id == null) {
             throw new JeecgBootException("缺少业务主键，无法保存附件（请先保存业务数据再上传附件）");
         }
-        // ① 业务对象必须真实存在（软删的不算）
-        assertBizExists(type, id);
+        // ① 业务对象必须真实存在（软删的不算），并顺带取出它的可读名称
+        String displayName = requireBizDisplayName(type, id);
         // ② 附件类型必须在允许集合内
         String code = DataSupport.clean(fileType);
         if (code == null || !ALLOWED_FILE_TYPES.containsKey(code)) {
@@ -329,7 +329,14 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         LandAttachment entity = new LandAttachment();
         entity.setBizType(type);
         entity.setBizId(id);
-        entity.setBizKey(DataSupport.cleanAndCap(bizKey, 100));
+        // ★ biz_key 用前端给的值；前端没给（用户在下拉里现挑对象等场景）则用
+        //   上面从业务对象解析出来的名称兜底 —— 否则这一列会是 NULL，
+        //   列表里就表现为「这条附件不显示项目信息」（2026-10-10 修）
+        String bizKeyValue = DataSupport.cleanAndCap(bizKey, 100);
+        if (bizKeyValue == null) {
+            bizKeyValue = DataSupport.cleanAndCap(displayName, 100);
+        }
+        entity.setBizKey(bizKeyValue);
         entity.setFileType(code);
         String fileName = DataSupport.clean(meta.getFileName());
         if (fileName == null) {
@@ -547,8 +554,22 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         return type;
     }
 
-    /** 业务对象存在性校验（软删视为不存在） */
-    private void assertBizExists(String bizType, String bizId) {
+    /**
+     * 业务对象存在性校验 + 取出它的**可读名称**（软删视为不存在）。
+     *
+     * <p><b>★ 为什么顺手把名称取出来（2026-10-10 修）</b>：
+     * {@code biz_key} 是列表与检索直接展示的那一列（「文件名 / 归属」的副行），
+     * 以前完全依赖前端在提交时带上 {@code bizKey}。前端一旦漏带（例如用户是
+     * 在下拉里现挑的对象，而不是从配套详情跳转过来的），这一列就是 NULL ——
+     * 现象正是「列表里这条附件不显示项目信息」，而附件本身是好的。
+     *
+     * <p>既然校验本来就要把实体查出来，就顺带把名称解析出来：
+     * 前端带了就用前端的（它可能带更完整的展示口径），
+     * 前端没带则由服务端兜底。这样 {@code biz_key} 不再是一个「看客户端心情」的字段。
+     *
+     * @return 该业务对象的可读名称；取不到名称时返回 null（不阻断保存）
+     */
+    private String requireBizDisplayName(String bizType, String bizId) {
         if (DataSupport.BIZ_LAND.equals(bizType)) {
             // Land 上有 @TableLogic，selectById 会自动排除已删宗地
             Land land = landMapper.selectById(bizId);
@@ -556,7 +577,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
                 throw new JeecgBootException("出让宗地不存在或已被移除，无法上传附件（编号："
                         + bizId + "）");
             }
-            return;
+            return withCode(land.getDkmc(), land.getCrzdbh());
         }
         if (DataSupport.BIZ_FACILITY.equals(bizType)) {
             Facility facility = facilityMapper.selectById(bizId);
@@ -566,7 +587,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
                 throw new JeecgBootException("配套项目不存在或已被移除，无法上传附件（ID："
                         + bizId + "）");
             }
-            return;
+            return withCode(facility.getPtxmmc(), facility.getCrzdbh());
         }
         if (DataSupport.BIZ_PROCESS.equals(bizType)) {
             FacilityProcess process = facilityProcessMapper.selectById(bizId);
@@ -574,9 +595,32 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
                 throw new JeecgBootException("环节进度不存在或已被删除，无法上传附件（ID："
                         + bizId + "）");
             }
-            return;
+            // 环节的展示名就是环节名
+            return withCode(process.getLcName(), process.getCrzdbh());
         }
         throw new JeecgBootException("附件业务类型「" + bizType + "」不合法");
+    }
+
+    /**
+     * 统一的「名称（编号）」展示口径。
+     *
+     * <p>★ 必须与前端下拉选项、以及历史数据修复脚本保持同一个格式，
+     * 否则同一列里会出现「编号　名称」与「名称（编号）」两种写法 ——
+     * 用户看起来像是两套数据。
+     * 这里的口径取自前端配套下拉：{@code 名称（宗地编号）}。
+     *
+     * <p>任一为空时的退化：只有名称 → 名称；只有编号 → 编号；都空 → null。
+     */
+    private String withCode(String name, String code) {
+        String n = DataSupport.clean(name);
+        String c = DataSupport.clean(code);
+        if (n == null) {
+            return c;
+        }
+        if (c == null) {
+            return n;
+        }
+        return n + "（" + c + "）";
     }
 
     /**

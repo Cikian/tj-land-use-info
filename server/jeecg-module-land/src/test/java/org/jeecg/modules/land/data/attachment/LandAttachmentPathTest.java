@@ -190,4 +190,73 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
                 attachmentService.saveUploaded("unknown", landId, "X", "05",
                         meta("facility/attachment/2026/10/a.png")));
     }
+
+    // ==================================================================
+    // biz_key 服务端兜底（2026-10-10）
+    // ==================================================================
+
+    /**
+     * ★ 回归断言：前端没带 bizKey 时，服务端必须用业务对象名称兜底。
+     *
+     * <p>故障现场（用户实测）：在「配套附件管理」里直接点「上传附件」，
+     * 在弹窗的下拉里现挑一个配套项目再上传 —— 列表里那条附件**不显示项目信息**
+     * （「文件名 / 归属」的副行是空的），因为落库时 biz_key 是 NULL。
+     *
+     * <p>根因是 biz_key 完全依赖前端提交；用户不是从配套详情跳转过来时（没有预置
+     * bizKey），前端一旦没带上，这一列就空了。现在服务端既然已经为了校验把业务对象
+     * 查出来了，就顺手把名称解析出来兜底，不再让这个字段「看客户端心情」。
+     */
+    @Test
+    public void bizKeyFallsBackToLandNameWhenClientOmitsIt() {
+        String landId = createLand();
+        LandAttachment saved = attachmentService.saveUploaded(
+                "land", landId, null, "05",
+                meta("facility/attachment/2026/10/a.png"));
+
+        LandAttachment reloaded = attachmentService.queryById(saved.getId());
+        assertNotNull(reloaded.getBizKey(),
+                "前端没带 bizKey 时必须由服务端兜底，否则列表不显示归属信息");
+        assertTrue(reloaded.getBizKey().contains(TEST_DATA_CRZDBH_PREFIX + "ATT-001"),
+                "兜底值应含宗地编号，实际：" + reloaded.getBizKey());
+        assertTrue(reloaded.getBizKey().contains("附件路径测试用地"),
+                "兜底值应含地块名称，实际：" + reloaded.getBizKey());
+        // ★ 格式必须与前端下拉、历史数据修复脚本一致：「名称（编号）」
+        assertTrue(reloaded.getBizKey().startsWith("附件路径测试用地（"),
+                "口径应为「名称（编号）」，实际：" + reloaded.getBizKey());
+        assertTrue(reloaded.getBizKey().endsWith("）"),
+                "口径应为「名称（编号）」，实际：" + reloaded.getBizKey());
+    }
+
+    /** 前端带了 bizKey 时以它为准（前端可能带更完整的展示口径） */
+    @Test
+    public void clientSuppliedBizKeyWins() {
+        String landId = createLand();
+        LandAttachment saved = attachmentService.saveUploaded(
+                "land", landId, "我自己的展示名", "05",
+                meta("facility/attachment/2026/10/a.png"));
+
+        LandAttachment reloaded = attachmentService.queryById(saved.getId());
+        assertEquals("我自己的展示名", reloaded.getBizKey());
+    }
+
+    /** 空字符串等同于没带（浏览器表单常把未填项提交成空串） */
+    @Test
+    public void blankBizKeyAlsoFallsBack() {
+        String landId = createLand();
+        LandAttachment saved = attachmentService.saveUploaded(
+                "land", landId, "   ", "05",
+                meta("facility/attachment/2026/10/a.png"));
+
+        LandAttachment reloaded = attachmentService.queryById(saved.getId());
+        assertNotNull(reloaded.getBizKey(), "只传空白字符也应走兜底");
+        assertTrue(reloaded.getBizKey().contains("附件路径测试用地"));
+    }
+
+    /** 兜底不能把「业务对象不存在」放过去：名称解析与存在性校验是同一次查询 */
+    @Test
+    public void fallbackStillRejectsUnknownBiz() {
+        assertThrows(JeecgBootException.class, () ->
+                attachmentService.saveUploaded("land", "no-such-id", null, "05",
+                        meta("facility/attachment/2026/10/a.png")));
+    }
 }

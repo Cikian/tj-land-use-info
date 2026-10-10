@@ -411,7 +411,17 @@ export default {
       this.loadObjectOptions(String(keyword || '').trim())
     },
 
-    /** 选中候选：把 id 存进表单、把名称显示（并作为 bizKey 提交） */
+    /**
+     * 选中候选：把 id 存进表单、把名称记下来（提交时作为 bizKey）。
+     *
+     * ★ 名称解析顺序（宁可多兜一层，也不要让 biz_key 变成空）：
+     *   ① raw 存在 → 按归属类型拼「名称（编号）」（与下拉、服务端同一口径）；
+     *   ② 拿不到 raw（例如候选项是补进来的、raw 为 null）→ 用该 option 的 label，
+     *      它本身就是用户在下拉里看到的那串文字，语义完全一致；
+     *   ③ 最后才退到 id。
+     *   服务端在 bizKey 为空时还会用 bizId 反查业务对象兜底（见 saveUploaded），
+     *   这里把前端这一层做扎实，是为了不让列表出现「有附件、无归属」的空档。
+     */
     handleObjectChange (value, raw) {
       this.errors = Object.assign({}, this.errors, { bizId: '' })
       if (!value) {
@@ -419,12 +429,24 @@ export default {
         return
       }
       if (raw && this.form.bizType === 'land') {
-        this.pickedName = `${raw.crzdbh || ''}${raw.dkmc ? '　' + raw.dkmc : ''}`.trim()
-      } else if (raw) {
-        this.pickedName = `${raw.ptxmmc || ''}${raw.crzdbh ? '（' + raw.crzdbh + '）' : ''}`.trim()
-      } else {
-        this.pickedName = this.pickedName || value
+        // 与配套同一口径「名称（编号）」；地块名缺失时退到编号
+        const name = String(raw.dkmc || '').trim()
+        const code = String(raw.crzdbh || '').trim()
+        this.pickedName = name ? (code ? `${name}（${code}）` : name) : code
+        return
       }
+      if (raw && this.form.bizType === 'facility') {
+        this.pickedName = `${raw.ptxmmc || ''}${raw.crzdbh ? '（' + raw.crzdbh + '）' : ''}`.trim()
+        return
+      }
+      // ② 没有 raw：用下拉里显示过的 label
+      const option = (this.objectOptions || []).find((item) => item.value === value)
+      if (option && option.label) {
+        this.pickedName = String(option.label).trim()
+        return
+      }
+      // ③ 还没有（例如 raw 与 label 都缺）→ 保持已有的名称，最后退到 id
+      this.pickedName = this.pickedName || String(value)
     },
 
     /* ---------------- 上传回调 ---------------- */
