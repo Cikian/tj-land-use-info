@@ -40,17 +40,24 @@ export default {
   name: 'MapToolPanel',
   props: {
     /**
-     * 「拾取查询」是否处于拾取模式。
-     * 与其它 17 个工具不同，它的选中态由插件引擎的开关决定（还可能被
-     * 其它工具通过总线间接取消），所以由父组件传入而不是本地维护。
+     * 「拾取查询」「地名定位」「道路定位」是否处于激活态。
+     * 与其余 15 个未接功能的工具不同，这三个工具的选中态由页面容器
+     * 统一管理（拾取跟随插件引擎开关，还可能被其它工具经总线间接取消），
+     * 所以由父组件传入而不是本地维护。
      */
     pickActive: { type: Boolean, default: false },
+    placeActive: { type: Boolean, default: false },
+    roadActive: { type: Boolean, default: false },
+    spatialActive: { type: Boolean, default: false },
+    attrActive: { type: Boolean, default: false },
+    compActive: { type: Boolean, default: false },
+    statActive: { type: Boolean, default: false },
   },
   data () {
     return {
       hf,
-      /** 本地选中：只服务尚未接功能的 17 个工具（默认第二个「地名定位」） */
-      activeIndex: 1,
+      /** 本地选中：只服务尚未接功能的 11 个工具（默认无选中） */
+      activeIndex: -1,
       /** 18 个工具，按设计稿行优先排列；icon 用 hf 里的 key 动态取 */
       tools: [
         { key: 'pick', label: '拾取查询', icon: hf.toolPick },
@@ -76,12 +83,49 @@ export default {
   },
   methods: {
     isCardActive (index, tool) {
-      return tool.key === 'pick' ? this.pickActive : index === this.activeIndex
+      if (tool.key === 'pick') return this.pickActive
+      if (tool.key === 'locateName') return this.placeActive
+      if (tool.key === 'locateRoad') return this.roadActive
+      if (tool.key === 'querySpatial') return this.spatialActive
+      if (tool.key === 'queryAttr') return this.attrActive
+      if (tool.key === 'queryCombined') return this.compActive
+      if (tool.key === 'statistics') return this.statActive
+      return index === this.activeIndex
     },
     handleCardClick (index, tool) {
       if (tool.key === 'pick') {
         // 拾取查询：交给父组件去切换 stargis-function 的拾取引擎
         this.$emit('toggle-pick')
+        return
+      }
+      if (tool.key === 'locateName') {
+        // 地名定位：交给父组件切换右侧的地名定位面板
+        this.$emit('toggle-place')
+        return
+      }
+      if (tool.key === 'locateRoad') {
+        // 道路定位：交给父组件切换插件道路定位弹窗
+        this.$emit('toggle-road')
+        return
+      }
+      if (tool.key === 'querySpatial') {
+        // 空间查询：交给父组件切换插件空间查询面板
+        this.$emit('toggle-spatial')
+        return
+      }
+      if (tool.key === 'queryAttr') {
+        // 属性查询：交给父组件切换插件属性查询面板
+        this.$emit('toggle-attr')
+        return
+      }
+      if (tool.key === 'queryCombined') {
+        // 综合查询：交给父组件切换插件综合查询面板
+        this.$emit('toggle-comp')
+        return
+      }
+      if (tool.key === 'statistics') {
+        // 综合统计：交给父组件切换插件综合统计面板
+        this.$emit('toggle-stat')
         return
       }
       this.activeIndex = index
