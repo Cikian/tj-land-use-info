@@ -25,6 +25,7 @@
  *   ScreenStage      高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
  *   ScreenMapStage   地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角）
  *   ScreenModal      弹窗（挂 body + 焦点陷阱 + 滚动锁）
+ *   ScreenPickStage  「选取地块」全屏模式（隐藏全部页面、只留地图 + 取消选择/选择完成）
  *   ScreenPopover    浮层容器（挂 body，供下拉/气泡复用，解决面板裁剪问题）
  *   ScreenPopconfirm 危险操作二次确认
  *
@@ -65,6 +66,7 @@ import ScreenPanel from './ScreenPanel.vue'
 import ScreenHeader from './ScreenHeader.vue'
 import ScreenMapStage from './ScreenMapStage.vue'
 import ScreenModal from './ScreenModal.vue'
+import ScreenPickStage from './ScreenPickStage.vue'
 import ScreenPopover from './ScreenPopover.vue'
 import ScreenPopconfirm from './ScreenPopconfirm.vue'
 
@@ -104,6 +106,7 @@ const components = {
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
+  ScreenPickStage,
   ScreenPopover,
   ScreenPopconfirm,
 
@@ -155,6 +158,7 @@ export {
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
+  ScreenPickStage,
   ScreenPopover,
   ScreenPopconfirm,
   ScreenStatValue,

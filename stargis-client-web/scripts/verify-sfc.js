@@ -92,6 +92,14 @@ const FILES = [
   'src/views/screen/data/modules/ChangeLogTable.vue',
   'src/views/screen/data/modules/HistoryDrawer.vue',
   'src/views/screen/data/modules/DataRecyclePanel.vue',
+
+  // ===== 「选取地块」全屏地图模式（2026-10 新增）=====
+  // ★ 同样必须登记：pickSession.js 被两个表单按**别名路径**引用
+  //   （'@/views/screen/pickSession'），不登记就只能等 webpack 打包时才发现路径写错。
+  'src/views/screen/pickSession.js',
+  'src/views/screen/index.vue',
+  'src/components/screen/ScreenPickStage.vue',
+  'src/components/screen/index.js',
 ]
 
 const problems = []

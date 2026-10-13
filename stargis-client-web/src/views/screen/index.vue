@@ -28,11 +28,50 @@
       <s3dm-viewer v-if="mapEnabled" :paused="mapPaused" />
     </template>
 
+    <!-- ===== 「选取地块」全屏模式 =====
+         覆盖层挂在 body（ScreenPickStage 内部 position: fixed + z-index 1250），
+         所以这里传的 loader 只是为了描述「地图此刻可用」这一事实。
+         它的存在本身就是「所有页面全部隐藏、只显示下方地图」：
+         activePick 为真时下面整块画布连蒙版一起 opacity: 0（见 __canvas / __vignette 的绑定）。 -->
+    <screen-pick-stage
+      v-if="activePick"
+      :map-ready="mapEnabled"
+      :source="pickSession.source"
+      :title="pickSession.title"
+      @cancel="handlePickCancel"
+      @done="handlePickDone"
+    />
+
     <!-- ===== 全屏蒙版（设计稿的四张氛围切图） ===== -->
-    <img class="land-screen__vignette is-top" :src="hf.vignetteTop" alt="" aria-hidden="true" />
-    <img class="land-screen__vignette is-bottom" :src="hf.vignetteBottom" alt="" aria-hidden="true" />
-    <img class="land-screen__vignette is-left" :src="hf.vignetteLeft" alt="" aria-hidden="true" />
-    <img class="land-screen__vignette is-right" :src="hf.vignetteRight" alt="" aria-hidden="true" />
+    <!-- 选取模式下整块画布（含这些蒙版）要一起让位给地图，见 data 里的 canvasClass -->
+    <img
+      class="land-screen__vignette is-top"
+      :class="canvasFade"
+      :src="hf.vignetteTop"
+      alt=""
+      aria-hidden="true"
+    />
+    <img
+      class="land-screen__vignette is-bottom"
+      :class="canvasFade"
+      :src="hf.vignetteBottom"
+      alt=""
+      aria-hidden="true"
+    />
+    <img
+      class="land-screen__vignette is-left"
+      :class="canvasFade"
+      :src="hf.vignetteLeft"
+      alt=""
+      aria-hidden="true"
+    />
+    <img
+      class="land-screen__vignette is-right"
+      :class="canvasFade"
+      :src="hf.vignetteRight"
+      alt=""
+      aria-hidden="true"
+    />
 
     <!-- ===== 顶栏 ===== -->
     <!--
@@ -40,6 +79,7 @@
       档案管理 / 收发文是整页模块，横向铺满后会和时钟重叠，因此隐藏。
     -->
     <screen-header
+      :class="canvasFade"
       :title="title"
       :menus="menus"
       :active-menu="activeMenu"
@@ -55,6 +95,7 @@
       v-if="activeMenu === 'archive'"
       ref="archive"
       class="land-screen__module stage-hit"
+      :class="canvasFade"
       :default-tab="archiveTab"
     />
 
@@ -69,6 +110,7 @@
       v-else-if="activeMenu === 'data'"
       ref="data"
       class="land-screen__module"
+      :class="canvasFade"
       :default-tab="dataTab"
     />
 
@@ -77,6 +119,7 @@
       v-else-if="activeMenu === 'review'"
       ref="escalation"
       class="land-screen__module stage-hit"
+      :class="canvasFade"
       :default-tab="reviewTab"
     />
 
@@ -85,18 +128,25 @@
       ★ 与数据管理同理**不加 stage-hit**：地图管理页地图必须保持可交互，
         容器 pointer-events: none，各面板自行开启。
     -->
-    <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" />
+    <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" :class="canvasFade" />
 
     <!-- ===== 首页工作台 ===== -->
+    <!--
+      ★ 这三块首页面板同样要参与「选取模式下隐藏」：它们是不透明面板，
+        漏掉任何一块都会直接盖在「只显示地图」的画面上，与需求原文
+        「所有页面全部隐藏，只显示下方地图」不符。
+    -->
     <template v-else>
       <home-left-panel
+        :class="canvasFade"
         :panel="leftPanel"
         :transfer-rank="transferRank"
         :supporting-rank="supportingRank"
         :loading="dashboardLoading"
       />
-      <home-layer-tree @layer-visibility-change="handleLayerVisibility" />
+      <home-layer-tree :class="canvasFade" @layer-visibility-change="handleLayerVisibility" />
       <home-attr-panel
+        :class="canvasFade"
         :tabs="warningTabs"
         :data="warningData"
         :loading="dashboardLoading"
@@ -105,12 +155,14 @@
 
       <home-plot-modal
         v-if="plotVisible"
+        :class="canvasFade"
         :data="plotWarning"
         @close="plotVisible = false"
         @row-action="handleAttrAction"
       />
       <home-plot-modal
         v-if="warningDetailVisible"
+        :class="canvasFade"
         :data="warningDetail"
         @close="warningDetailVisible = false"
       />
@@ -128,10 +180,13 @@ import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
 import HomePlotModal from './home/HomePlotModal.vue'
-import { ScreenHeader, ScreenStage } from '@/components/screen'
+import { ScreenHeader, ScreenPickStage, ScreenStage } from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import { queryFacilityDashboard, queryLandDashboard, queryWarningDetail } from '@/api/land/landData'
 import { logoutAndGoToLogin } from '@/utils/session'
+// 「选取地块」全屏模式的会话状态：表单弹窗在 body 上、覆盖层也在 body 上，
+// 两者不在同一棵组件树里，只能共享这份状态（详见 pickSession.js 的说明）
+import { endPick, pickState } from './pickSession'
 
 import { headerMenus, systemTitle, warningTabs } from './config'
 
@@ -262,6 +317,7 @@ export default {
     DataScreen,
     EscalationScreen,
     MapScreen,
+    ScreenPickStage,
     HomeLeftPanel,
     HomeLayerTree,
     HomeAttrPanel,
@@ -348,6 +404,44 @@ export default {
   },
   computed: {
     /**
+     * 「选取地块」会话状态（共享单例）。
+     *
+     * ★ 为什么用 computed 直接返回**单例本身**，而不是把它拷进 data：
+     *   早先那版写的是 `data.pickSession = Object.assign({}, pickState)` +
+     *   `watch: { pickState }` 去同步，结果**覆盖层永远不出现**。
+     *   原因是 `pickState` 是模块作用域的 import，从没挂到组件实例上 ——
+     *   Vue 2 的 `vm.$watch('pickState', …)` 会对 `vm.pickState` 求值得到
+     *   undefined，**不建立任何依赖**，handler 永不触发，activePick 恒为 false。
+     *
+     *   正确写法就是下面这样：computed 在取值时读到 Vue.observable 的字段，
+     *   依赖收集自然成立，模板跟着更新。**不要再拷贝一份到 data 里。**
+     */
+    pickSession () {
+      return pickState
+    },
+
+    /** 是否处于「选取地块」全屏模式（只要它开着，整块画布都要让位给地图） */
+    activePick () {
+      return pickState.active
+    },
+
+    /**
+     * 选取模式下页面要整体隐藏用的类名。
+     *
+     * ★ 为什么是 opacity: 0 而不是 v-if / visibility: hidden：
+     *   ① 被隐藏的模块（数据管理页、档案页、首页面板…）里会挂大量接口请求与 keep-alive 状态，
+     *      用 v-if 销毁重建会让「填到一半的表单 / 检索条件 / 分页」全部丢光；
+     *   ② Cesium 容器 #home 的 canvas 是**布局尺寸**，父级 display: none 会让它瞬间变成 0×0，
+     *      恢复时 Cesium 要重新 resize，镜头位置还会跳一下；opacity 不动布局，恢复即原样。
+     *
+     * 另一个作用是把「隐藏页面」这件事收敛成一个类：只有本组件知道选取模式下什么该让位，
+     * 各子页面不必各自实现一遍。
+     */
+    canvasFade () {
+      return this.activePick ? 'is-pick-hidden' : ''
+    },
+
+    /**
      * 是否暂停 Cesium 渲染。
      * ===============================================================
      * 判据只有一条：**地图此刻是否被人看见**。看不见就没必要每帧重绘。
@@ -370,16 +464,46 @@ export default {
      * activeMenu 会变成那个 key，但页面回落到首页版式、地图是可见的，
      * 那种情况绝不能停。数据管理页也是「只保留菜单 + 地图」（见 data/index.vue
      * 的注释），必须保持渲染。
+     *
+     * （3）「选取地块」全屏模式**反过来**：整块画布都藏起来了，地图是唯一被看见的东西，
+     *     必须保持渲染 —— 所以它不出现在下面任何一条「暂停」判据里。
+     *     唯一的例外是 activeMenu 恰好是档案 / 提级论证（地图被整页模块盖住）时
+     *     用户又从那里的表单点了「选取地块」：那时先恢复渲染再进选取模式，
+     *     否则用户会看到一张完全冻结的地图。见 activePick 的处理。
      */
     mapPaused () {
+      // 选取模式优先：地图正在被使用，无论当前是哪个页面都要渲染
+      if (this.activePick) return false
       const fullPageModule = this.activeMenu === 'archive' || this.activeMenu === 'review'
       // 这两个弹窗都渲染 HomePlotModal（position:absolute + inset:0 的全画布遮罩）
       const coveredByModal = this.plotVisible || this.warningDetailVisible
       return fullPageModule || coveredByModal
     }
   },
+  watch: {
+    /**
+     * 切换顶栏菜单时把正在进行的选取会话收掉。
+     *
+     * ★ 必须走 finishPick（而不是直接 endPick）：
+     *   finishPick 会「先快照 token/source → 广播结束事件 → 再 endPick」，
+     *   发起的那张表单才能收到事件、清掉自己的会话令牌。
+     *   直接 endPick 只会静默关掉会话，表单会以为选取还在进行中。
+     *
+     * ★ 这里曾写错一版：`endPick(this.pickToken)` —— `this.pickToken` 是个
+     *   从未被赋值的 data 字段（恒为空串），而 endPick 的守卫是
+     *   `if (token && token !== state.token)`，空串会把守卫整个跳过，
+     *   于是「碰巧能关掉会话，但绕过了令牌校验、也不广播事件」。
+     *   现在统一走 finishPick，不再依赖那个巧合。
+     */
+    activeMenu () {
+      if (this.activePick) this.finishPick(null)
+    }
+  },
   mounted () {
     this.loadDashboard()
+    // 刷新页面时如果正处于选取模式（会话不落盘，正常不会出现），兜底清一次，
+    // 避免留下「一张没有出口的全屏地图」——那种状态用户只能刷新页面。
+    if (pickState.active) endPick(pickState.token)
   },
   methods: {
     /** 并发拉取宗地与配套两个看板；失败或没有数据时对应区域保持空白 */
@@ -483,6 +607,60 @@ export default {
 
     handleStageResize (scale) {
       this.stageScale = scale
+    },
+
+    /* ---------------- 「选取地块」全屏模式 ---------------- */
+
+    /**
+     * 取消选择。
+     * 结束会话即可：覆盖层是 v-if 绑在 activePick 上，状态一变它就自己卸载，
+     * 地图与整块画布原样露回来（画布从未被销毁，表单里填到一半的内容也不会丢）。
+     */
+    handlePickCancel () {
+      this.finishPick(null)
+    },
+
+    /**
+     * 选择完成。
+     * @param {*} geometry 画好的地块图形；**本期绘制未接入，恒为 null**。
+     *
+     * ★ 本期语义 = 「关掉地图回到表单」，不做任何写回：
+     *   拿不到图形时**保留字段原值**是最安全的做法 —— 静默把坐标字段清空，
+     *   用户会以为「选完了但没生效」，而实际是「根本没画」。
+     *   接入绘制后在这里把 geometry 交给发起方（按 session.source 分发到
+     *   表单的对应字段）即可，覆盖层与表单两侧都不用再改。
+     */
+    handlePickDone (geometry) {
+      this.finishPick(geometry || null)
+    },
+
+    /**
+     * 结束一次选取会话（取消 / 完成共用）。
+     *
+     * ★ 读取顺序必须严格是「先快照 token 与 source → 广播 → 最后 endPick」：
+     *   pickSession 现在是**单例本身**（computed 直接返回 pickState），
+     *   endPick 会把 token/source 一起清空 —— 先 endPick 再读就会拿到空串，
+     *   事件名退化成 'landMapPickFinished'，配套表单永远收不到结束通知。
+     * @param {*} geometry 图形；本期恒为 null
+     */
+    finishPick (geometry) {
+      const token = pickState.token
+      const source = pickState.source
+      // 先广播再结束：表单要用 token 校验「这是不是我发起的那次会话」
+      this.$bus.$emit(this.pickFinishedEvent(source), { token, geometry })
+      endPick(token)
+    },
+
+    /**
+     * 按发起方拼事件名。
+     * ★ 为什么要分事件名而不是共用一个：同页可能同时开着「新增宗地」与
+     *   「新增配套」两个表单（都是常驻渲染的弹窗），共用一个事件名会让两边
+     *   同时收到对方的选取结果。token 校验是第二道保险。
+     * @param {string} source 'land' / 'facility'
+     * @returns {string}
+     */
+    pickFinishedEvent (source) {
+      return source === 'facility' ? 'facilityMapPickFinished' : 'landMapPickFinished'
     },
 
     /**
@@ -629,6 +807,50 @@ export default {
   &__module {
     position: absolute;
     inset: 0;
+  }
+}
+
+/*
+ * 「选取地块」全屏模式：页面上的一切（蒙版 / 顶栏 / 各整页模块 / 首页面板）
+ * 都挂上这个类让位给地图。
+ *
+ * ⚠⚠ 这一块**故意不加 scoped**（写在下面单独的 <style lang="less"> 里）。
+ *   scoped 会给最后一级选择器加 [data-v-xxx]，于是 `.is-pick-hidden *`
+ *   编译成 `.is-pick-hidden *[data-v-xxx]` —— 只能命中**本组件自己**渲染的元素，
+ *   而真正需要关掉指针事件的是子组件内部深层的表格单元格 / 按钮
+ *   （实测：加了 `*` 之后屏幕正中命中的仍然是 td，因为它们没有本组件的 data-v 标记）。
+ *   本类是「页面整体让位」的开关，作用域天然是全局的，放非 scoped 块里才正确。
+ */
+</style>
+
+<style lang="less">
+/*
+ * 「选取地块」模式下「页面整体让位」的全局开关（配合 views/screen/index.vue
+ * 模板里的 :class="canvasFade" 使用）。
+ *
+ * ⚠ 必须是非 scoped 的全局样式：见上面那个 style 块末尾的说明。
+ *
+ * ⚠ 用 opacity 而不是 display: none / visibility: hidden，原因见 data 里
+ *   canvasFade 的注释：不能销毁模块状态，也不能让 Cesium 的 canvas 尺寸归零。
+ * ★★ 但**只写 opacity: 0 是不够的**：透明元素照样参与命中测试，
+ *   而 data/index.vue 的 __nav / __body 都显式写了 pointer-events: auto，
+ *   于是这些「看不见的」面板会把地图的鼠标事件全部吃掉
+ *   （实测：进选取模式后屏幕正中命中到的是表格单元格 td，
+ *     地图拖不动、滚轮也不缩放）。
+ *
+ *   pointer-events: none 是**可继承**的：这里关掉之后，子元素里任何
+ *   显式写 auto 的节点都会被重新打开（如 .data-screen__body），
+ *   所以还要对后代再兜一层 `*` —— 这也是为什么不能只依赖根节点那一条。
+ *
+ * ⚠ 这里**不能**顺手写 transform / filter 之类会创建包含块的属性：
+ *   整页模块内部有以自己为参照的绝对定位元素，加 transform 会让它们整体跑位。
+ */
+.is-pick-hidden {
+  opacity: 0;
+  pointer-events: none;
+
+  * {
+    pointer-events: none !important;
   }
 }
 </style>

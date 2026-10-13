@@ -57,11 +57,6 @@
           宗地归属与标识
           <span class="facility-form__required" aria-hidden="true">*</span>
         </h4>
-        <p class="facility-form__section-hint">
-          配套项目必须挂在**已录入**的宗地下 —— 旧系统不校验这件事，
-          实测库里留下了 60 行「孤儿配套」（配套表里有、宗地表里查不到），
-          档案与收发文按宗地关联时这些配套永远挂不上。所以这里的宗地只能从下拉里选。
-        </p>
 
         <div class="facility-form__grid">
           <screen-field label="出让宗地" required :error="errors.crzdbh" label-width="150px">
@@ -89,24 +84,48 @@
             />
           </screen-field>
 
-          <screen-field label="地块名称" html-for="ff-dkmc" label-width="150px" tip="留空则自动取宗地的地块名称">
-            <screen-input id="ff-dkmc" v-model="model.dkmc" :maxlength="255" placeholder="随宗地自动带出，可改" />
+          <screen-field label="地块名称" html-for="ff-dkmc" label-width="150px">
+            <screen-input id="ff-dkmc" v-model="model.dkmc" :maxlength="255" placeholder="随宗地自动带出" />
           </screen-field>
 
-          <screen-field label="行政区划" label-width="150px" tip="留空则自动取宗地的行政区划">
+          <!--
+            「选取地块」：与「经营性用地」表单同一个功能（进入全屏地图模式，
+            所有页面隐藏、只显示地图，上方中间两个按钮）。
+            ★ 为什么配套表单也要这个入口：配套本身也是落在地块上的实体，
+              用户「按图找配套」的需求和宗地一样强；两处共用同一套会话状态
+              （views/screen/pickSession.js），互不干扰。
+          -->
+          <div class="facility-form__map-pick">
+            <button
+              id="ff-crzdtx"
+              type="button"
+              class="facility-form__map-pick-btn"
+              :disabled="!mapEnabled"
+              :aria-label="mapEnabled ? '选取地块，进入全屏地图勾选地块' : '地图未加载，无法选取地块'"
+              @click="handleOpenMapPick"
+            >
+              <screen-icon name="grid" :size="16" />
+              <span>选取地块</span>
+            </button>
+            <span class="facility-form__map-pick-tip">
+              {{ mapEnabled ? '' : '地图未加载（?map=0 预览模式），暂不能选取地块' }}
+            </span>
+          </div>
+
+          <screen-field label="行政区划" label-width="150px">
             <screen-select
               v-model="model.xzqh"
               :options="xzqhOptions"
-              placeholder="随宗地自动带出，可改"
+              placeholder="留空则自动取宗地的行政区划"
               aria-label="行政区划"
             />
           </screen-field>
 
-          <screen-field label="项目分类" label-width="150px" tip="留空则自动取宗地的项目分类">
+          <screen-field label="项目分类" label-width="150px">
             <screen-select
               v-model="model.xmfl"
               :options="projectTypeOptions"
-              placeholder="随宗地自动带出，可改"
+              placeholder="留空则自动取宗地的项目分类"
               aria-label="项目分类"
             />
           </screen-field>
@@ -139,7 +158,7 @@
             />
           </screen-field>
 
-          <screen-field label="道路等级" label-width="150px" tip="只认三级城市道路，旧库里的「快速路」不归位">
+          <screen-field label="道路等级" label-width="150px">
             <screen-select
               v-model="model.dldj"
               :options="roadLevelOptions"
@@ -231,10 +250,6 @@
           <screen-icon name="trending-up" :size="14" />
           前期审批与进度
         </h4>
-        <p class="facility-form__section-hint">
-          三阶段批复都按「是否完成 + 状态」成对填写；<b>状态只认「正常推进 / 有问题」</b>，
-          「有问题」时请到下方「具体问题 / 工作建议」里说明 —— 这两列是后来人接手时唯一的线索。
-        </p>
 
         <div class="facility-form__grid">
           <screen-field label="项建批复是否完成" label-width="150px">
@@ -306,11 +321,6 @@
           档案要件（历史标志位 · 只读）
           <span class="facility-form__badge">历史数据</span>
         </h4>
-        <p class="facility-form__section-hint">
-          这 11 列是旧表沿用下来的「有没有这份文件」的**是/否标志位**，本页只展示、不修改。
-          新数据请到「配套附件管理」上传实际文件（附件类型见字典 <code>land_attach_type</code>）——
-          上传了文件才代表要件真的归集了，标志位只是历史口径。
-        </p>
 
         <div class="facility-form__readonly">
           <span v-for="item in archiveFlags" :key="item.key" class="facility-form__readonly-item">
@@ -411,6 +421,10 @@ import {
   ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
+import { uid } from '@/components/screen/utils'
+// 「选取地块」会话：表单弹窗与全屏覆盖层都挂在 body 上（不在同一棵组件树里），
+// 只能通过这份共享状态对话，详见 views/screen/pickSession.js 的说明
+import { startPick, endPick, isPickIssuer } from '@/views/screen/pickSession'
 import {
   queryFacilityAdminById,
   addFacilityAdmin,
@@ -552,17 +566,43 @@ export default {
       fundSourceOptions: FUND_SOURCES.map((item) => ({ value: item, label: item })),
       progressStateOptions: PROGRESS_STATES.map((item) => ({ value: item, label: item })),
       fundStateOptions: FUND_STATES.map((item) => ({ value: item, label: item })),
-      archiveFlags: ARCHIVE_FLAGS
+      archiveFlags: ARCHIVE_FLAGS,
+      /**
+       * 本次「选取地块」会话的令牌（没进过选取模式时为空串）。
+       * ★ 必须保存下来：结束会话时要 verbatim 交回去做发起者校验，
+       *   否则「两个表单都开着时，后一个的取消会把前一个的选取模式关掉」。
+       */
+      pickToken: '',
+      /** 地图是否可用（?map=0 预览时为 false，此时「选取地块」不给点） */
+      mapEnabled: true,
+      /** 本组件实例的唯一 id：只用于把「谁开的选取会话」写进会话状态，便于排查 */
+      uid: uid('facility-form')
     }
   },
   created () {
+    /*
+     * 地图是否加载：判据只有一个 —— 地址里有没有 ?map=0（全站已有的预览开关，
+     * 与 views/screen/index.vue 的 mapEnabled 同一判据）。
+     * 不在这里探测 window.viewer：Cesium 是异步初始化的，
+     * 「按钮先可点、点下去才发现地图没起来」比「一开始就不给点」体验差得多。
+     */
+    this.mapEnabled = !(this.$route && this.$route.query && this.$route.query.map === '0')
     queryLandDictItems(dictDefinitions()).then((dicts) => {
       if (dicts.xzqh) this.xzqhOptions = dicts.xzqh
       if (dicts.projectType) this.projectTypeOptions = dicts.projectType
       if (dicts.facilityCategory) this.categoryOptions = dicts.facilityCategory
     })
+    /*
+     * 订阅「选取地块」会话的结束事件。
+     * ★ 为什么走 $bus：覆盖层由 views/screen/index.vue 渲染，与本弹窗是 body 上的
+     *   两棵平行节点，没有父子关系。$bus 是本工程既有的跨组件通道。
+     * ★ payload 带 token，必须先校验是不是自己发起的那次会话 ——
+     *   同页可能同时开着宗地表单与配套表单。
+     */
+    this.$bus.$on('facilityMapPickFinished', this.handlePickEvent)
   },
   beforeDestroy () {
+    this.$bus.$off('facilityMapPickFinished', this.handlePickEvent)
     if (this.landSearchTimer) {
       clearTimeout(this.landSearchTimer)
       this.landSearchTimer = null
@@ -579,6 +619,7 @@ export default {
       this.model.lrr = this.currentRealname()
       this.errors = {}
       this.submitted = false
+      this.closePick()
       this.visible = true
       // 预置了宗地编号时，下拉里必须先有这一项，否则触发器会显示原始编号看起来很怪
       this.loadLandOptions(crzdbh || '')
@@ -594,6 +635,7 @@ export default {
       this.model = emptyModel()
       this.errors = {}
       this.submitted = false
+      this.closePick()
       this.visible = true
       this.loading = true
       this.loadDetail(record.id)
@@ -624,8 +666,75 @@ export default {
         })
     },
 
-    /* ---------------- 宗地下拉 ---------------- */
+    /* ---------------- 「选取地块」全屏地图模式 ---------------- */
 
+    /**
+     * 打开「选取地块」全屏地图模式。
+     * ===============================================================
+     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 覆盖整个页面：
+     * 所有页面隐藏、只留下方地图，页面上方中间两个按钮（取消选择 / 选择完成）。
+     *
+     * ★ 本表单**自己不渲染任何地图**，也不负责关闭覆盖层：
+     *   地图是 ScreenStage 里那个常驻的 Cesium 实例（本弹窗挂在 body 上，
+     *   拿不到它，也不该再创建第二个 Viewer —— 那会白烧一份 GPU 与内存）。
+     *
+     * @returns {string} 本次会话令牌；地图不可用时不开启会话，返回空串
+     */
+    handleOpenMapPick () {
+      if (!this.mapEnabled) {
+        toast.warning('地图尚未加载，无法选取地块')
+        return ''
+      }
+      // 自己上次的令牌如果已经不是当前会话（被 ended / 被别人接管），先清掉，
+      // 否则 closePick 会拿一个陈旧令牌去 endPick，语义上会显得「莫名关掉了别的会话」
+      if (this.pickToken && !isPickIssuer(this.pickToken)) this.pickToken = ''
+      if (this.pickToken) return this.pickToken
+      // ★ startPick 在「已有别人开的会话」时会返回**那个**会话的令牌。
+      //   这里如实记下来（而不是拒绝），保证本次操作总能被自己收到结束事件；
+      //   代价是别人那次会话的发起者会在结束时被顺带清掉令牌 —— 可接受，
+      //   因为同一时刻只可能有一张全屏地图，本来就不支持并行选取。
+      this.pickToken = startPick({
+        source: 'facility',
+        title: '正在选取配套项目地块，绘制期间地图可以自由拖动与缩放',
+        issuer: `FacilityFormModal#${this.uid}`
+      })
+      return this.pickToken
+    },
+
+    /**
+     * 覆盖层抛回的结束事件（$bus: facilityMapPickFinished）。
+     * @param {{ token: string, geometry: * }} payload
+     */
+    handlePickEvent (payload) {
+      const data = payload || {}
+      // 不是自己发起的那次会话 → 与自己无关，直接忽略
+      if (!this.pickToken || data.token !== this.pickToken) return
+      this.handlePickFinished(data.geometry)
+    },
+
+    /**
+     * 选取结束（取消选择 / 选择完成都会走）。
+     * @param {*} geometry 画好的地块图形；本期绘制未接入，恒为 null。
+     *
+     * ★ 本期**不写回任何字段**：没有图形时保留原值，静默清空会让用户以为
+     *   「选完了但没生效」。接入绘制后在这里按 geometry 填 model 的对应字段即可。
+     */
+    handlePickFinished (geometry) {
+      this.pickToken = ''
+      if (geometry) {
+        // 目前没有任何字段能接收图形（后端实体也没有对应列，属于后续改动）
+        toast.info('已获取地块图形，写入字段的功能待接入')
+      }
+    },
+
+    /** 关闭弹窗 / 重新打开表单时，把可能残留的选取会话一起收掉 */
+    closePick () {
+      const token = this.pickToken
+      this.pickToken = ''
+      if (token) endPick(token)
+    },
+
+    /* ---------------- 宗地下拉 ---------------- */
     /**
      * 远程搜索宗地。
      * ★ 本地 filter-local=false + @search：选项由这里拉，
@@ -806,6 +915,9 @@ export default {
             return
           }
           toast.success(res.message || '保存成功')
+          // 保存成功会关掉弹窗，正在进行的选取会话必须一起收掉，
+          // 否则会留下一张没有出口的全屏地图
+          this.closePick()
           this.visible = false
           this.$emit('ok', payload.id)
         })
@@ -818,6 +930,7 @@ export default {
     },
 
     handleCancel () {
+      this.closePick()
       this.visible = false
     },
 
@@ -962,6 +1075,62 @@ export default {
     background: rgba(255, 122, 107, 0.08);
     border: 1px solid var(--screen-danger);
     border-radius: var(--screen-radius-sm);
+  }
+
+  /*
+   * 「选取地块」入口（与 LandFormModal 的同名块样式一致，两处刻意保持同款：
+   * 同一个功能在两个表单里长得不一样会让人以为是两件事）。
+   */
+  &__map-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--screen-space-3);
+    min-width: 0;
+  }
+
+  &__map-pick-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-height: var(--screen-control-md);
+    padding: 0 18px;
+    font-family: inherit;
+    font-size: var(--screen-font-sm);
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--screen-accent);
+    background: rgba(130, 198, 255, 0.12);
+    border: 1px solid var(--screen-border-strong);
+    border-radius: var(--screen-radius-sm);
+    cursor: pointer;
+    transition: color var(--screen-duration) var(--screen-ease),
+      background-color var(--screen-duration) var(--screen-ease),
+      border-color var(--screen-duration) var(--screen-ease);
+    .screen-focus-ring();
+
+    &:hover:not(:disabled) {
+      color: var(--screen-text-on-accent);
+      background: var(--screen-accent);
+      border-color: var(--screen-accent-bright);
+    }
+
+    &:disabled {
+      color: var(--screen-text-mute);
+      background: rgba(6, 20, 40, 0.38);
+      border-color: var(--screen-border-soft);
+      cursor: not-allowed;
+    }
+  }
+
+  &__map-pick-tip {
+    min-width: 0;
+    font-size: var(--screen-font-xs);
+    line-height: 1.6;
+    color: var(--screen-text-mute);
+    .screen-ellipsis-multi(2);
   }
 }
 

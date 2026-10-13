@@ -69,6 +69,7 @@
 | `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` |
+| `ScreenPickStage` | 「选取地块」全屏模式（隐藏全部页面、只留地图 + 取消选择/选择完成） | `mapReady` `source` `title`；事件 `cancel` `done(geometry)` |
 | `ScreenPopover` | 浮层容器（挂 body，供下拉/气泡复用） | `open` `anchor` `placement` `width` `maxHeight` `role` |
 | `ScreenPopconfirm` | 危险操作二次确认 | `title` `description` `tone` `okText` `placement` `confirmLoading` |
 
@@ -322,7 +323,8 @@ handleLogout () {
    （它会把自身节点移动到 `document.body`），直接在面板里写 `position: absolute`
    的下拉一定会被裁掉或错位。
 6. **浮层的 z-index 必须高于弹窗**：`ScreenPopover` 默认 `1260`、
-   `ScreenModal` 是 `1200`、`ScreenToast` 是 `1300`。
+   `ScreenModal` 是 `1200`、`ScreenToast` 是 `1300`、
+   `ScreenPickStage`（「选取地块」全屏模式）是 `1250`。
    低于弹窗会让「弹窗里的下拉」被盖住，看不见也点不到。
 7. **`v-slot` 不能包在 `v-if` 里**：Vue 2.6 会报
    "v-slot can only appear at the root level inside the receiving component"。
@@ -371,6 +373,109 @@ handleLogout () {
 
 ---
 
+## 6.1 「选取地块」全屏模式（2026-10 新增）
+
+数据管理的两张表单（`LandFormModal` / `FacilityFormModal`）里都有「选取地块」按钮。
+点它之后**所有页面隐藏、只显示下方真实地图**，视口上方正中浮出两个按钮
+（取消选择 / 选择完成），点任一个都回到原页面。
+
+组件拆分与分工（改之前先看清谁负责什么）：
+
+| 文件 | 职责 |
+| --- | --- |
+| `views/screen/pickSession.js` | 会话状态单例（Vue.observable）：谁发起的、当前是否在选取模式 |
+| `views/screen/index.vue` | 唯一渲染 `ScreenPickStage` 的地方；给画布元素加 `is-pick-hidden`；`mapPaused` |
+| `components/screen/ScreenPickStage.vue` | 覆盖层外观、两个按钮、`body.is-picking-map` 标记；`drawTools` 是绘制的**占位实现** |
+
+**「隐藏页面」分两层，缺一层就会漏**（这是本次改动最主要的一课）：
+
+| 层 | 覆盖对象 | 手段 |
+| --- | --- | --- |
+| 页面层（`index.vue` 的 `canvasFade`） | 顶栏、四张蒙版、四个整页模块、首页三块面板、首页两个浮层 | 给元素挂 `.is-pick-hidden` |
+| body 层（`ScreenPickStage` 的 `body.is-picking-map`） | 挂在 body 上的 `.screen-modal-root`（含发起选取的那张表单）与 `.screen-popover` | 全局 CSS `visibility: hidden` |
+
+> 说明：首页那三块面板与两个浮层的绑定是**防御性**的 —— 「选取地块」的入口只在
+> 数据管理模块的表单里，所以正常路径上首页分支根本不在 DOM 里（切换顶栏菜单会
+> 结束选取会话，见 `index.vue` 的 `activeMenu` watcher）。留着是为了将来
+> 别处也能调起选取模式时不用回来补。
+
+六个必须记住的点（每一条都对应一个实际踩中的坑）：
+
+1. **地图不重新创建**。覆盖层刻意**无背景**，下面就是 `ScreenStage` 里那个常驻的
+   `<s3dm-viewer>`。再 `new Cesium.Viewer` 一份会白烧 GPU 与内存，
+   而且两个 canvas 抢同一个 `#home` 容器 id 会直接把地图搞坏。
+2. **隐藏页面用 `opacity: 0`，不要改成 `v-if` / `display: none`**。
+   被隐藏的是数据管理页 / 档案页 / 首页面板，销毁重建会丢掉填到一半的表单、
+   检索条件与分页；`display: none` 还会让 Cesium 容器瞬间变成 0×0，恢复时镜头跳一下。
+3. **★ 只写 `opacity: 0` 是不够的：必须同时 `pointer-events: none`（含后代）**。
+   透明元素照样参与命中测试，而 `data/index.vue` 的 `__nav` / `__body` 显式写了
+   `pointer-events: auto` —— 于是「看不见的」表格会把地图的鼠标事件全吃掉。
+   实测：只加 opacity 时，屏幕正中命中到的是 `td`，地图拖不动、滚轮也不缩放。
+   由于 `pointer-events: none` 可被后代的显式 `auto` 重新打开，规则里要对后代再兜一层 `*`。
+4. **★ `.is-pick-hidden` 的样式必须写在非 scoped 的 `<style>` 块里**。
+   scoped 会把最后一级选择器改写成 `…[data-v-xxx]`，于是 `.is-pick-hidden *`
+   只能命中本组件自己渲染的元素，**子组件内部的深层表格单元格全部漏网**
+   （实测：写成 scoped 时命中仍然是 `td`，改成全局块后才是 `canvas`）。
+5. **★ 覆盖层根节点必须 `pointer-events: none`**，只有两个按钮显式 `auto`。
+   铺满视口的透明层若写成 `auto` 会把地图彻底挡死，与提示文案自相矛盾。
+6. **★ 会话必须带 token**。同页可能同时开着「新增宗地」与「新增配套」两个常驻弹窗，
+   没有 token 校验就会出现「另一个表单的结果被本表单吃掉」，
+   以及「后一个的取消把前一个的选取模式关掉」。
+
+另外两点实现细节：
+
+- **不要用 `watch` 去同步 `pickState`**。它是模块 import，没挂在组件实例上，
+  `watch: { pickState }` 会对 `vm.pickState` 求值得到 undefined、**不建立依赖**，
+  handler 永不触发（踩过：覆盖层永远不出现）。正确做法是用 computed 直接读单例字段。
+- **Esc 用捕获阶段监听并 `preventDefault`**。焦点在进选取模式时仍留在被隐藏的
+  表单弹窗里，而 `ScreenModal` 的 Escape 处理挂在它的 dialog 上、
+  会先于 window 的冒泡监听触发 —— 不拦的话「按 Esc 取消选择」会连整张表单一起关掉。
+
+**绘制功能尚未接入**（需求明确「先不做，把方法预留」）。
+落点在 `ScreenPickStage.vue` 的 `createDrawTools()`：现在每个方法只提示不干活；
+接入时把绘制引擎挂进覆盖层、在 `start()` 激活
+（**记得置 `active = true`**，否则 `stop()` 第一行就 return、插件监听永远停不掉）。
+★ 抛图形的落点要注意：`drawTools` 是 `createDrawTools(vm)` 返回的**普通对象**，
+`this` 指向它自己，**没有 `$emit`** —— 在 `stop()` 里写 `this.$emit('done', geometry)`
+会直接抛 `this.$emit is not a function`。正确做法是用闭包里的实例 `vm`：
+按钮触发完成时走 `getGeometry()`（`handleDone` 已接好）；插件异步画完时由插件回调
+调 `vm.$emit('done', geometry)`，并保证与 `handleDone` 不重复 emit。
+
+**本期 `done` 的 payload 恒为 null，表单收到 null 时保留字段原值**，
+所以现在点「选择完成」等价于「关掉地图回到表单」，不会有半个坐标被写进模型。
+
+覆盖层的 z-index 是 **1250**（高于 `ScreenModal` 1200、低于 `ScreenPopover` 1260；
+`ScreenToast` 1300 的提示仍在最上面 —— 这是有意的，toast 是本模式唯一的反馈通道，
+`body.is-picking-map` 的规则里**绝不能把 `.screen-toast` 也藏掉**）。
+
+> ★ **覆盖层必须 `appendChild` 到 `document.body`**（`ScreenPickStage.vue` 的 `mounted`，
+> 做法同 `ScreenModal` / `ScreenPopover`）。它在 `index.vue` 里是写进
+> `<screen-stage>` 的**默认插槽**的，真实父节点是 `.screen-stage__canvas` ——
+> 那个元素带 `position: absolute; z-index: 1`，**自己就是层叠上下文**。
+> 留在里面写 `z-index: 1250` 出不了这个上下文：body 级的 `.screen-modal`(1200)
+> 反而画在它上面，而且它还会被画布的 `transform: scale(k)` 一起缩放
+> （实测 1920 视口下两个按钮从 168×54 缩成 154×49）。
+> 卸载时记得 `removeChild`：`$el` 已不在 Vue 管的父节点下，Vue 不会替你移除。
+
+> **验证脚本必须用真实输入域点击**：`perf/verify-pick-stage.js` 用
+> CDP `Input.dispatchMouseEvent` 点两个按钮，并在点之前用 `elementFromPoint`
+> 确认按钮中心**没有被遮挡**。用元素的 `b.click()` 会绕过命中测试 ——
+> 按钮被盖住时它照样"成功"，断言就变成假绿。
+
+> **改完必须跑浏览器验证**：`node perf/verify-pick-stage.js http://localhost:3000`
+> （35 条断言：覆盖层出现、页面全隐藏、按钮居中可点且未被遮挡、
+> **屏幕正中命中 canvas**、取消/完成回到原页面）与
+> `node perf/verify-pick-esc.js http://localhost:3000`（6 条：Esc 只退选取、不关表单）。
+> 上面 3/4/5 三个坑以及"覆盖层没挂 body"**模板编译、less、eslint、verify-sfc
+> 一个都查不出来** —— 只在真实浏览器里数元素、做命中测试才发现。
+> 看效果图用 `node perf/shot-pick-stage.js`。
+
+> 想要「只预览界面、不加载地图」时用全站已有的 `?map=0`：
+> 该模式下「选取地块」按钮是**禁用**的，并给出原因，
+> 而不是让用户点进去看到一张空白。
+
+---
+
 ## 7. 目录结构
 
 ```
@@ -384,6 +489,7 @@ src/components/screen/
 ├─ ScreenHeader.vue            # 顶栏（高保真切图 + 7 项导航 + 时钟）
 ├─ ScreenMapStage.vue          # 地图舞台
 ├─ ScreenModal.vue             # 弹窗（挂 body + 焦点陷阱 + 滚动锁）
+├─ ScreenPickStage.vue         # 「选取地块」全屏模式（隐藏全部页面 + 取消选择/选择完成）
 ├─ ScreenPopover.vue           # 浮层容器（挂 body，下拉 / 气泡的公共基座）
 ├─ ScreenPopconfirm.vue        # 危险操作二次确认
 ├─ ScreenStatValue.vue         # 大号统计数值
@@ -518,7 +624,6 @@ src/views/screen/archive/
 
 
 ### 两个后端：业务请求必须走 `VUE_DATA_JAVA_URL`
-
 这是本项目最容易踩的坑，改档案/业务接口前务必先读这一段。
 
 `public/static/config.js` 里定义了两个后端地址，且 `window._CONFIG` 的值会**覆盖** `.env`：

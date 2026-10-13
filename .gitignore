@@ -22,3 +22,6 @@ server/config/
 dist/
 # 性能优化时移出构建的内置字体备份（各 15MB+，需要时从 git 历史里取回）
 **/perf/fonts-unused-backup/
+# perf 验证脚本每次跑都会重新生成的截图（脚本在库里，产物不入库；
+# 需要留证据时从本地 perf/shots/ 取，见 perf/README.md）
+**/perf/shots/
