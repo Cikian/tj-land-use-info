@@ -100,6 +100,18 @@ const FILES = [
   'src/views/screen/index.vue',
   'src/components/screen/ScreenPickStage.vue',
   'src/components/screen/index.js',
+
+  // ===== 数据管理「右侧检索列 + 可拖高列表」版式（2026-10 新增）=====
+  // 新组件必须登记：否则模板里写了 <screen-resize-bar> 而组件没注册、
+  // 或样式块写坏，都要等到 webpack 打包/跑起来才发现。
+  'src/components/screen/ScreenResizeBar.vue',
+  // 本次为「窄列区间日期」加了 stacked 分支，顺手登记（它此前没被自检覆盖）
+  'src/components/screen/ScreenDateInput.vue',
+  'src/views/screen/data/index.vue',
+  'src/views/screen/data/modules/LandEntryPanel.vue',
+  'src/views/screen/data/modules/FacilityEntryPanel.vue',
+  'src/views/screen/data/modules/LandSearchForm.vue',
+  'src/views/screen/data/modules/FacilitySearchForm.vue',
 ]
 
 const problems = []
@@ -163,11 +175,32 @@ function extractRootTemplate (source) {
  * 于是**每个带样式的大屏组件都过不了这一项**（连未被改动的 ArchiveQuery.vue 也一样），
  * 属于脚本缺陷而非页面缺陷。
  * @param {string} content
+ * @param {string} [fromFile] 发起该样式块的文件绝对路径（解析相对 @import 用）
  * @returns {string}
  */
-function resolveLessAliases (content) {
+function resolveLessAliases (content, fromFile) {
   const src = path.join(root, 'src').replace(/\\/g, '/')
-  return content.replace(/~@\//g, `${src}/`)
+  let out = content.replace(/~@\//g, `${src}/`)
+
+  /*
+   * 相对路径的 @import（`@import './styles/screen-mixins.less';`）也要解析成绝对路径。
+   * ★ 为什么：裸 less 是按**进程工作目录**找文件的，而本脚本在工程根执行，
+   *   于是 './styles/…' 被当成 <工程根>/styles/… 报 "wasn't found"。
+   *   于是「凡是用相对路径引 less 的 .vue 都过不了这一项」—— 例如
+   *   src/components/screen/ 下的组件全都写 './styles/screen-mixins.less'，
+   *   这属于脚本缺陷而不是页面缺陷（与上面 ~@ 那条同一性质）。
+   *   这里按**该 .vue 所在目录**解析，与 less-loader / webpack 的行为一致。
+   */
+  if (fromFile) {
+    out = out.replace(
+      /@import\s+(\([^)]*\)\s*)?(['"])(\.{1,2}\/[^'"]+)\2/g,
+      (match, options, quote, spec) => {
+        const abs = path.resolve(path.dirname(fromFile), spec).replace(/\\/g, '/')
+        return `@import ${options || ''}${quote}${abs}${quote}`
+      }
+    )
+  }
+  return out
 }
 
 function checkVue (file, source) {
@@ -213,7 +246,7 @@ function checkVue (file, source) {
    */
   const styles = extractBlocks(source, 'style').filter((block) => /lang\s*=\s*["']less["']/.test(block.attrs))
   const tasks = styles.map((block, index) => less
-    .render(resolveLessAliases(block.content), { javascriptEnabled: true })
+    .render(resolveLessAliases(block.content, file), { javascriptEnabled: true })
     .catch((e) => {
       fail(file, `第 ${index + 1} 个 <style lang="less"> 编译失败：${e.message}`)
     }))

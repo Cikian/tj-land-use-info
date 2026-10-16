@@ -13,6 +13,10 @@
         <template #footer>自定义底栏</template>
       </screen-modal>
 
+    两个可选的「非模态」能力（表单弹窗要一边填一边操作下面的地图时用）：
+      :dimmed="false"  —— 背景不压暗，**且遮罩不再吃鼠标**（两件事必须同时做，见 &__mask）
+      draggable        —— 抓标题栏可拖动，且保证不会被拖到找不回来（见 applyDrag）
+
     实现要点（这三点是这个组件存在的理由）：
       1. **挂到 document.body**：大屏浮层是 pointer-events: none，面板又是 overflow: hidden，
          弹窗留在里面会被裁掉。（面板原先还有 backdrop-filter、会成为 fixed 的包含块，
@@ -23,8 +27,8 @@
   -->
   <div class="screen-modal-root">
     <transition name="screen-modal" :duration="motionDisabled ? 0 : 200">
-      <div v-if="visible" class="screen-modal">
-        <div class="screen-modal__mask" @click="handleMaskClick" />
+      <div v-if="visible" class="screen-modal" :class="{ 'is-clear': !dimmed }">
+        <div class="screen-modal__mask" :class="{ 'is-clear': !dimmed }" @click="handleMaskClick" />
 
         <div
           ref="dialog"
@@ -32,13 +36,25 @@
           :class="[`is-${size}`, { 'is-full': fullscreen }]"
           :style="dialogStyle"
           role="dialog"
-          aria-modal="true"
+          :aria-modal="dimmed ? 'true' : 'false'"
           :aria-labelledby="title ? titleId : undefined"
           :aria-label="title ? undefined : ariaLabel || '对话框'"
           tabindex="-1"
           @keydown="handleKeydown"
         >
-          <header class="screen-modal__head">
+          <!--
+            标题栏。draggable 时它同时是拖动把手：
+              · 鼠标/触摸 → handleDragStart（pointerdown）
+              · 键盘 → tabindex 让它可聚焦，方向键移动（见 handleKeydown 的 MOVE_KEYS 分支）
+            ★ 打开时的自动聚焦会**跳过**它（见 firstFocusable），否则用户进表单得先多按一次 Tab。
+          -->
+          <header
+            ref="head"
+            class="screen-modal__head"
+            :class="{ 'is-draggable': draggable }"
+            :tabindex="draggable ? 0 : undefined"
+            @pointerdown="handleDragStart"
+          >
             <span class="screen-modal__bar" aria-hidden="true" />
             <h2 v-if="title" :id="titleId" class="screen-modal__title">{{ title }}</h2>
             <div class="screen-modal__head-extra">
@@ -104,6 +120,18 @@ function unlockScroll () {
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+/**
+ * 方向键 → 单位位移（可拖拽弹窗的键盘通道）。
+ * ★ 拖动不能只有鼠标：大屏上也有只用键盘的岗位，且「把窗口挪开看地图」
+ *   这件事用方向键做比用鼠标更精确（按 Shift 走大步）。
+ */
+const MOVE_KEYS = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1]
+}
+
 export default {
   name: 'ScreenModal',
   components: { ScreenIcon, ScreenButton },
@@ -134,6 +162,19 @@ export default {
     confirmLoading: { type: Boolean, default: false },
     okText: { type: String, default: '保存' },
     cancelText: { type: String, default: '取消' },
+    /**
+     * 背景是否压暗。
+     * ★ 关闭压暗时**必须同时**让遮罩不吃鼠标（见 &__mask.is-clear）：
+     *   透明元素照样参与命中测试，只把颜色改透明的话，用户会「看得见下面的地图、
+     *   却点不动」——这比压暗更难排查，因为肉眼完全看不出有一层东西挡着。
+     * 默认 true：保持既有弹窗（档案、收发文…）的模态行为不变。
+     */
+    dimmed: { type: Boolean, default: true },
+    /**
+     * 是否可拖动（抓标题栏）。
+     * 默认 false：既有弹窗的位置由 flex 居中决定，不给它们引入新的位移来源。
+     */
+    draggable: { type: Boolean, default: false }
   },
   data () {
     return {
@@ -141,6 +182,14 @@ export default {
       /** 打开前的焦点元素，关闭后还给它 */
       lastActiveElement: null,
       motionDisabled: false,
+      /**
+       * 拖动位移（**真实像素**，相对 flex 居中位置）。
+       * 本弹窗由 mounted 挂到 document.body，不在 ScreenStage 的缩放画布内，
+       * 所以这里不需要（也不能）除以画布缩放 k —— 与 ScreenResizeBar 正好相反。
+       */
+      dragOffset: { x: 0, y: 0 },
+      /** 一次拖动的过程状态；不在拖动中时为 null */
+      dragState: null
     }
   },
   computed: {
@@ -149,11 +198,21 @@ export default {
       if (!this.fullscreen) {
         style.width = typeof this.width === 'number' ? `${this.width}px` : this.width
       }
+      /*
+       * 拖动位移用 left/top（position: relative 的相对偏移）落地，
+       * ★ 不能用 transform：进出场动画就是靠 .screen-modal__dialog 的
+       *   transform: translateY(10px) 做的，行内 transform 会把它整个盖掉，
+       *   弹窗就失去「淡入 + 上浮」的动效了。
+       */
+      if (this.draggable && (this.dragOffset.x || this.dragOffset.y)) {
+        style.left = `${this.dragOffset.x}px`
+        style.top = `${this.dragOffset.y}px`
+      }
       return style
     },
     bodyStyle () {
       return this.bodyMaxHeight ? { maxHeight: this.bodyMaxHeight } : {}
-    },
+    }
   },
   watch: {
     visible (val, oldVal) {
@@ -163,7 +222,7 @@ export default {
       } else {
         this.handleClose()
       }
-    },
+    }
   },
   mounted () {
     // 移出面板 DOM：避免 overflow 裁剪与 backdrop-filter 的包含块影响定位
@@ -177,6 +236,9 @@ export default {
     if (this.visible) {
       this.handleClose()
     }
+    // 拖动中途被销毁（父组件直接 v-if 掉弹窗）时必须收尾：
+    // 否则 window 上留着 pointermove 监听与 body 上的 is-dragging-modal，光标一直是 move
+    if (this.dragState) this.handleDragEnd(null)
     if (this.$el && this.$el.parentNode) {
       this.$el.parentNode.removeChild(this.$el)
     }
@@ -184,6 +246,9 @@ export default {
   methods: {
     handleOpen () {
       this.lastActiveElement = document.activeElement
+      // 每次打开都回到居中位置：否则「上次拖到角落」会被带进下一次，
+      // 用户看到弹窗从角落里冒出来，会以为打开失败或者上次没关干净。
+      this.dragOffset = { x: 0, y: 0 }
       lockScroll()
       this.$emit('open')
       this.$nextTick(() => {
@@ -212,7 +277,9 @@ export default {
         .filter((el) => el.offsetParent !== null || el === document.activeElement)
     },
     firstFocusable () {
-      const list = this.focusableElements()
+      // ★ 拖动把手（标题栏）不参与「打开时自动聚焦」：可拖拽弹窗里它排在 DOM 最前，
+      //   不排除的话打开表单时光标会落在标题栏上，用户得先多按一次 Tab 才能开始填。
+      const list = this.focusableElements().filter((el) => el !== this.$refs.head)
       return list.length ? list[0] : null
     },
     handleKeydown (event) {
@@ -222,6 +289,22 @@ export default {
         this.handleCancel()
         return
       }
+
+      // 可拖拽弹窗：焦点在标题栏（把手）上时，方向键移动弹窗，按住 Shift 走大步
+      const move = MOVE_KEYS[event.key]
+      if (this.draggable && move && event.target === this.$refs.head) {
+        event.preventDefault()
+        const step = event.shiftKey ? 40 : 16
+        const dialog = this.$refs.dialog
+        if (dialog) {
+          this.applyDrag(move[0] * step, move[1] * step, dialog.getBoundingClientRect(), {
+            x: this.dragOffset.x,
+            y: this.dragOffset.y
+          })
+        }
+        return
+      }
+
       if (event.key !== 'Tab') return
 
       // 焦点陷阱：Tab 到边界时回到另一端
@@ -254,7 +337,101 @@ export default {
     handleOk () {
       this.$emit('ok')
     },
-  },
+
+    /* ==================== 拖动（draggable） ==================== */
+
+    /**
+     * 抓住标题栏开始拖动。
+     *
+     * ★ 位移用 event.clientX/Y 的差值直接算，**不除以画布缩放 k**：
+     *   本弹窗由 mounted 挂到 document.body，压根不在 ScreenStage 的缩放画布内，
+     *   它的几何量本来就是真实像素（与 ScreenResizeBar 的情况正好相反）。
+     * ★ 监听挂在 window 而不是标题栏：指针一旦移出标题栏（拖快了很常见），
+     *   元素上的 pointermove 就断了，表现是「弹窗跟不上鼠标」。
+     *   配合 setPointerCapture 双保险（个别环境不支持捕获时靠 window 兜底）。
+     */
+    handleDragStart (event) {
+      if (!this.draggable || event.button !== 0) return
+      // 标题栏里的按钮 / 自定义 head-extra 不参与拖动，否则「点关闭」会变成拖窗口
+      const target = event.target
+      if (target && target.closest && target.closest('button, a, input, select, textarea, [role="button"]')) return
+      const dialog = this.$refs.dialog
+      if (!dialog) return
+      event.preventDefault()
+      this.dragState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        // 拖动起点同时记下「位移」与「可视矩形」：夹紧范围必须按真实矩形算，
+        // 不能假设弹窗是居中的（用户可能已经把它拖到别处了）
+        base: { x: this.dragOffset.x, y: this.dragOffset.y },
+        rect: dialog.getBoundingClientRect()
+      }
+      const head = this.$refs.head
+      if (head && head.setPointerCapture && event.pointerId !== undefined) {
+        try { head.setPointerCapture(event.pointerId) } catch (e) { /* 不支持捕获，window 监听兜底 */ }
+      }
+      window.addEventListener('pointermove', this.handleDragMove)
+      window.addEventListener('pointerup', this.handleDragEnd)
+      window.addEventListener('pointercancel', this.handleDragEnd)
+      document.body.classList.add('is-dragging-modal')
+    },
+
+    handleDragMove (event) {
+      const state = this.dragState
+      if (!state) return
+      // 多指 / 多指针时只认一开始那根手指
+      if (state.pointerId !== undefined && event.pointerId !== undefined && event.pointerId !== state.pointerId) return
+      event.preventDefault()
+      this.applyDrag(event.clientX - state.startX, event.clientY - state.startY, state.rect, state.base)
+    },
+
+    handleDragEnd (event) {
+      const state = this.dragState
+      if (!state) return
+      this.dragState = null
+      window.removeEventListener('pointermove', this.handleDragMove)
+      window.removeEventListener('pointerup', this.handleDragEnd)
+      window.removeEventListener('pointercancel', this.handleDragEnd)
+      document.body.classList.remove('is-dragging-modal')
+      const head = this.$refs.head
+      if (head && head.releasePointerCapture && state.pointerId !== undefined) {
+        try { head.releasePointerCapture(state.pointerId) } catch (e) { /* 已经释放过了 */ }
+      }
+      if (event && event.type === 'pointerup') {
+        this.$emit('drag-end', { x: this.dragOffset.x, y: this.dragOffset.y })
+      }
+    },
+
+    /**
+     * 把「期望位移」夹进「弹窗不会被拖丢」的范围，再落到 dragOffset 上。
+     *
+     * 夹紧判据（两条都是必须的）：
+     *   · 横向：左右各至少留 80px 露在视口里 —— 完全推出屏幕后用户就再也抓不到它了；
+     *   · 纵向：标题栏（唯一的把手）必须完整留在视口内。
+     * 不做夹紧的话，「随意拖动」在触摸板上一滑就变成「弹窗消失」。
+     *
+     * @param {number} dx 期望横向位移（真实像素）
+     * @param {number} dy 期望纵向位移（真实像素）
+     * @param {DOMRect} rect 位移生效**前**的可视矩形
+     * @param {{x:number,y:number}} base 位移生效**前**的 dragOffset
+     */
+    applyDrag (dx, dy, rect, base) {
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const headHeight = this.$refs.head ? this.$refs.head.getBoundingClientRect().height : 46
+      const minDx = 80 - rect.right
+      const maxDx = vw - 80 - rect.left
+      const minDy = -rect.top
+      const maxDy = vh - headHeight - rect.top
+      // 用 Math.max(min, max) 兜底：弹窗比视口还宽时区间会反向，此时固定在左边界
+      const cx = Math.min(Math.max(dx, minDx), Math.max(minDx, maxDx))
+      const cy = Math.min(Math.max(dy, minDy), Math.max(minDy, maxDy))
+      const next = { x: Math.round(base.x + cx), y: Math.round(base.y + cy) }
+      if (next.x === this.dragOffset.x && next.y === this.dragOffset.y) return
+      this.dragOffset = next
+    }
+  }
 }
 </script>
 
@@ -274,6 +451,15 @@ export default {
   align-items: center;
   justify-content: center;
   padding: var(--screen-space-5);
+  /*
+   * ★ 整屏容器自己**不吃**鼠标，事件只由两个子元素按需接：
+   *     .screen-modal__mask   默认 auto（模态：挡住背景点击，这是既有行为）
+   *     .screen-modal__dialog auto（弹窗本体）
+   *   父级 none + 子级 auto 是合法的：子元素可以重新打开自己的命中测试。
+   *   这么写是为了让 :dimmed="false" 的弹窗能「只改一个类」就放行背景
+   *   （见 &__mask.is-clear），不必去改根节点的 pointer-events。
+   */
+  pointer-events: none;
 
   &__mask {
     position: absolute;
@@ -283,6 +469,19 @@ export default {
     //   模糊整屏会把「打开弹窗」拖到 200~300ms 才出画面（见 screen-mixins.less
     //   里 .screen-glass 的实测数据）。0.72 的底色已经足够压暗背景。
     background: rgba(1, 14, 17, 0.72);
+    pointer-events: auto;
+
+    /*
+     * :dimmed="false"：背景不压暗。
+     * ★★ 必须**同时** pointer-events: none。只把颜色改透明的话，
+     *    这一层仍然铺满视口参与命中测试 —— 用户看得见下面的地图却拖不动、点不到，
+     *    而且肉眼完全看不出有东西挡着（透明层没有任何视觉线索）。
+     *    这是本项目反复踩过的一类坑：透明 ≠ 不接事件。
+     */
+    &.is-clear {
+      background: transparent;
+      pointer-events: none;
+    }
   }
 
   &__dialog {
@@ -299,6 +498,8 @@ export default {
     border-radius: var(--screen-radius-lg);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), var(--screen-shadow-inset);
     outline: none;
+    // 弹窗本体必须自己收事件（外层是 pointer-events: none）
+    pointer-events: auto;
 
     &.is-full {
       width: 100%;
@@ -328,6 +529,16 @@ export default {
     border-bottom: 1px solid var(--screen-border-soft);
     border-top-left-radius: inherit;
     border-top-right-radius: inherit;
+    // 拖动时手指/鼠标可能划出标题栏，选中文字会打断拖动
+    user-select: none;
+    -webkit-user-select: none;
+
+    /* 可拖拽：光标提示这是把手，并给一条焦点环（键盘用户按方向键前先 Tab 到它） */
+    &.is-draggable {
+      cursor: move;
+      touch-action: none;
+      .screen-focus-ring();
+    }
   }
 
   &__bar {
@@ -433,6 +644,25 @@ export default {
   .screen-modal-enter .screen-modal__dialog,
   .screen-modal-leave-to .screen-modal__dialog {
     transform: none;
+  }
+}
+</style>
+
+<!--
+  拖动期间的全局收尾（**故意不加 scoped**：要作用在 body 上）。
+  拖动时指针会离开标题栏、划过页面里的任意元素，光标必须整屏保持一致，
+  否则「光标在标题栏上是 move、移出去立刻变回箭头」，看起来像拖丢了。
+  与 ScreenResizeBar 的 body.is-resizing-panel 是同一套做法。
+-->
+<style lang="less">
+body.is-dragging-modal {
+  cursor: move;
+
+  * {
+    // !important 是必要的：拖过的元素（按钮、链接）都有自己的 cursor 声明
+    cursor: move !important;
+    user-select: none;
+    -webkit-user-select: none;
   }
 }
 </style>

@@ -306,3 +306,40 @@ DOM 1329 节点）修复后同样是：主线程忙 **2.3%**、Long Task 无、
 2. `edge://gpu` 确认 WebGL / Compositing 是 `Hardware accelerated` 而不是 `Software only`；
 3. 顺手关掉那些在修复前打开、还挂着旧代码的大屏标签页（它们仍在后台满速渲染）。
 
+---
+
+## 第四轮：数据管理版式与弹窗的「按需求断言」脚本（2026-10 新增）
+
+上面那些是**性能**探针，这几个是**功能/版式**验证脚本：断言的是**需求本身**
+（「列表只露 3~4 行」「弹窗高度是一半」「背景没被压暗」），不是「页面没报错」。
+
+```bash
+# 列表压到屏幕下方（默认露 3 行）+ 检索列竖排在右侧 + 高度可拖 → 46 条断言
+node perf/verify-data-layout.js http://localhost:3001
+
+# 新增/编辑弹窗：2 列 + 高度减半 + 可拖动 + 背景不压暗 + 选取地块不再隐藏页面 → 64 条断言
+node perf/verify-modal.js http://localhost:3001
+
+# 出效果图（写到 perf/shots/，该目录已 gitignore）
+node perf/shot-data-layout.js http://localhost:3001
+node perf/shot-modal.js http://localhost:3001
+```
+
+| 脚本 | 干什么 |
+| --- | --- |
+| `verify-data-layout.js` | 逐页签量几何：列表贴底只露 3~4 行、检索列与左导航**逐项对称**、条件单列竖排、拖动 100px 后高度 = 100/k、上下限夹紧、键盘可调；另外 4 个页签回归旧版式 |
+| `verify-modal.js` | 两个表单各跑一遍：列数/高度/宽度、遮罩透明**且 `pointer-events: none`**、**开弹窗前后背景像素逐字节相同**、弹窗外的点命中 `canvas`、拖动位移与鼠标一致、方向键、越界夹紧、选取模式不隐藏页面且弹窗仍可见；末尾回归「其它弹窗仍是模态」 |
+| `shot-data-layout.js` / `shot-modal.js` | 出效果图。`shot-modal.js` 会打印每次截图时的视口尺寸 —— headless Edge 偶发少一条 34px 窗口装饰，尺寸不一致的图放一起对比会误导人 |
+| `debug-layout.js` | 版式探针：逐页签 dump「内容区 + 第一个子元素」的真实几何与计算样式，用来判断是**脚本换算错了**还是**版式真坏了**（先看 `--stage-w` / `--stage-h` / 缩放 k） |
+| `debug-probe.js` | 登录后 dump 页面状态，用来区分「应用编译/运行出错」与「脚本自身问题」 |
+
+**两个反复踩到的坑，写脚本时注意**：
+
+- **端口**：`3000` = 管理端 `admin-client`，`3001` = 大屏端 `stargis-client-web`。
+  这些脚本都带 `document.title` 含「星际GIS」的守卫，连错端口会**直接报错退出**，
+  而不是在一堆「找不到元素」里浪费时间。
+- **headless Edge 偶发把视口高度缩 34px**（一条窗口装饰）。
+  弹窗是 flex 居中的，视口一变「居中基准」就跟着变，位移断言会**假失败**。
+  `verify-modal.js` 的做法是**按居中基准补偿**，并把「高度只随视口 50vh 联动」
+  变成一条额外断言 —— 而不是放宽容差（容差一放宽，真正的「拖动跟不上鼠标」也会被放过去）。
+

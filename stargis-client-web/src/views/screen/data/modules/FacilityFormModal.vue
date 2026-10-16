@@ -33,14 +33,26 @@
     事件：
       ok  保存成功后抛出，父组件据此刷新
   -->
+  <!--
+    弹窗形态与 LandFormModal **刻意保持一致**（两个表单是同一套交互，
+    用户在两者之间来回切换时不该有两套手感）：
+      · 宽 960 + 表单 2 列（原来 1280 / 3 列）
+      · 高度取「原来的一半」：原 body 上限 = calc(100vh - 200px)，
+        头 46 + 底栏 54 ≈ 100 → 原总高 ≈ 100vh - 100；
+        取 calc(50vh - 150px) 后实测总高正好是一半。正文因此滚动，这是有意的。
+      · draggable + :dimmed="false"：背景不压暗、弹窗可拖到一边，
+        于是「选取地块」不再需要全屏隐藏页面。
+  -->
   <screen-modal
     :visible.sync="visible"
     :title="title"
-    :width="1280"
+    :width="960"
     :confirm-loading="saving"
     ok-text="保存"
     cancel-text="取消"
-    :body-max-height="'calc(100vh - 200px)'"
+    :body-max-height="'calc(50vh - 150px)'"
+    draggable
+    :dimmed="false"
     @ok="handleOk"
     @cancel="handleCancel"
   >
@@ -89,8 +101,9 @@
           </screen-field>
 
           <!--
-            「选取地块」：与「经营性用地」表单同一个功能（进入全屏地图模式，
-            所有页面隐藏、只显示地图，上方中间两个按钮）。
+            「选取地块」：与「经营性用地」表单同一个功能（进入地图选取模式）。
+            ★ 2026-10 起**不再隐藏任何页面**：弹窗可拖动、背景不压暗，
+              地图随时可操作，藏页面只会把填到一半的表单也一起藏了。
             ★ 为什么配套表单也要这个入口：配套本身也是落在地块上的实体，
               用户「按图找配套」的需求和宗地一样强；两处共用同一套会话状态
               （views/screen/pickSession.js），互不干扰。
@@ -101,7 +114,7 @@
               type="button"
               class="facility-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '选取地块，进入全屏地图勾选地块' : '地图未加载，无法选取地块'"
+              :aria-label="mapEnabled ? '选取地块，在地图上点选；可先把本窗口拖到一边' : '地图未加载，无法选取地块'"
               @click="handleOpenMapPick"
             >
               <screen-icon name="grid" :size="16" />
@@ -666,15 +679,18 @@ export default {
         })
     },
 
-    /* ---------------- 「选取地块」全屏地图模式 ---------------- */
+    /* ---------------- 「选取地块」地图选取模式 ---------------- */
 
     /**
-     * 打开「选取地块」全屏地图模式。
+     * 打开「选取地块」地图选取模式。
      * ===============================================================
-     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 覆盖整个页面：
-     * 所有页面隐藏、只留下方地图，页面上方中间两个按钮（取消选择 / 选择完成）。
+     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 接手：
+     * 页面上方中间两个按钮（取消选择 / 选择完成）。
+     * ★ 2026-10 起**不再隐藏任何页面**（原来会把整块画布连同本弹窗一起藏掉）：
+     *   本弹窗现在可拖动、背景也不压暗，地图本来就随时可操作；
+     *   再藏页面只会把「填到一半的表单」也藏了，用户反而没法一边选一边核对。
      *
-     * ★ 本表单**自己不渲染任何地图**，也不负责关闭覆盖层：
+     * ★ 本表单**自己不渲染任何地图**，也不负责关闭选取模式：
      *   地图是 ScreenStage 里那个常驻的 Cesium 实例（本弹窗挂在 body 上，
      *   拿不到它，也不该再创建第二个 Viewer —— 那会白烧一份 GPU 与内存）。
      *
@@ -695,7 +711,7 @@ export default {
       //   因为同一时刻只可能有一张全屏地图，本来就不支持并行选取。
       this.pickToken = startPick({
         source: 'facility',
-        title: '正在选取配套项目地块，绘制期间地图可以自由拖动与缩放',
+        title: '正在选取配套项目地块：可先把本窗口拖到一边，再在地图上操作',
         issuer: `FacilityFormModal#${this.uid}`
       })
       return this.pickToken
@@ -1031,10 +1047,10 @@ export default {
     }
   }
 
-  /* 标签列 150px + 控件列，三列排布；窄屏逐级降列 */
+  /* 标签列 150px + 控件列，**两列**排布（弹窗宽 960）；窄屏再降到一列 */
   &__grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--screen-space-3) var(--screen-space-4);
   }
 
@@ -1134,17 +1150,19 @@ export default {
   }
 }
 
-@media (max-width: 1500px) {
-  .facility-form__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+/*
+ * 弹窗宽度上限 960，所以下面两条只在「视口比弹窗还窄」时才生效
+ * （大屏 1920 上永远不命中，属于小屏 / 窗口化时的兜底）。
+ * 注意 __readonly 是表单里的小格子（一排只读标志位），
+ * 它跟着**弹窗**变窄而不是跟着视口，所以这里只做兜底降列。
+ */
+@media (max-width: 1100px) {
   .facility-form__readonly {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .facility-form__grid {
     grid-template-columns: minmax(0, 1fr);
   }

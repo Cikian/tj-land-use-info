@@ -3,16 +3,23 @@
     数据管理 · 大屏子页面
     ===============================================================
     版式与档案管理（views/screen/archive/index.vue）、提级论证管理
-    （views/screen/escalation/index.vue）完全一致：**左侧二级导航 + 右侧内容区**。
+    （views/screen/escalation/index.vue）一致：**左侧二级导航 + 右侧内容区**。
 
       二级导航  左侧栏 (30,104) 宽 200，纵向铺到 底-40
       内容区    left:250 right:30 top:104 bottom:40
+
+    两种内容区版式（由 isSplitPanel 决定用哪一种）：
+      · 默认（批量导入 / 附件 / 回收站）：面板铺满上面的内容区，与旧版一致；
+      · 经营性用地信息录入 / 配套地块数据录入：检索条件**竖排到屏幕右侧**
+        （right:30 宽 200，与左侧导航左右对称），列表贴屏幕底部、默认只露 3~4 行，
+        高度可拖动 —— 这两块要按设计稿坐标摆放，所以内容区交出整块画布
+        （见样式里的 .is-split）。列表变矮之后，中间空出来的就是地图。
 
     三点约定：
       · 不再渲染「数据管理」页标题 —— 选中项本身就是当前模块，标题是重复信息；
       · 顶栏由 views/screen/index.vue 渲染，本组件铺满整个设计画布自己定位；
       · 本模块**保持地图可见**（不像档案/提级论证那样暂停 Cesium）：
-        六个菜单项里「用地/配套录入」需要边看地块边填，右侧内容区之外
+        六个菜单项里「用地/配套录入」需要边看地块边填，内容区之外
         仍留给地图，所以画布整体仍是 pointer-events: none + 各区自己开 stage-hit。
 
     页签 key 与 views/screen/index.vue 的 DATA_TABS 严格一致，顺序与后端菜单
@@ -44,7 +51,7 @@
     </nav>
 
     <!-- ========== 内容区 ========== -->
-    <div class="data-screen__body">
+    <div class="data-screen__body" :class="{ 'is-split': isSplitPanel }">
       <!-- keep-alive：切页签时不销毁面板，检索条件、分页、展开状态都保留 -->
       <keep-alive>
         <component
@@ -150,6 +157,20 @@ export default {
     },
     currentPanel () {
       return PANELS[this.activeTab] || LandEntryPanel
+    },
+
+    /**
+     * 是否「检索列 + 可拖高列表」版式（只有经营性用地录入 / 配套地块录入这两个面板）。
+     *
+     * 这两个面板的版式与其它四个不同：
+     *   · 检索条件竖排到屏幕**右侧**（200px，与左侧二级导航对称）；
+     *   · 列表贴屏幕底部、默认只露 3~4 行，高度可拖动调整。
+     * 它们需要按**设计稿坐标**摆放这两块，所以内容区要让出整块画布
+     * （见样式里的 .is-split）：否则面板只能拿到「左侧栏右边到屏幕右边 30px」
+     * 这个盒子，右侧检索列的坐标就得写成相对这个盒子的负偏移，非常难读。
+     */
+    isSplitPanel () {
+      return this.activeTab === 'land' || this.activeTab === 'facility'
     }
   },
   watch: {
@@ -329,6 +350,25 @@ export default {
     > * {
       flex: 1 1 0;
       min-height: 0;
+    }
+
+    /*
+     * 「经营性用地信息录入 / 配套地块数据录入」两个面板专用版式
+     * （由 isSplitPanel 打开，见 script 里的说明）。
+     *
+     * 这两块版面自己按**设计稿坐标**摆放「右侧检索列 + 贴底列表」，
+     * 所以要交出整块画布：
+     *   · inset: 0 —— 面板根节点铺满画布，面板内部写的 left/right/top/bottom
+     *     就等于设计稿坐标，与左侧栏的 left:30/top:104 是同一套坐标系，
+     *     「与左侧边栏对称」这件事在代码里也是字面对称的；
+     *   · pointer-events: none —— 内容区一放大到整屏就会盖住地图，
+     *     ★ 绝不能在这里开 auto（那正是之前「看不见的面板吃掉地图事件」的成因）。
+     *     交互由面板内部那两块区域各自显式开启。
+     */
+    &.is-split {
+      inset: 0;
+      display: block;
+      pointer-events: none;
     }
   }
 }

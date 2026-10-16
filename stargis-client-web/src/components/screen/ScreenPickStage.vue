@@ -1,31 +1,38 @@
 <template>
   <!--
-    ScreenPickStage 「选取地块」全屏模式
+    ScreenPickStage 「选取地块」模式
     ==================================================================
-    需求（2026-10）：在**经营性用地 / 配套项目**的新增·编辑表单里点「选取地块」后，
-      ① 所有页面全部隐藏，只显示下方地图；
-      ② 页面上方中间有两个明显的按钮：取消选择 / 选择完成；
-      ③ 点这两个按钮后回到正常页面。
+    需求（2026-10 用户实测后改口径）：在**经营性用地 / 配套项目**的新增·编辑表单里
+    点「选取地块」后，
+      ① ~~所有页面全部隐藏，只显示下方地图~~ → **不再隐藏任何页面**；
+      ② 页面上方中间有两个明显的按钮：取消选择 / 选择完成（下移到顶栏之下，见 &__actions）；
+      ③ 点这两个按钮后回到表单（表单**不关**，填到一半的内容都在）。
+
+    ★ 为什么「不再隐藏页面」：这一版把表单弹窗改成了「可拖动 + 背景不压暗」
+      （ScreenModal 的 draggable / :dimmed="false"），用户把窗口往旁边一拖，
+      地图本来就随时可点可拖。再整屏藏一遍页面反而把「填到一半的表单」一起藏了，
+      用户想核对一下刚填的字段都得先退出选取模式。
+      所以本组件的职责从「盖住一切的地图模式」收缩成「两个按钮 + 一句提示」。
 
     实现要点（每一条都是踩过坑才这么写的）：
 
-    1. **覆盖层为什么要挂到 document.body**
+    1. **本层为什么要挂到 document.body**
        发起方是 ScreenModal 里的表单弹窗，而 ScreenModal 本身就在 body 上、z-index 1200；
-       覆盖层如果留在设计画布（ScreenStage 的缩放层）里，既会被弹窗盖住，
+       本层如果留在设计画布（ScreenStage 的缩放层）里，既会被弹窗盖住，
        又会被 transform: scale 缩放，地图坐标全错。
        挂 body + z-index **1250**（高于 ScreenModal 1200、低于 ScreenPopover 1260；
-       ScreenToast 1300 仍在最上面，这是有意的 —— 提示必须看得见）才能稳定压住一切。
+       ScreenToast 1300 仍在最上面，这是有意的 —— 提示必须看得见）。
 
     2. **地图不重新创建，只是「露出来」**
-       覆盖层刻意**不做背景**（transparent）也不加 backdrop-filter：
+       本层刻意**不做背景**（transparent）也不加 backdrop-filter：
        下面那层就是 views/screen/index.vue 里那个常驻的真实 Cesium 地图
        （<s3dm-viewer>，pointer-events 由它自己管），这里只要不挡就没问题。
        Cesium 容器 #home 的 canvas 是**布局尺寸**（不受父级 opacity / visibility 影响），
-       所以「隐藏」用 opacity: 0 而不是 display: none —— 用 display: none 会让
-       canvas 尺寸归零、恢复时要重新 resize，镜头还会跳一下。
+       所以任何时候都不要用 display: none 去「藏」它 —— 会让 canvas 尺寸归零、
+       恢复时要重新 resize，镜头还会跳一下。
 
-    3. **覆盖层自己不吃鼠标**
-       本模式是「只看地图 + 选地块」，拖动 / 缩放 / 拾取都必须落到**下面的地图**上。
+    3. **本层自己不吃鼠标**
+       本模式是「操作地图 + 选地块」，拖动 / 缩放 / 拾取都必须落到**下面的地图**上。
        所以根节点是 `pointer-events: none`，只有两个按钮显式 `pointer-events: auto`。
        ⚠ 这里**不能**写成根节点 `pointer-events: auto`：透明元素照样参与命中测试，
        整屏铺一个 auto 的 div 会把地图的鼠标事件全部吃掉，表现是
@@ -46,10 +53,15 @@
         @done="handlePickDone"
       />
   -->
-  <div class="pick-stage" role="dialog" aria-modal="true" aria-label="选取地块">
-    <!-- 顶部渐变：让按钮在任何底图上都读得清；不拦截鼠标（地图要能拖） -->
+  <div class="pick-stage" role="region" aria-label="选取地块">
+    <!--
+      按钮背后的一小块柔光：让按钮在任何底图上都读得清。
+      ★ 2026-10 起它**只盖住按钮那一小块**（原来是从视口最上沿拉满整宽的渐变）——
+        页面不再隐藏后，整宽渐变会把露出来的顶栏也一起压暗，看起来像界面出了问题。
+      仍然不拦截鼠标（地图要能拖）。
+    -->
     <div class="pick-stage__scrim" aria-hidden="true" />
-    <!-- ===== 页面上方中间的两个按钮 ===== -->
+    <!-- ===== 页面上方中间的两个按钮（下移到顶栏之下，不压导航） ===== -->
     <div class="pick-stage__actions">
       <screen-button
         class="pick-stage__action is-cancel"
@@ -96,8 +108,8 @@ import { toast } from './toast'
 
 /** 各发起方的兜底提示文案（title 为空时用） */
 const HINT_BY_SOURCE = {
-  land: '正在选取经营性用地地块，绘制期间地图可以自由拖动与缩放',
-  facility: '正在选取配套项目地块，绘制期间地图可以自由拖动与缩放'
+  land: '正在选取经营性用地地块：可先把表单窗口拖到一边，再在地图上操作',
+  facility: '正在选取配套项目地块：可先把表单窗口拖到一边，再在地图上操作'
 }
 
 /**
@@ -186,37 +198,13 @@ export default {
   computed: {
     hintText () {
       if (this.title) return this.title
-      return HINT_BY_SOURCE[this.source] || '正在选取地块，绘制期间地图可以自由拖动与缩放'
+      return HINT_BY_SOURCE[this.source] || '正在选取地块：可先把表单窗口拖到一边，再在地图上操作'
     }
   },
   created () {
     this.drawTools = createDrawTools(this)
   },
   mounted () {
-    /*
-     * 「所有页面全部隐藏」的兜底层。
-     * ===============================================================
-     * 需求原文是「所有页面全部隐藏，只显示下方地图」。页面本身那一层
-     * （画布 / 顶栏 / 各整页模块 / 首页面板）由 views/screen/index.vue 加
-     * is-pick-hidden 处理掉了，但**挂在 body 上的浮层不归它管**，至少有三类：
-     *   · 发起本次选取的那张表单弹窗（ScreenModal，z-index 1200）
-     *   · 表单里展开着的下拉浮层（ScreenPopover，z-index **1260 > 本层 1250**，
-     *     会直接浮在选取界面之上，像一块「幽灵下拉」）
-     *   · 其它任何 history 遗留的浮层
-     *
-     * 这里用「给 body 打标记 + 由全局样式统一藏掉」而不是逐个组件去关闭：
-     *   ① 逐个关需要往 ScreenModal / ScreenPopover / 各页面里加「是否在选取模式」的判断，
-     *      漏一个就露一个，且以后新增浮层组件仍会漏；
-     *   ② 用 visibility: hidden 而不是 display: none —— 与画布同理，
-     *      不销毁任何组件状态（表单里填到一半的内容、下拉的滚动位置都留着），
-     *      只是看不见、点不着。
-     *
-     * ⚠ 千万别顺手把 .screen-toast 也藏了：toast 是唯一的反馈通道
-     *   （「尚未绘制地块，本次没有写回任何字段」就靠它），藏了就变成静默失败。
-     * ⚠ 本覆盖层自己带 .pick-stage，样式规则里必须把自己排除在外。
-     */
-    document.body.classList.add('is-picking-map')
-
     /*
      * ★★ 把本组件挂到 document.body 上。
      * ===============================================================
@@ -238,15 +226,16 @@ export default {
 
     /*
      * Esc = 取消选择。
-     * 为什么用 window 监听而不是给覆盖层加 @keydown：覆盖层里两个按钮才是可聚焦元素，
-     * 用户点完按钮焦点未必还在覆盖层内，键盘用户按 Esc 会「没反应」。
+     * 为什么用 window 监听而不是给本层加 @keydown：本层里两个按钮才是可聚焦元素，
+     * 用户点完按钮焦点未必还在本层内（选取时要操作地图，焦点本来就常在地图上），
+     * 键盘用户按 Esc 会「没反应」。
      * ★★ 必须用**捕获阶段**（第三个参数 true）：下面那张表单弹窗（ScreenModal）的
-     *    Escape 处理挂在它自己的 dialog 元素上。进入选取模式后，焦点仍在那个
-     *   被藏起来的弹窗里（visibility: hidden 不会自动移走焦点），
-     *   事件从弹窗冒泡到 window，**弹窗的 @keydown 会先跑** ——
-     *   结果就是「按 Esc 想取消选择，却把整张填了一半的表单一起关掉」。
-     *   在捕获阶段先拦下来，可以保证 Esc 只作用于选取模式。
-     *   同时用 preventDefault 阻断浏览器默认行为，stopPropagation 阻断后续所有监听。
+     *    Escape 处理挂在它自己的 dialog 元素上。进入选取模式后弹窗**仍然可见**
+     *    （2026-10 起不再隐藏），焦点很可能就在弹窗里某个输入框上，
+     *    事件从弹窗冒泡到 window，**弹窗的 @keydown 会先跑** ——
+     *    结果就是「按 Esc 想取消选择，却把整张填了一半的表单一起关掉」。
+     *    在捕获阶段先拦下来，可以保证 Esc 只作用于选取模式。
+     *    同时用 preventDefault 阻断浏览器默认行为，stopPropagation 阻断后续所有监听。
      */
     this.escHandler = (event) => {
       if (event.key !== 'Escape' && event.key !== 'Esc') return
@@ -257,23 +246,12 @@ export default {
     window.addEventListener('keydown', this.escHandler, true)
 
     /*
-     * 把焦点从被藏起来的弹窗里挪出来。
-     * 与上面 Esc 的问题同源：焦点留在 visibility: hidden 的元素上时，
-     * 屏幕阅读器仍可能读到它，键盘 Tab 也会先在那张看不见的表单里绕一圈。
-     * 这里主动 blur，让焦点回到 body；用户点两个按钮即可获得正常焦点。
-     */
-    if (document.activeElement && typeof document.activeElement.blur === 'function') {
-      document.activeElement.blur()
-    }
-
-    /*
      * 绘制引擎按需激活（占位实现里只弹提示）。
      * 放在 mounted 而不是 created：接入真实插件后要等 DOM 就绪才能拿 ref。
      */
     this.drawTools.start()
   },
   beforeDestroy () {
-    document.body.classList.remove('is-picking-map')
     /*
      * 摘掉挂到 body 上的节点（见 mounted 里的说明）。
      * ⚠ 顺序无关紧要，但**必须**做：$el 已不在 Vue 的父节点下，Vue 不会替我们移除。
@@ -328,8 +306,8 @@ export default {
 
 .pick-stage {
   position: fixed;
-  // 铺满视口、压住一切页面（含 ScreenModal 的 1200）。ScreenToast 在 1300，
-  // 提示会比本层更靠上，这是我们想要的。
+  // 铺满视口，且高于 ScreenModal 的 1200（发起选取的表单弹窗要留在下面可见）。
+  // ScreenToast 在 1300，提示会比本层更靠上，这是我们想要的。
   inset: 0;
   z-index: 1250;
   // ★ 刻意不设 background：下面就是真实地图，本层的任务就是「让地图露出来」。
@@ -338,27 +316,45 @@ export default {
   //    透明元素同样参与命中测试，这里写成 auto 会把地图彻底挡死。
   //    两个按钮自己声明 auto（见 &__action），所以依旧可点。
   pointer-events: none;
-  // 显式声明可见：body.is-picking-map 下有几条 visibility: hidden 的全局规则，
-  // 万一将来有人写成 `body.is-picking-map *` 之类的通配，这一行能保住覆盖层自己。
+  // 显式声明可见：本层挂在 body 上，不依赖任何父级；将来若有人给 body 加
+  // 「隐藏浮层」的全局规则（2026-10 之前确实有过 body.is-picking-map），这一行能保住本层。
   visibility: visible;
   overflow: hidden;
 
-  /* 顶部渐变：保证按钮在亮底图上也有对比度；不挡鼠标，地图仍可拖动 */
+  /*
+   * 按钮背后的柔光：保证按钮在亮底图上也有对比度；不挡鼠标，地图仍可拖动。
+   * ★ 只覆盖按钮那一小块（约 640×160 的椭圆），**不是**整宽渐变 ——
+   *   页面不再隐藏后，整宽渐变会把露出来的顶栏也压暗，像界面坏了。
+   * ★ 本层挂在 body 上、不在缩放画布内（见 mounted），所以这里的 px 是真实像素。
+   */
   &__scrim {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 16%;
+    left: 50%;
+    top: 126px;
+    transform: translateX(-50%);
+    width: 640px;
+    height: 168px;
     pointer-events: none;
-    background: linear-gradient(180deg, rgba(1, 6, 18, 0.78) 0%, rgba(1, 6, 18, 0) 100%);
+    background: radial-gradient(
+      closest-side,
+      rgba(1, 6, 18, 0.7) 0%,
+      rgba(1, 6, 18, 0.42) 58%,
+      rgba(1, 6, 18, 0) 100%
+    );
   }
 
   /* ---------------- 上方中间的两个按钮 ---------------- */
   &__actions {
     position: absolute;
     left: 50%;
-    top: var(--screen-space-6);
+    /*
+     * ★ 2026-10：本层不再隐藏页面，按钮**不能**再贴视口最上沿（原来 top: 24px），
+     *   那会正好压在顶栏的导航菜单上。
+     *   顶栏在设计画布里高 128px；本层是未缩放的真实像素层，而画布缩放 k ≤ 1，
+     *   所以顶栏的真实下沿 ≤ 128px，取 150px 在任何常见视口下都留有余量。
+     *   （实测 1894×987：k=0.914，顶栏下沿 117px。）
+     */
+    top: 150px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -391,7 +387,8 @@ export default {
   &__hint {
     position: absolute;
     left: 50%;
-    top: 96px;
+    // 跟着按钮一起下移：按钮 150 + 高 54，这里留 12px 间距
+    top: 216px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -444,38 +441,6 @@ export default {
   .pick-stage__hint {
     max-width: 92vw;
     white-space: normal;
-  }
-}
-</style>
-
-<!--
-  「选取地块」模式的全局隐藏规则。
-  ==================================================================
-  ⚠ 这一段**故意不加 scoped**：要隐藏的目标（.screen-modal / .screen-popover）
-  挂在 document.body 上，不是本组件的子节点，scoped 的属性选择器命中不了它们。
-
-  判据是 body 上的标记类 .is-picking-map（由本组件 mounted / beforeDestroy 增删），
-  所以要隐藏的东西必须**同时**满足「挂在 body 上」+「属于界面」两条。
-  这里只处理两类已知会浮在画布之外的元素：
-
-    .screen-modal-root  表单弹窗（ScreenModal，1200）—— 包括发起选取的那一张
-    .screen-popover  下拉 / 气泡浮层（ScreenPopover，**1260 > 覆盖层 1250**，
-                     不藏会直接浮在地图上面，像一块幽灵下拉）
-
-  ⚠⚠ 绝不能把 .screen-toast 一起藏掉：toast 是这个模式里唯一的反馈通道
-    （「尚未绘制地块，本次没有写回任何字段」就靠它），藏了就变成静默失败。
-  ⚠ 用 visibility: hidden 而不是 display: none：前者不改变布局、不销毁状态，
-    表单里填到一半的内容与下拉的滚动位置都留着（与画布那边用 opacity 同理）。
-  ⚠ 覆盖层自己（.pick-stage）**不受影响**：它是本组件的根节点，
-    visibility 会被父级继承，但它与这些选择器无关，且自己显式声明 visibility: visible。
--->
-<style lang="less">
-body.is-picking-map {
-  .screen-modal-root,
-  .screen-popover {
-    // 第二个值让子元素无法通过 visibility: visible 重新显形 ——
-    // 「隐藏」这件事必须彻底，否则弹窗内部某个显式 visible 的元素会漏出来
-    visibility: hidden !important;
   }
 }
 </style>

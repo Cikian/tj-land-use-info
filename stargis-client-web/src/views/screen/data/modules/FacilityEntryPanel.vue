@@ -26,102 +26,120 @@
       drill (payload)  跳到别的面板（如 { tab: 'attachment', bizType, bizKey }）
   -->
   <div class="facility-entry">
-    <screen-panel class="facility-entry__search" title="配套检索" collapsible>
-      <facility-search-form
-        ref="search"
-        :initial-query="initialQuery"
-        @search="handleSearch"
-      />
-
-      <!--
-        出让宗地选择器：与上面的「出让宗地编号」输入框是两条路 ——
-        输入框适合「我知道编号，直接粘」，选择器适合「我大概记得是哪块地」。
-        两者写的是同一个 query.crzdbh 字段，谁后改谁生效。
-      -->
-      <div class="facility-entry__land-picker">
-        <screen-field label="快速定位出让宗地" label-width="150px" tip="选中后只看这一宗地下的配套，并展开六大阶段进度">
-          <screen-select
-            v-model="query.crzdbh"
-            :options="landOptions"
-            searchable
-            :filter-local="false"
-            clearable
-            placeholder="输入宗地编号或地块名称搜索"
-            aria-label="出让宗地"
-            @search="handleSearchLand"
-            @change="handleLandPicked"
-          />
-        </screen-field>
-
-        <span class="facility-entry__mode">
-          <screen-tag :tone="isLandMode ? 'success' : 'muted'" size="sm">
-            {{ isLandMode ? '已定位到 1 宗地，显示该宗地配套与阶段进度' : '总览模式（分页），阶段进度需逐条点开' }}
-          </screen-tag>
-          <screen-button v-if="isLandMode" size="sm" icon="close" @click="handleClearLand">
-            退出定位
-          </screen-button>
-        </span>
-      </div>
-    </screen-panel>
-
-    <screen-panel class="facility-entry__list" :title="listTitle">
-      <template #extra>
-        <span class="facility-entry__total">
-          共 <b>{{ total }}</b> 个配套
-          <template v-if="selectedRowKeys.length">
-            · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 个
-          </template>
-        </span>
-
-        <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增配套</screen-button>
-
-        <screen-popconfirm
-          v-if="selectedRowKeys.length"
-          title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的配套吗？"
-          :description="`共 ${selectedRowKeys.length} 个配套会被软删并逐条留痕`"
-          width="320"
-          @confirm="handleBatchRemove"
-        >
-          <screen-button type="danger" size="sm" icon="trash">批量移除</screen-button>
-        </screen-popconfirm>
-
-        <screen-button size="sm" icon="layers" :disabled="!isLandMode" @click="handleOpenFirstProcess">
-          打开六阶段进度
-        </screen-button>
-
-        <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
-      </template>
-
-      <facility-table
-        :data-source="dataSource"
-        :loading="loading"
-        :selectable="!isLandMode"
-        :selected-row-keys="selectedRowKeys"
-        :empty-text="isLandMode ? '该宗地还没有录入配套项目' : '暂无配套项目'"
-        @select-change="handleSelectChange"
-        @byLand="handleByLand"
-        @detail="handleDetail"
-        @process="handleProcess"
-        @history="handleHistory"
-        @attachments="handleAttachments"
-        @edit="handleEdit"
-        @remove="handleRemove"
-      />
-
-      <template #footer>
-        <span v-if="isLandMode" class="facility-entry__footer-hint">
-          当前是「按宗地」视图，不分页 —— 该宗地下的全部配套一次列出，便于横向比较各阶段的进展。
-        </span>
-        <screen-pagination
-          v-else
-          :current="pagination.current"
-          :page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-size-options="pagination.pageSizeOptions"
-          @change="handlePageChange"
+    <div class="facility-entry__search">
+      <screen-panel class="facility-entry__search-panel" title="配套检索" collapsible scrollable>
+        <facility-search-form
+          ref="search"
+          :initial-query="initialQuery"
+          vertical
+          @search="handleSearch"
         />
-      </template>
-    </screen-panel>
+
+        <!--
+          出让宗地选择器：与上面的「出让宗地编号」输入框是两条路 ——
+          输入框适合「我知道编号，直接粘」，选择器适合「我大概记得是哪块地」。
+          两者写的是同一个 query.crzdbh 字段，谁后改谁生效。
+          ★ 窄列里必须 stacked：150px 的标签 + 控件在 168px 可用宽度里放不下。
+        -->
+        <div class="facility-entry__land-picker">
+          <screen-field
+            label="快速定位出让宗地"
+            stacked
+            tip="选中后只看这一宗地下的配套，并展开六大阶段进度"
+          >
+            <screen-select
+              v-model="query.crzdbh"
+              :options="landOptions"
+              searchable
+              :filter-local="false"
+              clearable
+              placeholder="输入宗地编号或地块名称搜索"
+              aria-label="出让宗地"
+              @search="handleSearchLand"
+              @change="handleLandPicked"
+            />
+          </screen-field>
+
+          <span class="facility-entry__mode">
+            <screen-tag :tone="isLandMode ? 'success' : 'muted'" size="sm">
+              {{ isLandMode ? '已定位到 1 宗地，显示该宗地配套与阶段进度' : '总览模式（分页），阶段进度需逐条点开' }}
+            </screen-tag>
+            <screen-button v-if="isLandMode" size="sm" icon="close" @click="handleClearLand">
+              退出定位
+            </screen-button>
+          </span>
+        </div>
+      </screen-panel>
+    </div>
+
+    <div class="facility-entry__list" :style="{ height: listHeight + 'px' }">
+      <screen-resize-bar
+        :value="listHeight"
+        :min="listMinHeight"
+        :max="listMaxHeight"
+        aria-label="拖动调整配套项目列表高度"
+        @input="handleResize"
+      />
+
+      <screen-panel class="facility-entry__list-panel" :title="listTitle">
+        <template #extra>
+          <span class="facility-entry__total">
+            共 <b>{{ total }}</b> 个配套
+            <template v-if="selectedRowKeys.length">
+              · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 个
+            </template>
+          </span>
+
+          <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增配套</screen-button>
+
+          <screen-popconfirm
+            v-if="selectedRowKeys.length"
+            title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的配套吗？"
+            :description="`共 ${selectedRowKeys.length} 个配套会被软删并逐条留痕`"
+            width="320"
+            @confirm="handleBatchRemove"
+          >
+            <screen-button type="danger" size="sm" icon="trash">批量移除</screen-button>
+          </screen-popconfirm>
+
+          <screen-button size="sm" icon="layers" :disabled="!isLandMode" @click="handleOpenFirstProcess">
+            打开六阶段进度
+          </screen-button>
+
+          <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
+        </template>
+
+        <facility-table
+          :data-source="dataSource"
+          :loading="loading"
+          :selectable="!isLandMode"
+          :selected-row-keys="selectedRowKeys"
+          :empty-text="isLandMode ? '该宗地还没有录入配套项目' : '暂无配套项目'"
+          @select-change="handleSelectChange"
+          @byLand="handleByLand"
+          @detail="handleDetail"
+          @process="handleProcess"
+          @history="handleHistory"
+          @attachments="handleAttachments"
+          @edit="handleEdit"
+          @remove="handleRemove"
+        />
+
+        <template #footer>
+          <span v-if="isLandMode" class="facility-entry__footer-hint">
+            当前是「按宗地」视图，不分页 —— 该宗地下的全部配套一次列出，便于横向比较各阶段的进展。
+          </span>
+          <screen-pagination
+            v-else
+            :current="pagination.current"
+            :page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-size-options="pagination.pageSizeOptions"
+            @change="handlePageChange"
+          />
+        </template>
+      </screen-panel>
+    </div>
 
     <facility-form-modal ref="formModal" @ok="handleSaved" />
     <facility-detail-modal
@@ -176,6 +194,7 @@
 <script>
 import {
   ScreenPanel,
+  ScreenResizeBar,
   ScreenButton,
   ScreenPagination,
   ScreenPopconfirm,
@@ -201,10 +220,26 @@ import {
 import { queryLandOptions } from '@/api/land/landData'
 import { defaultPagination, compactQuery } from '../constants'
 
+/*
+ * 列表高度（**设计画布像素**）—— 与 LandEntryPanel 同一套口径，
+ * 改一处要同步改另一处（两个面板版式必须一致）。
+ *
+ * ★ 画布尺寸是自适应的（ScreenStage：高度贴合 1080、宽度 = 视口宽/scale），
+ *   所以这里只写纵向值：底部留白 40、顶栏下沿 104 —— 都与画布宽度无关。
+ * 默认 360：**实测**（1894×987 视口，Edge 无头，k=0.9139）可见 3 整行
+ * （表格行高实测 56.5px，不是 --screen-row-height 的 48 —— 行内有进度条/标签会撑高）。
+ *   · 下限 200：再矮放不下表头 + 1 行；
+ *   · 上限 936：1080 - 104 - 40，即最多长到顶栏下面。
+ */
+const LIST_DEFAULT_HEIGHT = 360
+const LIST_MIN_HEIGHT = 200
+const LIST_MAX_HEIGHT = 936
+
 export default {
   name: 'FacilityEntryPanel',
   components: {
     ScreenPanel,
+    ScreenResizeBar,
     ScreenButton,
     ScreenPagination,
     ScreenPopconfirm,
@@ -235,6 +270,8 @@ export default {
       /** 宗地模式下不分页，这里记一下「当前是不是宗地模式」由 computed 判定 */
       landOptions: [],
       landSearchTimer: null,
+      /** 列表高度（画布像素）：初始值即「默认只露 3~4 行」，之后由拖动/键盘改变 */
+      listHeight: LIST_DEFAULT_HEIGHT,
       // ---------- 移除原因弹窗 ----------
       removeVisible: false,
       removing: false,
@@ -259,6 +296,18 @@ export default {
         return `该宗地下 ${this.dataSource.length} 个配套项目与六大阶段进展`
       }
       return '配套项目列表'
+    },
+    /** 上限直接取常量；做成 computed 是为了将来若要按画布实测高度自适应时只改一处 */
+    listMaxHeight () {
+      return LIST_MAX_HEIGHT
+    },
+    /*
+     * ★ 上下限必须用 computed 暴露给模板：模板只能访问**实例上**的东西，
+     *   直接写 :min="LIST_MIN_HEIGHT" 会取到 undefined（模块级常量不在实例上），
+     *   组件退回自己的默认值 —— 不报错，但设置静默失效。
+     */
+    listMinHeight () {
+      return LIST_MIN_HEIGHT
     }
   },
   created () {
@@ -398,6 +447,15 @@ export default {
 
     handleSelectChange (keys) {
       this.selectedRowKeys = keys || []
+    },
+
+    /**
+     * 拖动/键盘调整列表高度。
+     * 只记高度，不重新请求数据 —— 可见行数由高度决定，数据本身没变；
+     * 每次拖动都发请求会让大屏在拖动过程中疯狂打后端。
+     */
+    handleResize (height) {
+      this.listHeight = height
     },
 
     /* ---------------- 行操作 ---------------- */
@@ -566,45 +624,81 @@ export default {
 @import '~@/components/screen/styles/screen-mixins.less';
 
 .facility-entry {
-  display: flex;
-  flex-direction: column;
-  gap: var(--screen-space-3);
-  height: 100%;
-  min-height: 0;
+  /*
+   * 铺满整个设计画布，内部按设计稿坐标摆放「右侧检索列 + 贴底列表」。
+   * 与 LandEntryPanel 同一套版式与坐标（改一处要同步改另一处）。
+   *
+   * ★ pointer-events: none 是必须的：本节点已铺满整屏，
+   *   若在这里开 auto 就会把地图的鼠标事件全吃掉。
+   */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 
+  /* ---------------- 右侧检索列（与左侧二级导航左右对称） ---------------- */
   &__search {
-    flex: 0 0 auto;
+    position: absolute;
+    right: 30px;
+    top: 104px;
+    bottom: 40px;
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    pointer-events: auto;
   }
 
-  &__list {
-    // flex-basis 必须是 0：用 auto 会按内容撑开，导致分页被挤出可见区
+  /* scrollable：竖排条件展开后超出列高时必须能滚，否则会被裁掉 */
+  &__search-panel {
     flex: 1 1 0;
     min-height: 0;
   }
 
-  /* 宗地选择器：左控件 + 右模式提示，窄屏自动换行 */
+  /* ---------------- 底部列表（贴底 + 可拖高） ---------------- */
+  &__list {
+    position: absolute;
+    left: 250px;
+    // 与右侧检索列留出与左侧同样的 20px 间距
+    right: 250px;
+    bottom: 40px;
+    // 高度由 listHeight 内联控制（拖动改变）
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    pointer-events: auto;
+  }
+
+  &__list-panel {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  /*
+   * 宗地选择器：窄列里改成上下两块（控件在上、模式提示在下）。
+   * ★ 不能用左右排：200px 列里可用宽度只有 168px，并排会把下拉压到不可用。
+   */
   &__land-picker {
     display: flex;
-    align-items: center;
-    gap: var(--screen-space-4);
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--screen-space-3);
     margin-top: var(--screen-space-3);
     padding-top: var(--screen-space-3);
     border-top: 1px dashed var(--screen-border-soft);
 
+    // 覆盖旧的 520px 定宽（那是宽版式下的设置，窄列里必须撑满）
     /deep/ .screen-field {
-      flex: 0 1 520px;
-      min-width: 280px;
+      flex: 1 1 auto;
+      min-width: 0;
     }
   }
 
   &__mode {
-    display: inline-flex;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
     gap: var(--screen-space-2);
-    flex: 1 1 auto;
     min-width: 0;
-    flex-wrap: wrap;
   }
 
   &__total {

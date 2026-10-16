@@ -41,7 +41,7 @@
         并通过 change 事件的第二个参数 { valid: false } 让调用方补错误文案
         （颜色不能是唯一提示）。
   -->
-  <div class="screen-date-input" :class="[`screen-date-input--${size}`, { 'is-disabled': disabled }]">
+  <div class="screen-date-input" :class="[`screen-date-input--${size}`, { 'is-disabled': disabled, 'is-stacked': stacked }]">
     <!-- 单选 -->
     <label v-if="mode === 'single'" class="screen-date-input__control" :class="{ 'is-invalid': invalid }">
       <input
@@ -144,6 +144,16 @@ export default {
     value: { type: [String, Array], default: '' },
     /** 模式：single 单个日期 / range 日期区间 */
     mode: { type: String, default: 'single' },
+    /**
+     * range 模式在**窄容器**里改为**上下两行**（每段独占一整行）。
+     *
+     * ★ 为什么需要这个 prop：本控件现在用在屏幕右侧 **200px 宽的检索列**里，
+     *   字段可用宽度只有 166px；区间两段并排时每段只剩 ~60px，
+     *   连 "2026-10-16" 都显示不全（原生日期输入不换行，只会截断）。
+     *   竖排后每段拿到整行宽度。
+     *   与 `ScreenField` 的 `stacked` 是同一个词义：窄容器 → 改成上下排布。
+     */
+    stacked: { type: Boolean, default: false },
     /** 原生输入类型：date 日期 / month 月份（仅在 single 模式下生效） */
     inputType: { type: String, default: 'date' },
     /** single 模式下的占位提示（原生输入本身不渲染 placeholder，这里自绘） */
@@ -294,6 +304,26 @@ export default {
   // ---------- 区间模式：两段等宽输入 + ~ 分隔符 ----------
   &__control.is-range {
     gap: var(--screen-space-1);
+  }
+
+  /*
+   * 窄容器里的区间：改为**上下两行**（见 stacked prop 的说明）。
+   * 每段独占一整行，日期文本不再被压到看不见。
+   * 「~」分隔符在竖排下会单独占一行且读起来别扭，直接隐藏
+   * （语义由两段的占位/aria-label 承担，无障碍不受影响）。
+   */
+  &.is-stacked &__control.is-range {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  &.is-stacked &__segment {
+    flex: 0 0 var(--screen-control-md);
+    height: var(--screen-control-md);
+  }
+
+  &.is-stacked &__separator {
+    display: none;
   }
 
   // 校验失败作用在整只控件上（描边 + 浅红辉光），并且调用方必须同时给出错误文案

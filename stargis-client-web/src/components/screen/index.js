@@ -21,6 +21,7 @@
  * ------------------------------------------------------------------
  * 容器 / 布局
  *   ScreenPanel      面板容器（标题栏 / 内容插槽 / 底栏 / 折叠 / 四角装饰）
+ *   ScreenResizeBar  面板高度调节条（上沿拖动改高，含键盘操作与画布缩放换算）
  *   ScreenHeader     大屏顶栏（标题 / 导航 / 实时时钟 / 用户 / 在线状态）
  *   ScreenStage      高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
  *   ScreenMapStage   地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角）
@@ -63,6 +64,7 @@
 
 import ScreenStage from './ScreenStage.vue'
 import ScreenPanel from './ScreenPanel.vue'
+import ScreenResizeBar from './ScreenResizeBar.vue'
 import ScreenHeader from './ScreenHeader.vue'
 import ScreenMapStage from './ScreenMapStage.vue'
 import ScreenModal from './ScreenModal.vue'
@@ -103,6 +105,7 @@ const components = {
   // 容器 / 布局
   ScreenStage,
   ScreenPanel,
+  ScreenResizeBar,
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
@@ -140,7 +143,7 @@ const components = {
 
   // 原子
   ScreenIcon,
-  ScreenToast,
+  ScreenToast
 }
 
 /** Vue 插件：全局注册全部大屏组件 */
@@ -149,12 +152,13 @@ const ScreenUI = {
     Object.keys(components).forEach((name) => {
       Vue.component(name, components[name])
     })
-  },
+  }
 }
 
 export {
   ScreenStage,
   ScreenPanel,
+  ScreenResizeBar,
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
@@ -186,7 +190,7 @@ export {
   ScreenTree,
   ScreenUpload,
   ScreenIcon,
-  ScreenToast,
+  ScreenToast
 }
 
 export default ScreenUI

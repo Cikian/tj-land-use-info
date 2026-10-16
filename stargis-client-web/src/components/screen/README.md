@@ -68,10 +68,11 @@
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
 | `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
-| `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` |
-| `ScreenPickStage` | 「选取地块」全屏模式（隐藏全部页面、只留地图 + 取消选择/选择完成） | `mapReady` `source` `title`；事件 `cancel` `done(geometry)` |
+| `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁；可选非模态：不压暗背景 + 可拖动） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` `dimmed`(默认 `true`) `draggable`(默认 `false`)；事件 `drag-end({x,y})` |
+| `ScreenPickStage` | 「选取地块」模式（**不再隐藏页面**，只提供取消选择/选择完成两个按钮 + 提示） | `mapReady` `source` `title`；事件 `cancel` `done(geometry)` |
 | `ScreenPopover` | 浮层容器（挂 body，供下拉/气泡复用） | `open` `anchor` `placement` `width` `maxHeight` `role` |
 | `ScreenPopconfirm` | 危险操作二次确认 | `title` `description` `tone` `okText` `placement` `confirmLoading` |
+| `ScreenResizeBar` | 横向拖动条：用鼠标/键盘改「上一个兄弟容器」的高度 | `value` `min` `max` `step` `disabled` `ariaLabel`；事件 `input`(实时) `change`(松手/键盘) |
 
 
 ### 2.2 展示 / 数据可视化
@@ -114,7 +115,7 @@
 | `ScreenInput` | 输入框（单行 / 多行 / 数字） | `value` `type` `placeholder` `maxlength` `rows` `clearable` `invalid` `icon` |
 | `ScreenSelect` | 下拉选择 | `value` `options` `searchable` `filterLocal` `clearable` `ariaLabel` `placement` |
 | `ScreenTreeSelect` | 树形下拉（分类选择） | `value` `nodes` `leafOnly` `disabledStatus` `clearable` `ariaLabel` |
-| `ScreenDateInput` | 日期选择（单日 / 区间） | `value` `mode` `inputType` `startPlaceholder` `endPlaceholder` `clearable` |
+| `ScreenDateInput` | 日期选择（单日 / 区间） | `value` `mode` `inputType` `startPlaceholder` `endPlaceholder` `clearable` `stacked`(窄容器里区间改上下两行) |
 | `ScreenRadioGroup` | 分段单选 | `value` `options` `disabled` `ariaLabel` `size` |
 | `ScreenButton` | 按钮 | `type` `size` `icon` `loading` `disabled` `block` `square` `ariaLabel` |
 | `ScreenPagination` | 分页器 | `current` `pageSize` `total` `pageSizeOptions` `showSizeChanger` `showQuickJumper` |
@@ -324,7 +325,7 @@ handleLogout () {
    的下拉一定会被裁掉或错位。
 6. **浮层的 z-index 必须高于弹窗**：`ScreenPopover` 默认 `1260`、
    `ScreenModal` 是 `1200`、`ScreenToast` 是 `1300`、
-   `ScreenPickStage`（「选取地块」全屏模式）是 `1250`。
+   `ScreenPickStage`（「选取地块」模式的两个按钮）是 `1250`。
    低于弹窗会让「弹窗里的下拉」被盖住，看不见也点不到。
 7. **`v-slot` 不能包在 `v-if` 里**：Vue 2.6 会报
    "v-slot can only appear at the root level inside the receiving component"。
@@ -373,63 +374,53 @@ handleLogout () {
 
 ---
 
-## 6.1 「选取地块」全屏模式（2026-10 新增）
+## 6.1 「选取地块」模式（2026-10 新增，2026-10-16 改口径）
 
 数据管理的两张表单（`LandFormModal` / `FacilityFormModal`）里都有「选取地块」按钮。
-点它之后**所有页面隐藏、只显示下方真实地图**，视口上方正中浮出两个按钮
-（取消选择 / 选择完成），点任一个都回到原页面。
+点它之后**页面不再隐藏**，视口上方中间（顶栏之下）浮出两个按钮
+（取消选择 / 选择完成），点任一个都回到表单 —— 表单**不关**，填到一半的内容都在。
+
+> ★ **为什么不再隐藏页面（2026-10-16 用户实测后改的口径）**
+> 上一版是「所有页面全部隐藏、只留下方地图」。这一版把表单弹窗改成了
+> **可拖动 + 背景不压暗**（`ScreenModal` 的 `draggable` / `:dimmed="false"`），
+> 用户把窗口往旁边一拖，地图本来就随时可点可拖。
+> 再整屏藏一遍页面，反而把「填到一半的表单」一起藏了 —— 用户想核对刚填的字段
+> 都得先退出选取模式。于是本组件的职责从「盖住一切的地图模式」收缩成
+> 「两个按钮 + 一句提示」，两个按钮也从视口最上沿（原 `top: 24px`）下移到
+> `top: 150px`：页面露出来之后，贴在 24px 会正好压在顶栏的导航菜单上。
 
 组件拆分与分工（改之前先看清谁负责什么）：
 
 | 文件 | 职责 |
 | --- | --- |
 | `views/screen/pickSession.js` | 会话状态单例（Vue.observable）：谁发起的、当前是否在选取模式 |
-| `views/screen/index.vue` | 唯一渲染 `ScreenPickStage` 的地方；给画布元素加 `is-pick-hidden`；`mapPaused` |
-| `components/screen/ScreenPickStage.vue` | 覆盖层外观、两个按钮、`body.is-picking-map` 标记；`drawTools` 是绘制的**占位实现** |
+| `views/screen/index.vue` | 唯一渲染 `ScreenPickStage` 的地方；`mapPaused`（选取时**不能**暂停地图渲染） |
+| `components/screen/ScreenPickStage.vue` | 两个按钮 + 提示文案 + Esc 监听；`drawTools` 是绘制的**占位实现** |
+| `components/screen/ScreenModal.vue` | 表单弹窗本体：`draggable` 拖动 + `:dimmed="false"` 不压暗、不吃鼠标 |
 
-**「隐藏页面」分两层，缺一层就会漏**（这是本次改动最主要的一课）：
+必须记住的点（每一条都对应一个实际踩中的坑）：
 
-| 层 | 覆盖对象 | 手段 |
-| --- | --- | --- |
-| 页面层（`index.vue` 的 `canvasFade`） | 顶栏、四张蒙版、四个整页模块、首页三块面板、首页两个浮层 | 给元素挂 `.is-pick-hidden` |
-| body 层（`ScreenPickStage` 的 `body.is-picking-map`） | 挂在 body 上的 `.screen-modal-root`（含发起选取的那张表单）与 `.screen-popover` | 全局 CSS `visibility: hidden` |
-
-> 说明：首页那三块面板与两个浮层的绑定是**防御性**的 —— 「选取地块」的入口只在
-> 数据管理模块的表单里，所以正常路径上首页分支根本不在 DOM 里（切换顶栏菜单会
-> 结束选取会话，见 `index.vue` 的 `activeMenu` watcher）。留着是为了将来
-> 别处也能调起选取模式时不用回来补。
-
-六个必须记住的点（每一条都对应一个实际踩中的坑）：
-
-1. **地图不重新创建**。覆盖层刻意**无背景**，下面就是 `ScreenStage` 里那个常驻的
+1. **地图不重新创建**。本层刻意**无背景**，下面就是 `ScreenStage` 里那个常驻的
    `<s3dm-viewer>`。再 `new Cesium.Viewer` 一份会白烧 GPU 与内存，
    而且两个 canvas 抢同一个 `#home` 容器 id 会直接把地图搞坏。
-2. **隐藏页面用 `opacity: 0`，不要改成 `v-if` / `display: none`**。
-   被隐藏的是数据管理页 / 档案页 / 首页面板，销毁重建会丢掉填到一半的表单、
-   检索条件与分页；`display: none` 还会让 Cesium 容器瞬间变成 0×0，恢复时镜头跳一下。
-3. **★ 只写 `opacity: 0` 是不够的：必须同时 `pointer-events: none`（含后代）**。
-   透明元素照样参与命中测试，而 `data/index.vue` 的 `__nav` / `__body` 显式写了
-   `pointer-events: auto` —— 于是「看不见的」表格会把地图的鼠标事件全吃掉。
-   实测：只加 opacity 时，屏幕正中命中到的是 `td`，地图拖不动、滚轮也不缩放。
-   由于 `pointer-events: none` 可被后代的显式 `auto` 重新打开，规则里要对后代再兜一层 `*`。
-4. **★ `.is-pick-hidden` 的样式必须写在非 scoped 的 `<style>` 块里**。
-   scoped 会把最后一级选择器改写成 `…[data-v-xxx]`，于是 `.is-pick-hidden *`
-   只能命中本组件自己渲染的元素，**子组件内部的深层表格单元格全部漏网**
-   （实测：写成 scoped 时命中仍然是 `td`，改成全局块后才是 `canvas`）。
-5. **★ 覆盖层根节点必须 `pointer-events: none`**，只有两个按钮显式 `auto`。
+2. **★ 本层根节点必须 `pointer-events: none`**，只有两个按钮显式 `auto`。
    铺满视口的透明层若写成 `auto` 会把地图彻底挡死，与提示文案自相矛盾。
-6. **★ 会话必须带 token**。同页可能同时开着「新增宗地」与「新增配套」两个常驻弹窗，
+   **透明 ≠ 不接事件**：命中测试只看盒模型，不看有没有背景色。
+   同一个坑在 `ScreenModal` 的遮罩上又出现过一次（只把底色改透明、
+   忘了 `pointer-events`，表现是「看得见地图却点不到」）—— 见 §2.4 的 `is-clear`。
+3. **★ 会话必须带 token**。同页可能同时开着「新增宗地」与「新增配套」两个常驻弹窗，
    没有 token 校验就会出现「另一个表单的结果被本表单吃掉」，
    以及「后一个的取消把前一个的选取模式关掉」。
-
-另外两点实现细节：
-
-- **不要用 `watch` 去同步 `pickState`**。它是模块 import，没挂在组件实例上，
-  `watch: { pickState }` 会对 `vm.pickState` 求值得到 undefined、**不建立依赖**，
-  handler 永不触发（踩过：覆盖层永远不出现）。正确做法是用 computed 直接读单例字段。
-- **Esc 用捕获阶段监听并 `preventDefault`**。焦点在进选取模式时仍留在被隐藏的
-  表单弹窗里，而 `ScreenModal` 的 Escape 处理挂在它的 dialog 上、
-  会先于 window 的冒泡监听触发 —— 不拦的话「按 Esc 取消选择」会连整张表单一起关掉。
+4. **Esc 用捕获阶段监听并 `preventDefault`**。弹窗**仍然可见**，焦点很可能就在
+   某个输入框上，而 `ScreenModal` 的 Escape 处理挂在它的 dialog 上、
+   会先于 window 的冒泡监听触发 —— 不拦的话「按 Esc 取消选择」会连整张表单一起关掉。
+5. **不要用 `watch` 去同步 `pickState`**。它是模块 import，没挂在组件实例上，
+   `watch: { pickState }` 会对 `vm.pickState` 求值得到 undefined、**不建立依赖**，
+   handler 永不触发（踩过：本层永远不出现）。正确做法是用 computed 直接读单例字段。
+6. **不要再用「给 body 打标记 + 全局 CSS 藏浮层」那套**（2026-10-16 已删除）。
+   它当初的职责是藏掉 `.screen-modal-root`（含发起选取的那张表单）与 `.screen-popover`；
+   现在弹窗**必须留着可见**，而下拉浮层是表单自己的控件，藏了用户就没法用下拉。
+   历史实现是 `body.is-picking-map`，留在 git 历史里即可，不要再捡回来。
 
 **绘制功能尚未接入**（需求明确「先不做，把方法预留」）。
 落点在 `ScreenPickStage.vue` 的 `createDrawTools()`：现在每个方法只提示不干活；
@@ -442,11 +433,12 @@ handleLogout () {
 调 `vm.$emit('done', geometry)`，并保证与 `handleDone` 不重复 emit。
 
 **本期 `done` 的 payload 恒为 null，表单收到 null 时保留字段原值**，
-所以现在点「选择完成」等价于「关掉地图回到表单」，不会有半个坐标被写进模型。
+所以现在点「选择完成」等价于「关掉选取模式回到表单」，不会有半个坐标被写进模型。
 
-覆盖层的 z-index 是 **1250**（高于 `ScreenModal` 1200、低于 `ScreenPopover` 1260；
-`ScreenToast` 1300 的提示仍在最上面 —— 这是有意的，toast 是本模式唯一的反馈通道，
-`body.is-picking-map` 的规则里**绝不能把 `.screen-toast` 也藏掉**）。
+本层的 z-index 是 **1250**（高于 `ScreenModal` 1200、低于 `ScreenPopover` 1260）。
+`ScreenToast` 1300 的提示仍在最上面 —— 这是有意的，toast 是本模式唯一的反馈通道
+（「尚未绘制地块，本次没有写回任何字段」就靠它），任何「隐藏浮层」的规则里
+**绝不能把 `.screen-toast` 也藏掉**，否则用户看到的是静默失败。
 
 > ★ **覆盖层必须 `appendChild` 到 `document.body`**（`ScreenPickStage.vue` 的 `mounted`，
 > 做法同 `ScreenModal` / `ScreenPopover`）。它在 `index.vue` 里是写进
@@ -462,17 +454,166 @@ handleLogout () {
 > 确认按钮中心**没有被遮挡**。用元素的 `b.click()` 会绕过命中测试 ——
 > 按钮被盖住时它照样"成功"，断言就变成假绿。
 
-> **改完必须跑浏览器验证**：`node perf/verify-pick-stage.js http://localhost:3000`
+> **改完必须跑浏览器验证**：`node perf/verify-pick-stage.js http://localhost:3001`
 > （35 条断言：覆盖层出现、页面全隐藏、按钮居中可点且未被遮挡、
 > **屏幕正中命中 canvas**、取消/完成回到原页面）与
-> `node perf/verify-pick-esc.js http://localhost:3000`（6 条：Esc 只退选取、不关表单）。
+> `node perf/verify-pick-esc.js http://localhost:3001`（6 条：Esc 只退选取、不关表单）。
 > 上面 3/4/5 三个坑以及"覆盖层没挂 body"**模板编译、less、eslint、verify-sfc
 > 一个都查不出来** —— 只在真实浏览器里数元素、做命中测试才发现。
 > 看效果图用 `node perf/shot-pick-stage.js`。
+>
+> ★ **端口别搞错**：本机两个前端同时在跑，**3000 是管理端 admin-client，
+> 3001 才是大屏端 stargis-client-web**。指错端口时页面照样打得开，
+> 但登录后是另一个应用（标题都不一样），断言会成片失败且原因很难看出来。
 
 > 想要「只预览界面、不加载地图」时用全站已有的 `?map=0`：
 > 该模式下「选取地块」按钮是**禁用**的，并给出原因，
 > 而不是让用户点进去看到一张空白。
+
+---
+
+## 6.2 数据管理「右侧检索列 + 可拖高列表」（2026-10 新增）
+
+需求：**列表默认只露 3~4 行**（列表是定位工具，主角是地图）、
+**检索容器竖排在屏幕右侧并与左侧二级导航左右对称**、
+**列表高度可以用鼠标拖动改变**。经营性用地与配套项目两个页签同步。
+
+### 版式（设计画布坐标，纵向值）
+
+```
+顶栏下沿 104 ────────────────────────────────────────────
+             │              │                    │
+   左导航     │   列表(贴底)  │      检索列        │
+   left:30    │  left:250    │   right:30        │
+   width:200  │  right:250   │   width:200       │
+             │  height 可变  │   top:104         │
+             │              │   bottom:40       │
+底部留白 40 ────────────────────────────────────────────
+```
+
+- **对称是字面意义上的对称**：检索列 `right:30; width:200`，
+  左导航 `left:30; width:200`，两者 `top/bottom` 也相同 —— 改一边就要改另一边。
+- 列表 `left:250; right:250`，与检索列之间留 20px（和左导航侧一致）。
+- 列表**贴底**、靠内联 `height` 向上长（`ScreenResizeBar` 在上面）。
+
+### 谁负责什么
+
+| 文件 | 职责 |
+| --- | --- |
+| `ScreenResizeBar.vue` | 拖动条本体：指针事件 + 键盘 + `input`/`change`，只管「报数值」 |
+| `LandEntryPanel.vue` / `FacilityEntryPanel.vue` | 持有 `listHeight`，把高度写进列表容器的内联 `height` |
+| `LandSearchForm.vue` / `FacilitySearchForm.vue` | `vertical` prop：窄列里改单列竖排 + 字段 stacked |
+| `ScreenDateInput.vue` | 新增 `stacked` prop：窄列里**区间日期改上下两行**（否则每段只剩 ~60px，`2026-10-16` 会被截断） |
+| `views/screen/data/index.vue` | `is-split` 类：这两个页签的内容区铺满画布（`pointer-events: none`），其余四个页签保持旧版式 |
+
+### ★ 拖动换算：必须除以画布缩放 k
+
+`ScreenStage` 把整个界面 `transform: scale(k)`（实测 1894×987 视口下 k≈0.9139），
+于是**鼠标的 `clientY` 是真实像素，而面板高度是画布像素**：
+
+```js
+const delta = (this.startY - event.clientY) / scale   // ← 除以 k，不是直接用
+```
+
+不除的后果是列表「跟不上鼠标」：拖 100px 只长 100px（实际应长 100/0.9139≈109px），
+偏差在拖动过程中累积，越拖越不准。
+`ScreenResizeBar` 用 `parentElement.getBoundingClientRect().height / parentElement.offsetHeight`
+现算 k（取父节点是为了量得更准，父节点比 12px 的拖动条高得多），并兜底为 1。
+
+### 其它几个必须知道的点
+
+- **画布宽度是自适应的，不是 1920**：`ScreenStage` 是「高度贴合 1080、
+  宽度 = 视口宽 / k」并且铺满不留黑边，所以**横向坐标上限随窗口宽高比变化**
+  （1894×987 视口 → 设计画布 **2072.46×1080**，`--stage-w` / `--stage-h` 上写着）。
+  写「靠右/居中」时用 `right` 或 `--stage-w`，**不要写死 1920**。
+- **模板拿不到模块级常量**：`:min="LIST_MIN_HEIGHT"` 会取到 `undefined`
+  （模板只解析**实例上**的属性），组件静默退回自己的默认值 —— 不报错但设置失效。
+  要用 `computed` 暴露（两个面板里的 `listMinHeight` / `listMaxHeight` 就是这个原因）。
+- **标签列宽是内联样式**：`ScreenField` 用 `rootStyle` 注入 `grid-template-columns`，
+  外部 CSS 盖不住（要 `!important`）。窄列里正确的做法是用它的 `stacked` prop，
+  所以两个搜索表单是 `:stacked="vertical"` 而不是写 `/deep/` 覆盖。
+- **不能用媒体查询做这个降级**：CSS 媒体查询看的是**视口**宽度（大屏是 1920），
+  感知不到「容器只有 200px」。所以版式由父组件用 `vertical` prop 显式声明。
+- **窄列里区间日期必须竖排**：166px 里两段并排各剩 ~60px，原生日期输入不换行，
+  `2026-10-16` 只会被截断（截断在真实像素下看不出来，要换算成设计像素量）。
+  所以 `ScreenDateInput` 也加了 `stacked`（上下两行，各拿到整行宽度）。
+  这条是**浏览器实测发现的**：几何断言全绿时它仍可能坏，得专门量控件宽度。
+- **`pointer-events` 纪律**：铺满画布的容器（`data-screen__body.is-split`、
+  `.land-entry` / `.facility-entry`）必须 `none`，只让 `__search` / `__list`
+  （和拖动条）为 `auto`。在铺满屏幕的节点上开 `auto` 正是当年「地图点不动」的成因。
+- **拖动不发请求、不落存储**：可见行数由高度决定、数据没变，每拖一下都请求后端
+  会让拖动过程中疯狂打接口；高度也不写 localStorage（切页签由 `keep-alive` 保住）。
+
+### 验证
+
+```powershell
+node perf/verify-data-layout.js http://localhost:3001
+```
+42 条断言，断言的是**需求本身**而不是「没报错」：列表贴底且只露 3~4 行、
+检索列在右侧且与左导航逐项对称、条件是单列竖排、标签在控件上方、
+**屏幕正中命中 canvas**（列表变矮的意义所在）、
+拖动 100px 后高度 = 100/k（**换算正确**：实测 360→469，未换算会停在 460）、
+上下限夹紧（200 / 936）、键盘也能调；另外 4 个页签回归旧版式。
+效果图：`node perf/shot-data-layout.js http://localhost:3001`。
+（2026-10-16 复跑为 **46 条**，多出的是日期竖排与溢出相关的断言。）
+
+---
+
+## 6.3 新增/编辑弹窗：2 列 + 高度减半 + 可拖动 + 背景不压暗（2026-10-16 新增）
+
+数据管理的两张表单弹窗（`LandFormModal` / `FacilityFormModal`）按用户实测反馈改了形态。
+两个表单**必须保持一致** —— 同一套交互，用户在两者之间来回切换不该有两套手感：
+
+| 项 | 改造前 | 现在 | 落在哪 |
+| --- | --- | --- | --- |
+| 表单列数 | 3 列 | **2 列** | `&__grid` 的 `grid-template-columns` |
+| 弹窗宽度 | 1440 / 1280 | **960** | `:width="960"`（缩到 960 后 3 列每列太窄，2 列才是正常比例） |
+| 弹窗高度 | `100vh - 100`（实测 892） | **一半**（实测 448.5） | `:body-max-height="'calc(50vh - 150px)'"` |
+| 背景 | 压暗 `rgba(1,14,17,.72)` | **不压暗，且不吃鼠标** | `ScreenModal` 的 `:dimmed="false"` |
+| 位置 | 居中固定 | **可拖动**（鼠标 + 方向键） | `ScreenModal` 的 `draggable` |
+
+高度怎么来的：改造前 `body-max-height` 是 `calc(100vh - 200px)`，头 46 + 底栏 54 ≈ 100，
+所以改造前总高 ≈ `100vh - 100`；取 `calc(50vh - 150px)` 后总高正好是一半。
+**正文因此变成滚动**，这是有意的：弹窗矮下去才看得到下面的地图。
+
+几条硬约束（踩过才写下来）：
+
+- **★ 「不压暗」必须同时 `pointer-events: none`**。遮罩是整屏一层，只把 `background`
+  改透明的话它照样参与命中测试 —— 用户看得见下面的地图，却拖不动、点不到，
+  而且**肉眼完全看不出有东西挡着**。所以这两件事写在同一个类 `&__mask.is-clear` 里，别拆开。
+- **★ 三层 `pointer-events` 要分开声明**：`.screen-modal`（铺满视口）是 `none`，
+  `.screen-modal__mask` 默认 `auto`（模态弹窗仍要挡住背景点击）、
+  `.screen-modal__dialog` 是 `auto`。父级 `none` + 子级 `auto` 是合法的，
+  子元素能重新打开自己的命中测试。
+- **★ 拖动位移用 `left/top`，不要用 `transform`**：`.screen-modal__dialog` 的进出场动画
+  就是 `transform: translateY(10px)`，行内 `transform` 会把它整个盖掉（弹窗不再淡入上浮）。
+- **★ 拖动位移是真实像素，不要除以画布缩放 `k`**：弹窗挂在 `document.body` 上，
+  不在 `ScreenStage` 的缩放画布内 —— 与 `ScreenResizeBar` 正好相反（那边**必须**除 `k`）。
+  照搬那套换算会让弹窗跟不上鼠标。
+- **★ 拖动必须夹紧**：横向左右各留 80px、纵向让标题栏（唯一的把手）完整留在视口内。
+  不夹的话「随意拖动」在触摸板上轻轻一滑就变成「弹窗消失、找不回来」。
+  夹紧要按**拖动起点记录的可视矩形**算，不能假设弹窗居中（它可能已经被拖到别处）。
+- **监听挂 `window` 而不是标题栏**：指针划出标题栏时元素上的 `pointermove` 会断，
+  表现是「拖快了弹窗跟不上」。配合 `setPointerCapture` 双保险，
+  并在 `beforeDestroy` 里收尾（否则 `window` 上留监听、`body` 上留 `is-dragging-modal`）。
+- **标题栏可聚焦 + 方向键移动**（`Shift` 走大步）：拖动不能只有鼠标。
+  但要把它从「打开时自动聚焦」里**排除**（`firstFocusable` 过滤），
+  否则进表单时光标落在标题栏上，用户得先多按一次 Tab 才能开始填。
+- **`dimmed` / `draggable` 默认关闭**：既有弹窗（档案、收发文…）的模态行为与居中定位
+  保持不变，只有这两个表单显式打开。
+
+### 验证
+
+```powershell
+node perf/verify-modal.js http://localhost:3001
+```
+58 条断言，两个表单各跑一遍：2 列、高度 = 基准的一半、正文确实在滚动、宽度 960、
+遮罩底色全透明**且 `pointer-events: none`**、**打开前后背景那块画面的 PNG 逐字节相同**
+（真的没压暗）、弹窗外的点命中 `canvas`（透明层没吃事件）、拖标题栏位移与鼠标一致、
+方向键移动 48px、往屏幕外拖会被夹住、**选取模式下 `.is-pick-hidden` 数量为 0**
+且发起选取的弹窗仍 `visibility: visible`、两个按钮在顶栏之下、Esc 只退选取不关表单、
+「选择完成」回到表单、正文无横向溢出、只读标志位格子没被裁掉。
+效果图：`node perf/shot-modal.js http://localhost:3001`。
 
 ---
 
@@ -488,10 +629,11 @@ src/components/screen/
 ├─ ScreenPanel.vue             # 面板容器
 ├─ ScreenHeader.vue            # 顶栏（高保真切图 + 7 项导航 + 时钟）
 ├─ ScreenMapStage.vue          # 地图舞台
-├─ ScreenModal.vue             # 弹窗（挂 body + 焦点陷阱 + 滚动锁）
-├─ ScreenPickStage.vue         # 「选取地块」全屏模式（隐藏全部页面 + 取消选择/选择完成）
+├─ ScreenModal.vue             # 弹窗（挂 body + 焦点陷阱 + 滚动锁；可选不压暗 + 可拖动）
+├─ ScreenPickStage.vue         # 「选取地块」模式（不再隐藏页面 + 取消选择/选择完成）
 ├─ ScreenPopover.vue           # 浮层容器（挂 body，下拉 / 气泡的公共基座）
 ├─ ScreenPopconfirm.vue        # 危险操作二次确认
+├─ ScreenResizeBar.vue         # 横向拖动条（拖动/键盘改上一个兄弟容器的高度，自动换算画布缩放）
 ├─ ScreenStatValue.vue         # 大号统计数值
 ├─ ScreenCountUp.vue           # 数字滚动
 ├─ ScreenSplitStat.vue         # 分级占比条

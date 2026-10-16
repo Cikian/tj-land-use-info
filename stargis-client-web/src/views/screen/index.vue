@@ -28,11 +28,13 @@
       <s3dm-viewer v-if="mapEnabled" :paused="mapPaused" />
     </template>
 
-    <!-- ===== 「选取地块」全屏模式 =====
-         覆盖层挂在 body（ScreenPickStage 内部 position: fixed + z-index 1250），
+    <!-- ===== 「选取地块」模式 =====
+         ScreenPickStage 挂在 body（内部 position: fixed + z-index 1250），
          所以这里传的 loader 只是为了描述「地图此刻可用」这一事实。
-         它的存在本身就是「所有页面全部隐藏、只显示下方地图」：
-         activePick 为真时下面整块画布连蒙版一起 opacity: 0（见 __canvas / __vignette 的绑定）。 -->
+         ★ 2026-10 起它**不再隐藏任何页面**（原先 activePick 为真时整块画布连蒙版
+           一起 opacity: 0）：表单弹窗自己可以拖到一边、背景也不压暗，地图本来就
+           随时可操作，再藏页面只会把填到一半的表单一起藏掉。
+           它现在只提供两个按钮（取消选择 / 选择完成）与一句提示。 -->
     <screen-pick-stage
       v-if="activePick"
       :map-ready="mapEnabled"
@@ -43,31 +45,26 @@
     />
 
     <!-- ===== 全屏蒙版（设计稿的四张氛围切图） ===== -->
-    <!-- 选取模式下整块画布（含这些蒙版）要一起让位给地图，见 data 里的 canvasClass -->
     <img
       class="land-screen__vignette is-top"
-      :class="canvasFade"
       :src="hf.vignetteTop"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-bottom"
-      :class="canvasFade"
       :src="hf.vignetteBottom"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-left"
-      :class="canvasFade"
       :src="hf.vignetteLeft"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-right"
-      :class="canvasFade"
       :src="hf.vignetteRight"
       alt=""
       aria-hidden="true"
@@ -79,7 +76,6 @@
       档案管理 / 收发文是整页模块，横向铺满后会和时钟重叠，因此隐藏。
     -->
     <screen-header
-      :class="canvasFade"
       :title="title"
       :menus="menus"
       :active-menu="activeMenu"
@@ -95,7 +91,6 @@
       v-if="activeMenu === 'archive'"
       ref="archive"
       class="land-screen__module stage-hit"
-      :class="canvasFade"
       :default-tab="archiveTab"
     />
 
@@ -110,7 +105,6 @@
       v-else-if="activeMenu === 'data'"
       ref="data"
       class="land-screen__module"
-      :class="canvasFade"
       :default-tab="dataTab"
     />
 
@@ -119,7 +113,6 @@
       v-else-if="activeMenu === 'review'"
       ref="escalation"
       class="land-screen__module stage-hit"
-      :class="canvasFade"
       :default-tab="reviewTab"
     />
 
@@ -128,7 +121,7 @@
       ★ 与数据管理同理**不加 stage-hit**：地图管理页地图必须保持可交互，
         容器 pointer-events: none，各面板自行开启。
     -->
-    <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" :class="canvasFade" />
+    <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" />
 
     <!-- ===== 首页工作台 ===== -->
     <!--
@@ -138,15 +131,13 @@
     -->
     <template v-else>
       <home-left-panel
-        :class="canvasFade"
         :panel="leftPanel"
         :transfer-rank="transferRank"
         :supporting-rank="supportingRank"
         :loading="dashboardLoading"
       />
-      <home-layer-tree :class="canvasFade" @layer-visibility-change="handleLayerVisibility" />
+      <home-layer-tree @layer-visibility-change="handleLayerVisibility" />
       <home-attr-panel
-        :class="canvasFade"
         :tabs="warningTabs"
         :data="warningData"
         :loading="dashboardLoading"
@@ -155,14 +146,12 @@
 
       <home-plot-modal
         v-if="plotVisible"
-        :class="canvasFade"
         :data="plotWarning"
         @close="plotVisible = false"
         @row-action="handleAttrAction"
       />
       <home-plot-modal
         v-if="warningDetailVisible"
-        :class="canvasFade"
         :data="warningDetail"
         @close="warningDetailVisible = false"
       />
@@ -420,25 +409,18 @@ export default {
       return pickState
     },
 
-    /** 是否处于「选取地块」全屏模式（只要它开着，整块画布都要让位给地图） */
+    /**
+     * 是否处于「选取地块」模式。
+     *
+     * ★ 2026-10 用户实测后改口径：这个模式**不再隐藏任何页面**。
+     *   原先它让整块画布（顶栏、四张蒙版、各模块）opacity: 0 让位给地图；
+     *   现在表单弹窗自己可以拖到一边、背景也不压暗，地图本来就随时可操作，
+     *   再藏页面只会把「填到一半的表单」一起藏掉 —— 用户还得先退出选取才能核对。
+     *   所以它现在只用来：① 决定是否渲染 ScreenPickStage（两个按钮 + 提示）；
+     *   ② 让 mapPaused 别把地图暂停掉（见下）。
+     */
     activePick () {
       return pickState.active
-    },
-
-    /**
-     * 选取模式下页面要整体隐藏用的类名。
-     *
-     * ★ 为什么是 opacity: 0 而不是 v-if / visibility: hidden：
-     *   ① 被隐藏的模块（数据管理页、档案页、首页面板…）里会挂大量接口请求与 keep-alive 状态，
-     *      用 v-if 销毁重建会让「填到一半的表单 / 检索条件 / 分页」全部丢光；
-     *   ② Cesium 容器 #home 的 canvas 是**布局尺寸**，父级 display: none 会让它瞬间变成 0×0，
-     *      恢复时 Cesium 要重新 resize，镜头位置还会跳一下；opacity 不动布局，恢复即原样。
-     *
-     * 另一个作用是把「隐藏页面」这件事收敛成一个类：只有本组件知道选取模式下什么该让位，
-     * 各子页面不必各自实现一遍。
-     */
-    canvasFade () {
-      return this.activePick ? 'is-pick-hidden' : ''
     },
 
     /**
@@ -807,50 +789,6 @@ export default {
   &__module {
     position: absolute;
     inset: 0;
-  }
-}
-
-/*
- * 「选取地块」全屏模式：页面上的一切（蒙版 / 顶栏 / 各整页模块 / 首页面板）
- * 都挂上这个类让位给地图。
- *
- * ⚠⚠ 这一块**故意不加 scoped**（写在下面单独的 <style lang="less"> 里）。
- *   scoped 会给最后一级选择器加 [data-v-xxx]，于是 `.is-pick-hidden *`
- *   编译成 `.is-pick-hidden *[data-v-xxx]` —— 只能命中**本组件自己**渲染的元素，
- *   而真正需要关掉指针事件的是子组件内部深层的表格单元格 / 按钮
- *   （实测：加了 `*` 之后屏幕正中命中的仍然是 td，因为它们没有本组件的 data-v 标记）。
- *   本类是「页面整体让位」的开关，作用域天然是全局的，放非 scoped 块里才正确。
- */
-</style>
-
-<style lang="less">
-/*
- * 「选取地块」模式下「页面整体让位」的全局开关（配合 views/screen/index.vue
- * 模板里的 :class="canvasFade" 使用）。
- *
- * ⚠ 必须是非 scoped 的全局样式：见上面那个 style 块末尾的说明。
- *
- * ⚠ 用 opacity 而不是 display: none / visibility: hidden，原因见 data 里
- *   canvasFade 的注释：不能销毁模块状态，也不能让 Cesium 的 canvas 尺寸归零。
- * ★★ 但**只写 opacity: 0 是不够的**：透明元素照样参与命中测试，
- *   而 data/index.vue 的 __nav / __body 都显式写了 pointer-events: auto，
- *   于是这些「看不见的」面板会把地图的鼠标事件全部吃掉
- *   （实测：进选取模式后屏幕正中命中到的是表格单元格 td，
- *     地图拖不动、滚轮也不缩放）。
- *
- *   pointer-events: none 是**可继承**的：这里关掉之后，子元素里任何
- *   显式写 auto 的节点都会被重新打开（如 .data-screen__body），
- *   所以还要对后代再兜一层 `*` —— 这也是为什么不能只依赖根节点那一条。
- *
- * ⚠ 这里**不能**顺手写 transform / filter 之类会创建包含块的属性：
- *   整页模块内部有以自己为参照的绝对定位元素，加 transform 会让它们整体跑位。
- */
-.is-pick-hidden {
-  opacity: 0;
-  pointer-events: none;
-
-  * {
-    pointer-events: none !important;
   }
 }
 </style>

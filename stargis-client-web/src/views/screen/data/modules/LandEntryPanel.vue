@@ -2,10 +2,23 @@
   <!--
     LandEntryPanel 经营性用地信息录入（方案 2.3.1（三）第 1 项）
     --------------------------------
-    「逐条录入经营性用地信息，并支持修改与移除」——
-    布局照档案维护（ArchiveMaintain）：
-      上排：检索条件（可折叠）
-      下排：列表面板（工具条 + 表格 + 分页），列表吃掉剩余高度
+    「逐条录入经营性用地信息，并支持修改与移除」。
+
+    版式（2026-10 改版，与 FacilityEntryPanel 保持一致）：
+      右侧检索列   right:30 / top:104 / bottom:40 / 宽 200 —— 与左侧二级导航**左右对称**，
+                   检索条件竖排（窄列里字段改成「标签在上、控件在下」）
+      底部列表     left:250 / right:250 / 贴底 bottom:40，**默认只露 3~4 行**，
+                   上沿有 ScreenResizeBar 可以上下拖动改高
+      中间        留给地图 —— 这是本模块「边看地块边填」的前提
+
+    ★ 为什么列表默认要压到这么矮、而不是像以前那样吃掉整块内容区：
+      这个模块的正事是「对着地图录宗地」，列表只是定位工具。
+      列表默认占满屏时，地图只剩一条缝，用户得先手动收起才看得见地块。
+
+    ★ 为什么用 ScreenResizeBar 而不是 v-if 折叠列表：
+      折叠只有「全开/全关」两态，而不同人的屏前工作不一样（有人要一次比对十几条），
+      拖动能给出连续区间；键盘用户也能用 ↑/↓/PgUp/PgDn 调。
+
     弹窗：新增/编辑、详情（含变更履历）、移除原因确认。
 
     ★ 移除为什么必须带「原因」：
@@ -25,60 +38,77 @@
       drill (payload)  跳到别的面板（如 { tab: 'facility', crzdbh }）
   -->
   <div class="land-entry">
-    <screen-panel class="land-entry__search" title="宗地检索" collapsible>
-      <land-search-form ref="search" :initial-query="initialQuery" @search="handleSearch" />
-    </screen-panel>
+    <div class="land-entry__search">
+      <screen-panel class="land-entry__search-panel" title="宗地检索" collapsible scrollable>
+        <land-search-form
+          ref="search"
+          :initial-query="initialQuery"
+          vertical
+          @search="handleSearch"
+        />
+      </screen-panel>
+    </div>
 
-    <screen-panel class="land-entry__list" title="经营性用地列表">
-      <template #extra>
-        <span class="land-entry__total">
-          共 <b>{{ pagination.total }}</b> 宗
-          <template v-if="selectedRowKeys.length">
-            · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 宗
-          </template>
-        </span>
-
-        <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增宗地</screen-button>
-
-        <screen-popconfirm
-          v-if="selectedRowKeys.length"
-          title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的宗地吗？"
-          :description="`共 ${selectedRowKeys.length} 宗宗地会被软删并逐条留痕`"
-          width="320"
-          @confirm="handleBatchRemove"
-        >
-          <screen-button type="danger" size="sm" icon="trash">批量移除</screen-button>
-        </screen-popconfirm>
-
-        <screen-button size="sm" icon="database" @click="$emit('open-recycle')">去回收站</screen-button>
-
-        <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
-      </template>
-
-      <land-table
-        :data-source="dataSource"
-        :loading="loading"
-        selectable
-        :selected-row-keys="selectedRowKeys"
-        @select-change="handleSelectChange"
-        @detail="handleDetail"
-        @history="handleHistory"
-        @attachments="handleAttachments"
-        @edit="handleEdit"
-        @remove="handleRemove"
-        @facilities="handleFacilities"
+    <div class="land-entry__list" :style="{ height: listHeight + 'px' }">
+      <screen-resize-bar
+        :value="listHeight"
+        :min="listMinHeight"
+        :max="listMaxHeight"
+        aria-label="拖动调整经营性用地列表高度"
+        @input="handleResize"
       />
 
-      <template #footer>
-        <screen-pagination
-          :current="pagination.current"
-          :page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-size-options="pagination.pageSizeOptions"
-          @change="handlePageChange"
+      <screen-panel class="land-entry__list-panel" title="经营性用地列表">
+        <template #extra>
+          <span class="land-entry__total">
+            共 <b>{{ pagination.total }}</b> 宗
+            <template v-if="selectedRowKeys.length">
+              · 已选 <b class="is-accent">{{ selectedRowKeys.length }}</b> 宗
+            </template>
+          </span>
+
+          <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增宗地</screen-button>
+
+          <screen-popconfirm
+            v-if="selectedRowKeys.length"
+            title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的宗地吗？"
+            :description="`共 ${selectedRowKeys.length} 宗宗地会被软删并逐条留痕`"
+            width="320"
+            @confirm="handleBatchRemove"
+          >
+            <screen-button type="danger" size="sm" icon="trash">批量移除</screen-button>
+          </screen-popconfirm>
+
+          <screen-button size="sm" icon="database" @click="$emit('open-recycle')">去回收站</screen-button>
+
+          <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
+        </template>
+
+        <land-table
+          :data-source="dataSource"
+          :loading="loading"
+          selectable
+          :selected-row-keys="selectedRowKeys"
+          @select-change="handleSelectChange"
+          @detail="handleDetail"
+          @history="handleHistory"
+          @attachments="handleAttachments"
+          @edit="handleEdit"
+          @remove="handleRemove"
+          @facilities="handleFacilities"
         />
-      </template>
-    </screen-panel>
+
+        <template #footer>
+          <screen-pagination
+            :current="pagination.current"
+            :page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-size-options="pagination.pageSizeOptions"
+            @change="handlePageChange"
+          />
+        </template>
+      </screen-panel>
+    </div>
 
     <land-form-modal ref="formModal" @ok="handleSaved" />
     <land-detail-modal
@@ -126,6 +156,7 @@
 <script>
 import {
   ScreenPanel,
+  ScreenResizeBar,
   ScreenButton,
   ScreenPagination,
   ScreenPopconfirm,
@@ -143,10 +174,30 @@ import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch } from '@/api
 import { queryLandOptions } from '@/api/land/landData'
 import { defaultPagination, compactQuery } from '../constants'
 
+/*
+ * 列表高度（**设计画布像素**）。
+ *
+ * ★ 画布尺寸是自适应的（ScreenStage：高度贴合 1080、宽度 = 视口宽/scale），
+ *   所以这里只写纵向值：底部留白 40、顶栏下沿 104 —— 都与画布宽度无关。
+ *
+ * 默认 360：**实测**（1894×987 视口，Edge 无头，k=0.9139）可见 3 整行
+ * （表格行高实测 56.5px，不是 --screen-row-height 的 48 —— 行内有进度条/标签会撑高），
+ * 第 4 行露一半。列表在这里是「定位工具」，主角是它上面的地图。
+ *   上下限的来历：
+ *   · 下限 200：再矮就连表头 + 1 行都放不下，拖动会变成「把列表拖没了」；
+ *   · 上限 936：1080 - 104 - 40，即列表最多长到顶栏下面，此时地图被完全盖住 ——
+ *     不额外设更小的上限，是因为「想铺满屏比对数据」是真实需求，拖回来即可，
+ *     没必要替用户挡住。
+ */
+const LIST_DEFAULT_HEIGHT = 360
+const LIST_MIN_HEIGHT = 200
+const LIST_MAX_HEIGHT = 936
+
 export default {
   name: 'LandEntryPanel',
   components: {
     ScreenPanel,
+    ScreenResizeBar,
     ScreenButton,
     ScreenPagination,
     ScreenPopconfirm,
@@ -170,10 +221,26 @@ export default {
       dataSource: [],
       selectedRowKeys: [],
       pagination: defaultPagination(10),
+      /** 列表高度（画布像素）：初始值即「默认只露 3~4 行」，之后由拖动/键盘改变 */
+      listHeight: LIST_DEFAULT_HEIGHT,
       removeVisible: false,
       removing: false,
       removeReason: '',
       removeTargets: []
+    }
+  },
+  computed: {
+    /*
+     * 上下限要用 computed 暴露给模板。
+     * ★ 模板只能访问**实例上**的东西：直接写 :min="LIST_MIN_HEIGHT" 会取到 undefined
+     *   （模块级常量不在实例上），组件退回自己的默认值 —— 不报错，但设置静默失效。
+     */
+    listMinHeight () {
+      return LIST_MIN_HEIGHT
+    },
+    /** 上限同上；做成 computed 是为了将来若要按画布实测高度自适应时只改一处 */
+    listMaxHeight () {
+      return LIST_MAX_HEIGHT
     }
   },
   created () {
@@ -250,6 +317,15 @@ export default {
 
     handleSelectChange (keys) {
       this.selectedRowKeys = keys || []
+    },
+
+    /**
+     * 拖动/键盘调整列表高度。
+     * 只记高度，不重新请求数据 —— 表格可见行数由高度决定，数据本身没变；
+     * 每次拖动都发请求会让大屏在拖动过程中疯狂打后端。
+     */
+    handleResize (height) {
+      this.listHeight = height
     },
 
     /* ---------------- 增删改 ---------------- */
@@ -387,19 +463,58 @@ export default {
 @import '~@/components/screen/styles/screen-mixins.less';
 
 .land-entry {
-  display: flex;
-  flex-direction: column;
-  gap: var(--screen-space-3);
-  height: 100%;
-  min-height: 0;
+  /*
+   * 铺满整个设计画布，内部按设计稿坐标摆放「右侧检索列 + 贴底列表」。
+   * 坐标系与 data/index.vue 的左侧栏（left:30 / top:104 / bottom:40 / 宽 200）
+   * 完全一致 —— 「与左侧边栏对称」在代码里也是同一组数字。
+   *
+   * ★ pointer-events: none 是必须的：本节点已经铺满整屏，
+   *   若在这里开 auto 就会把地图的鼠标事件全吃掉（拖不动、滚不动）。
+   *   交互只由下面两块区域各自显式开启。
+   */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 
-  // 检索条件按内容高度，列表吃掉剩余高度
+  /* ---------------- 右侧检索列（与左侧二级导航左右对称） ---------------- */
   &__search {
-    flex: 0 0 auto;
+    position: absolute;
+    right: 30px;
+    top: 104px;
+    bottom: 40px;
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    pointer-events: auto;
   }
 
+  /*
+   * 面板撑满这一列。
+   * ★ scrollable 是必须的：竖排的检索条件展开「更多条件」后会超出列高，
+   *   不能滚就只能被裁掉，用户会以为条件没渲染出来。
+   */
+  &__search-panel {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  /* ---------------- 底部列表（贴底 + 可拖高） ---------------- */
   &__list {
-    // flex-basis 必须是 0：用 auto 会按内容撑开，导致分页被挤出可见区
+    position: absolute;
+    left: 250px;
+    // 与右侧检索列留出与左侧同样的 20px 间距（检索列 200 + 边距 30 + 间距 20）
+    right: 250px;
+    bottom: 40px;
+    // 高度由 listHeight 内联控制（拖动改变），这里只兜底一个最小值
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    pointer-events: auto;
+  }
+
+  /* 调节条占顶部 12px，剩下的全部给面板 */
+  &__list-panel {
     flex: 1 1 0;
     min-height: 0;
   }

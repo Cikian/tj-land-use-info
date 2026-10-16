@@ -26,14 +26,28 @@
     事件：
       ok  保存成功后抛出，父组件据此刷新列表
   -->
+  <!--
+    弹窗形态（2026-10 用户实测后调整）：
+      · 宽 960 + 表单 2 列：3 列时每列太窄，缩到 960 后 2 列才是正常比例
+        （标签 150 + 控件约 330）。
+      · 高度取「原来的一半」：改造前 body 上限 = calc(100vh - 200px)，
+        头 46 + 底栏 54 ≈ 100，所以原来的总高 ≈ 100vh - 100；
+        这里取 calc(50vh - 150px)，实测总高正好是原来的一半。
+        正文因此会滚动 —— 这是有意的，弹窗矮下去才看得到下面的地图。
+      · draggable + :dimmed="false"：背景不压暗、弹窗可拖到一边，
+        用户就能一边填表一边直接在地图上操作（这也是「选取地块」不再需要
+        全屏隐藏页面的原因，见 ScreenPickStage）。
+  -->
   <screen-modal
     :visible.sync="visible"
     :title="title"
-    :width="1440"
+    :width="960"
     :confirm-loading="saving"
     ok-text="保存"
     cancel-text="取消"
-    :body-max-height="'calc(100vh - 200px)'"
+    :body-max-height="'calc(50vh - 150px)'"
+    draggable
+    :dimmed="false"
     @ok="handleOk"
     @cancel="handleCancel"
   >
@@ -79,11 +93,14 @@
           </screen-field>
 
           <!--
-            「选取地块」：进入全屏地图模式（所有页面隐藏、只显示地图，上方中间两个按钮）。
+            「选取地块」：进入地图选取模式。
+            ★ 2026-10 起**不再隐藏任何页面**（原先是全屏隐藏、只留地图）：
+              弹窗本身已经可以拖到一边、且背景不压暗，地图随时可操作，
+              再藏页面反而把「填到一半的表单」也一起藏了，用户还得先退出来才能核对。
             ★ 为什么放在「地块名称」旁边而不是单独一块：
               用户的心智是「先把这块地指出来」，地块名称 / 行政区划 / 面积都跟着这块地走，
               所以入口贴着地块名称，比放在表单底部更容易被发现。
-            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进全屏模式
+            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进选取模式
               只会看到一片空白，那种情况下不如直接不给点。
           -->
           <div class="land-form__map-pick">
@@ -92,7 +109,7 @@
               type="button"
               class="land-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '选取地块，进入全屏地图勾选地块' : '地图未加载，无法选取地块'"
+              :aria-label="mapEnabled ? '选取地块，在地图上点选；可先把本窗口拖到一边' : '地图未加载，无法选取地块'"
               @click="handleOpenMapPick"
             >
               <screen-icon name="grid" :size="16" />
@@ -574,16 +591,19 @@ export default {
     /* ---------------- 交互 ---------------- */
 
     /**
-     * 打开「选取地块」全屏地图模式。
+     * 打开「选取地块」地图选取模式。
      * ===============================================================
-     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 覆盖整个页面：
-     * 所有页面隐藏、只留下方地图，页面上方中间两个按钮（取消选择 / 选择完成）。
+     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 接手：
+     * 页面上方中间两个按钮（取消选择 / 选择完成）。
+     * ★ 2026-10 起**不再隐藏任何页面**（原来会把整块画布连同本弹窗一起藏掉）：
+     *   本弹窗现在可拖动、背景也不压暗，地图本来就随时可操作；
+     *   再藏页面只会把「填到一半的表单」也藏了，用户反而没法一边选一边核对。
      *
-     * ★ 本表单**自己不渲染任何地图**，也不负责关闭覆盖层：
+     * ★ 本表单**自己不渲染任何地图**，也不负责关闭选取模式：
      *   地图是 ScreenStage 里那个常驻的 Cesium 实例（本弹窗挂在 body 上，
      *   拿不到它，也不该再创建第二个 Viewer —— 那会白烧一份 GPU 与内存）。
      *   本方法只做两件事：① 记录会话令牌；② 把入口状态发出去。
-     *   关闭由覆盖层发起的取消 / 完成事件驱动（见 handlePickFinished）。
+     *   关闭由选取模式发起的取消 / 完成事件驱动（见 handlePickFinished）。
      *
      * @returns {string} 本次会话令牌；地图不可用时不开启会话，返回空串
      */
@@ -602,7 +622,7 @@ export default {
       //   因为同一时刻只可能有一张全屏地图，本来就不支持并行选取。
       this.pickToken = startPick({
         source: 'land',
-        title: '正在选取经营性用地地块，绘制期间地图可以自由拖动与缩放',
+        title: '正在选取经营性用地地块：可先把本窗口拖到一边，再在地图上操作',
         issuer: `LandFormModal#${this.uid}`
       })
       return this.pickToken
@@ -844,10 +864,10 @@ export default {
     color: var(--screen-text-mute);
   }
 
-  /* 标签列 150px + 控件列，三列排布；窄屏逐级降列 */
+  /* 标签列 150px + 控件列，**两列**排布（弹窗宽 960）；窄屏再降到一列 */
   &__grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--screen-space-3) var(--screen-space-4);
   }
 
@@ -866,7 +886,7 @@ export default {
 
   /*
    * 「选取地块」入口。
-   * ★ 定位与控件列对齐：本组是 3 列网格（标签列 150px + 控件列），
+   * ★ 定位与控件列对齐：本组是 2 列网格（标签列 150px + 控件列），
    *   这个入口直接占一个格子，视觉上与「地块名称」同排，不需要额外的偏移 hack。
    */
   &__map-pick {
@@ -922,13 +942,7 @@ export default {
   }
 }
 
-@media (max-width: 1500px) {
-  .land-form__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1000px) {
+@media (max-width: 900px) {
   .land-form__grid {
     grid-template-columns: minmax(0, 1fr);
   }
