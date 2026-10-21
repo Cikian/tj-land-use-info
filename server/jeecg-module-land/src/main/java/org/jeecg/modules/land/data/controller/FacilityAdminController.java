@@ -79,6 +79,14 @@ public class FacilityAdminController {
         return Result.OK(facilityAdminService.queryPage(query));
     }
 
+    @AutoLog(value = "配套地块录入-地块图形清单")
+    @ApiOperation(value = "配套地块录入-地块图形清单", notes = "全部画过图形的配套项目（id/编号/名称/GeoJSON 轻量列），进菜单铺地图用")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/geoList")
+    public Result<List<Facility>> geoList() {
+        return Result.OK(facilityAdminService.queryGeoList());
+    }
+
     @AutoLog(value = "配套地块录入-详情")
     @ApiOperation(value = "配套地块录入-详情")
     @RequiresPermissions(PERM)

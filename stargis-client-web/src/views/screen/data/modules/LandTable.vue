@@ -20,6 +20,7 @@
       edit    (row)  编辑
       remove  (row)  移除（父组件负责收集原因并发请求）
       facilities (row) 跳到该宗地的配套录入面板
+      locate   (row)  整行双击：地图定位并高亮该宗地（父组件负责有图形的判断与飞行）
   -->
   <screen-data-table
     :columns="columns"
@@ -31,6 +32,7 @@
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
     @select-change="handleSelectChange"
+    @row-dblclick="handleRowDblclick"
   >
     <!-- 出让宗地编号：主键列，点击看详情（不给它单独的「详情」按钮，省一列宽度） -->
     <template #crzdbh="{ row }">
@@ -167,6 +169,9 @@ export default {
   methods: {
     handleSelectChange (keys, rows) {
       this.$emit('select-change', keys, rows)
+    },
+    handleRowDblclick (row) {
+      this.$emit('locate', row)
     }
   }
 }

@@ -34,6 +34,13 @@ public interface ILandAdminService {
     /** 分页查询（数据管理页的列表） */
     IPage<Land> queryPage(LandAdminQueryDTO query);
 
+    /**
+     * 全部有地块图形的宗地（轻量列：id / crzdbh / dkmc / dkGeojson）。
+     * 大屏「经营性用地信息录入」进菜单时把已画图的宗地面一次性铺到地图上，
+     * 列表双击某条时据此定位与高亮 —— 分页接口带全量实体太重，这里只取图形三两字段。
+     */
+    List<Land> queryGeoList();
+
     /** 详情（含配套项目数量、附件数量、变更次数等展示字段） */
     Land queryDetail(String id);
 

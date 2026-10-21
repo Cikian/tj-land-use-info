@@ -406,6 +406,11 @@
           ptqkh: undefined,
           ptcbh: undefined,
           crzdtxsj: undefined,
+          // 地块图形（GeoJSON）：只有大屏「添加地块」能产生/清除它，本表单不展示、
+          // 不允许编辑，只做**透传** —— fill 时从记录带回、保存时原样上送。
+          // 若不带上，编辑路径会因后端收不到该字段而无法保证大屏画的图形不被动到
+          // （后端对 null 是「跳过该列」，因此这里 undefined/null 都是安全的「不碰」语义）
+          dkGeojson: undefined,
           ptjsnr: '',
           // 录入信息
           lrdw: '',

@@ -20,6 +20,7 @@
       edit      (row)  编辑
       remove    (row)  移除
       attachments (row) 该配套的附件（跳到附件面板）
+      locate   (row)  整行双击：地图定位并高亮该配套地块（父组件负责有图形的判断与飞行）
   -->
   <screen-data-table
     :columns="columns"
@@ -31,6 +32,7 @@
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
     @select-change="handleSelectChange"
+    @row-dblclick="handleRowDblclick"
   >
     <template #crzdbh="{ row }">
       <!-- 点编号 = 「只看这一宗地的配套」，这是 1 宗地 N 配套最自然的入口 -->
@@ -207,6 +209,9 @@ export default {
 
     handleSelectChange (keys, rows) {
       this.$emit('select-change', keys, rows)
+    },
+    handleRowDblclick (row) {
+      this.$emit('locate', row)
     }
   }
 }

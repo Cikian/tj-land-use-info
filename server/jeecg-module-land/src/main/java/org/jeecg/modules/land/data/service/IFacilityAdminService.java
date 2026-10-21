@@ -50,6 +50,13 @@ public interface IFacilityAdminService {
     /** 分页查询配套项目（按宗地编号 / 项目名称 / 类别 / 区划等条件） */
     IPage<Facility> queryPage(LandAdminQueryDTO query);
 
+    /**
+     * 全部有地块图形的配套项目（轻量列：id / crzdbh / ptxmmc / dkGeojson）。
+     * 大屏「配套地块数据录入」进菜单时把已画图的配套面一次性铺到地图上，
+     * 列表双击某条时据此定位与高亮 —— 分页接口带全量实体太重，这里只取图形相关字段。
+     */
+    List<Facility> queryGeoList();
+
     /** 详情（含宗地信息与阶段进度汇总） */
     Facility queryDetail(String id);
 

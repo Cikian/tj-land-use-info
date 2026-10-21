@@ -1,10 +1,10 @@
 /**
- * 专项验证：选取模式下按 Esc 只应「取消选择」，不能连表单一起关掉
+ * 专项验证：选取模式下按 Esc 只应「取消绘制」，不能连表单一起关掉
  * ------------------------------------------------------------------
  * 背景（审查提出、且已修）：焦点在进入选取模式时仍留在被隐藏的表单弹窗里，
  * 而 ScreenModal 的 Escape 处理挂在它自己的 dialog 上，**先于** window 的
  * 冒泡监听触发 —— 如果 ScreenPickStage 用冒泡监听，按 Esc 会
- * 「取消选择 + 把整张填了一半的表单一起关掉」。
+ * 「取消绘制 + 把整张填了一半的表单一起关掉」。
  * 修法是 ScreenPickStage 改用**捕获阶段**监听并 preventDefault + stopPropagation。
  *
  * 用法：node perf/verify-pick-esc.js [http://localhost:3000]

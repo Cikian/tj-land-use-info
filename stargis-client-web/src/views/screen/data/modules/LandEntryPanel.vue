@@ -96,6 +96,7 @@
           @edit="handleEdit"
           @remove="handleRemove"
           @facilities="handleFacilities"
+          @locate="handleLocate"
         />
 
         <template #footer>
@@ -170,8 +171,10 @@ import LandSearchForm from './LandSearchForm.vue'
 import LandTable from './LandTable.vue'
 import LandFormModal from './LandFormModal.vue'
 import LandDetailModal from './LandDetailModal.vue'
-import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch } from '@/api/land/landAdmin'
+import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch, queryLandGeoList } from '@/api/land/landAdmin'
 import { queryLandOptions } from '@/api/land/landData'
+// 宗地几何图层：进菜单把全部已画图宗地面铺到地图上，列表双击定位 + 高亮
+import { createGeoLayer } from '@/views/screen/landGeoLayer'
 import { defaultPagination, compactQuery } from '../constants'
 
 /*
@@ -244,7 +247,24 @@ export default {
     }
   },
   created () {
+    // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
+    this.geoLayer = createGeoLayer()
     this.loadData()
+  },
+  activated () {
+    /*
+     * keep-alive 的激活钩子（首次挂载也会触发一次）：
+     * 每次进「经营性用地信息录入」菜单都重铺宗地几何图层 ——
+     * 这样别处新增/画图的宗地回到本菜单就能看到最新状态。
+     * 切走页签时由 deactivated 清掉（图层别压在别的菜单上面）。
+     */
+    this.loadGeoLayer()
+  },
+  deactivated () {
+    this.geoLayer.clearAll()
+  },
+  beforeDestroy () {
+    this.geoLayer.clearAll()
   },
   methods: {
     /* ---------------- 数据 ---------------- */
@@ -303,6 +323,35 @@ export default {
         })
     },
 
+    /**
+     * 加载宗地几何图层（全部已画图宗地的面）。
+     * 只取轻量列（id/编号/名称/GeoJSON），失败静默 —— 图层是辅助视图，
+     * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
+     */
+    loadGeoLayer () {
+      queryLandGeoList()
+        .then((res) => {
+          if (!res || !res.success) return
+          this.geoLayer.renderAll(res.result || [])
+        })
+        .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
+    },
+
+    /**
+     * 列表**双击**某条：地图定位 + 高亮。
+     * ★ 只有画过图形的宗地能定位 —— 没画过图的行不在图层里，
+     *   明确告诉用户为什么没反应，而不是让他以为点了没生效。
+     */
+    handleLocate (record) {
+      if (!record || !record.id) return
+      if (!this.geoLayer.has(record.id)) {
+        toast.warning('该宗地还没有地块图形：编辑里点「添加地块」绘制并保存后即可定位')
+        return
+      }
+      this.geoLayer.highlight(record.id)
+      this.geoLayer.flyTo(record.id)
+    },
+
     handleSearch (query) {
       this.query = query || {}
       this.pagination.current = 1
@@ -341,6 +390,8 @@ export default {
 
     handleSaved () {
       this.loadData()
+      // 新增/编辑可能刚画了图形（或改了编号），几何图层同步重铺
+      this.loadGeoLayer()
     },
 
     handleDetail (record) {
@@ -411,6 +462,8 @@ export default {
           )
           this.closeRemove()
           this.loadData()
+          // 被移除的宗地要从地图图层上撤下来，重铺即同步
+          this.loadGeoLayer()
         })
         .catch(() => {
           // 请求层已提示

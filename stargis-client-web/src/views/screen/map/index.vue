@@ -38,20 +38,9 @@
   -->
   <div class="map-screen">
     <map-tool-panel
-      :pick-active="activeTool === 'pick'"
-      :place-active="activeTool === 'place'"
-      :road-active="activeTool === 'road'"
-      :spatial-active="activeTool === 'spatial'"
-      :attr-active="activeTool === 'attr'"
-      :comp-active="activeTool === 'comp'"
-      :stat-active="activeTool === 'stat'"
-      @toggle-pick="togglePick"
-      @toggle-place="togglePlace"
-      @toggle-road="toggleRoad"
-      @toggle-spatial="toggleSpatial"
-      @toggle-attr="toggleAttr"
-      @toggle-comp="toggleComp"
-      @toggle-stat="toggleStat"
+      :active-tool="activeTool"
+      @toggle-tool="toggleToolByKey"
+      @toggle-hd="handleHdExport"
     />
 
     <!--
@@ -101,7 +90,32 @@
         <query-statistic-pop :config-min="statConfig" />
       </div>
     </template>
+    <!-- 其余插件弹窗工具（书签/动画导航/图层管理/高程/地下/地形透明）：
+         通用宿主容器 + 数据驱动渲染，标题取自注册表 -->
+    <template v-else-if="activePopTool">
+      <img class="map-screen__plugin-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+      <h2 class="map-screen__plugin-title">{{ activePopTool.title }}</h2>
+      <div class="map-screen__plugin-host stage-hit">
+        <component :is="activePopTool.popTag" ref="activePopRef" :config-min="activePopTool.config" />
+      </div>
+    </template>
     <map-pick-panel v-else :result="pickRows" :layer-name="pickLayer" />
+
+    <!--
+      stargis-function 量测/地形类开关引擎（原「直线量测」「地形透明」等按钮
+      组件）：btnClick() 直接在地图上进入对应模式（画线/画面/地形开关等），
+      没有独立弹窗；激活契约同其它引擎。需要真实地图，?map=0 或未就绪时
+      由 toggle 兜底提示。注册表见下方 PLUGIN_TOOLS。
+    -->
+    <component
+      v-for="tool in engineTools"
+      :key="'engine-' + tool.key"
+      :is="tool.engineTag"
+      v-show="false"
+      :ref="'engine-' + tool.key"
+      :config-min="tool.config"
+      aria-hidden="true"
+    />
 
     <!--
       stargis-function 拾取引擎（原「拾取查询」按钮组件，老工作台顶栏同款）。
@@ -193,6 +207,42 @@ import MapPickPanel from './MapPickPanel.vue'
 import MapPlacePanel from './MapPlacePanel.vue'
 import { hf } from '@/assets/screen-blue'
 
+/**
+ * 插件开关/弹窗类工具注册表（卡片 key → stargis-function 组件）。
+ * 名称对应关系来自 package.html 的插件清单与 HomeHeader 兜底配置：
+ *   直线量测=MeasureLine、水平量测=MeasureSpace（3D 空间测量，无独立
+ *   垂直量测组件，垂直量测共用一个 MeasureSpace 实例）、面积量测=MeasureArea、
+ *   视图书签=Bookmarks、动画导航=AnimationNavigation、图层管理=LayerTree、
+ *   地形透明=TransparentTerrain。
+ * pop = null 的是开关型（直接在地图上生效，无独立弹窗）；有 pop 的走
+ * 「先挂弹窗、再让引擎发 showXxxPop」的通用流程。
+ * icon：插件按钮的切图路径（引擎隐藏后只影响它自己的按钮图，不影响功能）。
+ * ⚠ 三个例外不走本注册表：
+ *   高清出图——老工作台无按钮引擎，直接驱动总线 showScenePlottingPop
+ *   开关 ScenePlottingPop（见 toggleHdExport）；
+ *   开启地下模式——纯 Cesium 场景开关（scene.undergroundMode），
+ *   插件里没有对应组件（见 toggleUnderground）；
+ *   开启高程——老系统语义是给数据源图层设置 DEM 可用
+ *   （featureLayer.setDemAvailable，见旧系统 common.js openHeight），
+ *   同样是本地场景开关（见 toggleHeight）。
+ */
+const PLUGIN_TOOLS = [
+  { key: 'measureLine', title: '直线量测', engine: 'MeasureLine', pop: null, event: null, icon: 'map-btns/MeasureLine' },
+  { key: 'measureHorizontal', title: '水平量测', engine: 'MeasureSpace', pop: null, event: null, icon: 'map-btns/MeasureSpace' },
+  { key: 'measureVertical', title: '垂直量测', engine: 'MeasureSpace', pop: null, event: null, icon: 'map-btns/MeasureSpace' },
+  { key: 'measureArea', title: '面积量测', engine: 'MeasureArea', pop: null, event: null, icon: 'map-btns/MeasureArea' },
+  { key: 'bookmark', title: '视图书签', engine: 'Bookmarks', pop: 'BookmarksPop', event: 'showHeaderBookmarksPop', icon: 'map-btns/Bookmarks' },
+  { key: 'tour', title: '动画导航', engine: 'AnimationNavigation', pop: 'AnimationNavigationPop', event: 'showAnimationNavigationPop', icon: 'map-btns/AnimationNavigation' },
+  { key: 'layers', title: '图层管理', engine: 'LayerTree', pop: 'LayerTreePop', event: null, icon: 'map-btns/QueryPick' },
+  { key: 'terrainAlpha', title: '地形透明', engine: 'TransparentTerrain', pop: 'TransparentTerrainPop', event: 'showTerrainPop', icon: 'map-btns/TransparentTerrain' },
+  { key: 'hdExport', title: '高清出图', engine: null, pop: 'ScenePlottingPop', event: 'showScenePlottingPop', icon: null },
+]
+
+/** PascalCase → kebab-case（组件名 → 全局注册的标签名） */
+function toKebab (name) {
+  return name.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '')
+}
+
 export default {
   name: 'MapScreen',
   components: { MapToolPanel, MapPickPanel, MapPlacePanel },
@@ -247,7 +297,34 @@ export default {
       statConfig: null,
       /** 综合统计弹窗开关状态（= 综合统计引擎 checked，随总线事件同步） */
       statActive: false,
+      /** 开启高程的开关状态（驱动数据源图层 setDemAvailable） */
+      heightOn: false,
     }
+  },
+  computed: {
+    /**
+     * 当前激活的弹窗型插件工具（书签/动画导航/图层管理/高程/地下/地形透明）。
+     * 供通用宿主容器渲染对应弹窗。
+     */
+    activePopTool () {
+      const def = PLUGIN_TOOLS.find((tool) => tool.key === this.activeTool && tool.pop)
+      if (!def) return null
+      return {
+        ...def,
+        popTag: toKebab(def.pop),
+        config: { icon: def.icon },
+      }
+    },
+    /** 需要挂载的隐藏引擎清单（无引擎的工具如高清出图跳过；configMin 只需 icon） */
+    engineTools () {
+      return PLUGIN_TOOLS
+        .filter((tool) => tool.engine)
+        .map((tool) => ({
+          ...tool,
+          engineTag: toKebab(tool.engine),
+          config: { icon: tool.icon },
+        }))
+    },
   },
   created () {
     // 拾取结果：payload 是 {name,value} 行数组；false = 取消拾取 / 未拾中
@@ -262,6 +339,11 @@ export default {
     this.$bus.$on('showQueryComprehensivePop', this.handleCompPopEvent)
     // 综合统计弹窗开关
     this.$bus.$on('showQueryStatisticPop', this.handleStatPopEvent)
+    // 其余插件弹窗工具的开关事件（数据驱动注册）
+    PLUGIN_TOOLS.forEach((tool) => {
+      if (!tool.event) return
+      this.$bus.$on(tool.event, (payload) => this.handlePluginPopEvent(tool.key, payload))
+    })
     this.loadRoadConfig()
     this.loadSpatialConfig()
     this.loadAttrConfig()
@@ -275,6 +357,10 @@ export default {
     this.$bus.$off('showQueryAttributePop', this.handleAttrPopEvent)
     this.$bus.$off('showQueryComprehensivePop', this.handleCompPopEvent)
     this.$bus.$off('showQueryStatisticPop', this.handleStatPopEvent)
+    PLUGIN_TOOLS.forEach((tool) => {
+      if (!tool.event) return
+      this.$bus.$off(tool.event, this.handlePluginPopEvent)
+    })
     this.stopLayerProbe()
     this.removeLayerNameHandler()
   },
@@ -322,6 +408,18 @@ export default {
     closeOtherTools (current) {
       if (current !== 'place' && this.activeTool === 'place') this.activeTool = ''
       if (current !== 'pick') this.closePickEngine()
+      // 高清出图无引擎：切走时直接经总线关闭出图弹窗
+      if (current !== 'hdExport' && this.activeTool === 'hdExport') {
+        this.$bus.$emit('showScenePlottingPop', false)
+      }
+      // 注册表里的插件引擎（量测/书签/动画导航/图层管理/高程/地下/地形透明）
+      PLUGIN_TOOLS.forEach((tool) => {
+        if (tool.key === current) return
+        const engine = this.getEngine(tool.key)
+        if (engine && engine.checked) {
+          try { engine.btnClick() } catch (error) { /* 复位失败由总线监听兜底 */ }
+        }
+      })
       if (current !== 'road') this.closeRoadEngine()
       if (current !== 'spatial') this.closeSpatialEngine()
       if (current !== 'attr') this.closeAttrEngine()
@@ -630,6 +728,185 @@ export default {
         ? module.children.find((child) => child.componentname === 'QueryStatistic')
         : null
       this.statConfig = item || null
+    },
+
+    /**
+     * 工具卡片点击分发：已接入的按 key 走各自的 toggle。
+     * ⚠ 卡片 key 与模式 key 不同名（卡片 locateName/locateRoad/querySpatial/
+     *   queryAttr/queryCombined/statistics ↔ 模式 place/road/spatial/attr/
+     *   comp/stat），先查 MODE_KEY_MAP 换算；其余（量测/书签/动画导航/
+     *   图层管理/高程/地下/地形透明/高清出图）与卡片 key 同名，直接走注册表。
+     */
+    toggleToolByKey (key) {
+      const MODE_KEY_MAP = {
+        locateName: 'place',
+        locateRoad: 'road',
+        querySpatial: 'spatial',
+        queryAttr: 'attr',
+        queryCombined: 'comp',
+        statistics: 'stat',
+      }
+      if (MODE_KEY_MAP[key]) key = MODE_KEY_MAP[key]
+      if (key === 'pick') return this.togglePick()
+      if (key === 'place') return this.togglePlace()
+      if (key === 'road') return this.toggleRoad()
+      if (key === 'spatial') return this.toggleSpatial()
+      if (key === 'attr') return this.toggleAttr()
+      if (key === 'comp') return this.toggleComp()
+      if (key === 'stat') return this.toggleStat()
+      if (key === 'hdExport') return this.toggleHdExport()
+      if (key === 'underground') return this.toggleUnderground()
+      if (key === 'terrainHeight') return this.toggleHeight()
+      const def = PLUGIN_TOOLS.find((tool) => tool.key === key)
+      if (def) return this.togglePluginTool(def)
+    },
+
+    /**
+     * 开启地下模式：纯 Cesium 场景开关（插件里没有对应组件）。
+     * 开：scene.undergroundMode = true + 隐藏地表球体 + 允许相机进入地表以下；
+     * 关：全部还原。第二次点击卡片即关闭。
+     * ⚠ 以卡片状态（activeTool）驱动而不是回读 scene.undergroundMode——
+     *   SuperMap 场景属性连续写入时回读不可靠。
+     */
+    toggleUnderground () {
+      const viewer = window.viewer
+      if (!viewer || !viewer.scene) {
+        this.$screenToast.info('地图未就绪，开启地下模式暂不可用')
+        return
+      }
+      const scene = viewer.scene
+      const on = this.activeTool !== 'underground'
+      // ⚠ 顺序有讲究：恢复 globe.show = true 会把 SuperMap 的 undergroundMode
+      // 顶回 true，所以关路径必须先恢复地表、再关地下模式；
+      // 开路径反过来（先开地下模式、再藏地表），实测两序都不能反。
+      if (on) {
+        scene.undergroundMode = true
+        if (scene.globe) scene.globe.show = false
+      } else {
+        if (scene.globe) scene.globe.show = true
+        scene.undergroundMode = false
+      }
+      // 允许相机缩放到地表以下（还原时收回）
+      scene.screenSpaceCameraController.minimumZoomDistance = on ? -1000 : 0
+      this.activeTool = on ? 'underground' : ''
+    },
+
+    /**
+     * 开启高程：给场景里所有已加载的 S3M 数据源图层设置 DEM 可用
+     * （语义对照旧系统 common.js 的 openHeight/closeHeight：
+     *   featureLayer.setDemAvailable(true/false)，让图层几何按地形起伏显示）。
+     * 开关状态以 heightOn 数据字段驱动（不回读图层属性）。
+     */
+    toggleHeight () {
+      const viewer = window.viewer
+      if (!viewer || !viewer.scene) {
+        this.$screenToast.info('地图未就绪，开启高程暂不可用')
+        return
+      }
+      const queue = (viewer.scene._layers && viewer.scene._layers._layerQueue) || []
+      if (!queue.length) {
+        this.$screenToast.info('当前场景没有已加载的图层，开启高程前请先加载图层')
+        return
+      }
+      this.heightOn = !this.heightOn
+      queue.forEach((layer) => {
+        try {
+          if (typeof layer.setDemAvailable === 'function') {
+            layer.setDemAvailable(this.heightOn)
+          } else if ('demAvailable' in layer) {
+            layer.demAvailable = this.heightOn
+          }
+        } catch (error) { /* 单个图层设置失败不影响其它图层 */ }
+      })
+      this.activeTool = this.heightOn ? 'terrainHeight' : ''
+    },
+
+    /** v-for 里的 ref 是数组，统一在这里取引擎实例 */
+    getEngine (key) {
+      const ref = this.$refs['engine-' + key]
+      return Array.isArray(ref) ? ref[0] : ref
+    },
+
+    /**
+     * 通用插件工具开关（注册表里除查询类外的工具）：
+     * 开关型（量测等）btnClick 直接在地图上生效；弹窗型先挂弹窗再发开事件。
+     */
+    togglePluginTool (def) {
+      const engine = this.getEngine(def.key)
+      if (this.activeTool === def.key) {
+        // 再点一次 = 复位（弹窗型走 cancelChecked，总线发 false，监听里同步状态）
+        try { if (engine) engine.btnClick() } catch (error) { /* 复位失败由总线监听兜底 */ }
+        this.activeTool = ''
+        return
+      }
+      this.closeOtherTools(def.key)
+      if (!engine) {
+        this.$screenToast.info(def.title + '组件未就绪，请稍后再试')
+        return
+      }
+      if (def.pop) {
+        // 顺序不能反：先挂弹窗，再让引擎发「开」事件（$once 监听挂载后才注册）
+        this.activeTool = def.key
+        this.$nextTick(() => {
+          try {
+            engine.btnClick()
+          } catch (error) {
+            this.activeTool = ''
+            this.$screenToast.info('地图未就绪，' + def.title + '暂不可用')
+            return
+          }
+          this.ensurePopVisible()
+        })
+        return
+      }
+      // 开关型：直接在地图上生效（需要真实地图）
+      try {
+        engine.btnClick()
+        this.activeTool = def.key
+      } catch (error) {
+        try { if (engine.checked) engine.cancelChecked() } catch (ignored) { /* 引擎复位失败不必再处理 */ }
+        this.activeTool = ''
+        this.$screenToast.info('地图未就绪，' + def.title + '暂不可用')
+      }
+    },
+
+    /** 高清出图：无按钮引擎，直接驱动总线事件开关场景出图弹窗 */
+    toggleHdExport () {
+      if (this.activeTool === 'hdExport') {
+        // 再点一次 = 关闭
+        this.$bus.$emit('showScenePlottingPop', false)
+        this.activeTool = ''
+        return
+      }
+      this.closeOtherTools('hdExport')
+      this.activeTool = 'hdExport'
+      this.$nextTick(() => {
+        // 顺序同其它弹窗：先挂弹窗（$once 监听注册），再发「开」事件
+        this.$bus.$emit('showScenePlottingPop', true)
+      })
+    },
+
+    /** 插件弹窗开关总线事件（数据驱动）：弹窗自带关闭钮关闭时同步回卡片状态 */
+    handlePluginPopEvent (key, payload) {
+      if (!payload && this.activeTool === key) this.activeTool = ''
+    },
+
+    /**
+     * 弹窗可见性兜底：有的引擎（如图层管理）不发任何开关事件，弹窗自己的
+     * isShow 会一直是 false（内容 v-show 隐藏）。挂载后检查一次，
+     * 没显示就直呼它的 showPop。事件驱动型的弹窗此刻已 isShow=true，跳过。
+     */
+    ensurePopVisible () {
+      const ref = this.$refs.activePopRef
+      const popVm = Array.isArray(ref) ? ref[0] : ref
+      if (popVm && popVm.isShow === false && typeof popVm.showPop === 'function') {
+        popVm.showPop()
+      }
+    },
+
+    /** 高清出图：插件里没有对应组件，明确告知而不是静默无反应 */
+    handleHdExport () {
+      this.$screenToast.info('高清出图暂未接入，插件中无对应组件')
     },
 
     /** 总线结果 → 右面板字段表；false / 空数组回退演示数据 */
@@ -1220,6 +1497,18 @@ export default {
       box-shadow: none !important;
       border: none !important;
 
+      // 内层 .pop.pop-left 旧卡片（300px 宽、带青色辉光、左侧缩进）
+      // 铺满面板框、去底色辉光，否则表单挤在窄卡里、标签折行
+      .pop {
+        position: relative !important;
+        left: 0 !important;
+        width: 100% !important;
+        min-height: 100% !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+
       // 插件自带的浅灰条件组合区压成暗色
       .all-condition {
         background: rgba(0, 0, 0, 0.2) !important;
@@ -1239,6 +1528,12 @@ export default {
       .ant-select-arrow,
       .ant-input::placeholder {
         color: #4a7396 !important;
+      }
+
+      // 表单标签不折行（原 300px 卡片里「数据类型:」等会折成两行）
+      .layer-info-title,
+      .query-type-title {
+        white-space: nowrap;
       }
     }
 
@@ -1263,6 +1558,131 @@ export default {
     /deep/ .statistic-pop .pop-body {
       width: 100% !important;
       padding: 6px 10px !important;
+    }
+  }
+
+  /* ---------------- 通用插件弹窗宿主（书签/动画导航/图层管理/高程/地下/地形透明） ---------------- */
+  &__plugin-title-deco {
+    position: absolute;
+    right: 9px;
+    top: 95px;
+    width: 420px;
+    height: 46px;
+    pointer-events: none;
+  }
+
+  &__plugin-title {
+    position: absolute;
+    // 与其它右面板标题同一位置：文字右缘距右边界 83px
+    right: 83px;
+    top: 102px;
+    margin: 0;
+    font-size: var(--screen-font-lg);
+    font-weight: 500;
+    line-height: 24px;
+    color: #ffffff;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  &__plugin-host {
+    position: absolute;
+    right: 30px;
+    top: 149px;
+    bottom: 50px;
+    width: 400px;
+    background-image: url('~@/assets/screen-blue/panel-right-bg.png');
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+
+    // 各插件弹窗根类名不一（*.pop 结尾或自定义），统一按「根铺满面板 +
+    // 内层 .pop 卡片铺满 + 旧标题栏零高 + 关闭钮右上角」处理
+    /deep/ [class*='-pop'],
+    /deep/ .placename {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-height: none !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      border: none !important;
+
+      .pop {
+        position: relative !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        min-height: 100% !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+
+      .pop-header {
+        height: 0 !important;
+        overflow: visible;
+        background: transparent !important;
+      }
+
+      .pop-title {
+        display: none !important;
+      }
+
+      .pop-close {
+        position: absolute !important;
+        top: 6px !important;
+        right: 6px !important;
+        z-index: 5;
+      }
+
+      .pop-body {
+        width: 100% !important;
+        padding: 6px 10px !important;
+      }
+
+      // 插件自带的浅灰条件区压成暗色
+      .all-condition {
+        background: rgba(0, 0, 0, 0.2) !important;
+        border: 1px solid #2c6b8a !important;
+        color: #ffffff;
+      }
+
+      // 表单控件压成暗色主题
+      .ant-input,
+      textarea.ant-input,
+      .ant-select-selection {
+        background-color: rgba(0, 0, 0, 0.15) !important;
+        color: #ffffff !important;
+        border-color: #2c6b8a !important;
+      }
+
+      .ant-select-arrow,
+      .ant-input::placeholder {
+        color: #4a7396 !important;
+      }
+
+      .layer-info-title,
+      .query-type-title {
+        white-space: nowrap;
+      }
+
+      // 插件弹窗内文字默认亮色（老主题文字色不定，深底上会不可见）
+      color: #cfe8ff;
+
+      .ant-tree,
+      .ant-tree .ant-tree-node-content-wrapper {
+        color: #82c6ff;
+      }
+
+      .ant-list {
+        color: #cfe8ff;
+      }
     }
   }
 }

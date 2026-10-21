@@ -5,8 +5,8 @@
  *   ① 表单由 3 列改 2 列；弹窗高度是原来的一半；
  *   ② 弹窗可以随意拖动（且不会被拖出屏幕找不回来）；弹窗以外的背景**不再变暗**，
  *      并且背景里的地图**真的能操作**（不是「看着没变暗但事件被吃掉」）；
- *   ③ 点「选取地块」不再隐藏任何页面，弹窗仍在、地图仍可操作，
- *      两个按钮落在顶栏之下（不压导航）；Esc / 选择完成都能回到表单；
+ *   ③ 点「添加地块」不再隐藏任何页面，弹窗仍在、地图仍可操作，
+ *      两个按钮落在顶栏之下（不压导航）；Esc / 完成绘制都能回到表单；
  *   ④ 经营性用地与配套项目两个表单一致。
  *
  * ★ 端口：3000 = 管理端 admin-client，3001 = 大屏端 stargis-client-web（本脚本的对象）。
@@ -455,14 +455,14 @@ function check (name, ok, detail) {
         clip.readonlyCount ? `${clip.readonlyCount} 个格子，越界 ${clip.clipped} 个` : '本表单没有这类格子（跳过）'
       )
 
-      /* ---------- 需求③：选取地块不再隐藏页面 ---------- */
+      /* ---------- 需求③：添加地块不再隐藏页面 ---------- */
       const pickClicked = await cdp.evalJs(`(() => {
         const b = document.querySelector(${JSON.stringify(p.pickBtnSel)})
         if (!b) return false
         b.click()
         return true
       })()`)
-      check(`${p.name}：能点「选取地块」`, pickClicked)
+      check(`${p.name}：能点「添加地块」`, pickClicked)
       for (let i = 0; i < 20; i++) {
         await sleep(300)
         if (await cdp.evalJs(`!!document.querySelector('.pick-stage')`)) break
@@ -489,9 +489,9 @@ function check (name, ok, detail) {
           bodyOpacity: body ? getComputedStyle(body).opacity : null,
           bodyVisible: body ? body.getBoundingClientRect().height > 0 : null,
           cancelBtn: !!Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-            .find(function (b) { return window.__vm.norm(b.textContent) === '取消选择' }),
+            .find(function (b) { return window.__vm.norm(b.textContent) === '取消绘制' }),
           doneBtn: !!Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-            .find(function (b) { return window.__vm.norm(b.textContent) === '选择完成' }),
+            .find(function (b) { return window.__vm.norm(b.textContent) === '完成绘制' }),
           hitMap: window.__vm.hit(300, 200)
         })
       })()`))
@@ -528,7 +528,7 @@ function check (name, ok, detail) {
         `按钮顶 ${r1(pk.actions && pk.actions.top)} ≥ 顶栏底 ${r1(pk.headerBottom)}`
       )
 
-      // Esc = 取消选择，且**不能**把填了一半的表单一起关掉
+      // Esc = 取消绘制，且**不能**把填了一半的表单一起关掉
       await cdp.pressKey('Escape', 'Escape', 27)
       await sleep(900)
       const afterEsc = JSON.parse(await cdp.evalJs(`JSON.stringify({
@@ -542,12 +542,12 @@ function check (name, ok, detail) {
         `覆盖层 ${afterEsc.stage} / 弹窗 ${afterEsc.dialog}`
       )
 
-      // 再进一次，用「选择完成」退出
+      // 再进一次，用「完成绘制」退出
       await cdp.evalJs(`(() => { const b = document.querySelector(${JSON.stringify(p.pickBtnSel)}); if (b) b.click(); return !!b })()`)
       await sleep(1500)
       const doneClicked = await cdp.evalJs(`(() => {
         const b = Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-          .find(function (x) { return window.__vm.norm(x.textContent) === '选择完成' })
+          .find(function (x) { return window.__vm.norm(x.textContent) === '完成绘制' })
         if (!b) return false
         b.click()
         return true
@@ -558,7 +558,7 @@ function check (name, ok, detail) {
         dialog: !!window.__vm.dialog()
       })`))
       check(
-        `${p.name}：「选择完成」回到表单（弹窗不关）`,
+        `${p.name}：「完成绘制」回到表单（弹窗不关）`,
         doneClicked && !afterDone.stage && afterDone.dialog,
         `覆盖层 ${afterDone.stage} / 弹窗 ${afterDone.dialog}`
       )

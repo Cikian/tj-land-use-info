@@ -1,12 +1,18 @@
 <template>
   <!--
-    ScreenPickStage 「选取地块」模式
+    ScreenPickStage 「添加地块」绘制模式
     ==================================================================
-    需求（2026-10 用户实测后改口径）：在**经营性用地 / 配套项目**的新增·编辑表单里
-    点「选取地块」后，
-      ① ~~所有页面全部隐藏，只显示下方地图~~ → **不再隐藏任何页面**；
-      ② 页面上方中间有两个明显的按钮：取消选择 / 选择完成（下移到顶栏之下，见 &__actions）；
-      ③ 点这两个按钮后回到表单（表单**不关**，填到一半的内容都在）。
+    需求（2026-10 用户实测后改口径，同月由「选取」升级为「绘制」）：
+    在**经营性用地 / 配套项目**的新增·编辑表单里点「添加地块」后，
+      ① **不隐藏任何页面**（表单可拖动 + 背景不压暗，地图随时可操作）；
+      ② 纯 GIS 操作（2026-10-21 用户明确要求去掉顶部按钮）：左键加点，
+         **双击或右键结束**，结束即把 GeoJSON 抛回表单（表单**不关**，填到一半的内容都在）；
+      ③ Esc = 取消（window 捕获监听，见 mounted）；
+      ④ 本层只剩「一句提示 + 地图未就绪的兜底」，不再有任何可点按钮。
+
+    ★ 历史口径：2026-10 上旬本层叫「选取地块」，当时语义是「去地图上选一个已有地块」，
+      绘制引擎是空占位（getGeometry 恒 null）。后需求定为「在地球上画一个面、存 GeoJSON」，
+      遂整层更名为「添加地块」，占位实现替换为 views/screen/drawPolygon.js 的真实绘制。
 
     ★ 为什么「不再隐藏页面」：这一版把表单弹窗改成了「可拖动 + 背景不压暗」
       （ScreenModal 的 draggable / :dimmed="false"），用户把窗口往旁边一拖，
@@ -32,18 +38,21 @@
        恢复时要重新 resize，镜头还会跳一下。
 
     3. **本层自己不吃鼠标**
-       本模式是「操作地图 + 选地块」，拖动 / 缩放 / 拾取都必须落到**下面的地图**上。
-       所以根节点是 `pointer-events: none`，只有两个按钮显式 `pointer-events: auto`。
+       本模式是「操作地图 + 画面」，拖动 / 缩放 / 绘制都必须落到**下面的地图**上。
+       所以根节点是 `pointer-events: none`（原来顶部按钮所在处才显式开 auto，
+       2026-10-21 按钮按需求移除后，整层没有任何吃事件的元素了）。
        ⚠ 这里**不能**写成根节点 `pointer-events: auto`：透明元素照样参与命中测试，
        整屏铺一个 auto 的 div 会把地图的鼠标事件全部吃掉，表现是
        「地图拖不动、滚轮不缩放」，而提示文案却还写着「地图可以自由拖动与缩放」。
        （这是本项目 README 第 3 条踩坑的同一个道理，只是方向相反：
        那边是「浮层要吃事件必须显式开」，这边是「整屏浮层必须显式关」。）
 
-    4. **绘制功能尚未接（需求明确「先不做，把方法预留」）**
-       绘制入口在 drawTools 里：现在是一个**空实现**的占位对象，
-       每个方法只写日志并抛一条 toast，不碰 Cesium。
-       接入时的落点也写在那里（draw-geometric / draw-graph 等插件组件）。
+    4. **绘制引擎在 views/screen/drawPolygon.js，本层只管会话与回传**
+       start() 里调 startDraw(window.viewer, ...)，引擎自己处理加点 / 橡皮筋 /
+       双击 / 右键。引擎报 finish 事件时本层**立即** stop 并 $emit('done', geometry)
+       —— 没有按钮，「双击或右键」就是回传的唯一出口（Esc 是取消）。
+       ★ 双击的事件类型在本定制构建里叫 LEFT_DOUBLE_CLICK（老版名字），
+         引擎里已做两个名字的兜底，见 drawPolygon.js 的 FINISH_DOUBLE_CLICK。
 
     用法（只在 views/screen/index.vue 里渲染一次，慎增第二处）：
       <screen-pick-stage
@@ -53,40 +62,8 @@
         @done="handlePickDone"
       />
   -->
-  <div class="pick-stage" role="region" aria-label="选取地块">
-    <!--
-      按钮背后的一小块柔光：让按钮在任何底图上都读得清。
-      ★ 2026-10 起它**只盖住按钮那一小块**（原来是从视口最上沿拉满整宽的渐变）——
-        页面不再隐藏后，整宽渐变会把露出来的顶栏也一起压暗，看起来像界面出了问题。
-      仍然不拦截鼠标（地图要能拖）。
-    -->
-    <div class="pick-stage__scrim" aria-hidden="true" />
-    <!-- ===== 页面上方中间的两个按钮（下移到顶栏之下，不压导航） ===== -->
-    <div class="pick-stage__actions">
-      <screen-button
-        class="pick-stage__action is-cancel"
-        type="default"
-        size="lg"
-        icon="close"
-        aria-label="取消选择"
-        @click="handleCancel"
-      >
-        取消选择
-      </screen-button>
-
-      <screen-button
-        class="pick-stage__action is-done"
-        type="primary"
-        size="lg"
-        icon="check"
-        aria-label="选择完成"
-        @click="handleDone"
-      >
-        选择完成
-      </screen-button>
-    </div>
-
-    <!-- 一句话说明：用户从表单跳进来，需要知道「现在在选什么、怎么回去」 -->
+  <div class="pick-stage" role="region" aria-label="添加地块">
+    <!-- 一句话说明：用户从表单跳进来，需要知道「现在在做什么、怎么结束、怎么回去」 -->
     <p class="pick-stage__hint">
       <screen-icon name="info" :size="14" />
       {{ hintText }}
@@ -95,82 +72,101 @@
     <!-- 地图没起来时的兜底提示（?map=0 预览、或 Cesium 初始化失败） -->
     <p v-if="!mapReady" class="pick-stage__notice" role="status">
       <screen-icon name="alert-triangle" :size="14" />
-      地图尚未加载，当前只显示选取界面。地图服务不可用时请用 ?map=0 预览界面，
+      地图尚未加载，无法绘制地块。地图服务不可用时请用 ?map=0 预览界面，
       接入真实地图后这里会显示下方的三维地图。
     </p>
   </div>
 </template>
 
 <script>
-import ScreenButton from './ScreenButton.vue'
 import ScreenIcon from './ScreenIcon.vue'
 import { toast } from './toast'
+import { startDraw } from '@/views/screen/drawPolygon'
+import { show as showDkPreview } from '@/views/screen/previewPolygon'
 
 /** 各发起方的兜底提示文案（title 为空时用） */
 const HINT_BY_SOURCE = {
-  land: '正在选取经营性用地地块：可先把表单窗口拖到一边，再在地图上操作',
-  facility: '正在选取配套项目地块：可先把表单窗口拖到一边，再在地图上操作'
+  land: '正在添加经营性用地地块：左键加点，双击或右键结束，Esc 取消',
+  facility: '正在添加配套项目地块：左键加点，双击或右键结束，Esc 取消'
 }
 
 /**
- * 地图绘制工具 —— **占位实现**（需求：绘制功能先不做，只把方法预留）。
+ * 地图绘制工具 —— 真实实现（引擎在 views/screen/drawPolygon.js）。
  *
- * 现在每个方法只提示「尚未开放」，不调用任何 Cesium / stargis-function 接口，
- * 因此点按钮不会把界面搞坏。后续接入时按下面三步做，**不用改组件其余部分**：
+ * 本对象只做三件事：
+ *   · start()：拿全局 window.viewer 启动绘制（viewer 不存在 = Cesium 没起来，toast 兜底）；
+ *   · stop()：停引擎、清工作实体（结束 / 取消 / 覆盖层卸载都要调，必须幂等）；
+ *   · getGeometry()：取当前图形 —— 顶点 ≥3 就当场收口返回 { geojson, vertexCount }
+ *     （不要求引擎已定格过），不足 3 个点返回 null。
  *
- *   ① 把绘制引擎挂进覆盖层（与 views/screen/map/index.vue 借用
- *      <query-pick ref="pickEngine" v-show="false" /> 的写法一致）：
- *        <draw-geometric v-show="false" ref="drawGeometric" />
- *      这些组件由 stargis-function 全局注册（见 src/main.js 的 Vue.use(StargisFunction)），
- *      直接写标签即可，不必 import。
- *   ② 在 start() 里调用它的激活方法（btnClick() / controlChecked()，
- *      不同插件方法名不同，参考 views/maps/components/Common/HomeCommonFooter.vue 的 cancelAll）。
- *      同时**必须**把 this.active 置为 true（见 start() 里的 TODO）。
- *   ③ 绘制结束时把图形交回去。★ 这里有个容易写错的地方：
- *      drawTools 是**普通对象**（createDrawTools 返回的字面量），
- *      `this` 指向它自己，**没有 `$emit`** —— 在 stop() 里写
- *      `this.$emit('done', geometry)` 会直接抛 "this.$emit is not a function"。
- *      正确做法是用闭包里的组件实例 vm：
- *        · 由按钮触发完成（handleDone）→ getGeometry() 返回图形即可，无需 emit；
- *        · 由插件异步画完（没有按钮点击）→ 在插件回调里调 vm.$emit('done', geometry)，
- *          并保证 handleDone 不会重复 emit（两者要有一处幂等）。
- *      geometry 建议是 GeoJSON 字符串 + 面积（与 t_land / t_supporting_facilities
- *      将来要存的字段对齐；**字段落库属于后端改动，本次不涉及**）。
+ * ★ 回传表单的唯一出口：引擎报 **finish（双击/右键结束）** 时，把成品面转交给
+ *   previewPolygon.js 常驻预览层（画完的面**留在地图上**，跟着表单会话走，
+ *   提交成功 / 取消关闭 / 重画 / 清除时才由表单清掉），然后停引擎、
+ *   vm.$emit('done', geometry)。Esc 走 cancel（见 handleCancel / mounted 捕获监听）。
+ *   ★ 绘制中不弹任何提示（2026-10-21 用户要求），引擎只在 finish 时回调。
+ *   ★ 双击的事件类型在本定制构建里叫 LEFT_DOUBLE_CLICK（老版名字），
+ *     引擎里已做两个名字的兜底，见 drawPolygon.js 的 FINISH_DOUBLE_CLICK。
  */
 function createDrawTools (vm) {
-  return {
-    /** 绘制是否已激活（接入后由插件的 checked 同步） */
+  /** 先赋给局部变量再返回，onFinish 回调里才能拿到这个对象自身 */
+  const tools = {
+    /** 绘制是否已激活（start 成功后为 true） */
     active: false,
+
+    /** 绘制句柄（startDraw 的返回值）；未启动时为 null */
+    handle: null,
 
     /**
      * 激活绘制模式。
-     * @returns {boolean} 是否真的开始绘制（占位实现恒为 false）
+     * @returns {boolean} 是否真的开始绘制（地图没起来时为 false）
      */
     start () {
-      vm.notifyDrawPending('开始绘制')
-      // ⚠ TODO（接入绘制时必改）：这里要置 this.active = true，
-      //   否则 stop() 第一行就 return，插件的监听永远停不掉。
-      //   占位实现刻意保持 false —— 「没有开始过」比「假装开始过」诚实。
-      return false
+      if (this.active) return true
+      const viewer = window.viewer
+      if (!viewer || !window.Cesium) {
+        vm.notifyDrawUnavailable()
+        return false
+      }
+      this.handle = startDraw(viewer, {
+        onFinish: () => {
+          // 双击 / 右键结束 = 完成。① 成品面转交常驻预览层（不随引擎销毁）；
+          // ② 停引擎回收工作实体；③ 图形抛回表单。引擎只在 ≥3 点时报 finish，
+          // geometry 必非空。
+          const geometry = tools.getGeometry()
+          if (geometry && geometry.geojson) showDkPreview(geometry.geojson)
+          tools.stop()
+          vm.$emit('done', geometry)
+        }
+      })
+      this.active = true
+      return true
     },
 
-    /** 结束绘制（取消选择 / 选择完成都会调用，必须幂等） */
+    /** 结束绘制（完成 / 取消 / 组件卸载都会调用，必须幂等） */
     stop () {
       if (!this.active) return
       this.active = false
-      // 接入后在这里调用插件的 cancelChecked()，并清掉未完成的临时图形
+      if (this.handle) {
+        this.handle.stop()
+        this.handle = null
+      }
     },
 
-    /** 取当前画好的图形；没有画时返回 null（表单收到 null 会保留字段原值） */
+    /**
+     * 取当前图形。
+     * @returns {({geojson: string, vertexCount: number}|null)}
+     *   null = 没有画出一个有效多边形（表单收到 null 会保留字段原值）
+     */
     getGeometry () {
-      return null
+      return this.handle ? this.handle.getGeoJSON() : null
     }
   }
+  return tools
 }
 
 export default {
   name: 'ScreenPickStage',
-  components: { ScreenButton, ScreenIcon },
+  components: { ScreenIcon },
   props: {
     /**
      * 下方真实地图此刻是否可用。
@@ -189,7 +185,7 @@ export default {
   },
   data () {
     return {
-      /** 绘制工具（占位实现，见 createDrawTools 的说明） */
+      /** 绘制工具（真实实现，见 createDrawTools 的说明） */
       drawTools: null,
       /** Esc 的 keydown 处理器引用，便于销毁时精确移除 */
       escHandler: null
@@ -198,7 +194,7 @@ export default {
   computed: {
     hintText () {
       if (this.title) return this.title
-      return HINT_BY_SOURCE[this.source] || '正在选取地块：可先把表单窗口拖到一边，再在地图上操作'
+      return HINT_BY_SOURCE[this.source] || '正在添加地块：左键加点；双击 / 右键或点「完成绘制」结束'
     }
   },
   created () {
@@ -225,16 +221,16 @@ export default {
     document.body.appendChild(this.$el)
 
     /*
-     * Esc = 取消选择。
-     * 为什么用 window 监听而不是给本层加 @keydown：本层里两个按钮才是可聚焦元素，
-     * 用户点完按钮焦点未必还在本层内（选取时要操作地图，焦点本来就常在地图上），
+     * Esc = 取消绘制（不带走任何图形）。
+     * 为什么用 window 监听而不是给本层加 @keydown：本层现在没有任何可聚焦元素
+     * （按钮已按需求移除），焦点本来就常在地图或表单弹窗里，
      * 键盘用户按 Esc 会「没反应」。
      * ★★ 必须用**捕获阶段**（第三个参数 true）：下面那张表单弹窗（ScreenModal）的
-     *    Escape 处理挂在它自己的 dialog 元素上。进入选取模式后弹窗**仍然可见**
+     *    Escape 处理挂在它自己的 dialog 元素上。进入绘制模式后弹窗**仍然可见**
      *    （2026-10 起不再隐藏），焦点很可能就在弹窗里某个输入框上，
      *    事件从弹窗冒泡到 window，**弹窗的 @keydown 会先跑** ——
-     *    结果就是「按 Esc 想取消选择，却把整张填了一半的表单一起关掉」。
-     *    在捕获阶段先拦下来，可以保证 Esc 只作用于选取模式。
+     *    结果就是「按 Esc 想取消绘制，却把整张填了一半的表单一起关掉」。
+     *    在捕获阶段先拦下来，可以保证 Esc 只作用于绘制模式。
      *    同时用 preventDefault 阻断浏览器默认行为，stopPropagation 阻断后续所有监听。
      */
     this.escHandler = (event) => {
@@ -246,8 +242,10 @@ export default {
     window.addEventListener('keydown', this.escHandler, true)
 
     /*
-     * 绘制引擎按需激活（占位实现里只弹提示）。
-     * 放在 mounted 而不是 created：接入真实插件后要等 DOM 就绪才能拿 ref。
+     * 绘制引擎立即激活（进本层就是为了画面，不用等用户再点什么）。
+     * 放在 mounted 而不是 created：要等 window.viewer 可用性判定，
+     * 且引擎要往 Cesium canvas 上挂监听，DOM 必须就绪。
+     * 地图没起来时 start() 只会 toast 兜底，本层 UI 照常显示（见 !mapReady 提示）。
      */
     this.drawTools.start()
   },
@@ -268,34 +266,17 @@ export default {
     if (this.drawTools) this.drawTools.stop()
   },
   methods: {
-    /** 取消选择：不带走任何图形，只把控制权还给表单 */
+    /** Esc 取消：不带走任何图形，只把控制权还给表单（window 捕获监听触发） */
     handleCancel () {
       if (this.drawTools) this.drawTools.stop()
       this.$emit('cancel')
     },
 
     /**
-     * 选择完成：把画好的图形抛回表单。
-     * ★ 本期绘制尚未接入，getGeometry() 恒为 null —— 表单收到 null 时**保留字段原值**，
-     *   所以现在点「选择完成」等价于「关掉这张地图并回到表单」，
-     *   不会有半个坐标被写进模型里。接入绘制后这里改成抛真实图形即可。
+     * 地图不可用时的统一提示（window.viewer 不存在 = Cesium 没起来）。
      */
-    handleDone () {
-      const geometry = this.drawTools ? this.drawTools.getGeometry() : null
-      if (this.drawTools) this.drawTools.stop()
-      if (!geometry) {
-        // 明确告诉用户「没画东西 = 没写回字段」，避免以为是静默失败了
-        toast.info('尚未绘制地块，本次没有写回任何字段')
-      }
-      this.$emit('done', geometry)
-    },
-
-    /**
-     * 绘制功能未接入时的统一提示（占位实现专用）。
-     * @param {string} action 用户刚做的动作，用于把提示说清楚
-     */
-    notifyDrawPending (action) {
-      toast.info(`地图绘制选取功能尚未开放（${action}），当前可拖动、缩放地图查看地块`)
+    notifyDrawUnavailable () {
+      toast.warning('地图尚未加载，无法添加地块；请确认地图服务可用后重试')
     }
   }
 }
@@ -312,9 +293,9 @@ export default {
   z-index: 1250;
   // ★ 刻意不设 background：下面就是真实地图，本层的任务就是「让地图露出来」。
   //   也刻意不加 backdrop-filter（整屏模糊在没有硬件加速时会掉到 100ms+，见 screen-mixins.less）。
-  // ★★ 整屏 pointer-events: none —— 鼠标事件必须穿到下面的地图上（拖动 / 缩放 / 后续绘制）。
+  // ★★ 整屏 pointer-events: none —— 鼠标事件必须穿到下面的地图上（拖动 / 缩放 / 绘制）。
   //    透明元素同样参与命中测试，这里写成 auto 会把地图彻底挡死。
-  //    两个按钮自己声明 auto（见 &__action），所以依旧可点。
+  //    （原来只有顶部按钮显式开 auto，按钮移除后整层没有任何吃事件的元素。）
   pointer-events: none;
   // 显式声明可见：本层挂在 body 上，不依赖任何父级；将来若有人给 body 加
   // 「隐藏浮层」的全局规则（2026-10 之前确实有过 body.is-picking-map），这一行能保住本层。
@@ -322,73 +303,19 @@ export default {
   overflow: hidden;
 
   /*
-   * 按钮背后的柔光：保证按钮在亮底图上也有对比度；不挡鼠标，地图仍可拖动。
-   * ★ 只覆盖按钮那一小块（约 640×160 的椭圆），**不是**整宽渐变 ——
-   *   页面不再隐藏后，整宽渐变会把露出来的顶栏也压暗，像界面坏了。
-   * ★ 本层挂在 body 上、不在缩放画布内（见 mounted），所以这里的 px 是真实像素。
+   * 本层不再有按钮（2026-10-21 需求：纯 GIS 操作，双击/右键结束），
+   * 因此没有 __scrim / __actions —— 按钮那套样式连同「按钮柔光」一起回收。
+   * 根节点保持 pointer-events: none + 无背景，下面就是真实地图（见头注释 2、3）。
+   * ★ 本层挂在 body 上、不在缩放画布内（见 mounted），这里的 px 是真实像素。
    */
-  &__scrim {
-    position: absolute;
-    left: 50%;
-    top: 126px;
-    transform: translateX(-50%);
-    width: 640px;
-    height: 168px;
-    pointer-events: none;
-    background: radial-gradient(
-      closest-side,
-      rgba(1, 6, 18, 0.7) 0%,
-      rgba(1, 6, 18, 0.42) 58%,
-      rgba(1, 6, 18, 0) 100%
-    );
-  }
 
-  /* ---------------- 上方中间的两个按钮 ---------------- */
-  &__actions {
-    position: absolute;
-    left: 50%;
-    /*
-     * ★ 2026-10：本层不再隐藏页面，按钮**不能**再贴视口最上沿（原来 top: 24px），
-     *   那会正好压在顶栏的导航菜单上。
-     *   顶栏在设计画布里高 128px；本层是未缩放的真实像素层，而画布缩放 k ≤ 1，
-     *   所以顶栏的真实下沿 ≤ 128px，取 150px 在任何常见视口下都留有余量。
-     *   （实测 1894×987：k=0.914，顶栏下沿 117px。）
-     */
-    top: 150px;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: var(--screen-space-4);
-    // 容器本身不占事件，避免两按钮之间的空隙吃掉地图拖动
-    pointer-events: none;
-  }
-
-  &__action {
-    // 需求要求「明显」：比常规按钮更高更宽、字更大更粗、带辉光。
-    // ★ 只加尺寸与阴影，不改 ScreenButton 的类型色（primary / default 语义不变）
-    min-width: 168px;
-    height: 54px;
-    padding: 0 28px;
-    font-size: var(--screen-font-lg);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    border-radius: var(--screen-radius-lg);
-    box-shadow: var(--screen-shadow);
-    // 两个按钮必须自己收事件（父级的 pointer-events: none 会传下来）
-    pointer-events: auto;
-
-    &.is-done {
-      // 主按钮的渐变来自 ScreenButton，这里只补一层辉光把它顶起来
-      box-shadow: var(--screen-shadow), 0 0 18px var(--screen-accent-glow);
-    }
-  }
-
-  /* ---------------- 说明了什么 / 没起来的地图 ---------------- */
+  /* ---------------- 一句话说明（怎么加点、怎么结束、怎么取消） ---------------- */
   &__hint {
     position: absolute;
     left: 50%;
-    // 跟着按钮一起下移：按钮 150 + 高 54，这里留 12px 间距
-    top: 216px;
+    // 顶栏在设计画布里高 128px（本层是未缩放的真实像素层，顶栏真实下沿 ≤128px），
+    // 取 150px 与原按钮区同一条安全线，不压导航又足够显眼
+    top: 150px;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
@@ -430,14 +357,8 @@ export default {
   }
 }
 
-// 窄屏（约 <900px）两个按钮会挤到一起，允许换行并收窄
+// 窄屏（约 <900px）提示条太长，允许换行
 @media (max-width: 900px) {
-  .pick-stage__action {
-    min-width: 132px;
-    padding: 0 18px;
-    font-size: var(--screen-font-md);
-  }
-
   .pick-stage__hint {
     max-width: 92vw;
     white-space: normal;

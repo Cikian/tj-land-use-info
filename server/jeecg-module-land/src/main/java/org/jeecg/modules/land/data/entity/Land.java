@@ -138,6 +138,14 @@ public class Land implements Serializable {
     private String crzdtxsj;
 
     /**
+     * 地块图形（GeoJSON）。
+     * 大屏表单「添加地块」在地图上画出的多边形，裸 Polygon geometry 字符串
+     * （{@code {"type":"Polygon","coordinates":[[[lon,lat],…]]}}，WGS84 经纬度、首尾闭合）。
+     * 与 {@link #crzdtxsj}（「是否已有 shp」的是/否标志）语义不同：本列存的是图形本身。
+     */
+    private String dkGeojson;
+
+    /**
      * 录入单位简称。
      * 旧字段名 {@code xzqh2}（注释写「行政区划2」）与实际内容（录入单位简称）不符，
      * 设计文档 3.0-9 记为数据质量问题；这里保留列名、修正注释，不再当作行政区划使用。
