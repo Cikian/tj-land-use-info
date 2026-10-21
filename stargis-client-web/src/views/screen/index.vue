@@ -123,6 +123,18 @@
     -->
     <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" />
 
+    <!--
+      ===== 查询统计：整页模块（左二级导航 + 条件/分析结果/结果表） =====
+      ★ 与数据管理同理**不加 stage-hit**：结果表里常要照着地图核编号，
+        容器保持 pointer-events: none，交互由 query/index.vue 自己开启。
+    -->
+    <query-screen
+      v-else-if="activeMenu === 'query'"
+      ref="query"
+      class="land-screen__module"
+      :default-tab="queryTab"
+    />
+
     <!-- ===== 首页工作台 ===== -->
     <!--
       ★ 这三块首页面板同样要参与「选取模式下隐藏」：它们是不透明面板，
@@ -169,6 +181,7 @@ import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
 import HomePlotModal from './home/HomePlotModal.vue'
+import QueryScreen from './query/index.vue'
 import { ScreenHeader, ScreenPickStage, ScreenStage } from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import { queryFacilityDashboard, queryLandDashboard, queryWarningDetail } from '@/api/land/landData'
@@ -235,9 +248,10 @@ function emptyPlotWarning () {
  *   data    数据管理（经营性用地添加 / 查询）
  *   review  提级论证管理（整页模块：项目录入 / 查询统计 / 资料及台账管理 / 提级论证审批）
  *   map     地图管理（静态页面：左工具箱 / 右拾取查询 / 底部属性条，工具未接功能）
+ *   query   查询统计（方案 2.3.1（五）：经营性用地查询 / 用地配套项目查询 / 查询导出）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map']
+const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map', 'query']
 
 /** 档案页允许直接落到某个页签：/screen/archive?tab=doc
  *  ledger / handover / completion = 方案 2.3.2 第 7 / 6 / 8 项（道路验收移交台账、
@@ -258,6 +272,12 @@ const REVIEW_TABS = ['entry', 'query', 'ledger', 'audit']
  *   与档案模块 ARCHIVE_TABS 是同一个坑。
  */
 const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachment', 'recycle']
+
+/**
+ * 查询统计页允许直接落到某个页签：/screen/query?tab=facility
+ * （与 src/views/screen/query/constants.js 的 QUERY_TABS 保持一致）
+ */
+const QUERY_TABS = ['land', 'facility', 'advanced']
 
 /**
  * 左面板明细表的列（横向位置见 home/HomeLeftPanel.vue 的 TH_OFFSET）。
@@ -360,6 +380,7 @@ export default {
     DataScreen,
     EscalationScreen,
     MapScreen,
+    QueryScreen,
     ScreenPickStage,
     HomeLeftPanel,
     HomeLayerTree,
@@ -383,6 +404,9 @@ export default {
     } else if (routePath.indexOf('/screen/review') > -1 || routeQuery.menu === 'review') {
       // 提级论证管理：整页模块，内部 4 个页签（?tab=entry|query|ledger|audit）
       initialMenu = 'review'
+    } else if (routePath.indexOf('/screen/query') > -1) {
+      // 查询统计：整页模块，内部 3 个页签（?tab=land|facility|advanced）
+      initialMenu = 'query'
     } else if (routeQuery.menu && IMPLEMENTED_MENUS.indexOf(routeQuery.menu) > -1) {
       initialMenu = routeQuery.menu
     }
@@ -403,6 +427,9 @@ export default {
      */
     const initialDataTab = DATA_TABS.indexOf(routeQuery.tab) > -1 ? routeQuery.tab : 'land'
 
+    /** 查询统计页初始页签（?tab=facility / ?tab=advanced 之类的深链） */
+    const initialQueryTab = QUERY_TABS.indexOf(routeQuery.tab) > -1 ? routeQuery.tab : 'land'
+
     return {
       hf,
       title: systemTitle,
@@ -419,6 +446,8 @@ export default {
 
       /** 档案页初始页签（?tab=doc 之类的深链） */
       archiveTab: initialArchiveTab,
+      /** 查询统计页初始页签 */
+      queryTab: initialQueryTab,
 
       /** 提级论证页初始页签（?tab=audit 之类的深链） */
       reviewTab: initialReviewTab,

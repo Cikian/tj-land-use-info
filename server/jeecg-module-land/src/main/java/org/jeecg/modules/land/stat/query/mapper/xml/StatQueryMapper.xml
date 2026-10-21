@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.stat.query.mapper.StatQueryMapper">
+
+    <!--
+      ==========================================================================
+      查询统计（方案 2.3.1（五）5-01 / 5-02）· 手写 SQL
+      ==========================================================================
+      ★ 三件必须知道的事：
+
+      1) 两张表的软删列名不同（AGENTS.md §3.3）：
+           t_land                  del_flag   tinyint  0/1
+           t_supporting_facilities delFlag    varchar  '0'/'1'
+         `@TableLogic` 只对实体查询生效，本文件全是手写 SQL，所以每条语句都自己带软删条件。
+
+      2) 行政区划一律用 xzqh（不用 xzqh2）：
+         旧系统 getCnd() 拿 xzqh2 做「行政区划」筛选，而 xzqh2 实际内容是
+         「录入单位简称」（见 Land.xzqh2 注释、差异清单 D-604）。新系统照实修正，
+         差异记在 D-609。
+
+      3) 高级查询条件（conds）的列名与比较符是 Service 侧白名单化后的产物，
+         用户输入只以 #{c.value} 形式出现。详见 ResolvedCondition 的类注释。
+
+      口径核对入口：docs/查询统计-实现说明.md 的「口径对照表」一节。
+    -->
+
+    <!-- ================================================================
+         一、经营性用地：条件片段
+         ================================================================ -->
+    <sql id="landWhere">
+        l.`del_flag` = 0
+        <!-- 地块名称（多值 OR 模糊） -->
+        <if test="q.dkmc != null and q.dkmc.size() > 0">
+            AND (
+            <foreach collection="q.dkmc" item="v" separator=" OR ">
+                l.`dkmc` LIKE CONCAT('%', #{v}, '%')
+            </foreach>
+            )
+        </if>
+        <!-- 受让人 / 建设单位（多值 OR 模糊） -->
+        <if test="q.srr != null and q.srr.size() > 0">
+            AND (
+            <foreach collection="q.srr" item="v" separator=" OR ">
+                l.`srr` LIKE CONCAT('%', #{v}, '%')
+            </foreach>
+            )
+        </if>
+        <!-- 行政区划（多值精确） -->
+        <if test="q.xzqh != null and q.xzqh.size() > 0">
+            AND l.`xzqh` IN
+            <foreach collection="q.xzqh" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
+        <!-- 出让年份（多值；旧系统是 crsj LIKE '%2025%'，这里用 YEAR() 更准确） -->
+        <if test="q.crsjYears != null and q.crsjYears.size() > 0">
+            AND YEAR(l.`crsj`) IN
+            <foreach collection="q.crsjYears" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
+        <!-- 项目分类 -->
+        <if test="q.xmfl != null and q.xmfl != ''">
+            AND l.`xmfl` = #{q.xmfl}
+        </if>
+        <include refid="advancedWhere"/>
+    </sql>
+
+    <!--
+      高级查询：自由组合条件。
+      ${c.column} / ${c.operator} / ${c.relation} 全部来自 Service 白名单，
+      不含用户输入；值只以 #{c.value} 绑定。第一条不写关系符（旧系统「与或」下拉
+      也是从第二条起才生效）。
+    -->
+    <sql id="advancedWhere">
+        <if test="conds != null and conds.size() > 0">
+            <foreach collection="conds" item="c" index="i" open=" AND (" close=")">
+                <if test="i > 0">${c.relation}</if>
+                <!-- 必须带表别名 l.：selectLandFacilityFacts 里同时有 l 与 f，两边都有 crzdbh -->
+                <choose>
+                    <when test="c.likePattern">
+                        l.`${c.column}` LIKE CONCAT('%', #{c.value}, '%')
+                    </when>
+                    <otherwise>
+                        l.`${c.column}` ${c.operator} #{c.value}
+                    </otherwise>
+                </choose>
+            </foreach>
+        </if>
+    </sql>
+
+    <!-- ================================================================
+         二、经营性用地：查询语句
+         ================================================================ -->
+
+    <select id="countLand" resultType="long">
+        SELECT COUNT(1)
+        FROM `t_land` l
+        WHERE <include refid="landWhere"/>
+    </select>
+
+    <select id="sumLandFee" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(l.`nrcbdptf`), 0)
+        FROM `t_land` l
+        WHERE <include refid="landWhere"/>
+    </select>
+
+    <!--
+      明细行：物理列表在这里集中一次，前端按 columns 取需要的 key。
+      ★ 不用 SELECT * —— 表里有 40 多列，其中「出让宗地图形数据(shp)」「资料缺失说明」等
+        长文本对本页没用，SELECT * 会让一页 20 行的响应变成几百 KB。
+      ★ 排序：crsj 倒序（最近出让在前）+ crzdbh 兜底，避免同一天出让的记录翻页错位
+        （数据管理列表踩过同样的坑，见 LandAdminServiceImpl.queryPage 注释）。
+    -->
+    <select id="selectLandRows" resultType="java.util.LinkedHashMap">
+        SELECT
+            l.`id`            AS id,
+            l.`crzdbh`        AS crzdbh,
+            l.`dkmc`          AS dkmc,
+            l.`xzqh`          AS xzqh,
+            l.`xzqh2`         AS xzqh2,
+            l.`xmfl`          AS xmfl,
+            l.`ghydxz`        AS ghydxz,
+            l.`crj`           AS crj,
+            l.`crsj`          AS crsj,
+            l.`kjsydmj`       AS kjsydmj,
+            l.`zydmj`         AS zydmj,
+            l.`jsmj`          AS jsmj,
+            l.`nrcbdptf`      AS nrcbdptf,
+            l.`wcd`           AS wcd,
+            l.`ptsfqq`        AS ptsfqq,
+            l.`ptjsnr`        AS ptjsnr,
+            l.`srr`           AS srr,
+            l.`htydjfsj`      AS htydjfsj,
+            l.`lpmc`          AS lpmc,
+            l.`lpjfsj`        AS lpjfsj,
+            l.`tdzldw`        AS tdzldw,
+            l.`tdzljhxdwjh`   AS tdzljhxdwjh,
+            l.`tdzljh`        AS tdzljh,
+            l.`dz`            AS dz,
+            l.`xz`            AS xz,
+            l.`nz`            AS nz,
+            l.`bz`            AS bz,
+            l.`ptqkh`         AS ptqkh,
+            l.`ptcbh`         AS ptcbh,
+            l.`zlqsnrsm`      AS zlqsnrsm,
+            l.`lrdw`          AS lrdw,
+            l.`lrr`           AS lrr,
+            l.`lxdh`          AS lxdh,
+            l.`beizhu`        AS beizhu,
+            l.`create_time`   AS createTime
+        FROM `t_land` l
+        WHERE <include refid="landWhere"/>
+        ORDER BY l.`crsj` DESC, l.`crzdbh` ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!--
+      统计事实行：命中宗地下的全部配套（软删已过滤）。
+      「去重 / 漏斗」在 Service 里按旧系统逐行复刻（见 StatQueryServiceImpl）。
+    -->
+    <select id="selectLandFacilityFacts" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.`crzdbh`     AS crzdbh,
+            f.`ptxmmc`     AS ptxmmc,
+            f.`ptsslb`     AS ptsslb,
+            f.`jsxx`       AS jsxx,
+            f.`xjpfsfwc`   AS xjpfsfwc,
+            f.`kypfsfwc`   AS kypfsfwc,
+            f.`csjgspfsfwc` AS csjgspfsfwc,
+            f.`sfkg`       AS sfkg,
+            f.`sfjg`       AS sfjg
+        FROM `t_land` l
+        INNER JOIN `t_supporting_facilities` f ON f.`crzdbh` = l.`crzdbh`
+        WHERE <include refid="landWhere"/>
+          AND COALESCE(f.`delFlag`, '0') = '0'
+    </select>
+
+    <!-- 「地块配套详情」：单宗地下全部配套（点某一行地块时看，不受查询条件影响） -->
+    <select id="selectFacilitiesByLand" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.`crzdbh`      AS crzdbh,
+            f.`ptxmmc`      AS ptxmmc,
+            f.`ptsslb`      AS ptsslb,
+            f.`jsxx`        AS jsxx,
+            f.`dldj`        AS dldj,
+            f.`xzqh`        AS xzqh,
+            f.`jsdw`        AS jsdw,
+            f.`tzgs`        AS tzgs,
+            f.`zjly`        AS zjly,
+            f.`xjpfsfwc`    AS xjpfsfwc,
+            f.`kypfsfwc`    AS kypfsfwc,
+            f.`csjgspfsfwc` AS csjgspfsfwc,
+            f.`zjlsqk`      AS zjlsqk,
+            f.`sfkg`        AS sfkg,
+            f.`sfjg`        AS sfjg,
+            f.`sfyj`        AS sfyj,
+            f.`sjkgsj`      AS sjkgsj,
+            f.`sjjgsj`      AS sjjgsj,
+            f.`gzjy`        AS gzjy
+        FROM `t_supporting_facilities` f
+        WHERE f.`crzdbh` = #{crzdbh}
+          AND COALESCE(f.`delFlag`, '0') = '0'
+        ORDER BY f.`ptxmmc` ASC
+    </select>
+
+    <!-- ================================================================
+         三、配套项目：条件片段与语句
+         ================================================================ -->
+    <sql id="facilityWhere">
+        COALESCE(f.`delFlag`, '0') = '0'
+        <if test="q.ptxmmc != null and q.ptxmmc.size() > 0">
+            AND (
+            <foreach collection="q.ptxmmc" item="v" separator=" OR ">
+                f.`ptxmmc` LIKE CONCAT('%', #{v}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="q.dkmc != null and q.dkmc.size() > 0">
+            AND (
+            <foreach collection="q.dkmc" item="v" separator=" OR ">
+                f.`dkmc` LIKE CONCAT('%', #{v}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="q.xzqh != null and q.xzqh.size() > 0">
+            AND f.`xzqh` IN
+            <foreach collection="q.xzqh" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
+        <if test="q.ptsslb != null and q.ptsslb.size() > 0">
+            AND f.`ptsslb` IN
+            <foreach collection="q.ptsslb" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
+        <if test="q.xmfl != null and q.xmfl != ''">
+            AND f.`xmfl` = #{q.xmfl}
+        </if>
+        <if test="q.jsxx != null and q.jsxx != ''">
+            AND f.`jsxx` = #{q.jsxx}
+        </if>
+        <if test="q.sfkg != null and q.sfkg != ''">
+            AND f.`sfkg` = #{q.sfkg}
+        </if>
+        <if test="q.sfjg != null and q.sfjg != ''">
+            AND f.`sfjg` = #{q.sfjg}
+        </if>
+        <if test="q.sfyj != null and q.sfyj != ''">
+            AND f.`sfyj` = #{q.sfyj}
+        </if>
+        <if test="q.sfzsjtjlz != null and q.sfzsjtjlz != ''">
+            AND f.`sfzsjtjlz` = #{q.sfzsjtjlz}
+        </if>
+        <if test="q.tjlzsftg != null and q.tjlzsftg != ''">
+            AND f.`tjlzsftg` = #{q.tjlzsftg}
+        </if>
+        <if test="q.xjpfsfwc != null and q.xjpfsfwc != ''">
+            AND f.`xjpfsfwc` = #{q.xjpfsfwc}
+        </if>
+        <if test="q.kypfsfwc != null and q.kypfsfwc != ''">
+            AND f.`kypfsfwc` = #{q.kypfsfwc}
+        </if>
+        <if test="q.csjgspfwc != null and q.csjgspfwc != ''">
+            AND f.`csjgspfsfwc` = #{q.csjgspfwc}
+        </if>
+        <if test="q.zjlsqk != null and q.zjlsqk != ''">
+            AND f.`zjlsqk` = #{q.zjlsqk}
+        </if>
+        <include refid="advancedWhereFacility"/>
+    </sql>
+
+    <!-- 配套数据集的高级查询条件（列名为 f.xxx，白名单同样在 Service 侧） -->
+    <sql id="advancedWhereFacility">
+        <if test="conds != null and conds.size() > 0">
+            <foreach collection="conds" item="c" index="i" open=" AND (" close=")">
+                <if test="i > 0">${c.relation}</if>
+                <choose>
+                    <when test="c.likePattern">
+                        f.`${c.column}` LIKE CONCAT('%', #{c.value}, '%')
+                    </when>
+                    <otherwise>
+                        f.`${c.column}` ${c.operator} #{c.value}
+                    </otherwise>
+                </choose>
+            </foreach>
+        </if>
+    </sql>
+
+    <select id="countFacility" resultType="long">
+        SELECT COUNT(1)
+        FROM `t_supporting_facilities` f
+        WHERE <include refid="facilityWhere"/>
+    </select>
+
+    <select id="selectFacilityRows" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.`id`             AS id,
+            f.`crzdbh`         AS crzdbh,
+            f.`ptxmmc`         AS ptxmmc,
+            f.`dkmc`           AS dkmc,
+            f.`ptsslb`         AS ptsslb,
+            f.`xzqh`           AS xzqh,
+            f.`xmfl`           AS xmfl,
+            f.`jsxx`           AS jsxx,
+            f.`dldj`           AS dldj,
+            f.`sfzsjtjlz`      AS sfzsjtjlz,
+            f.`tjlzsftg`       AS tjlzsftg,
+            f.`ghhxkd`         AS ghhxkd,
+            f.`cd`             AS cd,
+            f.`tzgs`           AS tzgs,
+            f.`zjly`           AS zjly,
+            f.`dkcrscndptjgsj` AS dkcrscndptjgsj,
+            f.`jsdw`           AS jsdw,
+            f.`sjdw`           AS sjdw,
+            f.`kcdw`           AS kcdw,
+            f.`jldw`           AS jldw,
+            f.`sgdw`           AS sgdw,
+            f.`jsgydw`         AS jsgydw,
+            f.`xjpfsfwc`       AS xjpfsfwc,
+            f.`kypfsfwc`       AS kypfsfwc,
+            f.`csjgspfsfwc`    AS csjgspfsfwc,
+            f.`gspfje`         AS gspfje,
+            f.`zjlsqk`         AS zjlsqk,
+            f.`sfkg`           AS sfkg,
+            f.`yjkgsj`         AS yjkgsj,
+            f.`sjkgsj`         AS sjkgsj,
+            f.`sfjg`           AS sfjg,
+            f.`yjjgsj`         AS yjjgsj,
+            f.`sjjgsj`         AS sjjgsj,
+            f.`sfyj`           AS sfyj,
+            f.`jtwt`           AS jtwt,
+            f.`gzjy`           AS gzjy,
+            f.`zlqsnrjsm`      AS zlqsnrjsm,
+            f.`bz`             AS bz,
+            f.`lrdw`           AS lrdw,
+            f.`lrr`            AS lrr,
+            f.`lxdh`           AS lxdh,
+            f.`createTime`     AS createTime
+        FROM `t_supporting_facilities` f
+        WHERE <include refid="facilityWhere"/>
+        ORDER BY f.`crzdbh` ASC, f.`ptxmmc` ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!--
+      配套口径指标（一次聚合）：
+      · landTotal         = COUNT(DISTINCT crzdbh) 涉及宗地数
+      · facilityTotal     = 命中配套条数（不去重：配套项目本身就是统计对象）
+      · facilityNameBlank = 配套项目名称为空的条数（高保真「配套项目名称为空」）
+      · 各环节 = 该字段为「是」的条数
+      ★ 与 land 口径（去重 + 漏斗）不是同一套，两者不可互相校验，详见 VO 注释。
+    -->
+    <select id="selectFacilitySummary" resultType="java.util.LinkedHashMap">
+        SELECT
+            COUNT(DISTINCT f.`crzdbh`) AS landTotal,
+            COUNT(1) AS facilityTotal,
+            COALESCE(SUM(CASE WHEN f.`ptxmmc` IS NULL OR TRIM(f.`ptxmmc`) = '' THEN 1 ELSE 0 END), 0) AS facilityNameBlank,
+            COALESCE(SUM(CASE WHEN f.`ptsslb` = '道路' AND f.`jsxx` = '新建' THEN 1 ELSE 0 END), 0) AS newRoadCount,
+            COALESCE(SUM(CASE WHEN f.`xjpfsfwc` = '是' THEN 1 ELSE 0 END), 0) AS approvedCount,
+            COALESCE(SUM(CASE WHEN f.`kypfsfwc` = '是' THEN 1 ELSE 0 END), 0) AS feasibilityCount,
+            COALESCE(SUM(CASE WHEN f.`csjgspfsfwc` = '是' THEN 1 ELSE 0 END), 0) AS designCount,
+            COALESCE(SUM(CASE WHEN f.`sfkg` = '是' THEN 1 ELSE 0 END), 0) AS startedCount,
+            COALESCE(SUM(CASE WHEN f.`sfjg` = '是' THEN 1 ELSE 0 END), 0) AS completedCount,
+            COALESCE(SUM(CASE WHEN f.`sfyj` = '是' THEN 1 ELSE 0 END), 0) AS handedOverCount
+        FROM `t_supporting_facilities` f
+        WHERE <include refid="facilityWhere"/>
+    </select>
+
+    <!-- ================================================================
+         四、下拉候选值
+         ================================================================ -->
+
+    <select id="selectLandDkmcOptions" resultType="string">
+        SELECT DISTINCT l.`dkmc` FROM `t_land` l
+        WHERE l.`del_flag` = 0 AND l.`dkmc` IS NOT NULL AND TRIM(l.`dkmc`) != ''
+        ORDER BY l.`dkmc` ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectLandXzqhOptions" resultType="string">
+        SELECT DISTINCT l.`xzqh` FROM `t_land` l
+        WHERE l.`del_flag` = 0 AND l.`xzqh` IS NOT NULL AND TRIM(l.`xzqh`) != ''
+        ORDER BY l.`xzqh` ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectLandSrrOptions" resultType="string">
+        SELECT DISTINCT l.`srr` FROM `t_land` l
+        WHERE l.`del_flag` = 0 AND l.`srr` IS NOT NULL AND TRIM(l.`srr`) != ''
+        ORDER BY l.`srr` ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectLandCrsjYears" resultType="string">
+        SELECT DISTINCT YEAR(l.`crsj`) AS y FROM `t_land` l
+        WHERE l.`del_flag` = 0 AND l.`crsj` IS NOT NULL
+        ORDER BY y DESC LIMIT #{limit}
+    </select>
+
+    <select id="selectFacilityPtxmmcOptions" resultType="string">
+        SELECT DISTINCT f.`ptxmmc` FROM `t_supporting_facilities` f
+        WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`ptxmmc` IS NOT NULL AND TRIM(f.`ptxmmc`) != ''
+        ORDER BY f.`ptxmmc` ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectFacilityPtsslbOptions" resultType="string">
+        SELECT DISTINCT f.`ptsslb` FROM `t_supporting_facilities` f
+        WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`ptsslb` IS NOT NULL AND TRIM(f.`ptsslb`) != ''
+        ORDER BY f.`ptsslb` ASC LIMIT #{limit}
+    </select>
+
+    <select id="selectFacilityXzqhOptions" resultType="string">
+        SELECT DISTINCT f.`xzqh` FROM `t_supporting_facilities` f
+        WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`xzqh` IS NOT NULL AND TRIM(f.`xzqh`) != ''
+        ORDER BY f.`xzqh` ASC LIMIT #{limit}
+    </select>
+
+</mapper>
