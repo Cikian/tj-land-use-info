@@ -1,6 +1,21 @@
 <template>
   <!--
-    MapToolPanel 地图管理页左面板
+    MapToolPanel 地图管理页左面板「工具箱」（高保真还原）
+    ==================================================================
+    定尺取自高保真模型 地图管理.html：
+      标题装饰 大标题-左_u21.png   (9, 95)    420×46
+      标题文字 地图管理             (83, 100)  18px #FFFFFF
+      面板底   bg-模块-左_u23.png  (30, 149)  400×881
+      工具卡片 110×128，三列（x=50/175/300）、六行（y=179 起步进 139）：
+        卡片底   tool-card.png / 选中 tool-card-active.png
+        图标     68×54，卡片内 (18, 11)
+        文字     14px 居中，卡片内 y=82；普通 #82C6FF / 选中 #FFFFFF
+
+    卡片选中态分两类：
+      · WIRED_KEYS 里的工具（已接入插件/面板）——选中态由父容器的
+        activeTool 统一决定（插件引擎可能被其它工具经总线间接取消），
+        点击统一 emit('toggle-tool', key) 交给父组件分发；
+      · 其余（如高清出图）——本地高亮，点击 emit('toggle-hd') 由父组件提示。
   -->
   <div class="map-tools">
     <!-- 面板标题 -->
@@ -36,27 +51,27 @@ const CARD_LEFT = [20, 145, 270]
 const CARD_TOP = 30
 const CARD_PITCH = 139
 
+/** 已接入插件/面板的工具 key：卡片选中态跟随父容器的 activeTool */
+const WIRED_KEYS = [
+  'pick', 'locateName', 'locateRoad', 'querySpatial', 'queryAttr',
+  'queryCombined', 'statistics', 'measureLine', 'measureHorizontal',
+  'measureVertical', 'measureArea', 'bookmark', 'tour', 'hdExport',
+  'terrainHeight', 'underground', 'layers', 'terrainAlpha',
+]
+
 export default {
   name: 'MapToolPanel',
   props: {
     /**
-     * 「拾取查询」「地名定位」「道路定位」是否处于激活态。
-     * 与其余 15 个未接功能的工具不同，这三个工具的选中态由页面容器
-     * 统一管理（拾取跟随插件引擎开关，还可能被其它工具经总线间接取消），
-     * 所以由父组件传入而不是本地维护。
+     * 当前激活的工具 key（'' = 无）。
+     * 已接入工具的选中态全部由父容器统一管理，本地不再维护。
      */
-    pickActive: { type: Boolean, default: false },
-    placeActive: { type: Boolean, default: false },
-    roadActive: { type: Boolean, default: false },
-    spatialActive: { type: Boolean, default: false },
-    attrActive: { type: Boolean, default: false },
-    compActive: { type: Boolean, default: false },
-    statActive: { type: Boolean, default: false },
+    activeTool: { type: String, default: '' },
   },
   data () {
     return {
       hf,
-      /** 本地选中：只服务尚未接功能的 11 个工具（默认无选中） */
+      /** 本地选中：全部 18 个工具均已接入，选中态由父容器统一管理 */
       activeIndex: -1,
       /** 18 个工具，按设计稿行优先排列；icon 用 hf 里的 key 动态取 */
       tools: [
@@ -83,49 +98,13 @@ export default {
   },
   methods: {
     isCardActive (index, tool) {
-      if (tool.key === 'pick') return this.pickActive
-      if (tool.key === 'locateName') return this.placeActive
-      if (tool.key === 'locateRoad') return this.roadActive
-      if (tool.key === 'querySpatial') return this.spatialActive
-      if (tool.key === 'queryAttr') return this.attrActive
-      if (tool.key === 'queryCombined') return this.compActive
-      if (tool.key === 'statistics') return this.statActive
+      if (WIRED_KEYS.indexOf(tool.key) > -1) return tool.key === this.activeTool
       return index === this.activeIndex
     },
     handleCardClick (index, tool) {
-      if (tool.key === 'pick') {
-        // 拾取查询：交给父组件去切换 stargis-function 的拾取引擎
-        this.$emit('toggle-pick')
-        return
-      }
-      if (tool.key === 'locateName') {
-        // 地名定位：交给父组件切换右侧的地名定位面板
-        this.$emit('toggle-place')
-        return
-      }
-      if (tool.key === 'locateRoad') {
-        // 道路定位：交给父组件切换插件道路定位弹窗
-        this.$emit('toggle-road')
-        return
-      }
-      if (tool.key === 'querySpatial') {
-        // 空间查询：交给父组件切换插件空间查询面板
-        this.$emit('toggle-spatial')
-        return
-      }
-      if (tool.key === 'queryAttr') {
-        // 属性查询：交给父组件切换插件属性查询面板
-        this.$emit('toggle-attr')
-        return
-      }
-      if (tool.key === 'queryCombined') {
-        // 综合查询：交给父组件切换插件综合查询面板
-        this.$emit('toggle-comp')
-        return
-      }
-      if (tool.key === 'statistics') {
-        // 综合统计：交给父组件切换插件综合统计面板
-        this.$emit('toggle-stat')
+      if (WIRED_KEYS.indexOf(tool.key) > -1) {
+        // 已接入工具：统一交给父组件按 key 分发
+        this.$emit('toggle-tool', tool.key)
         return
       }
       this.activeIndex = index

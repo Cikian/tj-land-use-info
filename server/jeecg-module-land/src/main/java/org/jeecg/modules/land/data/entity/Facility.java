@@ -211,6 +211,13 @@ public class Facility implements Serializable {
     /** 备注 */
     private String bz;
 
+    /**
+     * 地块图形（GeoJSON）。
+     * 大屏表单「添加地块」在地图上画出的多边形，裸 Polygon geometry 字符串
+     * （{@code {"type":"Polygon","coordinates":[[[lon,lat],…]]}}，WGS84 经纬度、首尾闭合）。
+     */
+    private String dkGeojson;
+
     /** 录入单位 */
     private String lrdw;
 

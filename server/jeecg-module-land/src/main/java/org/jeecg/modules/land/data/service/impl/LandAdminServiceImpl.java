@@ -92,6 +92,21 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
     // 一、查询
     // ==================================================================
 
+    /**
+     * 全部有地块图形的宗地（轻量列）。
+     * ★ 只取 id / crzdbh / dkmc / dk_geojson 四列：进菜单时一次拉全量铺地图，
+     *   带 34 列全实体会白白传输几百 KB；isNotNull + ne('') 过滤掉没画过图的行。
+     *   软删行由 @TableLogic 自动排除。
+     */
+    @Override
+    public List<Land> queryGeoList() {
+        QueryWrapper<Land> wrapper = new QueryWrapper<>();
+        wrapper.select("id", "crzdbh", "dkmc", "dk_geojson")
+                .isNotNull("dk_geojson")
+                .ne("dk_geojson", "");
+        return baseMapper.selectList(wrapper);
+    }
+
     @Override
     public IPage<Land> queryPage(LandAdminQueryDTO query) {
         LandAdminQueryDTO condition = query == null ? new LandAdminQueryDTO() : query;
@@ -490,6 +505,15 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         land.setPtqkh(DataSupport.cleanAndCap(dto.getPtqkh(), 100));
         land.setPtcbh(DataSupport.cleanAndCap(dto.getPtcbh(), 100));
         land.setCrzdtxsj(DataSupport.cleanAndCap(dto.getCrzdtxsj(), 100));
+        // dkGeojson（地块图形 GeoJSON）特殊处理，**不能**像上面那样把空串 clean 成 null：
+        //   · JSON 里没带这个字段（后台编辑、Excel 导入）→ 反序列化后是 null；
+        //   · 大屏表单点「清除图形」→ 前端显式传空串。
+        // 编辑路径靠 updateById 的 NOT_NULL 策略区分两者：null = 跳过该列（保留已画图形），
+        // 空串 = 真正把列写空。这里若把空串规整成 null，「清除」就永远清不掉。
+        if (dto.getDkGeojson() != null) {
+            String geo = DataSupport.clean(dto.getDkGeojson());
+            land.setDkGeojson(geo == null ? "" : DataSupport.capLength(geo, 60000));
+        }
         land.setTdzljh(DataSupport.cleanAndCap(dto.getTdzljh(), 100));
         land.setLrdw(DataSupport.cleanAndCap(dto.getLrdw(), 100));
         land.setLrr(DataSupport.cleanAndCap(dto.getLrr(), 100));

@@ -33,6 +33,7 @@ import {
 
 export const facilityAdminUrl = {
   list: '/land/data/facilityAdmin/list',
+  geoList: '/land/data/facilityAdmin/geoList',
   detail: '/land/data/facilityAdmin/detail',
   byLand: '/land/data/facilityAdmin/byLand',
   checkPtxmmc: '/land/data/facilityAdmin/checkPtxmmc',
@@ -64,6 +65,19 @@ export const facilityAdminUrl = {
  */
 export function queryFacilityAdminPage (params) {
   return javaGetAction(facilityAdminUrl.list, params)
+}
+
+/**
+ * 地块图形清单：全部画过图形的配套项目（轻量列 id / crzdbh / ptxmmc / dkGeojson）。
+ *
+ * 「配套地块数据录入」进菜单时一次性拉全量、把面铺到地图上，
+ * 列表双击某条时据此定位与高亮。没画过图形的配套不在返回里 ——
+ * 那些行的几何数据本系统里没有（图形只能由大屏「添加地块」产生）。
+ *
+ * @returns {Promise} result 为 Facility[]（仅 4 个字段有值）
+ */
+export function queryFacilityGeoList () {
+  return javaGetAction(facilityAdminUrl.geoList, {})
 }
 
 /** 配套项目详情（返回 Facility 实体；已移除的返回 success=false） */
@@ -236,6 +250,7 @@ export function queryExpectEnd (startDate, days) {
 export default {
   facilityAdminUrl,
   queryFacilityAdminPage,
+  queryFacilityGeoList,
   queryFacilityAdminById,
   queryFacilityByLand,
   checkPtxmmc,

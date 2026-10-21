@@ -59,6 +59,7 @@ import {
 
 export const landAdminUrl = {
   list: '/land/data/landAdmin/list',
+  geoList: '/land/data/landAdmin/geoList',
   detail: '/land/data/landAdmin/detail',
   history: '/land/data/landAdmin/history',
   codeOptions: '/land/data/landAdmin/codeOptions',
@@ -89,6 +90,19 @@ export const landAdminUrl = {
  */
 export function queryLandAdminPage (params) {
   return javaGetAction(landAdminUrl.list, params)
+}
+
+/**
+ * 地块图形清单：全部画过图形的宗地（轻量列 id / crzdbh / dkmc / dkGeojson）。
+ *
+ * 「经营性用地信息录入」进菜单时一次性拉全量、把面铺到地图上，
+ * 列表双击某条时据此定位与高亮。没画过图形的宗地不在返回里 ——
+ * 那些行的几何数据本系统里没有（图形只能由大屏「添加地块」产生）。
+ *
+ * @returns {Promise} result 为 Land[]（仅 4 个字段有值）
+ */
+export function queryLandGeoList () {
+  return javaGetAction(landAdminUrl.geoList, {})
 }
 
 /**

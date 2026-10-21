@@ -109,6 +109,23 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
     // 一、查询
     // ==================================================================
 
+    /**
+     * 全部有地块图形的配套项目（轻量列）。
+     * ★ 只取 id / crzdbh / ptxmmc / dk_geojson 四列：进菜单时一次拉全量铺地图，
+     *   带 50 多列全实体会白白传输几百 KB；isNotNull + ne('') 过滤掉没画过图的行。
+     * ★ 手写软删条件：Facility 没有 @TableLogic（delFlag 是 varchar 驼峰列），
+     *   不写 eq("delFlag","0") 就会把已移除的配套也查出来 —— 与 queryPage 同一坑。
+     */
+    @Override
+    public List<Facility> queryGeoList() {
+        QueryWrapper<Facility> wrapper = new QueryWrapper<>();
+        wrapper.select("id", "crzdbh", "ptxmmc", "dk_geojson")
+                .eq("delFlag", "0")
+                .isNotNull("dk_geojson")
+                .ne("dk_geojson", "");
+        return facilityMapper.selectList(wrapper);
+    }
+
     @Override
     public IPage<Facility> queryPage(LandAdminQueryDTO query) {
         LandAdminQueryDTO condition = query == null ? new LandAdminQueryDTO() : query;
@@ -792,6 +809,15 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         facility.setJtwt(DataSupport.cleanAndCap(facility.getJtwt(), 2500));
         facility.setZlqsnrjsm(DataSupport.cleanAndCap(facility.getZlqsnrjsm(), 2500));
         facility.setBz(DataSupport.cleanAndCap(facility.getBz(), 100));
+        // dkGeojson（地块图形 GeoJSON）：BeanUtils 已原样拷贝，这里只做长度截断。
+        // ★ 不能 cleanAndCap 把空串规整成 null —— 编辑路径靠 updateById 的 NOT_NULL
+        //   策略区分「JSON 没带字段（null = 跳过该列，保留已画图形）」与
+        //   「显式传空串（大屏表单的清除按钮 = 真正把列写空）」，两者不可混。
+        String dkGeojson = facility.getDkGeojson();
+        if (dkGeojson != null) {
+            String cleaned = DataSupport.clean(dkGeojson);
+            facility.setDkGeojson(cleaned == null ? "" : DataSupport.capLength(cleaned, 60000));
+        }
     }
 
     /** 按「宗地 + 名称」查一条有效配套（排除指定 id） */

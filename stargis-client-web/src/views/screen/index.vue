@@ -11,7 +11,7 @@
         ├─ 全屏蒙版：上 / 下 / 左 / 右四张切图
         ├─ 顶栏     ScreenHeader（bg-top + 标题切图 + 8 项导航 + 时钟）
         ├─ 左面板   HomeLeftPanel（出让地块情况统计，双页签）
-        ├─ 右面板   HomeLayerTree（地图管理 · 图层面板）
+        ├─ 右面板   HomeLayerTree（地图管理 · stargis-function 图层树插件，进首页自动拉起）
         ├─ 底部     HomeAttrPanel（属性表，市级 / 区级 / 地块预警信息）
         └─ 浮层     HomePlotModal（地块预警信息弹窗）
       档案管理 / 收发文 作为整页模块覆盖在画布正文区
@@ -72,8 +72,10 @@
 
     <!-- ===== 顶栏 ===== -->
     <!--
-      时钟只在首页 / 地图管理显示：高保真里时钟位于 (477,115)，落在中间的地图留白区；
-      档案管理 / 收发文是整页模块，横向铺满后会和时钟重叠，因此隐藏。
+      时钟在首页 / 地图管理 / 配套分析管理显示：高保真里时钟位于 (477,115)，
+      落在中间的地图留白区（配套分析管理与地图管理同版式，左面板标题装饰
+      到 x=429 为止，不与时钟重叠）；档案管理 / 收发文是整页模块，横向铺满
+      后会和时钟重叠，因此隐藏。
     -->
     <screen-header
       :title="title"
@@ -81,7 +83,7 @@
       :active-menu="activeMenu"
       :user-name="user.name"
       :online="user.online"
-      :show-clock="activeMenu === 'home' || activeMenu === 'map'"
+      :show-clock="activeMenu === 'home' || activeMenu === 'map' || activeMenu === 'analysis'"
       @menu-change="handleMenuChange"
       @logout="handleLogout"
     />
@@ -123,6 +125,15 @@
     -->
     <map-screen v-else-if="activeMenu === 'map'" ref="map" class="land-screen__module" />
 
+    <!--
+      ===== 配套分析管理：静态页面（左分析工具箱 + 右面板壳 + 底部属性条） =====
+      ★ 与地图管理同理**不加 stage-hit**：地图必须保持可交互，容器
+        pointer-events: none，各面板自行开启。
+        11 项分析工具的功能面板本体待接入 stargis-function 对应引擎，
+        右侧只亮面板壳，接入点见 analysis/index.vue 顶部说明。
+    -->
+    <analysis-screen v-else-if="activeMenu === 'analysis'" ref="analysis" class="land-screen__module" />
+
     <!-- ===== 首页工作台 ===== -->
     <!--
       ★ 这三块首页面板同样要参与「选取模式下隐藏」：它们是不透明面板，
@@ -136,7 +147,7 @@
         :supporting-rank="supportingRank"
         :loading="dashboardLoading"
       />
-      <home-layer-tree @layer-visibility-change="handleLayerVisibility" />
+      <home-layer-tree />
       <home-attr-panel
         :tabs="warningTabs"
         :data="warningData"
@@ -165,6 +176,7 @@ import ArchiveScreen from './archive/index.vue'
 import DataScreen from './data/index.vue'
 import EscalationScreen from './escalation/index.vue'
 import MapScreen from './map/index.vue'
+import AnalysisScreen from './analysis/index.vue'
 import HomeLeftPanel from './home/HomeLeftPanel.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
@@ -235,9 +247,11 @@ function emptyPlotWarning () {
  *   data    数据管理（经营性用地添加 / 查询）
  *   review  提级论证管理（整页模块：项目录入 / 查询统计 / 资料及台账管理 / 提级论证审批）
  *   map     地图管理（静态页面：左工具箱 / 右拾取查询 / 底部属性条，工具未接功能）
+ *   analysis 配套分析管理（静态页面：左分析工具箱 / 右面板壳 / 底部属性条，
+ *            11 项工具的功能面板待接 stargis-function 引擎）
  * 其余仍是「待接入」状态。
  */
-const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map']
+const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map', 'analysis']
 
 /** 档案页允许直接落到某个页签：/screen/archive?tab=doc
  *  ledger / handover / completion = 方案 2.3.2 第 7 / 6 / 8 项（道路验收移交台账、
@@ -360,6 +374,7 @@ export default {
     DataScreen,
     EscalationScreen,
     MapScreen,
+    AnalysisScreen,
     ScreenPickStage,
     HomeLeftPanel,
     HomeLayerTree,
@@ -666,10 +681,10 @@ export default {
       this.stageScale = scale
     },
 
-    /* ---------------- 「选取地块」全屏模式 ---------------- */
+    /* ---------------- 「添加地块」绘制模式 ---------------- */
 
     /**
-     * 取消选择。
+     * 取消绘制。
      * 结束会话即可：覆盖层是 v-if 绑在 activePick 上，状态一变它就自己卸载，
      * 地图与整块画布原样露回来（画布从未被销毁，表单里填到一半的内容也不会丢）。
      */
@@ -678,14 +693,15 @@ export default {
     },
 
     /**
-     * 选择完成。
-     * @param {*} geometry 画好的地块图形；**本期绘制未接入，恒为 null**。
+     * 完成绘制。
+     * @param {{geojson: string, vertexCount: number}|null} geometry 画好的地块图形；
+     *   结构由 drawPolygon.js 的 getGeoJSON() 定义，null = 没画出有效多边形。
      *
-     * ★ 本期语义 = 「关掉地图回到表单」，不做任何写回：
-     *   拿不到图形时**保留字段原值**是最安全的做法 —— 静默把坐标字段清空，
-     *   用户会以为「选完了但没生效」，而实际是「根本没画」。
-     *   接入绘制后在这里把 geometry 交给发起方（按 session.source 分发到
-     *   表单的对应字段）即可，覆盖层与表单两侧都不用再改。
+     * ★ 拿不到图形时**保留字段原值**是最安全的做法 —— 静默把坐标字段清空，
+     *   用户会以为「画完了但没生效」，而实际是「根本没画」。
+     *   本方法只做透传：geometry 原样交给发起方（按 session.source 分发到
+     *   表单的对应字段），写回逻辑在 LandFormModal / FacilityFormModal 的
+     *   handlePickFinished 里。
      */
     handlePickDone (geometry) {
       this.finishPick(geometry || null)
@@ -698,7 +714,7 @@ export default {
      *   pickSession 现在是**单例本身**（computed 直接返回 pickState），
      *   endPick 会把 token/source 一起清空 —— 先 endPick 再读就会拿到空串，
      *   事件名退化成 'landMapPickFinished'，配套表单永远收不到结束通知。
-     * @param {*} geometry 图形；本期恒为 null
+     * @param {{geojson: string, vertexCount: number}|null} geometry 画好的图形（可为 null）
      */
     finishPick (geometry) {
       const token = pickState.token
@@ -761,10 +777,6 @@ export default {
     menuLabel (key) {
       const hit = this.menus.find((item) => item.key === key)
       return hit ? hit.label : key
-    },
-
-    handleLayerVisibility (node) {
-      this.$screenToast.info(`图层「${node.label}」已${node.visible ? '显示' : '隐藏'}`)
     },
 
     handleAttrAction (row) {

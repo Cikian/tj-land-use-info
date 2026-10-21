@@ -83,6 +83,14 @@ public class LandAdminController {
         return Result.OK(landAdminService.queryPage(query));
     }
 
+    @AutoLog(value = "经营性用地录入-地块图形清单")
+    @ApiOperation(value = "经营性用地录入-地块图形清单", notes = "全部画过图形的宗地（id/编号/名称/GeoJSON 轻量列），进菜单铺地图用")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/geoList")
+    public Result<List<Land>> geoList() {
+        return Result.OK(landAdminService.queryGeoList());
+    }
+
     @AutoLog(value = "经营性用地录入-详情")
     @ApiOperation(value = "经营性用地录入-详情")
     @RequiresPermissions(PERM)

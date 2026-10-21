@@ -22,6 +22,7 @@
       action      (row, col, rowIndex, actionKey)  操作列点击；type=action 时 actionKey 为 undefined
       cell-click  (row, col, rowIndex)             链接列点击
       row-click   (row, rowIndex)                  rowClickable 时整行点击
+      row-dblclick (row, rowIndex)                 整行双击（GIS「双击定位」这类场景用）
       select-change (keys, rows)                   行选择变化
 
     无障碍：
@@ -77,6 +78,7 @@
               'is-clickable': rowClickable,
             }"
             @click="handleRowClick(row, rowIndex)"
+            @dblclick="handleRowDblclick(row, rowIndex)"
           >
             <td v-if="selectable" class="is-center" @click.stop>
               <label class="screen-data-table__checkbox">
@@ -396,6 +398,10 @@ export default {
     handleRowClick (row, index) {
       if (!this.rowClickable) return
       this.$emit('row-click', row, index)
+    },
+    /** 整行双击（不设开关：双击是比单击更明确的意图，不会与单击行为冲突） */
+    handleRowDblclick (row, index) {
+      this.$emit('row-dblclick', row, index)
     },
   },
 }

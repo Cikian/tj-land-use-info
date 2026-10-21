@@ -317,7 +317,7 @@ DOM 1329 节点）修复后同样是：主线程忙 **2.3%**、Long Task 无、
 # 列表压到屏幕下方（默认露 3 行）+ 检索列竖排在右侧 + 高度可拖 → 46 条断言
 node perf/verify-data-layout.js http://localhost:3001
 
-# 新增/编辑弹窗：2 列 + 高度减半 + 可拖动 + 背景不压暗 + 选取地块不再隐藏页面 → 64 条断言
+# 新增/编辑弹窗：2 列 + 高度减半 + 可拖动 + 背景不压暗 + 添加地块不再隐藏页面 → 64 条断言
 node perf/verify-modal.js http://localhost:3001
 
 # 出效果图（写到 perf/shots/，该目录已 gitignore）

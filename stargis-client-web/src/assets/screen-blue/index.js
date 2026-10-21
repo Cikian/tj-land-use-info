@@ -132,6 +132,26 @@ export const hf = {
   pickLayerIcon: require('./pick-layer-icon.png'),
   pickTableHead: require('./pick-table-head.png'),
   pickTableBody: require('./pick-table-body.png'),
+
+  /* ---------- 配套分析管理页 ----------
+   * 来源：旧工作台配套分析功能图标（stargis/images/ 下 bzgl / gxtj / hdmfx /
+   * zdmfx / spjj / ftsd / lxfx / bgfx / kwfx / xmspjgcx.png，白模 24×24）。
+   * 功能 → 图标文件的对应关系来自旧库 stargis_menu 表（其中「成熟分析」
+   * 旧系统即复用 gxtj.png，这里按同样口径复制为 analysis-maturity.png）。
+   * 白模按现行系统工具图标的配色规则重新上色（蓝 / 青 / 橙 / 红橙 / 金渐变），
+   * 形状未改动；文件名统一改 ASCII，映射只在本文件登记。
+   */
+  analysisLabel: require('./analysis-label.png'),
+  analysisPipeline: require('./analysis-pipeline.png'),
+  analysisSectionH: require('./analysis-section-h.png'),
+  analysisSectionV: require('./analysis-section-v.png'),
+  analysisClearance: require('./analysis-clearance.png'),
+  analysisCover: require('./analysis-cover.png'),
+  analysisFlow: require('./analysis-flow.png'),
+  analysisBurst: require('./analysis-burst.png'),
+  analysisExcavation: require('./analysis-excavation.png'),
+  analysisMaturity: require('./analysis-maturity.png'),
+  analysisEstimate: require('./analysis-estimate.png')
 }
 
 export default hf

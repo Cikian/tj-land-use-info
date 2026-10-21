@@ -78,7 +78,10 @@ public class ChangeLogSupport {
     private static final java.util.Set<String> SKIP_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList(
             "updateBy", "updateTime",
             "createBy", "createTime", "createAccount",
-            "delFlag", "sourceId", "serialVersionUID"));
+            "delFlag", "sourceId", "serialVersionUID",
+            // dkGeojson：整段 GeoJSON 是数 KB 的长文本，参与 diff 会把变更履历撑爆；
+            // 图形是否被改过看「编辑」这条记录本身即可，不在逐字段明细里展开
+            "dkGeojson"));
 
     /** 字段缓存（按类缓存，避免每次比对都反射一遍） */
     private static final Map<Class<?>, List<java.lang.reflect.Field>> FIELD_CACHE =

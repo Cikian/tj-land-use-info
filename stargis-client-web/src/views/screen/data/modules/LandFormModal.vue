@@ -93,14 +93,16 @@
           </screen-field>
 
           <!--
-            「选取地块」：进入地图选取模式。
+            「添加地块」：进入地图绘制模式（2026-10 由「选取地块」改名改义：
+            不再是去地图上点选已有地块，而是直接在地球上绘制一个多边形，
+            「完成绘制」后把 GeoJSON 存进 dkGeojson 字段）。
             ★ 2026-10 起**不再隐藏任何页面**（原先是全屏隐藏、只留地图）：
               弹窗本身已经可以拖到一边、且背景不压暗，地图随时可操作，
               再藏页面反而把「填到一半的表单」也一起藏了，用户还得先退出来才能核对。
             ★ 为什么放在「地块名称」旁边而不是单独一块：
               用户的心智是「先把这块地指出来」，地块名称 / 行政区划 / 面积都跟着这块地走，
               所以入口贴着地块名称，比放在表单底部更容易被发现。
-            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进选取模式
+            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进绘制模式
               只会看到一片空白，那种情况下不如直接不给点。
           -->
           <div class="land-form__map-pick">
@@ -109,14 +111,24 @@
               type="button"
               class="land-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '选取地块，在地图上点选；可先把本窗口拖到一边' : '地图未加载，无法选取地块'"
+              :aria-label="mapEnabled ? '添加地块，在地图上绘制多边形；可先把本窗口拖到一边' : '地图未加载，无法添加地块'"
               @click="handleOpenMapPick"
             >
               <screen-icon name="grid" :size="16" />
-              <span>选取地块</span>
+              <span>添加地块</span>
             </button>
+            <!-- 已绘制的状态：有图形时显示顶点数并允许清除，没有则提示尚未绘制 -->
+            <span v-if="drawnVertexCount" class="land-form__map-pick-drawn">
+              已绘制（{{ drawnVertexCount }} 个顶点）
+              <button
+                type="button"
+                class="land-form__map-pick-clear"
+                aria-label="清除地块图形"
+                @click="handleClearGeojson"
+              >清除</button>
+            </span>
             <span class="land-form__map-pick-tip">
-              {{ mapEnabled ? '' : '地图未加载（?map=0 预览模式），暂不能选取地块' }}
+              {{ mapEnabled ? (drawnVertexCount ? '' : '尚未绘制；点击后在地图上左键加点，双击或右键结束') : '地图未加载（?map=0 预览模式），暂不能添加地块' }}
             </span>
           </div>
 
@@ -397,9 +409,11 @@ import {
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { uid } from '@/components/screen/utils'
-// 「选取地块」会话：表单弹窗与全屏覆盖层都挂在 body 上（不在同一棵组件树里），
+// 「添加地块」绘制会话：表单弹窗与全屏覆盖层都挂在 body 上（不在同一棵组件树里），
 // 只能通过这份共享状态对话，详见 views/screen/pickSession.js 的说明
 import { startPick, endPick, isPickIssuer } from '@/views/screen/pickSession'
+// 画完留在地图上的常驻预览面（生命周期跟表单会话：提交/取消/重画/清除时清掉）
+import { show as showDkPreview, clear as clearDkPreview } from '@/views/screen/previewPolygon'
 import {
   queryLandAdminById,
   addLandAdmin,
@@ -455,6 +469,9 @@ function emptyModel () {
     ptqkh: '否',
     ptcbh: '否',
     crzdtxsj: '否',
+    // 「添加地块」画出的多边形（裸 Polygon GeoJSON 字符串；与后端 dk_geojson 列对应）。
+    // 空串 = 没画过；编辑回显时 loadDetail 会按 key 自动带回来
+    dkGeojson: '',
     xzqh2: '',
     zlqsnrsm: '',
     lrdw: '',
@@ -485,12 +502,12 @@ export default {
       model: emptyModel(),
       errors: {},
       /**
-       * 本次「选取地块」会话的令牌（没进过选取模式时为空串）。
+       * 本次「添加地块」绘制会话的令牌（没进过绘制模式时为空串）。
        * ★ 必须保存下来：结束会话时要 verbatim 交回去做发起者校验，
-       *   否则「两个表单都开着时，后一个的取消会把前一个的选取模式关掉」。
+       *   否则「两个表单都开着时，后一个的取消会把前一个的绘制模式关掉」。
        */
       pickToken: '',
-      /** 地图是否可用（?map=0 预览时为 false，此时「选取地块」不给点） */
+      /** 地图是否可用（?map=0 预览时为 false，此时「添加地块」不给点） */
       mapEnabled: true,
       /** 本组件实例的唯一 id：只用于把「谁开的选取会话」写进会话状态，便于排查 */
       uid: uid('land-form'),
@@ -498,6 +515,40 @@ export default {
       xzqhOptions: XZQH_LIST.map((item) => ({ value: item, label: item })),
       projectTypeOptions: PROJECT_TYPES.map((item) => ({ value: item, label: item })),
       yesNoOptions: YES_NO.map((item) => ({ value: item, label: item }))
+    }
+  },
+  computed: {
+    /**
+     * 已绘制地块图形的顶点数（未绘制时为 0，状态行据此显隐）。
+     * 每次都重新 JSON.parse：编辑量小（一个环、几十个点），不值得缓存；
+     * 解析失败（脏数据）按未绘制处理，不让状态行把表单搞崩。
+     */
+    drawnVertexCount () {
+      const raw = this.model && this.model.dkGeojson
+      if (!raw) return 0
+      try {
+        const geometry = JSON.parse(raw)
+        const ring = geometry && geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]
+        if (!Array.isArray(ring) || ring.length < 4) return 0
+        // GeoJSON 环首尾闭合，最后一个点不数
+        return ring.length - 1
+      } catch (e) {
+        return 0
+      }
+    }
+  },
+  watch: {
+    /**
+     * 弹窗任何途径关掉（底部「取消」、右上角 X、Esc、保存成功）都要收尾：
+     * 清掉常驻预览面与可能残留的绘制会话。★ 右上角 X / Esc 走的是 ScreenModal
+     * 的 update:visible，**不会**经过 handleCancel，所以收尾必须挂在这里兜底
+     * （closePick / clearDkPreview 都幂等，重复调用无副作用）。
+     */
+    visible (v) {
+      if (!v) {
+        clearDkPreview()
+        this.closePick()
+      }
     }
   },
   created () {
@@ -540,6 +591,8 @@ export default {
       this.errors = {}
       this.submitted = false
       this.loading = false
+      // 兜底清一次预览面（正常路径提交/取消时已清，防的是异常中断留下的残留）
+      clearDkPreview()
       this.closePick()
       this.visible = true
     },
@@ -553,6 +606,8 @@ export default {
       this.model = emptyModel()
       this.errors = {}
       this.submitted = false
+      // 兜底清一次预览面（正常路径提交/取消时已清，防的是异常中断留下的残留）
+      clearDkPreview()
       this.closePick()
       this.visible = true
       this.loading = true
@@ -591,27 +646,31 @@ export default {
     /* ---------------- 交互 ---------------- */
 
     /**
-     * 打开「选取地块」地图选取模式。
+     * 打开「添加地块」地图绘制模式。
      * ===============================================================
      * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 接手：
-     * 页面上方中间两个按钮（取消选择 / 选择完成）。
+     * 纯 GIS 操作（无顶部按钮）——左键加点，双击或右键结束即回传，Esc 取消；
+     * 绘制引擎是 views/screen/drawPolygon.js。
      * ★ 2026-10 起**不再隐藏任何页面**（原来会把整块画布连同本弹窗一起藏掉）：
      *   本弹窗现在可拖动、背景也不压暗，地图本来就随时可操作；
-     *   再藏页面只会把「填到一半的表单」也藏了，用户反而没法一边选一边核对。
+     *   再藏页面只会把「填到一半的表单」也藏了，用户反而没法一边画一边核对。
      *
-     * ★ 本表单**自己不渲染任何地图**，也不负责关闭选取模式：
+     * ★ 本表单**自己不渲染任何地图**，也不负责关闭绘制模式：
      *   地图是 ScreenStage 里那个常驻的 Cesium 实例（本弹窗挂在 body 上，
      *   拿不到它，也不该再创建第二个 Viewer —— 那会白烧一份 GPU 与内存）。
      *   本方法只做两件事：① 记录会话令牌；② 把入口状态发出去。
-     *   关闭由选取模式发起的取消 / 完成事件驱动（见 handlePickFinished）。
+     *   关闭由绘制模式发起的取消 / 完成事件驱动（见 handlePickFinished）。
      *
      * @returns {string} 本次会话令牌；地图不可用时不开启会话，返回空串
      */
     handleOpenMapPick () {
       if (!this.mapEnabled) {
-        toast.warning('地图尚未加载，无法选取地块')
+        toast.warning('地图尚未加载，无法添加地块')
         return ''
       }
+      // 已经画过（或编辑回显有图形）时再次点「添加地块」：旧面从地图上消失，
+      // 开始一次全新的绘制（model.dkGeojson 仍保留，画完新面才会覆盖它）
+      clearDkPreview()
       // 自己上次的令牌如果已经不是当前会话（被 ended / 被别人接管），先清掉，
       // 否则 closePick 会拿一个陈旧令牌去 endPick，语义上会显得「莫名关掉了别的会话」
       if (this.pickToken && !isPickIssuer(this.pickToken)) this.pickToken = ''
@@ -619,29 +678,42 @@ export default {
       // ★ startPick 在「已有别人开的会话」时会返回**那个**会话的令牌。
       //   这里如实记下来（而不是拒绝），保证本次操作总能被自己收到结束事件；
       //   代价是别人那次会话的发起者会在结束时被顺带清掉令牌 —— 可接受，
-      //   因为同一时刻只可能有一张全屏地图，本来就不支持并行选取。
+      //   因为同一时刻只可能有一张全屏地图，本来就不支持并行绘制。
       this.pickToken = startPick({
         source: 'land',
-        title: '正在选取经营性用地地块：可先把本窗口拖到一边，再在地图上操作',
+        title: '正在添加经营性用地地块：左键加点，双击或右键结束，Esc 取消',
         issuer: `LandFormModal#${this.uid}`
       })
       return this.pickToken
     },
 
     /**
-     * 覆盖层关闭后回到这里（取消选择 / 选择完成都会走）。
-     * @param {*} geometry 画好的地块图形；本期绘制未接入，恒为 null。
+     * 覆盖层关闭后回到这里（取消绘制 / 完成绘制都会走）。
+     * @param {{geojson: string, vertexCount: number}|null} geometry
+     *   画好的地块图形（由 drawPolygon.js 的 getGeoJSON() 定义）；null = 没画出来。
      *
-     * ★ 本期**不写回任何字段**：没有图形时保留原值，静默清空会让用户以为
-     *   「选完了但没生效」。接入绘制后，在这里按 geometry 填 model 的对应字段
-     *   （面积 / 图形）即可，其余流程不用改。
+     * ★ 有图形 → 写入 model.dkGeojson（表单状态行随之显示顶点数）；
+     *   没图形 → **保留原值**（可能是编辑态已有的图形，也可能是从未画过），
+     *   静默清空会让用户以为「画完了但没生效」，实际是「根本没画」。
+     * ★ 再次点「完成绘制」且这次画了新图形 → 直接覆盖旧图形（重画的语义）。
      */
     handlePickFinished (geometry) {
       this.pickToken = ''
-      if (geometry) {
-        // 目前没有任何字段能接收图形（后端实体也没有对应列，属于后续改动）
-        toast.info('已获取地块图形，写入字段的功能待接入')
+      if (geometry && geometry.geojson) {
+        this.model.dkGeojson = geometry.geojson
+        // 预览面已由 ScreenPickStage 转交常驻层接管（画完的面留在地图上，
+        // 提交 / 取消 / 重画 / 清除时才消失），这里不用再动地图
+        toast.success(`地块图形已添加（${geometry.vertexCount} 个顶点），保存时随表单一并提交`)
+      } else if (this.model.dkGeojson) {
+        // 取消绘制（Esc）：表单里已有的图形不受影响，把它的预览面显示回来
+        showDkPreview(this.model.dkGeojson)
       }
+    },
+
+    /** 清除已绘制的地块图形（提交时该字段按空串 → null 的惯例上送），地图上的预览面一并清掉 */
+    handleClearGeojson () {
+      this.model.dkGeojson = ''
+      clearDkPreview()
     },
 
     /**
@@ -742,6 +814,13 @@ export default {
       Object.keys(model).forEach((key) => {
         if (key === 'id') return
         const value = model[key]
+        // dkGeojson 的空串是「清除图形」的显式信号，**不能**按文本惯例规整成 null：
+        // 后端靠「没带字段（null = 跳过该列，保留已画图形）」与「传空串（= 真正写空）」
+        // 区分两种语义（见 LandAdminServiceImpl.copyBusinessFields 的注释）
+        if (key === 'dkGeojson') {
+          data[key] = value === undefined ? null : value
+          return
+        }
         if (NUMBER_FIELDS.indexOf(key) > -1) {
           const text = String(value === null || value === undefined ? '' : value).trim()
           data[key] = text === '' ? null : Number(text)
@@ -785,8 +864,9 @@ export default {
             return
           }
           toast.success(res.message || '保存成功')
-          // 保存成功会关掉弹窗，正在进行的选取会话必须一起收掉，
-          // 否则会留下一张没有出口的全屏地图
+          // 保存成功：弹窗关掉、绘制会话收掉，地图上那个常驻预览面
+          // 也跟着本次表单会话一起消失
+          clearDkPreview()
           this.closePick()
           this.visible = false
           this.$emit('ok', payload.id)
@@ -800,6 +880,8 @@ export default {
     },
 
     handleCancel () {
+      // 取消/关闭表单：本次画的面从地图上清掉（数据没提交，不留痕迹）
+      clearDkPreview()
       this.closePick()
       this.visible = false
     },
@@ -885,7 +967,7 @@ export default {
   }
 
   /*
-   * 「选取地块」入口。
+   * 「添加地块」入口。
    * ★ 定位与控件列对齐：本组是 2 列网格（标签列 150px + 控件列），
    *   这个入口直接占一个格子，视觉上与「地块名称」同排，不需要额外的偏移 hack。
    */
@@ -939,6 +1021,36 @@ export default {
     line-height: 1.6;
     color: var(--screen-text-mute);
     .screen-ellipsis-multi(2);
+  }
+
+  /* 已绘制状态行：强调色文字 + 行内「清除」小按钮 */
+  &__map-pick-drawn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: var(--screen-font-xs);
+    line-height: 1.6;
+    color: var(--screen-accent);
+  }
+
+  &__map-pick-clear {
+    flex: 0 0 auto;
+    padding: 1px 8px;
+    font-family: inherit;
+    font-size: var(--screen-font-xs);
+    line-height: 1.5;
+    color: var(--screen-text);
+    background: transparent;
+    border: 1px solid var(--screen-border-soft);
+    border-radius: var(--screen-radius-sm);
+    cursor: pointer;
+    .screen-focus-ring();
+
+    &:hover {
+      color: var(--screen-danger);
+      border-color: var(--screen-danger);
+    }
   }
 }
 

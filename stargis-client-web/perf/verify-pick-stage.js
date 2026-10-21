@@ -1,17 +1,17 @@
 /**
- * 验证「选取地块」全屏模式（2026-10 需求）
+ * 验证「添加地块」全屏模式（2026-10 需求）
  * ===================================================================
  * 这个脚本存在的唯一理由：本次改动的两个致命缺陷（覆盖层永远不出现、
  * 覆盖层把地图鼠标事件吃光）**静态检查一个都查不出来** ——
  * 模板编译、less 编译、eslint、verify-sfc 全过，但功能完全不工作。
  * 所以必须在真实浏览器里点一遍。
  *
- * 用真实点击走一遍：数据管理 → 经营性用地信息录入 → 新增宗地 → 选取地块
- *                  → 取消选择 → 再进 → 选择完成 →（再对配套表单跑一遍）
+ * 用真实点击走一遍：数据管理 → 经营性用地信息录入 → 新增宗地 → 添加地块
+ *                  → 取消绘制 → 再进 → 完成绘制 →（再对配套表单跑一遍）
  *
  * 每个环节断言：
  *   1) 覆盖层 .pick-stage 真的出现在 DOM 里；
- *   2) 两个按钮（取消选择 / 选择完成）在**屏幕顶部正中**、且真的能点到；
+ *   2) 两个按钮（取消绘制 / 完成绘制）在**屏幕顶部正中**、且真的能点到；
  *   3) 「所有页面全部隐藏」：画布元素 opacity=0、弹窗/下拉 visibility=hidden；
  *   4) 地图仍可见、**鼠标事件能落到地图上**（关键：拦截 pointer-events 检查）；
  *   5) 点取消 / 完成后覆盖层消失、画布恢复 opacity=1、弹窗重新可见。
@@ -213,7 +213,7 @@ window.__pick = {
     return true
   },
 
-  /** 找表单里的「选取地块」按钮并点击 */
+  /** 找表单里的「添加地块」按钮并点击 */
   clickPickEntry: function () {
     const b = document.querySelector('.land-form__map-pick-btn, .facility-form__map-pick-btn')
     if (!b) return 'NOT_FOUND'
@@ -367,12 +367,12 @@ async function waitFor (cdp, expr, timeoutMs, label) {
 
     const before = await state(cdp)
     console.log(`  表单标题：${before.title}`)
-    check('「选取地块」按钮出现在新增宗地表单里', !!before.title && before.title.indexOf('新增') === 0, before.title || '')
+    check('「添加地块」按钮出现在新增宗地表单里', !!before.title && before.title.indexOf('新增') === 0, before.title || '')
 
-    /* ---------------- 点「选取地块」 ---------------- */
-    console.log('\n### 点击「选取地块」→ 进入全屏地图模式')
+    /* ---------------- 点「添加地块」 ---------------- */
+    console.log('\n### 点击「添加地块」→ 进入全屏地图模式')
     const clicked = await cdp.evalJs(`window.__pick.clickPickEntry()`)
-    check('「选取地块」按钮可点击（未被禁用）', clicked === 'OK', String(clicked))
+    check('「添加地块」按钮可点击（未被禁用）', clicked === 'OK', String(clicked))
     const appeared = await waitFor(cdp, `!!document.querySelector('.pick-stage')`, 10000, '覆盖层出现')
     check('覆盖层 .pick-stage 真的渲染出来了（阻塞①的核心判据）', appeared)
     await sleep(1500)
@@ -401,9 +401,9 @@ async function waitFor (cdp, expr, timeoutMs, label) {
 
     // --- 需求②：上方中间两个明显按钮 ---
     const btns = inPick.stage.buttons || []
-    const cancel = btns.find((b) => b.text === '取消选择')
-    const done = btns.find((b) => b.text === '选择完成')
-    check('存在「取消选择」和「选择完成」两个按钮', !!cancel && !!done, btns.map((b) => b.text).join(' / '))
+    const cancel = btns.find((b) => b.text === '取消绘制')
+    const done = btns.find((b) => b.text === '完成绘制')
+    check('存在「取消绘制」和「完成绘制」两个按钮', !!cancel && !!done, btns.map((b) => b.text).join(' / '))
     if (cancel && done) {
       const vw = inPick.stage.viewport.w
       const groupCenter = (Math.min(cancel.x, done.x) + Math.max(cancel.x + cancel.w, done.x + done.w)) / 2
@@ -431,22 +431,22 @@ async function waitFor (cdp, expr, timeoutMs, label) {
     )
     check('覆盖层根节点 pointer-events 为 none（不吃地图事件）', inPick.stage.pointerEvents === 'none', inPick.stage.pointerEvents)
 
-    // --- 点「取消选择」回到正常页面 ---
+    // --- 点「取消绘制」回到正常页面 ---
     // ★ 用真实鼠标点击（而不是 b.click()）：这是「按钮真的能点到」的唯一硬证据。
-    console.log('\n### 真实鼠标点击「取消选择」')
+    console.log('\n### 真实鼠标点击「取消绘制」')
     // 先确认按钮中心没有被别的元素盖住（遮挡类回归 b.click() 查不出来）
     const cancelHit = await cdp.evalJs(`(() => {
-      const btn = Array.from(document.querySelectorAll('.pick-stage button')).find(b => String(b.textContent||'').replace(/\\s/g,'') === '取消选择')
+      const btn = Array.from(document.querySelectorAll('.pick-stage button')).find(b => String(b.textContent||'').replace(/\\s/g,'') === '取消绘制')
       if (!btn) return { found: false }
       const r = btn.getBoundingClientRect()
       const cx = Math.round(r.left + r.width/2), cy = Math.round(r.top + r.height/2)
       const top = document.elementFromPoint(cx, cy)
       return { found: true, cx: cx, cy: cy, selfHit: !!(top && (top === btn || btn.contains(top))), topTag: top ? top.tagName.toLowerCase() + '.' + String(top.className||'').slice(0,40) : null }
     })()`)
-    check('「取消选择」按钮中心未被遮挡（命中自己）', cancelHit.found && cancelHit.selfHit === true, JSON.stringify(cancelHit))
+    check('「取消绘制」按钮中心未被遮挡（命中自己）', cancelHit.found && cancelHit.selfHit === true, JSON.stringify(cancelHit))
     if (cancelHit.found) await cdp.clickAt(cancelHit.cx, cancelHit.cy)
     const gone1 = await waitFor(cdp, `!document.querySelector('.pick-stage')`, 8000, '覆盖层消失（取消）')
-    check('真实鼠标点「取消选择」后覆盖层消失', gone1)
+    check('真实鼠标点「取消绘制」后覆盖层消失', gone1)
     await sleep(1200)
     const afterCancel = await state(cdp)
     check('取消后画布恢复可见（整页模块 opacity 回到 1）', afterCancel.canvas.hidden === 0, `${afterCancel.canvas.hidden}/${afterCancel.canvas.total} 仍隐藏`)
@@ -455,31 +455,31 @@ async function waitFor (cdp, expr, timeoutMs, label) {
     check('取消后 body 标记已清除', afterCancel.bodyFlag === false)
     check('取消后表单还在（没被误关，填的内容不会丢）', !!afterCancel.title, String(afterCancel.title))
 
-    /* ---------------- 再进一次，点「选择完成」 ---------------- */
-    console.log('\n### 再点「选取地块」→ 点「选择完成」')
+    /* ---------------- 再进一次，点「完成绘制」 ---------------- */
+    console.log('\n### 再点「添加地块」→ 点「完成绘制」')
     // ⚠ 这两步的返回值**必须**断言。
     //   曾漏判过：waitFor 的返回值被丢弃、clickByText 的返回值也没人看，
     //   于是覆盖层第二次根本没出现时，下面的
     //   waitFor('!document.querySelector(".pick-stage")') 会**立刻为真**，
-    //   「点『选择完成』后覆盖层消失」等 5 条断言在功能全废的情况下照样全绿。
+    //   「点『完成绘制』后覆盖层消失」等 5 条断言在功能全废的情况下照样全绿。
     await cdp.evalJs(`window.__pick.clickPickEntry()`)
     const reappeared = await waitFor(cdp, `!!document.querySelector('.pick-stage')`, 10000, '覆盖层再次出现')
-    check('第二次点「选取地块」覆盖层再次出现', reappeared)
+    check('第二次点「添加地块」覆盖层再次出现', reappeared)
     await sleep(1000)
-    // 同样用**真实鼠标点击**「选择完成」
+    // 同样用**真实鼠标点击**「完成绘制」
     const doneHit = await cdp.evalJs(`(() => {
-      const btn = Array.from(document.querySelectorAll('.pick-stage button')).find(b => String(b.textContent||'').replace(/\\s/g,'') === '选择完成')
+      const btn = Array.from(document.querySelectorAll('.pick-stage button')).find(b => String(b.textContent||'').replace(/\\s/g,'') === '完成绘制')
       if (!btn) return { found: false }
       const r = btn.getBoundingClientRect()
       const cx = Math.round(r.left + r.width/2), cy = Math.round(r.top + r.height/2)
       const top = document.elementFromPoint(cx, cy)
       return { found: true, cx: cx, cy: cy, selfHit: !!(top && (top === btn || btn.contains(top))) }
     })()`)
-    check('「选择完成」按钮存在且未被遮挡', doneHit.found && doneHit.selfHit === true, JSON.stringify(doneHit))
+    check('「完成绘制」按钮存在且未被遮挡', doneHit.found && doneHit.selfHit === true, JSON.stringify(doneHit))
     if (doneHit.found) await cdp.clickAt(doneHit.cx, doneHit.cy)
     const doneClicked = !!doneHit.found
     const gone2 = await waitFor(cdp, `!document.querySelector('.pick-stage')`, 8000, '覆盖层消失（完成）')
-    check('真实鼠标点「选择完成」后覆盖层消失', doneClicked && gone2)
+    check('真实鼠标点「完成绘制」后覆盖层消失', doneClicked && gone2)
     await sleep(1200)
     const afterDone = await state(cdp)
     check('完成后画布恢复可见', afterDone.canvas.hidden === 0, `${afterDone.canvas.hidden}/${afterDone.canvas.total} 仍隐藏`)
@@ -508,7 +508,7 @@ async function waitFor (cdp, expr, timeoutMs, label) {
     console.log(`  表单标题：${fBefore.title}`)
 
     const fClicked = await cdp.evalJs(`window.__pick.clickPickEntry()`)
-    check('配套表单「选取地块」可点击', fClicked === 'OK', String(fClicked))
+    check('配套表单「添加地块」可点击', fClicked === 'OK', String(fClicked))
     const fAppeared = await waitFor(cdp, `!!document.querySelector('.pick-stage')`, 10000, '覆盖层出现（配套）')
     check('配套表单也能唤起全屏地图模式', fAppeared)
     await sleep(1500)
@@ -517,9 +517,9 @@ async function waitFor (cdp, expr, timeoutMs, label) {
     check('配套：弹窗被藏起来', fIn.bodyFlag === true && fIn.overlays.modalsVisible === 0, `modal ${fIn.overlays.modalsVisible}/${fIn.overlays.modals}`)
     check('配套：地图可交互（pointerdown 到 canvas）', fIn.probe.delivered === true && fIn.probe.isCanvas === true, JSON.stringify(fIn.probe))
 
-    await cdp.evalJs(`window.__pick.clickByText('取消选择')`)
+    await cdp.evalJs(`window.__pick.clickByText('取消绘制')`)
     const fGone = await waitFor(cdp, `!document.querySelector('.pick-stage')`, 8000, '覆盖层消失（配套）')
-    check('配套：点「取消选择」回到正常页面', fGone)
+    check('配套：点「取消绘制」回到正常页面', fGone)
     await sleep(1200)
     const fAfter = await state(cdp)
     check('配套：取消后画布与弹窗都恢复', fAfter.canvas.hidden === 0 && fAfter.overlays.modalsVisible === fAfter.overlays.modals && fAfter.overlays.modals > 0,
@@ -534,7 +534,7 @@ async function waitFor (cdp, expr, timeoutMs, label) {
       failed.forEach((f) => console.log(`  ✗ ${f.name}  —— ${f.detail || ''}`))
       process.exitCode = 1
     } else {
-      console.log('✓ 全部通过：选取地块 → 隐藏全部页面 → 只显示地图（可交互）→ 取消/完成回到原页面')
+      console.log('✓ 全部通过：添加地块 → 隐藏全部页面 → 只显示地图（可交互）→ 取消/完成回到原页面')
     }
   } catch (e) {
     console.log('\n✗ 脚本异常：' + (e && e.message))

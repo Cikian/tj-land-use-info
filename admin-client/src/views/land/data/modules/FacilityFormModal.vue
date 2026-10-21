@@ -462,6 +462,10 @@ bdcdj: '',
 gzjy: '',
 zlqsnrjsm: '',
 bz: '',
+          // 地块图形（GeoJSON）：只有大屏「添加地块」能产生/清除它，本表单不展示、
+          // 只做透传（编辑时 Object.assign(res.result) 会带回，保存原样上送；
+          // 后端对 null 是「跳过该列」，因此 null/缺键都是安全的「不碰」语义）
+          dkGeojson: null,
           lrdw: '',
 lrr: '',
 lxdh: ''

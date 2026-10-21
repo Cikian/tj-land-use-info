@@ -1,5 +1,5 @@
 /**
- * 给「选取地块」全屏模式截图（人工复核用）
+ * 给「添加地块」全屏模式截图（人工复核用）
  * ------------------------------------------------------------------
  * verify-pick-stage.js 负责**断言**（元素在不在、能不能点到、事件落到谁身上），
  * 本脚本只负责**出图**：进选取模式后截一张、回到表单后再截一张，
@@ -168,13 +168,13 @@ class CDP {
       if (await cdp.evalJs(`!!document.querySelector('.pick-stage')`)) break
     }
     await sleep(3000) // 等 Cesium 渲染几帧，截图里地图才不是纯色
-    console.log('### 已进入「选取地块」全屏模式')
+    console.log('### 已进入「添加地块」全屏模式')
     await cdp.shot(path.join(OUT, 'pick-1-selecting.png'))
 
     // 取消，回到正常页面
     await cdp.evalJs(`(() => {
       const norm = t => String(t || '').replace(/\\s/g, '')
-      const b = Array.from(document.querySelectorAll('button')).find(x => norm(x.textContent) === '取消选择')
+      const b = Array.from(document.querySelectorAll('button')).find(x => norm(x.textContent) === '取消绘制')
       if (b) b.click(); return !!b
     })()`)
     for (let i = 0; i < 20; i++) {
@@ -182,7 +182,7 @@ class CDP {
       if (!(await cdp.evalJs(`!!document.querySelector('.pick-stage')`))) break
     }
     await sleep(2000)
-    console.log('### 已点「取消选择」，回到正常页面')
+    console.log('### 已点「取消绘制」，回到正常页面')
     await cdp.shot(path.join(OUT, 'pick-2-back.png'))
   } catch (e) {
     console.log('✗ 截图失败：' + (e && e.message))
