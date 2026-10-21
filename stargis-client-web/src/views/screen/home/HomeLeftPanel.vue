@@ -15,7 +15,8 @@
     对高保真的两处「按高保真 + 保留现有内容」扩展（已与需求方确认）：
       1. 明细区右上角增加「明细 / 排行」切换：默认「明细」与设计稿完全一致，
          「排行」展示原有「各区出让排行 / 各区配套落实」，不丢失既有内容。
-      2. 数据全部改用高保真设计稿中的数字（909 / 245 / 664 / 28% / 72% …）。
+      2. 数字全部来自接口（不再是设计稿里的 909 / 245 / 664 占位值）。
+         圆环的弧长也改成按数据现画（内联 SVG），不再用设计稿里 28% / 72% 的定值切图。
   -->
   <div class="home-left">
     <!-- 面板标题 -->
@@ -106,14 +107,36 @@
               alt=""
               aria-hidden="true"
             />
-            <img
-              class="home-left__ring-fill"
-              :style="ringFillStyle(item)"
-              :src="ringFill(item)"
-              alt=""
-              aria-hidden="true"
-            />
-            <span class="home-left__ring-text">{{ item.percent }}%</span>
+            <!--
+              进度弧用内联 SVG 现画，不再用设计稿那 4 张「定值弧」切图。
+              ★ 切图的问题（就是圆环看起来「乱」的原因）：
+                1) 弧长写死（市级 28%、区级 72%），数据一变弧长就对不上；
+                2) 四张图的画布尺寸各不相同（76×76 / 50×76），
+                   塞进 56×56 / 30×56 的盒子里会被裁切、横向压扁，
+                   区级那张还会变成一条竖着的椭圆弧。
+              这里统一按 56×56 画布、r=26.25、线宽 3.1 重画，
+              几何与 ring-track.svg 的圆环完全重合；弧长由 percent 决定，
+              起止角从 12 点开始顺时针（与旧系统 canvas 的 1.5π 起笔一致）。
+            -->
+            <svg class="home-left__ring-arc" viewBox="0 0 56 56" aria-hidden="true">
+              <!-- percent=0 时不画：圆头线帽会把零长度弧画成一个点 -->
+              <circle
+                v-if="ringDash(item) > 0"
+                class="home-left__ring-arc-line"
+                cx="28"
+                cy="28"
+                r="26.25"
+                :stroke="ringColor(item)"
+                :style="{ filter: `drop-shadow(0 0 3px ${ringColor(item)})` }"
+                :stroke-dasharray="`${ringDash(item)} 999`"
+                transform="rotate(-90 28 28)"
+              />
+            </svg>
+            <!--
+              高保真里圆环文字是 14px、只显示整数百分比（28%），
+              精确到 2 位的占比放进 title，避免 6 个字符把 56px 的圆环撑破。
+            -->
+            <span class="home-left__ring-text" :title="ringTitle(item)">{{ ringPercent(item) }}%</span>
             <span class="home-left__split-label">{{ item.label }}</span>
             <span class="home-left__split-figure">
               <span class="home-left__split-value">{{ item.value }}</span>
@@ -155,10 +178,18 @@
                 alt=""
                 aria-hidden="true"
               />
-              <span class="home-left__td" :style="{ left: `${TH_OFFSET.index}px` }">{{ row.index }}</span>
-              <span class="home-left__td" :style="{ left: `${TH_OFFSET.name}px` }">{{ row.name }}</span>
-              <span class="home-left__td" :style="{ left: `${TH_OFFSET.plots}px` }">{{ row.plots }}</span>
-              <span class="home-left__td" :style="{ left: `${TH_OFFSET.roads}px` }">{{ row.roads }}</span>
+              <!--
+                单元格按 current.columns 通用渲染：
+                列与取值字段由页面（views/screen/index.vue）按页签下发，
+                这里不再写死 plots / roads —— 否则「落实配套」页签会把
+                已完成配套数显示到「涉及道路」列下。
+              -->
+              <span
+                v-for="col in current.columns"
+                :key="col.key"
+                class="home-left__td"
+                :style="{ left: `${TH_OFFSET[col.key]}px` }"
+              >{{ row[col.key] }}</span>
             </div>
 
             <!-- 后端暂无该维度明细时明确留白，不用其它口径的数据顶替 -->
@@ -197,8 +228,20 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 
-/** 表头 / 单元格的横向偏移（取自高保真 CSS 的 left 值） */
-const TH_OFFSET = { index: 14, name: 52, plots: 186, roads: 283 }
+/**
+ * 表头 / 单元格的横向偏移（取自高保真 CSS 的 left 值）。
+ * ★ facilities / completed 沿用 plots / roads 的 186 / 283：
+ *   「落实配套」页签只是换列名与取值字段，设计稿的横向定尺不变，
+ *   所以不新增一套坐标，避免两个页签的列宽视觉漂移。
+ */
+const TH_OFFSET = {
+  index: 14,
+  name: 52,
+  plots: 186,
+  roads: 283,
+  facilities: 186,
+  completed: 283
+}
 
 const padIndex = (n) => (n < 10 ? `0${n}` : `${n}`)
 
@@ -206,7 +249,7 @@ export default {
   name: 'HomeLeftPanel',
   props: {
     /**
-     * 面板数据（出让情况 / 落实配套情况 两个页签）。
+     * 面板数据（出让情况 / 落实配套 两个页签）。
      * 只使用接口返回的数据，没有数据时为空。
      */
     panel: { type: Object, default: () => ({}) },
@@ -214,7 +257,7 @@ export default {
     transferRank: { type: Array, default: () => [] },
     supportingRank: { type: Array, default: () => [] },
     /** 接口加载态 */
-    loading: { type: Boolean, default: false },
+    loading: { type: Boolean, default: false }
   },
   data () {
     return {
@@ -223,7 +266,7 @@ export default {
       activeTab: (this.panel.tabs && this.panel.tabs[0] && this.panel.tabs[0].key) || 'transfer',
       /** 与 split 双卡一一对应：city = 市级，district = 区级 */
       activeSplit: 'city',
-      viewMode: 'table',
+      viewMode: 'table'
     }
   },
   computed: {
@@ -232,7 +275,7 @@ export default {
         stat: { label: '', value: 0, unit: '宗' },
         split: [],
         columns: [],
-        tables: { city: { rows: [], total: null }, district: { rows: [], total: null } },
+        tables: { city: { rows: [], total: null }, district: { rows: [], total: null } }
       }
     },
     table () {
@@ -246,7 +289,7 @@ export default {
       return rows
     },
     rankRows () {
-      // 出让情况 → 各区出让排行；落实配套情况 → 各区配套落实
+      // 出让情况 → 各区出让排行；落实配套 → 各区配套落实
       return this.activeTab === 'transfer' ? this.transferRank : this.supportingRank
     },
     rankTitle () {
@@ -254,13 +297,13 @@ export default {
     },
     rankMax () {
       return this.rankRows.reduce((max, item) => Math.max(max, item.value), 1)
-    },
+    }
   },
   watch: {
     activeTab () {
       // 切页签时把「市级 / 区级」重置回该页签的第一张卡，避免残留上一个页签的选择
       this.activeSplit = (this.current.split[0] && this.current.split[0].key) || 'city'
-    },
+    }
   },
   methods: {
     pad: padIndex,
@@ -268,27 +311,37 @@ export default {
       // 设计稿步进 175；收到 150 是为了在页签条右端放「明细 / 排行」切换
       return { left: `${35 + index * 150}px` }
     },
-    /** 环形图填充切图：出让情况用绿/青，落实配套情况用红/金（均为高保真原色） */
-    ringFill (item) {
-      if (this.current.cube === 'b') {
-        return item.key === 'city' ? hf.ringFillRed : hf.ringFillGold
-      }
-      return item.key === 'city' ? hf.ringFillGreen : hf.ringFillTeal
+    /**
+     * 环形图进度色：出让情况绿/青，落实配套红/金。
+     * 四个色值都取自高保真切图（#43e972 / #54c9c3 / #e95b43 / #c99e54）——
+     * 切图弃用后颜色直接写在这里，保证观感与设计稿一致。
+     */
+    ringColor (item) {
+      const palette = this.current.cube === 'b'
+        ? { city: '#e95b43', district: '#c99e54' }
+        : { city: '#43e972', district: '#54c9c3' }
+      return palette[item.key] || palette.city
     },
     /**
-     * 高保真里两个填充切图的尺寸不同：
-     *   市级 fill 56×56 整环弧，区级 fill 30×56 只有右半环，
-     * 位置与尺寸按设计稿原值摆放，保证弧线起止角度与设计稿一致。
+     * 进度弧长（px）。圆周长按 r=26.25 计算，percent 是精确百分比（如 25.38）。
+     * 0% → "0 999" 不画；100% → 正好一整圈。
      */
-    ringFillStyle (item) {
-      return item.key === 'city'
-        ? { left: '20px', top: '10px', width: '56px', height: '56px' }
-        : { left: '45px', top: '10px', width: '30px', height: '56px' }
+    ringDash (item) {
+      const circumference = 2 * Math.PI * 26.25
+      const ratio = Math.min(Math.max(Number(item.percent || 0) / 100, 0), 1)
+      return Number((circumference * ratio).toFixed(2))
+    },
+    /** 圆环文字：高保真只显示整数百分比（28%），精确值放 title */
+    ringPercent (item) {
+      return Math.round(Number(item.percent || 0))
+    },
+    ringTitle (item) {
+      return `占比 ${Number(item.percent || 0).toFixed(2)}%`
     },
     barWidth (value) {
       return Math.max(4, Math.round((value / this.rankMax) * 100))
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -335,11 +388,13 @@ export default {
   &__tab {
     position: absolute;
     top: 10px;
-    width: 160px;
+    /* 设计稿是 160；收到 150 是为了让第二个页签不压住右端「明细 / 排行」按钮 */
+    width: 150px;
     height: 38px;
     padding: 0;
     font-family: inherit;
-    font-size: var(--screen-font-sm);
+    /* 设计稿 u29/u32：页签文字 14px、行高 28（与 150×28 的胶囊等高） */
+    font-size: 14px;
     color: #82c6ff;
     background: transparent;
     border: 0;
@@ -361,14 +416,14 @@ export default {
   &__tab-track {
     left: 0;
     top: 0;
-    width: 160px;
+    width: 150px;
     height: 38px;
   }
 
   &__tab-pill {
     left: 5px;
     top: 5px;
-    width: 150px;
+    width: 140px;
     height: 28px;
   }
 
@@ -417,10 +472,10 @@ export default {
   &__stat-label {
     position: absolute;
     left: 156px;
-    top: 30px;
-    font-size: var(--screen-font-lg);
+    top: 29px;
+    font-size: 16px;
     font-weight: 500;
-    line-height: 22px;
+    line-height: 16px;
     color: #ffffff;
     white-space: nowrap;
   }
@@ -429,29 +484,31 @@ export default {
    * 数值 + 单位排成一行。
    * ⚠ 不能用「各自绝对定位」：数值位数一变（2 位 / 3 位 / 4 位）单位就会压上去。
    *   用 flex 让单位始终跟在数值右侧，数值再长也只是往右推。
+   *   字号/行高取设计稿原值（u37 = 28px / 21px、u38 = 16px），
+   *   之前放大到 32px 是「看起来更醒目」，但会把统计卡的文字压到卡片下沿。
    */
   &__stat-figure {
     position: absolute;
     left: 156px;
     right: 16px;
-    top: 60px;
+    top: 59px;
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
   }
 
   &__stat-value {
     font-family: var(--screen-font-number-family);
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 500;
-    line-height: 1;
+    line-height: 21px;
     color: #ffe597;
     font-variant-numeric: tabular-nums;
   }
 
   &__stat-unit {
-    font-size: var(--screen-font-lg);
+    font-size: 16px;
     line-height: 1;
     color: #66afd4;
   }
@@ -487,7 +544,7 @@ export default {
   }
 
   &__ring-track,
-  &__ring-fill {
+  &__ring-arc {
     position: absolute;
     left: 20px;
     top: 10px;
@@ -497,25 +554,40 @@ export default {
     pointer-events: none;
   }
 
+  /* 进度弧：几何与 ring-track.svg 重合（r=26.25 / 线宽 3.1），弧长由数据决定 */
+  &__ring-arc-line {
+    fill: none;
+    stroke-width: 3.1;
+    stroke-linecap: round;
+  }
+
+  /*
+   * 圆环文字：设计稿 u46 是 left 36 / top 32 / 27×11 / 14px。
+   * 这里用「left 20 + width 56 + 居中」代替：圆心正好 48，
+   * 位数变化（9% / 100%）时也不会偏离圆心；top 31 + 行高 14 让文字在圆心垂直居中。
+   */
   &__ring-text {
     position: absolute;
-    left: 32px;
-    top: 32px;
-    width: 32px;
+    left: 20px;
+    top: 31px;
+    width: 56px;
+    height: 14px;
     font-family: var(--screen-font-number-family);
-    font-size: var(--screen-font-sm);
+    font-size: 14px;
     font-weight: 500;
+    line-height: 14px;
     color: #ffffff;
     text-align: center;
+    white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
 
   &__split-label {
     position: absolute;
-    left: 96px;
+    left: 95px;
     top: 19px;
-    font-size: var(--screen-font-sm);
-    line-height: 1.25;
+    font-size: 14px;
+    line-height: 14px;
     color: #66afd4;
     white-space: nowrap;
   }
@@ -523,26 +595,26 @@ export default {
   /* 数值 + 单位同样排成一行，避免位数变化时单位被压住 */
   &__split-figure {
     position: absolute;
-    left: 96px;
+    left: 95px;
     right: 8px;
-    top: 42px;
+    top: 41px;
     display: flex;
     align-items: baseline;
-    gap: 5px;
+    gap: 4px;
     min-width: 0;
   }
 
   &__split-value {
     font-family: var(--screen-font-number-family);
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 500;
-    line-height: 1;
+    line-height: 15px;
     color: #ffffff;
     font-variant-numeric: tabular-nums;
   }
 
   &__split-unit {
-    font-size: var(--screen-font-xs);
+    font-size: 12px;
     line-height: 1;
     color: #66afd4;
   }
@@ -578,9 +650,10 @@ export default {
 
   &__th {
     position: absolute;
-    top: 9px;
-    font-size: var(--screen-font-sm);
-    line-height: 18px;
+    top: 11px;
+    /* 设计稿 u69~u72：14px / 行高 14 / top 11 */
+    font-size: 14px;
+    line-height: 14px;
     color: #ffffff;
     white-space: nowrap;
 
@@ -592,9 +665,9 @@ export default {
   /* 「明细 / 排行」切换：高保真无此控件，放在页签条右端的空白处 */
   &__view-switch {
     position: absolute;
-    left: 340px;
+    left: 345px;
     top: 14px;
-    width: 58px;
+    width: 50px;
     height: 30px;
     padding: 0;
     font-family: inherit;
@@ -663,11 +736,16 @@ export default {
     text-align: center;
   }
 
+  /*
+   * 行高必须回到设计稿的 46px（u58/u59/u60 切图就是 359×46）。
+   * 之前写 54px 是为了容纳放大的 17px 字号，结果把 46px 的行底切图
+   * 纵向拉长了 17%，行与行之间的渐变和分隔线全部变形 —— 这是表格看起来「乱」的直接原因。
+   */
   &__tr,
   &__rank-row {
     position: relative;
     width: 100%;
-    height: 54px;
+    height: 46px;
   }
 
   &__tr-bg {
@@ -675,16 +753,17 @@ export default {
     left: 0;
     top: 0;
     width: 100%;
-    height: 54px;
+    height: 46px;
     display: block;
     pointer-events: none;
   }
 
   &__td {
     position: absolute;
-    top: 17px;
-    font-size: var(--screen-font-md);
-    line-height: 20px;
+    /* 14px 文字在 46px 行内垂直居中：(46 - 14) / 2 = 16 */
+    top: 16px;
+    font-size: 14px;
+    line-height: 14px;
     color: #66afd4;
     white-space: nowrap;
   }
@@ -698,8 +777,8 @@ export default {
   &__rank-no {
     position: absolute;
     left: 14px;
-    top: 17px;
-    font-size: var(--screen-font-sm);
+    top: 16px;
+    font-size: 14px;
     color: #4a7396;
     font-variant-numeric: tabular-nums;
   }
@@ -707,8 +786,8 @@ export default {
   &__rank-name {
     position: absolute;
     left: 52px;
-    top: 17px;
-    font-size: var(--screen-font-md);
+    top: 16px;
+    font-size: 14px;
     color: #66afd4;
     white-space: nowrap;
   }
@@ -716,7 +795,7 @@ export default {
   &__rank-bar {
     position: absolute;
     left: 148px;
-    top: 22px;
+    top: 18px;
     width: 130px;
     height: 9px;
     border-radius: var(--screen-radius-pill);
@@ -734,9 +813,9 @@ export default {
   &__rank-value {
     position: absolute;
     right: 14px;
-    top: 17px;
+    top: 16px;
     font-family: var(--screen-font-number-family);
-    font-size: var(--screen-font-md);
+    font-size: 14px;
     color: #ffffff;
     font-variant-numeric: tabular-nums;
   }

@@ -239,7 +239,7 @@ public class DataManagementTest extends LandIntegrationTestBase {
 
         Land saved = landAdminService.queryDetail(id);
         assertNotNull(saved);
-        assertEquals(crzdbh, saved.getCrzdbh());
+        assertEquals(storedCode(crzdbh), saved.getCrzdbh());
         assertEquals("新建地块", saved.getDkmc());
         assertEquals("西青区", saved.getXzqh());
         assertEquals(0, new BigDecimal("12.35").compareTo(saved.getCrj()));
@@ -540,7 +540,7 @@ public class DataManagementTest extends LandIntegrationTestBase {
         assertEquals("进行中", saved.getLcqk());
         assertEquals(facilityId, saved.getPtId());
         assertEquals(stage.getId(), saved.getStageId(), "所属阶段应自动冗余");
-        assertEquals(crzdbh, saved.getCrzdbh(), "宗地编号应自动冗余");
+        assertEquals(storedCode(crzdbh), saved.getCrzdbh(), "宗地编号应自动冗余");
         assertNotNull(saved.getYjjssj(), "★ 未填预计结束时间时应按工作日自动推算");
         // 2026-03-02 是周一，推 10 个工作日（该环节标准时长）→ 03-16（跳过周末）
         assertEquals("2026-03-16", new SimpleDateFormat("yyyy-MM-dd").format(saved.getYjjssj()),
@@ -711,7 +711,7 @@ public class DataManagementTest extends LandIntegrationTestBase {
         Map<String, Object> restored = recycleService.restore("land", id, null);
         assertEquals(Boolean.TRUE, restored.get("success"));
         assertNotNull(landAdminService.queryDetail(id), "恢复后应能查到");
-        assertEquals(crzdbh, landAdminService.queryDetail(id).getCrzdbh());
+        assertEquals(storedCode(crzdbh), landAdminService.queryDetail(id).getCrzdbh());
     }
 
     @Test
@@ -838,8 +838,8 @@ public class DataManagementTest extends LandIntegrationTestBase {
         for (Land land : hasOne.getRecords()) {
             hasCodes.add(land.getCrzdbh());
         }
-        assertTrue(hasCodes.contains(withFacility), "「有配套」应包含有配套的宗地：" + hasCodes);
-        assertFalse(hasCodes.contains(withoutFacility), "「有配套」不该包含没配套的宗地：" + hasCodes);
+        assertTrue(hasCodes.contains(storedCode(withFacility)), "「有配套」应包含有配套的宗地：" + hasCodes);
+        assertFalse(hasCodes.contains(storedCode(withoutFacility)), "「有配套」不该包含没配套的宗地：" + hasCodes);
 
         query.setHasFacility(Boolean.FALSE);
         IPage<Land> noneOne = landAdminService.queryPage(query);
@@ -847,8 +847,8 @@ public class DataManagementTest extends LandIntegrationTestBase {
         for (Land land : noneOne.getRecords()) {
             noneCodes.add(land.getCrzdbh());
         }
-        assertTrue(noneCodes.contains(withoutFacility), "「无配套」应包含没配套的宗地：" + noneCodes);
-        assertFalse(noneCodes.contains(withFacility), "「无配套」不该包含有配套的宗地：" + noneCodes);
+        assertTrue(noneCodes.contains(storedCode(withoutFacility)), "「无配套」应包含没配套的宗地：" + noneCodes);
+        assertFalse(noneCodes.contains(storedCode(withFacility)), "「无配套」不该包含有配套的宗地：" + noneCodes);
     }
 
     @Test

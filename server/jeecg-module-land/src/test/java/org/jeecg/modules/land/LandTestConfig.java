@@ -79,7 +79,11 @@ import javax.sql.DataSource;
         "org.jeecg.modules.land.data.process.support",
         "org.jeecg.modules.land.data.attachment.service.impl",
         "org.jeecg.modules.land.data.imports.facility.service.impl",
-        "org.jeecg.modules.land.data.imports.facility.support"
+        "org.jeecg.modules.land.data.imports.facility.support",
+        // ★ 统计域 · 首页看板（方案 2.3.1（五））
+        //   首页两个统计从 data 域迁到 stat/home 后，Service 实现在这里，
+        //   它依赖下面 MapperScannerConfigurer 扫进来的 stat.home.mapper。
+        "org.jeecg.modules.land.stat.home.service.impl"
 })
 public class LandTestConfig {
 
@@ -294,7 +298,9 @@ public class LandTestConfig {
                 "org.jeecg.modules.land.data.process.mapper",
                 "org.jeecg.modules.land.data.attachment.mapper",
                 "org.jeecg.modules.land.data.oplog.mapper",
-                "org.jeecg.modules.land.data.imports.facility.mapper"));
+                "org.jeecg.modules.land.data.imports.facility.mapper",
+                // 统计域 · 首页看板 Mapper（HomeStatMapper.xml 在 stat/home/mapper/xml 下）
+                "org.jeecg.modules.land.stat.home.mapper"));
         configurer.setSqlSessionFactoryBeanName("sqlSessionFactory");
         return configurer;
     }

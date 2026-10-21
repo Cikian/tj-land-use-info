@@ -18,9 +18,9 @@
       地图管理 作为静态页面叠在画布上（地图保持可交互）
 
     数据来源：
-      loadDashboard() 并发拉取 LandDashboardVO（宗地）与
-      FacilityDashboardVO（配套）。没有数据或接口失败时对应区域保持空白，
-      不使用设计稿演示数据。
+      loadDashboard() 并发拉取 LandOverviewVO（出让地块情况统计，/land/stat/home/landOverview）
+      与 PendingFacilityVO（待落实配套统计，/land/stat/home/pendingFacility）。
+      没有数据或接口失败时对应区域保持空白，不使用设计稿演示数据。
   -->
   <screen-stage :max-scale="4" @resize="handleStageResize">
     <!-- 真实地图（真实像素层） -->
@@ -179,7 +179,24 @@ import { endPick, pickState } from './pickSession'
 
 import { headerMenus, systemTitle, warningTabs } from './config'
 
-function emptyPanelSection (cube, label) {
+/**
+ * 空明细表。
+ * ★ 合计行按 columns 生成，不再写死 plots/roads：两个页签的数值列不同
+ *   （出让情况 = 出让地块 / 涉及道路，落实配套 = 配套总数 / 已完成），
+ *   写死会让某个页签的合计行凭空多出不属于它的字段。
+ * @param {Array} columns 明细列（见 TRANSFER_COLUMNS / SUPPORT_COLUMNS）
+ */
+function emptyTable (columns) {
+  const total = { name: '合计' }
+  columns.forEach((col) => {
+    // 序号 / 行政区划不是数值列，合计行不参与累加
+    if (col.key === 'index' || col.key === 'name') return
+    total[col.key] = 0
+  })
+  return { rows: [], total }
+}
+
+function emptyPanelSection (cube, label, columns) {
   return {
     cube,
     stat: { label, value: 0, unit: '宗' },
@@ -187,10 +204,10 @@ function emptyPanelSection (cube, label) {
       { key: 'city', label: '市级', value: 0, unit: '宗', percent: 0, tone: 'green' },
       { key: 'district', label: '区级', value: 0, unit: '宗', percent: 0, tone: 'cyan' }
     ],
-    columns: PANEL_COLUMNS,
+    columns,
     tables: {
-      city: { rows: [], total: { name: '合计', plots: 0, roads: 0 } },
-      district: { rows: [], total: { name: '合计', plots: 0, roads: 0 } }
+      city: emptyTable(columns),
+      district: emptyTable(columns)
     }
   }
 }
@@ -199,10 +216,11 @@ function emptyLeftPanel () {
   return {
     tabs: [
       { key: 'transfer', label: '出让情况' },
+      // 高保真设计稿 u32 的页签文字就是「落实配套情况」（不是「落实配套」）
       { key: 'support', label: '落实配套情况' }
     ],
-    transfer: emptyPanelSection('a', '已出让土地总数'),
-    support: emptyPanelSection('b', '需要落实配套')
+    transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS),
+    support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS)
   }
 }
 
@@ -241,14 +259,32 @@ const REVIEW_TABS = ['entry', 'query', 'ledger', 'audit']
  */
 const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachment', 'recycle']
 
-/** 左面板明细表的列（位置见 home/HomeLeftPanel.vue 的 TH_OFFSET） */
-const PANEL_COLUMNS = [
+/**
+ * 左面板明细表的列（横向位置见 home/HomeLeftPanel.vue 的 TH_OFFSET）。
+ * ★ 两套列不能合并：两个页签的数值口径不同，合并就会把「已完成配套数」
+ *   渲染到「涉及道路」列下（本轮修的就是这个错位）。
+ *   key 必须与 TH_OFFSET 的键一一对应，否则单元格 left 会变成 undefinedpx。
+ */
+const TRANSFER_COLUMNS = [
   { key: 'index', title: '序号' },
   { key: 'name', title: '行政区划' },
   { key: 'plots', title: '出让地块' },
   { key: 'roads', title: '涉及道路' }
 ]
 
+const SUPPORT_COLUMNS = [
+  { key: 'index', title: '序号' },
+  { key: 'name', title: '行政区划' },
+  { key: 'facilities', title: '配套总数' },
+  { key: 'completed', title: '已完成' }
+]
+
+/**
+ * 市级/区级占比（%），保留 2 位小数。
+ * ★ 圆环的弧长用这个精确值；圆环里的文字按高保真只显示整数百分比（28%），
+ *   精确值放在 title 提示里 —— 6 个字符（25.38%）会把 56px 的圆环撑破。
+ *   旧系统 homePage.js 也是「比值保留 2 位后再 ×100」的口径（159/431 → 37.00%）。
+ */
 function percent (value, total) {
   return total > 0 ? Number(((Number(value || 0) / total) * 100).toFixed(2)) : 0
 }
@@ -257,24 +293,42 @@ function toNumber (value) {
   return Number(value || 0)
 }
 
+/**
+ * 某一数值列在给定维度 ranks 上的合计。
+ * 后端只给每行的数值，没有维度级汇总字段，所以合计只能由明细行累加，
+ * 保证「行加起来 = 合计」；不能拿另一口径的总数顶替。
+ */
+function sumRank (ranks, key) {
+  return ranks.reduce((sum, item) => sum + toNumber(item[key]), 0)
+}
+
 function percentText (value) {
   return `${toNumber(value)}%`
 }
 
-function rankTable (ranks, roadKey, plotTotal) {
-  const rows = ranks.map((item) => ({
-    name: item.name,
-    plots: toNumber(item.value),
-    roads: toNumber(item[roadKey])
-  }))
-  return {
-    rows,
-    total: {
-      name: '合计',
-      plots: plotTotal,
-      roads: rows.reduce((sum, item) => sum + item.roads, 0)
-    }
-  }
+/**
+ * 后端 ranks → 明细表（明细行 + 合计行）。
+ * ★ 列值由 valueKeys 决定，函数本身不认识任何业务字段：
+ *   出让情况传 { plots: 'value', roads: 'roadCount' }，
+ *   落实配套传 { facilities: 'facilityCount', completed: 'completedCount' }。
+ *   这样两个页签共用一份渲染逻辑，也不会再把某个字段渲染到别的列下。
+ * @param {Array} ranks 后端 ranks
+ * @param {Object} valueKeys 明细列 key → ranks 字段名（index / name 由表格自己补）
+ * @param {Object} totals 合计行里各明细列的取值，键与 valueKeys 一致
+ */
+function rankTable (ranks, valueKeys, totals) {
+  const rows = ranks.map((item) => {
+    const row = { name: item.name }
+    Object.keys(valueKeys).forEach((key) => {
+      row[key] = toNumber(item[valueKeys[key]])
+    })
+    return row
+  })
+  const total = { name: '合计' }
+  Object.keys(valueKeys).forEach((key) => {
+    total[key] = toNumber(totals[key])
+  })
+  return { rows, total }
 }
 
 function toPlotWarning (rows) {
@@ -496,14 +550,14 @@ export default {
           if (landResponse && landResponse.success) {
             this.applyLandDashboard(landResponse.result || {})
           } else {
-            this.leftPanel = Object.assign({}, this.leftPanel, { transfer: emptyPanelSection('a', '已出让土地总数') })
+            this.leftPanel = Object.assign({}, this.leftPanel, { transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS) })
             this.transferRank = []
             this.$screenToast.error((landResponse && landResponse.message) || '宗地统计加载失败')
           }
           if (facilityResponse && facilityResponse.success) {
             this.applyFacilityDashboard(facilityResponse.result || {})
           } else {
-            this.leftPanel = Object.assign({}, this.leftPanel, { support: emptyPanelSection('b', '需要落实配套') })
+            this.leftPanel = Object.assign({}, this.leftPanel, { support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS) })
             this.supportingRank = []
             this.warningData = { city: [], district: [], plot: [] }
             this.plotWarning = emptyPlotWarning()
@@ -524,8 +578,9 @@ export default {
     },
 
     /**
-     * 宗地统计 → 左面板「出让情况」。
+     * 宗地总览 → 左面板「出让情况」。
      * ranks 带 projectType：市级项目进市级子表，区级项目进区级子表。
+     * 每行 value = 出让地块数、roadCount = 涉及道路数（字段名以后端契约为准）。
      */
     applyLandDashboard (data) {
       const total = toNumber(data.total)
@@ -543,10 +598,18 @@ export default {
             { key: 'city', label: '市级', value: city, unit: '宗', percent: percent(city, total), tone: 'green' },
             { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' }
           ],
-          columns: PANEL_COLUMNS,
+          columns: TRANSFER_COLUMNS,
           tables: {
-            city: rankTable(cityRanks, 'roadCount', city),
-            district: rankTable(districtRanks, 'roadCount', district)
+            // 合计行的出让地块数用 overview 的 cityCount / districtCount，
+            // 涉及道路没有维度级汇总字段，只能由该维度明细行累加
+            city: rankTable(cityRanks, { plots: 'value', roads: 'roadCount' }, {
+              plots: city,
+              roads: sumRank(cityRanks, 'roadCount')
+            }),
+            district: rankTable(districtRanks, { plots: 'value', roads: 'roadCount' }, {
+              plots: district,
+              roads: sumRank(districtRanks, 'roadCount')
+            })
           }
         }
       })
@@ -555,8 +618,12 @@ export default {
     },
 
     /**
-     * 配套统计 → 左面板「落实配套情况」+ 底部属性表预警。
-     * ranks 的 value 是「待落实配套的宗地数」，completedCount 是已完成配套数。
+     * 待落实配套 → 左面板「落实配套」+ 底部属性表预警。
+     * ranks 的 value = 待落实配套的宗地数、facilityCount = 配套总数、
+     * completedCount = 已完成配套数——三者口径不同，不能互相顶替
+     * （本轮修的就是「已完成」被渲染到「涉及道路」列下）。
+     * 顶部统计仍用 landTotal（需要落实配套的宗地数）；
+     * 双卡用 cityLandCount / districtLandCount（旧系统口径 = 市级 + 区级 actionable 宗地数）。
      */
     applyFacilityDashboard (data) {
       const total = toNumber(data.landTotal)
@@ -574,10 +641,18 @@ export default {
             { key: 'city', label: '市级', value: city, unit: '宗', percent: percent(city, total), tone: 'green' },
             { key: 'district', label: '区级', value: district, unit: '宗', percent: percent(district, total), tone: 'cyan' }
           ],
-          columns: PANEL_COLUMNS,
+          columns: SUPPORT_COLUMNS,
           tables: {
-            city: rankTable(cityRanks, 'completedCount', city),
-            district: rankTable(districtRanks, 'completedCount', district)
+            // 配套总数 / 已完成都没有维度级汇总字段，合计行按明细行累加，
+            // 保证「行加起来 = 合计」，不拿 landTotal 之类的另一口径顶替
+            city: rankTable(cityRanks, { facilities: 'facilityCount', completed: 'completedCount' }, {
+              facilities: sumRank(cityRanks, 'facilityCount'),
+              completed: sumRank(cityRanks, 'completedCount')
+            }),
+            district: rankTable(districtRanks, { facilities: 'facilityCount', completed: 'completedCount' }, {
+              facilities: sumRank(districtRanks, 'facilityCount'),
+              completed: sumRank(districtRanks, 'completedCount')
+            })
           }
         }
       })

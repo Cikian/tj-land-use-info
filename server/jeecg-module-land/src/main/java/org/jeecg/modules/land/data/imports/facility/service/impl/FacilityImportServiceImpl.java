@@ -488,7 +488,12 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                     break;
             }
         }
-        data.crzdbh = data.text(FacilityImportField.COL_CRZDBH);
+        // ★ 编号在这里就归一（半角括号→中文、去空白、摘【城更】标记、补末尾「号」）：
+        //   后面「文件内重复」「宗地是否存在（孤儿判定）」「与库里重复」全都用 data.crzdbh，
+        //   归一得越晚，越容易出现「库里有这块地、导入却报孤儿」。
+        //   标记仍由 applyValue 的 crzdbh 分支从原始单元格取出来写进备注 bz。
+        DataSupport.CodeInfo code = DataSupport.normalizeCode(data.text(FacilityImportField.COL_CRZDBH));
+        data.crzdbh = code == null ? null : code.getCode();
         data.ptxmmc = data.text(FacilityImportField.COL_PTXMMC);
         return data;
     }
@@ -977,15 +982,19 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     private void applyValue(Facility facility, String column, Object value) {
         switch (column) {
             case "crzdbh":
-                // 半角括号归一成中文括号，与单个录入（FacilityAdminServiceImpl）同一口径 ——
-                // 否则同一个配套会因括号写法不同而变成两条记录
-                facility.setCrzdbh(DataSupport.normalizeBrackets((String) value));
+                // 与单个录入（FacilityAdminServiceImpl）同一口径：括号/连字符/空白归一、
+                // 摘掉末尾【城更】这类标记（写进备注）、补「号」——
+                // 编号必须与宗地表写法一致，否则「宗地必须已存在」校验会误报
+                DataSupport.CodeInfo code = DataSupport.normalizeCode((String) value);
+                facility.setCrzdbh(code.getCode());
+                // 备注列排在 crzdbh 之后，先挂在这里，读到 bz 时再合并（见 case "bz"）
+                facility.setBz(DataSupport.appendRemark(facility.getBz(), code.getMarkers()));
                 break;
             case "ptxmmc":
-                facility.setPtxmmc(DataSupport.normalizeBrackets((String) value));
+                facility.setPtxmmc(DataSupport.normalizeName((String) value, 100));
                 break;
             case "dkmc":
-                facility.setDkmc(DataSupport.normalizeBrackets((String) value));
+                facility.setDkmc(DataSupport.normalizeName((String) value, 255));
                 break;
             case "ptsslb":
                 facility.setPtsslb((String) value);
@@ -1024,7 +1033,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 facility.setDkcrscndptjgsj((Date) value);
                 break;
             case "jsdw":
-                facility.setJsdw((String) value);
+                facility.setJsdw(DataSupport.normalizeName((String) value, 100));
                 break;
             case "sjdw":
                 facility.setSjdw((String) value);
@@ -1135,7 +1144,9 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 facility.setZlqsnrjsm((String) value);
                 break;
             case "bz":
-                facility.setBz((String) value);
+                // 备注列排在 crzdbh 之后：此时 facility.getBz() 里可能已经放着
+                // 从编号末尾摘下来的标记（【城更】等），要合并而不是覆盖
+                facility.setBz(DataSupport.appendRemark((String) value, facility.getBz()));
                 break;
             case "lrdw":
                 facility.setLrdw((String) value);

@@ -15,9 +15,7 @@ import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.service.IFacilityService;
 import org.jeecg.modules.land.data.service.ILandService;
-import org.jeecg.modules.land.data.vo.FacilityDashboardVO;
 import org.jeecg.modules.land.data.vo.FacilityOptionVO;
-import org.jeecg.modules.land.data.vo.LandDashboardVO;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -200,26 +198,15 @@ public class LandDataController {
     }
 
     /**
-     * 首页出让情况。
-     * 首页工作台登录后即可查看，不挂档案/收发文的按钮权限。
+     * 说明：首页看板的两个统计端点（原 {@code /dashboard} 与
+     * {@code /facility/dashboard}）已迁到统计域，见
+     * {@code org.jeecg.modules.land.stat.home.controller.HomeStatController}：
+     * <pre>
+     *   GET /land/stat/home/landOverview
+     *   GET /land/stat/home/pendingFacility
+     * </pre>
+     * data 域不再保留第二份看板实现，避免两处口径各自演化。
      */
-    @AutoLog(value = "数据管理-首页宗地统计")
-    @ApiOperation(value = "首页宗地统计", notes = "已出让宗地总数、市级/区级数量、按行政区划的出让地块与涉及道路")
-    @GetMapping(value = "/dashboard")
-    public Result<LandDashboardVO> dashboard() {
-        return Result.OK(landService.queryDashboard());
-    }
-
-    /**
-     * 首页落实配套情况与预警。
-     * 数据表 {@code t_supporting_facilities}（列结构沿用旧系统配套表）。
-     */
-    @AutoLog(value = "数据管理-首页配套统计")
-    @ApiOperation(value = "首页配套统计", notes = "待落实配套宗地、行政区排行、市级/区级/地块预警")
-    @GetMapping(value = "/facility/dashboard")
-    public Result<FacilityDashboardVO> facilityDashboard() {
-        return Result.OK(facilityService.queryDashboard());
-    }
 
     @AutoLog(value = "数据管理-首页预警明细")
     @ApiOperation(value = "首页预警明细", notes = "某个行政区下未完成的配套项目")

@@ -47,9 +47,13 @@
 --screen-viz-amber: #f5a524;     // 预警橙：资金 / 未开工 / 未竣工 / 未移交
 ```
 
-> 落实配套情况的环形图在高保真里用的是红 `#e95b43` / 金 `#c99e54`（见
+> 落实配套情况的环形图在高保真里用的是红 `#e95b43` / 金 `#c99e54`（原切图
 > `assets/screen-blue/ring-fill-red.svg` / `ring-fill-gold.svg`），表示「未落实」，
 > 与出让情况的绿 / 青不是同一套语义，实现时按页签区分引用，不要统一。
+>
+> ⚠ 这两组切图的**弧长是写死的**（28% / 72%），只能当配色参考，**不要直接拿来显示占比**。
+> 首页左面板已改为内联 SVG + `stroke-dasharray` 现画（见 `HomeLeftPanel.vue` 的
+> `ringColor / ringDash`）：画布 56×56、`r=26.25`、线宽 3.1，与 `ring-track.svg` 重合。
 
 全局工具类：`.stage-hit` —— `ScreenStage` 画布整体 `pointer-events: none`
 （否则全屏蒙版会挡住地图），画布内需要交互的元素必须挂这个类。
@@ -687,21 +691,28 @@ src/components/screen/
 > 与 `admin-client` 的同名文件一一对应（同一套 Java 后端，改接口必须两边同改）。
 > 它们只做展示与增删改查，**没有打印功能**（大屏既有模块都没有）；补录走 Excel 导入。
 
-**首页数据来源（`views/screen/` 三个文件的分工，改动时别搞混）：**
+**首页数据来源（`views/screen/` 的分工，改动时别搞混）：**
 
 | 文件 | 职责 |
 | --- | --- |
-| `config.js` | 静态常量：7 项顶栏导航、系统标题、属性表页签、预警字段契约 |
-| `mock.js` | **兜底演示数据**（高保真设计稿数字）。只在接口不可用/返回空时生效 |
-| `index.vue` | `loadDashboard()` 并发拉取 `LandDashboardVO` + `SupportingFacilitiesDashboardVO`，成功后整段覆盖兜底数据并下发给 `home/` 的面板组件 |
+| `config.js` | 静态常量：顶栏导航、系统标题、属性表页签、预警字段契约 |
+| `index.vue` | `loadDashboard()` 并发拉取 `LandOverviewVO` + `PendingFacilityVO`，成功后下发给 `home/` 的面板组件；接口失败/无数据时对应区域留白（**不使用设计稿演示数据**） |
 
 接口来自 **Java 业务后端**（`@/api/land/landData`，走 `window._CONFIG.VUE_DATA_JAVA_URL`），
-不是中台。已知缺口（前端已按「宁可留白也不串口径」处理，等后端补齐）：
+不是中台；后端实现在 `org.jeecg.modules.land.stat.home`：
 
-1. 宗地 `ranks` 只有**行政区划维度**，对应设计稿的市级子表；
-   街镇维度的区级子表后端暂无 → 该子表显示「暂无数据」。
-2. 配套 `ranks` 只有区县汇总，同样没有街镇维度。
-3. 「地块预警信息」弹窗的明细后端暂未提供，沿用兜底数据。
+- `GET /land/stat/home/landOverview` —— 出让地块情况统计（总数、市级/区级、按区分组）
+- `GET /land/stat/home/pendingFacility` —— 待落实配套统计（宗地数、配套总数/已完成、7 项预警）
+
+口径、旧系统对照与已知缺口见 **`docs/首页看板-实现说明.md`**。其中区级子表按
+`t_land.xzqh2` 分组是**旧系统口径**（该列实际是「录入单位简称」，数据质量遗留），
+不是笔误；不要「顺手统一」成 `xzqh`。
+
+已知缺口：
+
+1. 分级预警（预警等级 / 预警值 / 决策意见）未实现（D-603），前端不展示该列。
+2. 旧首页的「配套费总额」「立项率/开工率/竣工率」未实现（D-602）。
+3. 「地块预警信息」弹窗的明细接口本轮未扩展（属方案 5-06）。
 
 高保真切图资源：`src/assets/screen-blue/`（来源为本仓 `docs/高保真/.../images/首页/`，
 复制时统一改为 ASCII 文件名；`index.js` 是唯一映射入口，组件里只引用 `hf.xxx`）。

@@ -433,7 +433,12 @@ public class LandImportServiceImpl implements ILandImportService {
                     break;
             }
         }
-        data.crzdbh = data.text("crzdbh");
+        // ★ 编号在这里就归一（半角括号→中文、去空白、摘【城更】标记、补末尾「号」）：
+        //   后面「文件内重复」「与库里重复」的比对、写库、清理软删残留全都用 data.crzdbh，
+        //   归一得越晚越容易出现「库里明明有、比对却说没有」。
+        //   标记（【城市更新】等）仍由 applyValue 的 crzdbh 分支从原始单元格取出来写进备注。
+        DataSupport.CodeInfo code = DataSupport.normalizeCode(data.text("crzdbh"));
+        data.crzdbh = code == null ? null : code.getCode();
         return data;
     }
 
@@ -728,15 +733,19 @@ public class LandImportServiceImpl implements ILandImportService {
     private void applyValue(Land land, String column, Object value) {
         switch (column) {
             case "crzdbh":
-                // 半角括号归一成中文括号，与单个录入（LandAdminServiceImpl）同一口径 ——
-                // 否则同一宗地会因括号写法不同而变成两条记录
-                land.setCrzdbh(DataSupport.normalizeBrackets((String) value));
+                // 与单个录入（LandAdminServiceImpl）同一口径：括号/连字符/空白归一、
+                // 摘掉末尾【城更】这类标记（写进备注）、补「号」
+                DataSupport.CodeInfo code = DataSupport.normalizeCode((String) value);
+                land.setCrzdbh(code.getCode());
+                // 备注列可能还没读到（模板里 beizhu 在 crzdbh 之后），先挂在这里，
+                // 读到 beizhu 时再合并（见下面 case "beizhu"）
+                land.setBeizhu(DataSupport.appendRemark(land.getBeizhu(), code.getMarkers()));
                 break;
             case "xmfl":
                 land.setXmfl((String) value);
                 break;
             case "dkmc":
-                land.setDkmc(DataSupport.normalizeBrackets((String) value));
+                land.setDkmc(DataSupport.normalizeName((String) value, 255));
                 break;
             case "xzqh":
                 land.setXzqh((String) value);
@@ -766,13 +775,13 @@ public class LandImportServiceImpl implements ILandImportService {
                 land.setWcd((BigDecimal) value);
                 break;
             case "srr":
-                land.setSrr((String) value);
+                land.setSrr(DataSupport.normalizeName((String) value, 100));
                 break;
             case "htydjfsj":
                 land.setHtydjfsj((Date) value);
                 break;
             case "lpmc":
-                land.setLpmc((String) value);
+                land.setLpmc(DataSupport.normalizeName((String) value, 100));
                 break;
             case "lpjfsj":
                 land.setLpjfsj((Date) value);
@@ -826,7 +835,9 @@ public class LandImportServiceImpl implements ILandImportService {
                 land.setZlqsnrsm((String) value);
                 break;
             case "beizhu":
-                land.setBeizhu((String) value);
+                // 备注列排在 crzdbh 之后：此时 land.getBeizhu() 里可能已经放着
+                // 从编号末尾摘下来的标记（【城更】等），要合并而不是覆盖
+                land.setBeizhu(DataSupport.appendRemark((String) value, land.getBeizhu()));
                 break;
             case "xzqh2":
                 land.setXzqh2((String) value);

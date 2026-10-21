@@ -158,8 +158,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
 
     @Override
     public List<Map<String, Object>> queryByLand(String crzdbh) {
-        String code = DataSupport.clean(crzdbh);
-        if (code == null) {
+        // 查询侧归一：前端可能传不带「号」或半角括号的编号，而库里存的是规范写法
+        String code = DataSupport.normalizeCode(crzdbh).getCode();
+        if (StringUtils.isBlank(code)) {
             return Collections.emptyList();
         }
         QueryWrapper<Facility> wrapper = new QueryWrapper<>();
@@ -750,21 +751,27 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
      * 混用会让「字段一个都没拷过去」这种问题静默发生 —— 保存成功但数据全空。
      */
     /**
-     * 把「用户录入的名称类字段」里的半角括号统一成中文括号。
+     * 把「用户录入的名称类字段」归一：半角括号→中文括号、连字符族→半角 '-'、去空白。
      *
      * <p><b>★ 为什么必须在入口归一</b>：配套项目名称本身就带括号
      * （{@code 义安路（永顺道-永尚道）}），半角 {@code ()} 与中文 {@code （）}
      * 是不同的字符，不归一就会出现「同一个配套两条记录」：
      * 宗地内同名判重失效、附件挂到另一个 id 上。
      *
-     * <p>归一发生在**判重与落库之前**，所以两种写法提交进来的结果一致。
-     * 只动括号，其余字符（含中间的空格、大小写）一律不碰。
+     * <p><b>★ 编号额外两条规则</b>（2026-10-20 确认）：末尾的「【城更】/【城市更新】」
+     * 标记摘下来写进备注；编号统一以「号」结尾 —— 编号是与宗地表关联的唯一业务键，
+     * 一边带「号」一边不带就会挂不上宗地。
+     *
+     * <p>归一发生在**判重与落库之前**，所以各种写法提交进来的结果一致。
      */
     private void normalizeNameFields(FacilitySaveDTO dto) {
-        dto.setPtxmmc(DataSupport.normalizeBrackets(dto.getPtxmmc()));
-        dto.setCrzdbh(DataSupport.normalizeBrackets(dto.getCrzdbh()));
-        dto.setDkmc(DataSupport.normalizeBrackets(dto.getDkmc()));
-        dto.setJsdw(DataSupport.normalizeBrackets(dto.getJsdw()));
+        DataSupport.CodeInfo code = DataSupport.normalizeCode(dto.getCrzdbh());
+        dto.setCrzdbh(code.getCode());
+        // 从编号里摘下来的标记（【城更】等）记到备注，信息不丢
+        dto.setBz(DataSupport.appendRemark(dto.getBz(), code.getMarkers()));
+        dto.setPtxmmc(DataSupport.normalizeName(dto.getPtxmmc(), 100));
+        dto.setDkmc(DataSupport.normalizeName(dto.getDkmc(), 255));
+        dto.setJsdw(DataSupport.normalizeName(dto.getJsdw(), 100));
     }
 
     private void copyBusinessFields(FacilitySaveDTO dto, Facility facility) {

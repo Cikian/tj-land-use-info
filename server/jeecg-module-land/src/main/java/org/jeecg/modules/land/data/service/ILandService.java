@@ -3,7 +3,6 @@ package org.jeecg.modules.land.data.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
-import org.jeecg.modules.land.data.vo.LandDashboardVO;
 
 import java.util.List;
 import java.util.Map;
@@ -28,8 +27,11 @@ public interface ILandService extends IService<Land> {
     /** 行政区划下拉（从已有宗地数据里聚合，避免再单独维护一套字典） */
     List<Map<String, Object>> queryXzqhOptions();
 
-    /** 首页宗地总览与行政区排行。 */
-    LandDashboardVO queryDashboard();
+    /**
+     * 说明：首页宗地统计已迁到统计域（{@code stat.home}），
+     * 见 {@code IHomeStatService#queryLandOverview()}。
+     * 这里不再保留一份 —— data 域只负责数据管理，不承担看板聚合。
+     */
 
     /**
      * 新增经营性用地。

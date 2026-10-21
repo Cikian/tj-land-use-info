@@ -1,9 +1,14 @@
 import { javaDeleteAction, javaGetAction, javaPostAction, javaPutAction } from '@/api/manageJava'
 
 /**
- * 数据管理 · 宗地 / 配套项目 基础查询接口
+ * 数据管理 · 宗地 / 配套项目 基础查询接口 + 首页看板统计
  *
- * 后端：org.jeecg.modules.land.data.controller.LandDataController
+ * 后端：
+ *   · 首页看板（landDashboard / facilityDashboard）→
+ *     org.jeecg.modules.land.stat.home.controller.HomeStatController
+ *     ★ 2026-10 起大屏首页改走 /land/stat/home/*：统计口径集中到 stat 域，
+ *       不再复用 /land/data/dashboard 与 /land/data/facility/dashboard。
+ *   · 其余下拉 / 列表 / 增删改 → org.jeecg.modules.land.data.controller.LandDataController
  * 权限：land:archive:* / land:docReceive:* / land:docSend:*（任一即可）
  *
  * 【重要】接口在 **Java 业务后端**（window._CONFIG.VUE_DATA_JAVA_URL），
@@ -13,7 +18,8 @@ import { javaDeleteAction, javaGetAction, javaPostAction, javaPutAction } from '
  *   第一步 选出让宗地（t_land）
  *   第二步 联动选该宗地下的配套项目（xj_kjkfb_supporting_facilities）
  *
- * 与 admin-client/src/api/land/landData.js 一一对应（共用同一套后端）。
+ * 与 admin-client/src/api/land/landData.js 一一对应（共用同一套后端）；
+ * 例外是上面两个首页看板接口——只有大屏首页调用，管理端没有同名函数。
  */
 export const landDataUrl = {
   landOptions: '/land/data/land/options',
@@ -22,8 +28,8 @@ export const landDataUrl = {
   facilityOptions: '/land/data/facility/options',
   facilitySearch: '/land/data/facility/search',
   facilityById: '/land/data/facility/queryById',
-  landDashboard: '/land/data/dashboard',
-  facilityDashboard: '/land/data/facility/dashboard',
+  landDashboard: '/land/stat/home/landOverview',
+  facilityDashboard: '/land/stat/home/pendingFacility',
   warningDetail: '/land/data/facility/warning/detail',
   landList: '/land/data/land/list',
   landAdd: '/land/data/land/add',
@@ -77,12 +83,22 @@ export function queryFacilityById (id) {
   return javaGetAction(landDataUrl.facilityById, { id })
 }
 
-/** 首页宗地统计与行政区排行。 */
+/**
+ * 首页宗地总览（已出让土地总数 / 市级区级 / 涉及道路 + 行政区排行）。
+ * 契约：total / cityCount / districtCount / roadCount /
+ *       ranks[{ projectType, name, value, roadCount }]。
+ */
 export function queryLandDashboard () {
   return javaGetAction(landDataUrl.landDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
 }
 
-/** 首页配套统计、行政区排行与预警。 */
+/**
+ * 首页待落实配套（宗地数 / 配套总数 / 已完成 + 行政区排行 + 预警明细）。
+ * 契约：landTotal / cityLandCount / districtLandCount / facilityTotal /
+ *       completedFacilityCount / completionRate /
+ *       ranks[{ projectType, name, value, facilityCount, completedCount }] /
+ *       warnings{ city, district, plot }。
+ */
 export function queryFacilityDashboard () {
   return javaGetAction(landDataUrl.facilityDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
 }

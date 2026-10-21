@@ -208,9 +208,141 @@ public class DataSupport {
         return sb.toString();
     }
 
-    /** 清洗 + 括号归一 + 按列宽截断（用户录入的名称类字段统一走这个） */
+    /** 连字符族：下划线 + 各种破折号/连字符（含全角与波浪线），统一成半角 '-' */
+    private static final String DASH_CHARS = "_\u2014\u2013\u2015\u2010\u2011\u2012\u2212\uFF0D\uFE63\uFF5E\u301C";
+
+    /**
+     * 名称类文本归一：半角括号→中文括号、连字符族→半角 '-'、去掉所有空白与不可见字符。
+     *
+     * <p><b>★ 为什么必须在写入侧归一</b>：名称/编号是「用户录入的业务标识」，
+     * 看起来一样却是不同字符的写法（半角括号、全角破折号、中间夹空格）会让
+     * 判重、导入的「宗地必须已存在」校验、统计去重全部失效 —— 同一个项目
+     * 变成两条记录。2026-10 实测库里同时存在 {@code 津东成（挂）2024-34}
+     * 与 {@code 津东成（挂）2024-34号}、以及带 {@code 【城更】} 后缀的编号。
+     *
+     * <p>归一规则（与 {@code sql/data/12_normalize_codes_and_names.sql} 同一口径）：
+     * <ol>
+     *   <li>半角 {@code ( )} → 中文 {@code （ ）}</li>
+     *   <li>连字符族（{@code _ — – ― ‐ ‑ ‒ − － ﹣ ～ 〜}）→ 半角 {@code -}</li>
+     *   <li>去掉所有空白字符（含全角空格、NBSP）与不可见控制字符</li>
+     * </ol>
+     *
+     * @param value 原始文本；null 原样返回
+     * @return 归一后的文本；全是空白时返回 null
+     */
+    public static String normalizeText(String value) {
+        if (value == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '(') {
+                sb.append('（');
+            } else if (c == ')') {
+                sb.append('）');
+            } else if (DASH_CHARS.indexOf(c) >= 0) {
+                sb.append('-');
+            } else if (Character.isWhitespace(c) || Character.isSpaceChar(c)
+                    || c < 0x20 || c == 0x7F
+                    || c == '\u200B' || c == '\u200C' || c == '\u200D' || c == '\uFEFF') {
+                // 空白与不可见字符：名称里没有业务含义，留着只会让「看起来一样」的值不相等
+                continue;
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** 名称类字段归一 + 按列宽截断（单条录入与批量导入统一走这个） */
+    public static String normalizeName(String value, int maxLength) {
+        return capLength(normalizeText(value), maxLength);
+    }
+
+    /**
+     * 编号归一的中间结果：{@link #getCode()} 是落库用的编号，
+     * {@link #getMarkers()} 是从编号末尾摘下来的「【城更】/【城市更新】」这类标记，
+     * 由调用方写进备注（编号列只放编号）。
+     */
+    public static final class CodeInfo {
+        private final String code;
+        private final String markers;
+
+        CodeInfo(String code, String markers) {
+            this.code = code;
+            this.markers = markers;
+        }
+
+        public String getCode() {
+            return code;
+        }
+
+        public String getMarkers() {
+            return markers;
+        }
+    }
+
+    /**
+     * 宗地/配套编号归一：名称归一 → 摘掉末尾的「【…】」标记 → 保证以「号」结尾。
+     *
+     * <p><b>★ 为什么编号必须以「号」结尾</b>：编号是两张表关联的唯一业务键
+     * （{@code t_supporting_facilities.crzdbh = t_land.crzdbh}）。实测 847 条宗地
+     * 里 819 条不带「号」、配套表 1433 条里 1366 条不带「号」，两边写法一错开，
+     * 58 条配套就挂不上宗地、进不了首页统计。统一成「…号」后两边才对得上。
+     *
+     * <p><b>★ 为什么把「【城更】」摘到备注</b>：这是录入人用来标注「城市更新项目」
+     * 的临时记号，不是编号的一部分（编号里的括号、数字才是）。留在编号里会让
+     * 同一个项目因「带不带标记」变成两条记录；放进备注既保留了信息，也不影响判重。
+     *
+     * @param value 原始编号
+     * @return 归一结果；入参为空时返回 {@code code == null}
+     */
+    public static CodeInfo normalizeCode(String value) {
+        String code = normalizeText(value);
+        if (code == null) {
+            return new CodeInfo(null, null);
+        }
+        StringBuilder markers = new StringBuilder();
+        // 反复摘末尾的【…】：编号可能叠了多个标记（「…【城更】【城市更新】」）
+        while (code.length() > 0 && code.charAt(code.length() - 1) == '】') {
+            int start = code.lastIndexOf('【', code.length() - 2);
+            if (start <= 0) {
+                // 没有配对的【（或整串就是一个标记）：不当作标记，原样保留
+                break;
+            }
+            if (markers.length() > 0) {
+                markers.insert(0, ' ');
+            }
+            markers.insert(0, code.substring(start));
+            code = code.substring(0, start);
+        }
+        if (code.isEmpty()) {
+            return new CodeInfo(null, markers.length() == 0 ? null : markers.toString());
+        }
+        if (!code.endsWith("号")) {
+            code = code + "号";
+        }
+        return new CodeInfo(code, markers.length() == 0 ? null : markers.toString());
+    }
+
+    /**
+     * 把编号里摘下来的标记追加到备注：已有备注时用空格分隔，已包含则不重复追加（幂等）。
+     */
+    public static String appendRemark(String existing, String markers) {
+        if (markers == null || markers.isEmpty()) {
+            return existing;
+        }
+        String base = clean(existing);
+        if (base != null && base.contains(markers)) {
+            return base;
+        }
+        return base == null ? markers : base + " " + markers;
+    }
+
+    /** 清洗 + 名称归一 + 按列宽截断（用户录入的名称类字段统一走这个） */
     public static String cleanName(String value, int maxLength) {
-        return capLength(normalizeBrackets(clean(value)), maxLength);
+        return normalizeName(value, maxLength);
     }
 
     // ==================================================================

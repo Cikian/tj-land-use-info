@@ -2,7 +2,6 @@ package org.jeecg.modules.land.data.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.jeecg.modules.land.data.entity.Facility;
-import org.jeecg.modules.land.data.vo.FacilityDashboardVO;
 import org.jeecg.modules.land.data.vo.FacilityOptionVO;
 
 import java.util.List;
@@ -30,8 +29,11 @@ public interface IFacilityService extends IService<Facility> {
     /** 该宗地下的配套项目数量 */
     long countByCrzdbh(String crzdbh);
 
-    /** 首页配套统计、排行与预警。 */
-    FacilityDashboardVO queryDashboard();
+    /**
+     * 说明：首页配套统计已迁到统计域（{@code stat.home}），
+     * 见 {@code IHomeStatService#queryPendingFacility()}。
+     * 这里不再保留一份 —— data 域只负责数据管理，不承担看板聚合。
+     */
 
     /**
      * 新增配套项目。

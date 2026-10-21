@@ -351,7 +351,9 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
     @Override
     public Map<String, Object> checkCrzdbh(String crzdbh, String excludeId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        String value = DataSupport.clean(crzdbh);
+        // 与落库同一口径归一后再查：用户输「津北辰（挂）2018-015」、
+        // 库里存的是「…015号」，不归一就会报告「可用」，保存时才报重复
+        String value = DataSupport.normalizeCode(crzdbh).getCode();
         if (StringUtils.isBlank(value)) {
             result.put("available", false);
             result.put("message", "出让宗地编号不能为空");
@@ -430,7 +432,7 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
     }
 
     /**
-     * 把「用户录入的名称类字段」里的半角括号统一成中文括号。
+     * 把「用户录入的名称类字段」归一：半角括号→中文括号、连字符族→半角 '-'、去空白。
      *
      * <p><b>★ 为什么必须在入口归一</b>：宗地编号本身就带括号
      * （{@code 津西青（挂）2024-01号}），半角 {@code ()} 与中文 {@code （）}
@@ -438,15 +440,24 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
      * 附件挂到另一个 id 上、统计翻倍。
      * 实测库里 847 条编号有 2 条用了半角，就是这么来的。
      *
-     * <p>归一发生在**判重与落库之前**，所以两种写法提交进来的结果一致。
-     * 只动括号，其余字符（含空格、大小写）一律不碰 —— 编号的书写习惯归用户，
-     * 只统一「看起来一样却是不同字符」的那一处。
+     * <p><b>★ 编号额外两条规则</b>（2026-10-20 确认）：
+     * <ol>
+     *   <li>末尾的「【城更】/【城市更新】」这类标记不是编号的一部分，摘下来写进备注
+     *       —— 否则同一个项目会因「带不带标记」变成两条；</li>
+     *   <li>编号统一以「号」结尾 —— 编号是两张表关联的唯一业务键，
+     *       一边带「号」一边不带，配套就挂不上宗地（实测 58 条）。</li>
+     * </ol>
+     *
+     * <p>归一发生在**判重与落库之前**，所以各种写法提交进来的结果一致。
      */
     private void normalizeNameFields(LandSaveDTO dto) {
-        dto.setCrzdbh(DataSupport.normalizeBrackets(dto.getCrzdbh()));
-        dto.setDkmc(DataSupport.normalizeBrackets(dto.getDkmc()));
-        dto.setSrr(DataSupport.normalizeBrackets(dto.getSrr()));
-        dto.setLpmc(DataSupport.normalizeBrackets(dto.getLpmc()));
+        DataSupport.CodeInfo code = DataSupport.normalizeCode(dto.getCrzdbh());
+        dto.setCrzdbh(code.getCode());
+        // 从编号里摘下来的标记（【城更】等）记到备注，信息不丢
+        dto.setBeizhu(DataSupport.appendRemark(dto.getBeizhu(), code.getMarkers()));
+        dto.setDkmc(DataSupport.normalizeName(dto.getDkmc(), 255));
+        dto.setSrr(DataSupport.normalizeName(dto.getSrr(), 100));
+        dto.setLpmc(DataSupport.normalizeName(dto.getLpmc(), 100));
     }
 
     /**

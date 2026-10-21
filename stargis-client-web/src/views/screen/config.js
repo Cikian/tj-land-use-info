@@ -22,7 +22,7 @@ export const headerMenus = [
   { key: 'analysis', label: '配套分析管理' },
   { key: 'archive', label: '档案管理' },
   { key: 'review', label: '提级论证管理' },
-  { key: 'query', label: '查询统计' },
+  { key: 'query', label: '查询统计' }
 ]
 
 export const systemTitle = '天津市经营性用地市政配套设施动态监管工作站'
@@ -33,11 +33,12 @@ export const systemTitle = '天津市经营性用地市政配套设施动态监�
  */
 export const warningTabs = [
   { key: 'city', label: '市级项目预警' },
-  { key: 'district', label: '区级项目预警' },
+  { key: 'district', label: '区级项目预警' }
 ]
 
 /**
- * 预警行的字段契约（与后端 FacilityDashboardVO.WarningItem 一一对应）。
+ * 预警行的字段契约（与后端 PendingFacilityVO.WarningItem 一一对应；
+ * 2026-10 从 data 域 FacilityDashboardVO 迁到 stat/home 后字段名未变）。
  * 列宽与横坐标属于定尺画布的一部分，写在 home/HomeAttrPanel.vue 的 COL 常量里，
  * 不再放在这里（旧的 warningColumns 是给已下线的 ScreenDataTable 版底部面板用的，已删除）。
  */
@@ -49,5 +50,5 @@ export const warningFields = [
   'fund',
   'notStarted',
   'notCompleted',
-  'notHandedOver',
+  'notHandedOver'
 ]

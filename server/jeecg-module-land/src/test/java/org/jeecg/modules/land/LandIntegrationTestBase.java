@@ -1,5 +1,6 @@
 package org.jeecg.modules.land;
 
+import org.jeecg.modules.land.data.support.DataSupport;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
@@ -71,6 +72,16 @@ public abstract class LandIntegrationTestBase {
 
     /** 数据管理测试的宗地编号前缀（t_land / 配套 / 环节进度 共用同一前缀） */
     public static final String TEST_DATA_CRZDBH_PREFIX = "TJ-TEST-DATA-";
+
+    /**
+     * 编号落库后的规范写法（名称归一 + 补末尾「号」）。
+     *
+     * <p>测试里造编号一律写「不带号」的裸编号，断言库里的值时必须过这一层 ——
+     * 落库侧会补「号」，直接拿裸编号比会失败，而且看不出是「规则生效了」还是「存错了」。
+     */
+    protected static String storedCode(String raw) {
+        return DataSupport.normalizeCode(raw).getCode();
+    }
 
     @Autowired
     protected DataSource dataSource;

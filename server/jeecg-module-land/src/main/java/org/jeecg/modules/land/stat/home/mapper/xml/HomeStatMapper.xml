@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.stat.home.mapper.HomeStatMapper">
+
+    <!--
+      首页看板统计 Mapper（方案 2.3.1（五））
+
+      本文件由 data 域 LandMapper.xml / FacilityMapper.xml 的 dashboard 片段迁入，
+      迁移后 data 域的那几个 select 已删除 —— 全仓库只保留这一份统计口径。
+
+      注意：本文件必须放在名为 xml 的子目录下，
+            mapper-locations 为 classpath*:org/jeecg/modules/**/xml/*Mapper.xml。
+
+      ★ 两张表的软删列名不一样（本项目最容易写错的一处）：
+          t_land                   → del_flag（下划线，tinyint，实体上有 @TableLogic）
+          t_supporting_facilities  → delFlag（驼峰，varchar '0'/'1'，没有 @TableLogic）
+        手写 SQL 不受 @TableLogic 影响，所以下面每个查询都自己带软删条件。
+    -->
+
+    <!-- 配套项目「未删除」条件：列名是 delFlag，不是 del_flag -->
+    <sql id="facilityNotDeleted">
+        COALESCE(f.`delFlag`, '0') = '0'
+    </sql>
+
+    <!--
+      「需落实」配套（actionable）条件，与旧系统 getLandNumber / getFacilitiesInfoBySJ 完全一致：
+        - 建设性质 jsxx 为空、或不是「现状 / 不涉及」；
+        - 项目名称里不含「不涉及」。
+      为什么空值算「需落实」：旧库有 80 行 jsxx 为空，旧系统把它们算进需落实，
+      改口径会让首页数字与中心手里的旧报表对不上。
+    -->
+    <sql id="actionableCondition">
+        (f.`jsxx` IS NULL OR f.`jsxx` = '' OR f.`jsxx` NOT IN ('现状', '不涉及'))
+        AND COALESCE(f.`ptxmmc`, '') NOT LIKE '%不涉及%'
+    </sql>
+
+    <!--
+      道路口径（roadCount）的排除条件，★ D-007：沿用旧缺陷，不要「顺手修好」。
+      旧系统 XjKjkfbCommonController:77-78 硬编码排除「引河里北道、富彩道」；
+      这是业务白名单写死在 SQL 里的历史遗留（差异清单 D-007 判定为「✅ 一致（沿用旧缺陷）」）。
+      新增同类「不参与统计」的项目需要改这里，并同步差异清单。
+    -->
+    <sql id="roadCountExpression">
+        COUNT(DISTINCT CASE
+            WHEN f.`ptxmmc` IS NOT NULL
+             AND f.`ptxmmc` NOT LIKE '%不涉及%'
+             AND f.`ptxmmc` != '引河里北道、富彩道'
+            THEN f.`ptxmmc` END)
+    </sql>
+
+    <!--
+      ================================================================
+      一、出让地块情况统计
+      ================================================================
+    -->
+
+    <!--
+      总览。
+      roadCount 是「全部市/区级宗地下涉及的配套项目数」，按 ptxmmc 去重；
+      它与 ranks 里各分组 roadCount 之和不相等（同名道路可能横跨多个行政区），
+      这是正常的：总览看的是「一共涉及多少条道路」，排行看的是「每个区涉及多少条」。
+    -->
+    <select id="selectLandOverview" resultType="java.util.LinkedHashMap">
+        SELECT
+            COUNT(DISTINCT l.`id`) AS total,
+            COUNT(DISTINCT CASE WHEN l.`xmfl` = '市级项目' THEN l.`id` END) AS cityCount,
+            COUNT(DISTINCT CASE WHEN l.`xmfl` = '区级项目' THEN l.`id` END) AS districtCount,
+            <include refid="roadCountExpression"/> AS roadCount
+        FROM `t_land` l
+        LEFT JOIN `t_supporting_facilities` f
+               ON f.`crzdbh` = l.`crzdbh`
+              AND <include refid="facilityNotDeleted"/>
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` IN ('市级项目', '区级项目')
+    </select>
+
+    <!--
+      行政区排行。
+
+      ★★ 分组列是「市级用 xzqh、区级用 xzqh2」，这是旧系统口径，不要统一成 xzqh ★★
+      旧实现见 XjKjkfbCommonController：
+        - getLandInfoBySJ：市级按 xzqh 分组；
+        - getLandInfoByQJ：区级按 xzqh2 分组（第 99-102 行）。
+      为什么仍沿用：区级项目里有相当一部分的 xzqh 是「区」，而旧首页子表要按
+      「街镇 / 功能区 / 录入单位」细分（例如 xzqh2 有「咸水沽镇」「中新天津生态城」
+      「土地发展中心」）。若改成 xzqh，区级排行会从几十行塌缩成几个区，
+      与中心在旧系统里看到的首页完全对不上。
+
+      ⚠️ 数据质量风险（已在差异清单 3.0-9 登记）：xzqh2 的字段名与注释是
+      「行政区划2」，但实际内容混杂了街镇、功能区、录入单位简称；
+      实测区级 632 条里有 4 条 xzqh2 为空 —— 这些宗地无法进入区级排行
+      （value 合计会略小于 districtCount），旧系统同样如此。
+      在数据清洗之前，这个口径只能原样保留，不能「修正」成 xzqh。
+    -->
+    <select id="selectLandOverviewRanks" resultType="java.util.LinkedHashMap">
+        SELECT
+            l.`xmfl` AS projectType,
+            CASE WHEN l.`xmfl` = '市级项目' THEN l.`xzqh` ELSE l.`xzqh2` END AS name,
+            COUNT(DISTINCT l.`id`) AS value,
+            <include refid="roadCountExpression"/> AS roadCount
+        FROM `t_land` l
+        LEFT JOIN `t_supporting_facilities` f
+               ON f.`crzdbh` = l.`crzdbh`
+              AND <include refid="facilityNotDeleted"/>
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` IN ('市级项目', '区级项目')
+        GROUP BY l.`xmfl`,
+                 CASE WHEN l.`xmfl` = '市级项目' THEN l.`xzqh` ELSE l.`xzqh2` END
+        HAVING name IS NOT NULL AND name != ''
+        ORDER BY value DESC, name
+    </select>
+
+    <!--
+      ================================================================
+      二、待落实配套统计
+      ================================================================
+    -->
+
+    <!--
+      宗地口径总览：只算「至少有一个需落实配套」的宗地（DISTINCT l.id）。
+      旧系统 getLandNumber 是先查宗地、再按配套过滤后取 crzdbh 去重，
+      这里用 JOIN + DISTINCT 得到同一结果；用 JOIN 而不是 LEFT JOIN，
+      是因为「没有配套的宗地」本来就不该出现在待落实统计里。
+    -->
+    <select id="selectPendingFacilityOverview" resultType="java.util.LinkedHashMap">
+        SELECT
+            COUNT(DISTINCT l.`id`) AS landTotal,
+            COUNT(DISTINCT CASE WHEN l.`xmfl` = '市级项目' THEN l.`id` END) AS cityLandCount,
+            COUNT(DISTINCT CASE WHEN l.`xmfl` = '区级项目' THEN l.`id` END) AS districtLandCount
+        FROM `t_land` l
+        JOIN `t_supporting_facilities` f
+          ON f.`crzdbh` = l.`crzdbh`
+         AND <include refid="facilityNotDeleted"/>
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` IN ('市级项目', '区级项目')
+          AND <include refid="actionableCondition"/>
+    </select>
+
+    <!--
+      ★ 配套总数 / 完成数：必须「先去重（ptxmmc）再过滤」，不能直接 SUM 行数。
+
+      旧系统 TreeSet 去重（getFacilitiesInfoBySJ 第 145-156 行）：先按 ptxmmc 去重，
+      再在去重后的集合上判断 sfjg='是' && sfkg!='否'。
+      为什么要去重：同一个配套项目（同名道路）可能挂在多个宗地下，
+      按行数会把一条路算成两三条，完成率随之虚高/虚低。
+
+      为什么用「子查询分组 + MAX」而不是 COUNT(DISTINCT ...)：
+      去重后还要判断「这一行是否完成」，而「完成」要看该名称下有没有任意一行
+      满足 sfjg='是' 且 sfkg<>'否'。分组后取 MAX(完成标记) 恰好表达
+      「该配套项目在任一行已完成」，再在组粒度上计数，语义与旧系统一致。
+    -->
+    <select id="selectPendingFacilityTotals" resultType="java.util.LinkedHashMap">
+        SELECT
+            COUNT(1) AS facilityTotal,
+            COALESCE(SUM(CASE WHEN t.`completed` = 1 THEN 1 ELSE 0 END), 0) AS completedFacilityCount
+        FROM (
+            SELECT
+                f.`ptxmmc` AS ptxmmc,
+                MAX(CASE WHEN f.`sfjg` = '是' AND COALESCE(f.`sfkg`, '') != '否' THEN 1 ELSE 0 END) AS completed
+            FROM `t_land` l
+            JOIN `t_supporting_facilities` f
+              ON f.`crzdbh` = l.`crzdbh`
+             AND <include refid="facilityNotDeleted"/>
+            WHERE l.`del_flag` = 0
+              AND l.`xmfl` IN ('市级项目', '区级项目')
+              AND <include refid="actionableCondition"/>
+            GROUP BY f.`ptxmmc`
+        ) t
+    </select>
+
+    <!--
+      行政区排行（分组列同出让地块：市级 xzqh、区级 xzqh2，理由见上方长注释）。
+
+      内层先按 (项目分类, 分组名, 宗地, 配套名称) 聚合出「完成标记」，
+      外层再按分组聚合：
+        value          = 分组内 DISTINCT 宗地数（有需落实配套的宗地）
+        facilityCount  = 分组内 DISTINCT 配套名称数（先去重再计数）
+        completedCount = 分组内「任一行已完成」的 DISTINCT 配套名称数
+      注意 completedCount 用 COUNT(DISTINCT CASE ...) 而不是 SUM：
+      同一配套名称在同一分组的两宗地上都有已完成行时，只能算 1 条。
+    -->
+    <select id="selectPendingFacilityRanks" resultType="java.util.LinkedHashMap">
+        SELECT
+            t.`projectType` AS projectType,
+            t.`name` AS name,
+            COUNT(DISTINCT t.`landId`) AS value,
+            COUNT(DISTINCT t.`ptxmmc`) AS facilityCount,
+            COUNT(DISTINCT CASE WHEN t.`completed` = 1 THEN t.`ptxmmc` END) AS completedCount
+        FROM (
+            SELECT
+                l.`xmfl` AS projectType,
+                CASE WHEN l.`xmfl` = '市级项目' THEN l.`xzqh` ELSE l.`xzqh2` END AS name,
+                l.`id` AS landId,
+                f.`ptxmmc` AS ptxmmc,
+                MAX(CASE WHEN f.`sfjg` = '是' AND COALESCE(f.`sfkg`, '') != '否' THEN 1 ELSE 0 END) AS completed
+            FROM `t_land` l
+            JOIN `t_supporting_facilities` f
+              ON f.`crzdbh` = l.`crzdbh`
+             AND <include refid="facilityNotDeleted"/>
+            WHERE l.`del_flag` = 0
+              AND l.`xmfl` IN ('市级项目', '区级项目')
+              AND <include refid="actionableCondition"/>
+            GROUP BY l.`xmfl`,
+                     CASE WHEN l.`xmfl` = '市级项目' THEN l.`xzqh` ELSE l.`xzqh2` END,
+                     l.`id`,
+                     f.`ptxmmc`
+        ) t
+        WHERE t.`name` IS NOT NULL AND t.`name` != ''
+        GROUP BY t.`projectType`, t.`name`
+        ORDER BY value DESC, t.`name`
+    </select>
+
+    <!--
+      ================================================================
+      三、预警面板（逻辑原样迁移，未改口径）
+      ================================================================
+    -->
+
+    <!--
+      与旧系统 ProcessWarningServiceImpl.editWarningMsgLand 一致：
+      只统计明确填写「否 / 未落实」的配套项目，空值不计入分子；
+      分母是该分组下的全部配套项目。
+    -->
+    <sql id="warningRates">
+        ROUND(COALESCE(SUM(CASE WHEN f.`xjpfsfwc` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS landAcquisition,
+        ROUND(COALESCE(SUM(CASE WHEN f.`kypfsfwc` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS feasibility,
+        ROUND(COALESCE(SUM(CASE WHEN f.`csjgspfsfwc` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS preliminaryDesign,
+        ROUND(COALESCE(SUM(CASE WHEN f.`zjlsqk` = '未落实' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS fund,
+        ROUND(COALESCE(SUM(CASE WHEN f.`sfkg` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS notStarted,
+        ROUND(COALESCE(SUM(CASE WHEN f.`sfjg` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS notCompleted,
+        ROUND(COALESCE(SUM(CASE WHEN f.`sfyj` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS notHandedOver
+    </sql>
+
+    <!--
+      市级 / 区级预警：区级的分组列同样沿用旧口径 xzqh2（与排行一致），
+      否则「区级预警」的行会与「区级排行」的分组对不上，前端点排行下钻会查不到明细。
+    -->
+    <select id="selectWarningByProjectType" resultType="java.util.LinkedHashMap">
+        SELECT
+            CONCAT(#{xmfl}, '-', grouped.district) AS id,
+            grouped.district AS district,
+            <include refid="warningRates"/>
+        FROM (
+            SELECT
+                l.`crzdbh`,
+                CASE WHEN #{xmfl} = '区级项目' THEN l.`xzqh2` ELSE l.`xzqh` END AS district
+            FROM `t_land` l
+            WHERE l.`del_flag` = 0
+              AND l.`xmfl` = #{xmfl}
+        ) grouped
+        JOIN `t_supporting_facilities` f
+          ON f.`crzdbh` = grouped.`crzdbh`
+        WHERE grouped.district IS NOT NULL
+          AND grouped.district != ''
+        GROUP BY grouped.district
+        ORDER BY grouped.district
+    </select>
+
+    <!-- 区级项目按旧系统 xzqh2 列出的全部行政区：用来给「一条配套都没上报」的区补 0 行 -->
+    <select id="selectDistrictGroups" resultType="java.util.LinkedHashMap">
+        SELECT DISTINCT l.`xzqh2` AS district
+        FROM `t_land` l
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` = '区级项目'
+          AND l.`xzqh2` IS NOT NULL
+          AND l.`xzqh2` != ''
+        ORDER BY l.`xzqh2`
+    </select>
+
+    <!-- 地块预警：按宗地聚合 7 列指标；district 列拼成「区划 + 地块名称」供前端直接展示 -->
+    <select id="selectLandWarnings" resultType="java.util.LinkedHashMap">
+        SELECT
+            l.`id` AS id,
+            l.`crzdbh` AS landNo,
+            COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`) AS plotName,
+            CONCAT(COALESCE(l.`xzqh`, ''),
+                   CASE WHEN l.`xzqh` IS NULL OR l.`xzqh` = '' THEN '' ELSE ' ' END,
+                   COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`)) AS district,
+            <include refid="warningRates"/>
+        FROM `t_land` l
+        JOIN `t_supporting_facilities` f
+          ON f.`crzdbh` = l.`crzdbh`
+         AND COALESCE(f.`delFlag`, '0') = '0'
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` IN ('市级项目', '区级项目')
+        GROUP BY l.`id`, l.`xzqh`, l.`dkmc`, l.`crzdbh`
+        ORDER BY notHandedOver DESC, district
+    </select>
+
+</mapper>

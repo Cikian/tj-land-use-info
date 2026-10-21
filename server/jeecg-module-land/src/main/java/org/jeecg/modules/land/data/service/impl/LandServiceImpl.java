@@ -10,8 +10,8 @@ import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.mapper.LandMapper;
 import org.jeecg.modules.land.data.service.ILandService;
+import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.vo.LandOptionVO;
-import org.jeecg.modules.land.data.vo.LandDashboardVO;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -54,7 +54,14 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         if (StringUtils.isBlank(crzdbh)) {
             return null;
         }
-        return baseMapper.selectByCrzdbh(crzdbh.trim());
+        // 查询侧也归一：用户/导入表里填的编号可能没带末尾「号」、或用半角括号，
+        // 而库里存的是规范写法。不归一就会出现「明明有这个编号却查不到宗地」，
+        // 配套录入与批量导入的「宗地必须已存在」校验都会误报。
+        String code = DataSupport.normalizeCode(crzdbh).getCode();
+        if (StringUtils.isBlank(code)) {
+            return null;
+        }
+        return baseMapper.selectByCrzdbh(code);
     }
 
     @Override
@@ -78,33 +85,11 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
     }
 
     @Override
-    public LandDashboardVO queryDashboard() {
-        Map<String, Object> overview = baseMapper.selectDashboardOverview();
-        LandDashboardVO result = new LandDashboardVO();
-        result.setTotal(toLong(overview, "total"));
-        result.setCityCount(toLong(overview, "cityCount"));
-        result.setDistrictCount(toLong(overview, "districtCount"));
-        result.setRoadCount(toLong(overview, "roadCount"));
-
-        List<LandDashboardVO.RankItem> ranks = new ArrayList<>();
-        for (Map<String, Object> row : baseMapper.selectDashboardRanks()) {
-            LandDashboardVO.RankItem item = new LandDashboardVO.RankItem();
-            item.setProjectType(valueOf(row, "projectType"));
-            item.setName(valueOf(row, "name"));
-            item.setValue(toLong(row, "value"));
-            item.setRoadCount(toLong(row, "roadCount"));
-            ranks.add(item);
-        }
-        result.setRanks(ranks);
-        return result;
-    }
-
-    @Override
     public void createLand(Land land) {
         if (land == null || StringUtils.isBlank(land.getCrzdbh())) {
             throw new JeecgBootException("出让宗地编号不能为空");
         }
-        land.setCrzdbh(land.getCrzdbh().trim());
+        normalizeFields(land);
         if (queryByCrzdbh(land.getCrzdbh()) != null) {
             throw new JeecgBootException("创建失败！当前出让宗地编号已创建!");
         }
@@ -127,7 +112,7 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         if (current == null) {
             throw new JeecgBootException("未找到对应的出让宗地");
         }
-        land.setCrzdbh(land.getCrzdbh().trim());
+        normalizeFields(land);
         Land duplicated = queryByCrzdbh(land.getCrzdbh());
         if (duplicated != null && !duplicated.getId().equals(land.getId())) {
             throw new JeecgBootException("出让宗地编号不能重复");
@@ -135,6 +120,26 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         land.setUpdateBy(currentUsername());
         land.setUpdateTime(new Date());
         updateById(land);
+    }
+
+    /**
+     * 与 {@code LandAdminServiceImpl} 同一口径：名称归一（括号/连字符/空白）、
+     * 编号去【城更】标记（记备注）并补「号」。
+     *
+     * <p>这条是旧接口 {@code /land/data/land/add|edit} 的写入路径，
+     * 与单条录入页走的是不同 Service，所以两边都要归一，否则从旧接口进来的
+     * 编号仍会缺「号」，配套又挂不上。
+     */
+    private void normalizeFields(Land land) {
+        DataSupport.CodeInfo code = DataSupport.normalizeCode(land.getCrzdbh());
+        if (StringUtils.isBlank(code.getCode())) {
+            throw new JeecgBootException("出让宗地编号不能为空");
+        }
+        land.setCrzdbh(code.getCode());
+        land.setBeizhu(DataSupport.appendRemark(land.getBeizhu(), code.getMarkers()));
+        land.setDkmc(DataSupport.normalizeName(land.getDkmc(), 255));
+        land.setSrr(DataSupport.normalizeName(land.getSrr(), 100));
+        land.setLpmc(DataSupport.normalizeName(land.getLpmc(), 100));
     }
 
     private static String currentUsername() {
@@ -155,27 +160,5 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
-    }
-
-    private static long toLong(Map<String, Object> row, String key) {
-        Object value = findValue(row, key);
-        return value instanceof Number ? ((Number) value).longValue() : 0L;
-    }
-
-    private static String valueOf(Map<String, Object> row, String key) {
-        Object value = findValue(row, key);
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    private static Object findValue(Map<String, Object> row, String key) {
-        if (row == null) {
-            return null;
-        }
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(key)) {
-                return entry.getValue();
-            }
-        }
-        return null;
     }
 }
