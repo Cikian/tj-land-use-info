@@ -86,7 +86,7 @@
       :page-no="pagination.current"
       :page-size="pagination.pageSize"
       :page-size-options="pageSizeOptions"
-      :link-keys="detailEnabled ? ['crzdbh'] : []"
+      :link-keys="linkKeys"
       @toggle-column="handleToggleColumn"
       @reset-columns="handleResetColumns"
       @page-change="handlePageChange"
@@ -95,13 +95,22 @@
       @open-detail="handleOpenDetail"
     />
 
-    <!-- 地块配套详情（只有经营性用地查询需要：点编号看这块地下有哪些配套） -->
+    <!-- 经营性用地：点宗地编号 → 看这块地下有哪些配套（不受查询条件影响） -->
     <land-facility-detail-modal
       v-if="detailEnabled"
       :visible="detailVisible"
       :crzdbh="detailCrzdbh"
       :columns="facilityColumns"
       @close="detailVisible = false"
+    />
+
+    <!-- 用地配套项目：点配套项目名称 → 看该配套的环节进展 / 时间节点 / 责任单位 -->
+    <facility-detail-modal
+      v-if="!detailEnabled"
+      :visible="facilityDetailVisible"
+      :facility-id="facilityDetailId"
+      :columns="columns"
+      @close="facilityDetailVisible = false"
     />
   </div>
 </template>
@@ -135,10 +144,12 @@ import {
 import QueryResultPanel from './QueryResultPanel.vue'
 import StatSummaryPanel from './StatSummaryPanel.vue'
 import LandFacilityDetailModal from './LandFacilityDetailModal.vue'
+import FacilityDetailModal from './FacilityDetailModal.vue'
 
 export default {
   name: 'StatQueryView',
   components: {
+    FacilityDetailModal,
     LandFacilityDetailModal,
     QueryResultPanel,
     ScreenButton,
@@ -167,9 +178,13 @@ export default {
       loading: false,
       pagination: { current: 1, pageSize: 20, total: 0 },
       pageSizeOptions: PAGE_SIZE_OPTIONS,
-      /** 地块配套详情 */
+      /** 地块配套详情（经营性用地：点宗地编号） */
       detailVisible: false,
       detailCrzdbh: '',
+      /** 配套项目详情（用地配套项目：点配套项目名称） */
+      facilityDetailVisible: false,
+      facilityDetailId: '',
+      /** 配套字段元数据（两个页签都可能用：宗地页签的地块配套详情也用它取中文名） */
       facilityColumns: []
     }
   },
@@ -177,9 +192,16 @@ export default {
     metrics () {
       return metricsOf(this.dataType)
     },
-    /** 只有经营性用地需要「点编号看该宗地配套」 */
+    /** 只有经营性用地需要「点编号看该宗地配套」；配套页签点的是配套项目名称 */
     detailEnabled () {
       return this.dataType === 'land'
+    },
+    /**
+     * 结果表里哪一列做成可点链接（点开对应详情）。
+     * 宗地 → 宗地编号（看该宗地下的配套）；配套 → 配套项目名称（看该配套的进展）。
+     */
+    linkKeys () {
+      return this.detailEnabled ? ['crzdbh'] : ['ptxmmc']
     },
     conditionFields () {
       if (this.dataType === 'facility') {
@@ -197,7 +219,10 @@ export default {
           this.selectField('tjlzsftg', '提级论证通过', YES_NO_OPTIONS, { labelWidth: 104 }),
           this.selectField('xjpfsfwc', '项建批复完成', APPROVAL_OPTIONS, { labelWidth: 104 }),
           this.selectField('kypfsfwc', '可研批复完成', APPROVAL_OPTIONS, { labelWidth: 104 }),
-          this.selectField('csjgspfwc', '初设概算批复', APPROVAL_OPTIONS, { labelWidth: 104 })
+          this.selectField('csjgspfwc', '初设概算批复', APPROVAL_OPTIONS, { labelWidth: 104 }),
+          // 资金落实情况：候选值取自库里实际出现过的值（已落实 / 未落实 …），
+          // ★ 与首页看板「资金未落实」指标同源字段（zjlsqk='未落实'），所以查询与看板能对上
+          this.selectField('zjlsqk', '资金落实情况', this.multiOptions('zjlsqk'), { labelWidth: 104 })
         ]
       }
       return [
@@ -257,11 +282,10 @@ export default {
           .filter((column) => column.defaultColumn)
           .map((column) => column.key)
         this.options = (optRes && optRes.result) || {}
-        if (this.detailEnabled) {
-          // 「地块配套详情」的列名也来自后端，别在这里另抄一份中文名
-          const facilityRes = await queryColumns('facility')
-          this.facilityColumns = (facilityRes && facilityRes.success && facilityRes.result) || []
-        }
+        // 配套字段元数据：宗地页签的「地块配套详情」与配套页签的「配套项目详情」都用它取中文名，
+        // 所以两个数据集都取（配套页签只是恰好与主 columns 相同）。
+        const facilityRes = await queryColumns('facility')
+        this.facilityColumns = (facilityRes && facilityRes.success && facilityRes.result) || []
       } finally {
         this.loading = false
         await this.loadAll(1)
@@ -372,11 +396,25 @@ export default {
     },
 
     handleOpenDetail (row) {
-      if (!this.detailEnabled || !row || !row.crzdbh) {
+      if (!row) {
         return
       }
-      this.detailCrzdbh = row.crzdbh
-      this.detailVisible = true
+      if (this.detailEnabled) {
+        // 经营性用地：按宗地编号查该宗地下的全部配套
+        if (!row.crzdbh) {
+          return
+        }
+        this.detailCrzdbh = row.crzdbh
+        this.detailVisible = true
+        return
+      }
+      // 用地配套项目：按行标识（id）查该配套的详情
+      if (!row.id) {
+        toast.warning('这一行没有行标识，无法打开详情（请刷新后重试）')
+        return
+      }
+      this.facilityDetailId = String(row.id)
+      this.facilityDetailVisible = true
     }
   }
 }

@@ -2,6 +2,7 @@ package org.jeecg.modules.land.stat.query;
 
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.LandIntegrationTestBase;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * @Description: 查询统计（方案 2.3.1（五）5-01 / 5-02）· 集成测试
@@ -119,7 +121,9 @@ public class StatQueryTest extends LandIntegrationTestBase {
         assertEquals(2, page.getColumns().size(), "白名单外的列必须被丢弃");
         Map<String, Object> row = page.getRows().get(0);
         assertEquals(code, row.get("crzdbh"));
-        assertEquals(2, row.size(), "行里的 key 必须与返回的列一一对应");
+        // 行 = id（行标识，永远带，不进列）+ 勾选的 2 列
+        assertEquals(3, row.size(), "行里的 key 必须与返回的列一一对应（外加行标识 id）");
+        assertNotNull(row.get("id"), "★ 行标识必须随行返回，否则前端表格没有稳定 row-key、也点不开详情");
     }
 
     // ==================================================================
@@ -378,13 +382,67 @@ public class StatQueryTest extends LandIntegrationTestBase {
                 "移交率 1/1 = 100.0%");
     }
 
+    /**
+     * 配套项目详情：结果表点开某一行时看到的那一份数据。
+     *
+     * <p>★ 关键是它**不经过数据管理的录入接口**（那个挂 `land:data:facility` 权限）：
+     * 查询统计页刻意不挂权限，借用录入接口会让「看得到行、点不开详情」。
+     */
+    @Test
+    public void facilityDetailReturnsBusinessFields() {
+        String tag = uniqueTag();
+        String xzqh = TEST_PREFIX + "配套详情-区-" + tag;
+        String ptxmmc = TEST_PREFIX + "详情配套道路-" + tag;
+        String rawCode = TEST_PREFIX + "fdetail-" + tag;
+        landAdminService.createLand(buildLand(rawCode, "配套详情地块", "市级项目", xzqh, null), null);
+        String code = storedCode(rawCode);
+
+        FacilitySaveDTO dto = buildFacility(code, ptxmmc, "新建", "是", "是");
+        dto.setZjlsqk("已落实");
+        dto.setXjpfsfwc("是");
+        dto.setXjpfzt("批复完成");
+        facilityAdminService.createFacility(dto, null);
+
+        // 先按条件查出行（拿到 id），再按 id 取详情 —— 与前端「点行看详情」同一条路径
+        StatQueryDTO query = new StatQueryDTO();
+        query.setDataType("facility");
+        query.setPtxmmc(Collections.singletonList(ptxmmc));
+        QueryPageVO page = statQueryService.queryPage(query);
+        assertEquals(1, page.getTotal(), "按名称应命中 1 条配套");
+        String id = String.valueOf(page.getRows().get(0).get("id"));
+
+        Map<String, Object> detail = statQueryService.queryFacilityDetail(id);
+        assertEquals(ptxmmc, detail.get("ptxmmc"), "配套项目名称");
+        assertEquals("道路", detail.get("ptsslb"), "配套设施类别");
+        assertEquals("新建", detail.get("jsxx"), "建设性质");
+        assertEquals("已落实", detail.get("zjlsqk"), "资金落实情况（本次新补的查询条件同源字段）");
+        assertEquals("是", detail.get("xjpfsfwc"), "项建批复是否完成");
+        assertEquals("批复完成", detail.get("xjpfzt"), "★ 状态列不在字段白名单里，但详情必须能看到");
+    }
+
+    @Test
+    public void facilityDetailRejectsUnknownId() {
+        try {
+            statQueryService.queryFacilityDetail("TJ-TEST-DATA-不存在-" + uniqueTag());
+            fail("查不到配套时必须抛业务异常，而不是返回空对象让前端显示一片空白");
+        } catch (JeecgBootException expected) {
+            assertNotNull(expected.getMessage());
+        }
+    }
+
+    @Test
+    public void facilityOptionsIncludeCapitalStatus() {
+        Map<String, List<String>> options = statQueryService.queryOptions("facility");
+        assertTrue(options.containsKey("zjlsqk"),
+                "★ 资金落实情况必须有候选值清单，否则前端下拉只能写死枚举");
+    }
+
     // ==================================================================
     // 六、地块配套详情与导出
     // ==================================================================
 
     @Test
-    public void landDetailListsFacilitiesOfThatLand() {
-        String tag = uniqueTag();
+    public void landDetailListsFacilitiesOfThatLand() {        String tag = uniqueTag();
         String xzqh = TEST_PREFIX + "详情-区-" + tag;
         String rawCode = TEST_PREFIX + "detail-" + tag;
         landAdminService.createLand(buildLand(rawCode, "详情测试地块", "市级项目", xzqh, null), null);

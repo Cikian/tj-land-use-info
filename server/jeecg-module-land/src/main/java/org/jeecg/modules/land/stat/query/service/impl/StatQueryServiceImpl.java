@@ -393,6 +393,37 @@ public class StatQueryServiceImpl implements IStatQueryService {
                 "xjpfsfwc", "kypfsfwc", "csjgspfsfwc", "sfkg", "sfjg", "sfyj"));
     }
 
+    @Override
+    public Map<String, Object> queryFacilityDetail(String id) {
+        if (isBlank(id)) {
+            throw new JeecgBootException("缺少配套项目 id");
+        }
+        Map<String, Object> row = statQueryMapper.selectFacilityDetailById(id.trim());
+        if (row == null || row.isEmpty()) {
+            throw new JeecgBootException("未找到该配套项目（可能已被移除）");
+        }
+        // 按字段元数据逐个格式化：日期转字符串、数字保留原值、名称为空则原样
+        Map<String, Object> detail = new LinkedHashMap<>();
+        for (QueryFieldRegistry.Field field : QueryFieldRegistry.fields(DataSet.FACILITY)) {
+            Object raw = getIgnoreCase(row, field.getColumn());
+            if (raw != null) {
+                detail.put(field.getKey(), displayValue(field, raw));
+            }
+        }
+        // 状态列（项建批复状态 / 开工状态 …）不在查询字段白名单里，但详情要看，单独补上
+        for (String key : DETAIL_EXTRA_KEYS) {
+            Object raw = getIgnoreCase(row, key);
+            if (raw != null && !isBlank(String.valueOf(raw))) {
+                detail.put(key, DataSupport.normalizeText(String.valueOf(raw)));
+            }
+        }
+        return detail;
+    }
+
+    /** 详情要展示、但不在「可查询字段」白名单里的状态列 */
+    private static final List<String> DETAIL_EXTRA_KEYS = Collections.unmodifiableList(
+            Arrays.asList("xjpfzt", "kypfzt", "csjgspfzt", "kgzt"));
+
     // ==================================================================
     // 五、下拉候选值
     // ==================================================================
@@ -404,6 +435,8 @@ public class StatQueryServiceImpl implements IStatQueryService {
             options.put("ptxmmc", nullSafe(statQueryMapper.selectFacilityPtxmmcOptions(OPTION_LIMIT)));
             options.put("ptsslb", nullSafe(statQueryMapper.selectFacilityPtsslbOptions(OPTION_LIMIT)));
             options.put("xzqh", nullSafe(statQueryMapper.selectFacilityXzqhOptions(OPTION_LIMIT)));
+            // 资金落实情况：取值来自库里实际出现过的值（已落实 / 未落实 …）
+            options.put("zjlsqk", nullSafe(statQueryMapper.selectFacilityZjlsqkOptions(OPTION_LIMIT)));
         } else {
             options.put("dkmc", nullSafe(statQueryMapper.selectLandDkmcOptions(OPTION_LIMIT)));
             options.put("xzqh", nullSafe(statQueryMapper.selectLandXzqhOptions(OPTION_LIMIT)));
@@ -536,6 +569,14 @@ public class StatQueryServiceImpl implements IStatQueryService {
         }
         for (Map<String, Object> row : rows) {
             Map<String, Object> projected = new LinkedHashMap<>();
+            // ★ 行标识（id）永远随行返回，即使用户在自定义列里没勾它：
+            //   ① 表格的 row-key 用它（没有稳定 key 时 Vue 复用行会错位）；
+            //   ② 「点行看详情」要拿它去查 /facility/detail。
+            //   它不进 columns（列由 selectedKeys 决定），所以不会多出一列。
+            Object id = getIgnoreCase(row, "id");
+            if (id != null) {
+                projected.put("id", id);
+            }
             for (String key : keys) {
                 Field field = QueryFieldRegistry.find(dataSet, key);
                 if (field == null) {

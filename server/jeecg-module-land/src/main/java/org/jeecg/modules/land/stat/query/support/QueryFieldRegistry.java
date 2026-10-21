@@ -248,11 +248,15 @@ public final class QueryFieldRegistry {
         add(facility, text("sgdw", "施工单位", false, null));
         add(facility, text("jsgydw", "接收管养单位", false, null));
         add(facility, text("xjpfsfwc", "项建批复是否完成", false, null));
+        add(facility, text("xjpfzt", "项建批复状态", false, null));
         add(facility, text("kypfsfwc", "可研批复是否完成", false, null));
+        add(facility, text("kypfzt", "可研批复状态", false, null));
         add(facility, text("csjgspfsfwc", "初设及概算批复是否完成", false, null));
+        add(facility, text("csjgspfzt", "初设及概算批复状态", false, null));
         add(facility, number("gspfje", "概算批复金额", false, "万元"));
         add(facility, text("zjlsqk", "资金落实情况", false, null));
         add(facility, text("sfkg", "是否开工", false, null));
+        add(facility, text("kgzt", "开工状态", false, null));
         add(facility, date("yjkgsj", "预计开工时间", false, null));
         add(facility, date("sjkgsj", "实际开工时间", false, null));
         add(facility, text("sfjg", "是否竣工", false, null));

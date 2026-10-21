@@ -73,9 +73,9 @@
     >
       <!--
         编号列做成可点链接（经营性用地点开是「地块配套详情」）。
-        ★ 只给 crzdbh 写一个静态插槽，而不是用 `v-slot:[column]` 动态插槽：
+        ★ 只给 crzdbh / ptxmmc 写两个静态插槽，而不是用 `v-slot:[column]` 动态插槽：
           Vue 2.6 里「动态插槽名 + v-for」组合的编译行为不稳定，
-          而这里的可点列本来就是固定的（两个数据集都是 crzdbh）。
+          而这里的可点列本来就是固定的（宗地点编号、配套点名称）。
       -->
       <template #crzdbh="{ row }">
         <button
@@ -85,6 +85,18 @@
           @click.stop="$emit('open-detail', row)"
         >
           {{ row.crzdbh || '—' }}
+        </button>
+      </template>
+
+      <!-- 配套数据集：点配套项目名称看该配套的详情（环节进展 / 时间节点 / 责任单位） -->
+      <template #ptxmmc="{ row }">
+        <button
+          type="button"
+          class="query-result__link"
+          :title="row.ptxmmc || ''"
+          @click.stop="$emit('open-detail', row)"
+        >
+          {{ row.ptxmmc || '（未填名称）' }}
         </button>
       </template>
     </screen-data-table>

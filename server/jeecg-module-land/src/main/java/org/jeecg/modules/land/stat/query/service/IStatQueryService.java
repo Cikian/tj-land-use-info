@@ -41,6 +41,15 @@ public interface IStatQueryService {
     /** 地块配套详情：宗地基本信息 + 该宗地下全部配套 */
     Map<String, Object> queryLandDetail(String crzdbh);
 
+    /**
+     * 单条配套项目详情（结果表点开某一行时用）。
+     *
+     * <p>返回全部业务字段（含批复状态、开工状态、责任单位、时间节点），
+     * 字段中文名由前端用 `/columns?dataType=facility` 的元数据映射 ——
+     * 中文名只在后端维护一份。
+     */
+    Map<String, Object> queryFacilityDetail(String id);
+
     /** 条件下拉的候选值（旧 queryFieldContent 的去重值清单） */
     Map<String, List<String>> queryOptions(String dataType);
 }

@@ -72,6 +72,16 @@ public interface StatQueryMapper {
     Map<String, Object> selectFacilitySummary(@Param("q") StatQueryDTO q,
                                               @Param("conds") List<ResolvedCondition> conds);
 
+    /**
+     * 单条配套的全部业务字段（「配套项目详情」用）。
+     *
+     * <p>为什么不复用数据管理的 {@code /land/data/facilityAdmin/detail}：
+     * 那个接口挂的是 {@code land:data:facility} 权限，而查询统计页刻意不挂权限
+     * （见 StatQueryController 类注释）。若详情借用录入接口，没被授权录入的角色
+     * 会在「点开某一行」时 403 —— 查询页看得到、点不开，比看不到更难受。
+     */
+    Map<String, Object> selectFacilityDetailById(@Param("id") String id);
+
     // ==================================================================
     // 三、下拉候选值（旧 queryFieldContent 的去重值清单）
     // ==================================================================
@@ -90,4 +100,7 @@ public interface StatQueryMapper {
     List<String> selectFacilityPtsslbOptions(@Param("limit") int limit);
 
     List<String> selectFacilityXzqhOptions(@Param("limit") int limit);
+
+    /** 资金落实情况（已落实 / 未落实 …）—— 值取自库里实际出现的值，不写死枚举 */
+    List<String> selectFacilityZjlsqkOptions(@Param("limit") int limit);
 }

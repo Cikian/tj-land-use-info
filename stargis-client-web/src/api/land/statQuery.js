@@ -28,6 +28,7 @@ export const statQueryUrl = {
   landDetail: '/land/stat/query/land/detail',
   facility: '/land/stat/query/facility',
   facilityStats: '/land/stat/query/facility/stats',
+  facilityDetail: '/land/stat/query/facility/detail',
   page: '/land/stat/query/page',
   summary: '/land/stat/query/summary',
   exportXls: '/land/stat/query/exportXls'
@@ -77,6 +78,17 @@ export function queryFacilityPage (params) {
 /** 用地配套项目「分析结果」 */
 export function queryFacilityStats (params) {
   return javaGetAction(statQueryUrl.facilityStats, params)
+}
+
+/**
+ * 单条配套项目详情（结果表点开某一行）。
+ *
+ * ★ 走查询域自己的接口，不借数据管理的 `/land/data/facilityAdmin/detail`：
+ *   后者挂 `land:data:facility` 权限，而查询统计页刻意不挂权限，
+ *   借用会让「能看到行、点不开详情」。
+ */
+export function queryFacilityDetail (id) {
+  return javaGetAction(statQueryUrl.facilityDetail, { id })
 }
 
 /**

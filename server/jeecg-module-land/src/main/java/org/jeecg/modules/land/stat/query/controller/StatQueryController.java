@@ -44,6 +44,7 @@ import java.util.Map;
  *   GET  /land/stat/query/land/detail        地块配套详情（点某行地块）
  *   GET  /land/stat/query/facility           用地配套项目分页明细
  *   GET  /land/stat/query/facility/stats     用地配套项目「分析结果」
+ *   GET  /land/stat/query/facility/detail    配套项目详情（点某行配套）
  *   POST /land/stat/query/page               分页明细（支持高级查询条件）
  *   POST /land/stat/query/summary            分析结果（支持高级查询条件）
  *   GET  /land/stat/query/exportXls          Excel 导出（结果表 + 统计指标两个 sheet）
@@ -161,6 +162,19 @@ public class StatQueryController {
             return Result.OK(statQueryService.querySummary(query));
         } catch (Exception e) {
             return failure("统计用地配套项目失败", e);
+        }
+    }
+
+    @AutoLog(value = "查询统计-配套项目详情")
+    @ApiOperation(value = "配套项目详情", notes = "结果表点开某一行时看：环节进展、责任单位、时间节点")
+    @GetMapping(value = "/facility/detail")
+    public Result<Map<String, Object>> facilityDetail(@RequestParam(name = "id") String id) {
+        try {
+            return Result.OK(statQueryService.queryFacilityDetail(id));
+        } catch (JeecgBootException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return failure("查询配套项目详情失败", e);
         }
     }
 

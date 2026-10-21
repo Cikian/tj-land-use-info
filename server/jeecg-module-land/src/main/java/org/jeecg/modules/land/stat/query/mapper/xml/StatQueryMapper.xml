@@ -351,7 +351,65 @@
       · facilityNameBlank = 配套项目名称为空的条数（高保真「配套项目名称为空」）
       · 各环节 = 该字段为「是」的条数
       ★ 与 land 口径（去重 + 漏斗）不是同一套，两者不可互相校验，详见 VO 注释。
+    -->    <!--
+      单条配套的全部业务字段（「配套项目详情」用）。
+      ★ 不写 SELECT *：本表有 59 列，其中「管线综合矢量数据(shp)」「专业配套方案」
+        等长文本对详情弹窗没用；显式列一遍也顺便当作「详情能看到什么」的说明书。
     -->
+    <select id="selectFacilityDetailById" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.`id`             AS id,
+            f.`crzdbh`         AS crzdbh,
+            f.`ptxmmc`         AS ptxmmc,
+            f.`dkmc`           AS dkmc,
+            f.`ptsslb`         AS ptsslb,
+            f.`xzqh`           AS xzqh,
+            f.`xmfl`           AS xmfl,
+            f.`jsxx`           AS jsxx,
+            f.`dldj`           AS dldj,
+            f.`sfzsjtjlz`      AS sfzsjtjlz,
+            f.`tjlzsftg`       AS tjlzsftg,
+            f.`ghhxkd`         AS ghhxkd,
+            f.`cd`             AS cd,
+            f.`tzgs`           AS tzgs,
+            f.`zjly`           AS zjly,
+            f.`dkcrscndptjgsj` AS dkcrscndptjgsj,
+            f.`jsdw`           AS jsdw,
+            f.`sjdw`           AS sjdw,
+            f.`kcdw`           AS kcdw,
+            f.`jldw`           AS jldw,
+            f.`sgdw`           AS sgdw,
+            f.`jsgydw`         AS jsgydw,
+            f.`xjpfsfwc`       AS xjpfsfwc,
+            f.`xjpfzt`         AS xjpfzt,
+            f.`kypfsfwc`       AS kypfsfwc,
+            f.`kypfzt`         AS kypfzt,
+            f.`csjgspfsfwc`    AS csjgspfsfwc,
+            f.`csjgspfzt`      AS csjgspfzt,
+            f.`gspfje`         AS gspfje,
+            f.`zjlsqk`         AS zjlsqk,
+            f.`sfkg`           AS sfkg,
+            f.`kgzt`           AS kgzt,
+            f.`yjkgsj`         AS yjkgsj,
+            f.`sjkgsj`         AS sjkgsj,
+            f.`sfjg`           AS sfjg,
+            f.`yjjgsj`         AS yjjgsj,
+            f.`sjjgsj`         AS sjjgsj,
+            f.`sfyj`           AS sfyj,
+            f.`jtwt`           AS jtwt,
+            f.`gzjy`           AS gzjy,
+            f.`zlqsnrjsm`      AS zlqsnrjsm,
+            f.`bz`             AS bz,
+            f.`lrdw`           AS lrdw,
+            f.`lrr`            AS lrr,
+            f.`lxdh`           AS lxdh,
+            f.`createTime`     AS createTime
+        FROM `t_supporting_facilities` f
+        WHERE f.`id` = #{id}
+          AND COALESCE(f.`delFlag`, '0') = '0'
+        LIMIT 1
+    </select>
+
     <select id="selectFacilitySummary" resultType="java.util.LinkedHashMap">
         SELECT
             COUNT(DISTINCT f.`crzdbh`) AS landTotal,
@@ -412,6 +470,13 @@
         SELECT DISTINCT f.`xzqh` FROM `t_supporting_facilities` f
         WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`xzqh` IS NOT NULL AND TRIM(f.`xzqh`) != ''
         ORDER BY f.`xzqh` ASC LIMIT #{limit}
+    </select>
+
+    <!-- 资金落实情况：取值来自库里实际出现过的值（已落实 / 未落实 …），不写死枚举 -->
+    <select id="selectFacilityZjlsqkOptions" resultType="string">
+        SELECT DISTINCT f.`zjlsqk` FROM `t_supporting_facilities` f
+        WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`zjlsqk` IS NOT NULL AND TRIM(f.`zjlsqk`) != ''
+        ORDER BY f.`zjlsqk` ASC LIMIT #{limit}
     </select>
 
 </mapper>

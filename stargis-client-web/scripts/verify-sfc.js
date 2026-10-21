@@ -112,6 +112,19 @@ const FILES = [
   'src/views/screen/data/modules/FacilityEntryPanel.vue',
   'src/views/screen/data/modules/LandSearchForm.vue',
   'src/views/screen/data/modules/FacilitySearchForm.vue',
+
+  // ===== 查询统计（方案 2.3.1（五）5-01 / 5-02 / 5-07，2026-10-21 新增）=====
+  // ★ 同样必须登记：这一页有 8 个文件、6 个动态 slots、大量 less，
+  //   不登记就等于「自检绿灯但其实没检查过这一页」。
+  'src/api/land/statQuery.js',
+  'src/views/screen/query/constants.js',
+  'src/views/screen/query/index.vue',
+  'src/views/screen/query/modules/StatQueryView.vue',
+  'src/views/screen/query/modules/AdvancedQueryView.vue',
+  'src/views/screen/query/modules/StatSummaryPanel.vue',
+  'src/views/screen/query/modules/QueryResultPanel.vue',
+  'src/views/screen/query/modules/LandFacilityDetailModal.vue',
+  'src/views/screen/query/modules/FacilityDetailModal.vue',
 ]
 
 const problems = []
