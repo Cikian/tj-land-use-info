@@ -65,6 +65,19 @@
   --screen-danger: #f2624c;
   --screen-info: #55b9ff;
 
+  /* ---------- 预警分档色（首页「市区两级项目预警」）----------
+   * 档位口径照搬旧系统（市级 5 档 / 区级 3 档，见 views/screen/config.js 的
+   * warningTiers）：绿 → 蓝 → 黄 → 橙 → 红，数值越大越危险。
+   * 旧系统用的是 CSS 具名色（green/blue/yellow/orange/red），
+   * 在深海蓝底上黄与橙几乎分不开、绿色也偏暗，这里换成同色相的屏幕可读值。
+   * ⚠ 只用于预警百分比单元格，不要拿去做通用状态色（那是上面四个语义色）。
+   */
+  --screen-level-green: #43e972; /* 0–20%（市级）/ 0–33.33%（区级） */
+  --screen-level-blue: #55b9ff; /* 20–40%（仅市级） */
+  --screen-level-yellow: #ffe14a; /* 40–60%（市级）/ 33.33–66.66%（区级） */
+  --screen-level-orange: #ff9d3c; /* 60–80%（仅市级） */
+  --screen-level-red: #ff5f56; /* ≥80%（市级）/ ≥66.66%（区级） */
+
   /* ---------- 圆角（高保真切图按小圆角设计，圆角整体收敛） ---------- */
   --screen-radius-sm: 3px;
   --screen-radius: 4px;

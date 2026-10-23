@@ -13,6 +13,14 @@
     按「高保真 + 保留现有内容」的确认结论：
       保留原有第三个页签「地块预警信息」，点击后以高保真提供的独立弹窗
       （bg-__1_u294.png，1270×663）呈现，与设计稿中该浮层的形态一致。
+
+    ★ 项目预警（方案 2.3.1（五））的两个页签在本组件里完成三件事：
+      1. 七个百分比列按**旧系统的阈值**着色 —— 市级 5 档、区级 3 档
+         （档位定义在 views/screen/config.js 的 warningTiers，别在这里另写一套）；
+      2. 「一条配套都没上报」的区，七列合并成一句「未填报配套项目信息」
+         （旧系统是逐列重复写这句，窄列里会被截成「未填报配」）；
+      3. 「操作 → 查看」把行连同**当前页签 key** 抛给父组件（第二个 emit 参数），
+         父组件据此决定下钻用市级还是区级口径 —— 不要靠行 id 里的中文字符串去猜。
   -->
   <section class="home-attr stage-hit" :class="{ 'is-collapsed': collapsed }">
     <!-- 展开态 -->
@@ -58,35 +66,53 @@
         <div class="home-attr__rows">
           <img class="home-attr__body-bg" :src="hf.attrBody" alt="" aria-hidden="true" />
 
-        <div
-          v-for="(row, index) in rows"
-          :key="row.id"
-          class="home-attr__tr"
-        >
-          <img
-            v-if="index % 2 === 0"
-            class="home-attr__tr-bg"
-            :src="hf.attrRow"
-            alt=""
-            aria-hidden="true"
-          />
-          <span
-            v-for="col in dataColumns"
-            :key="col.key"
-            class="home-attr__td"
-            :style="cellStyle(col.key)"
-            :title="cellText(row, index, col.key)"
-          >{{ cellText(row, index, col.key) }}</span>
-          <img
-            class="home-attr__action"
-            :src="hf.actionView"
-            alt="查看"
-            role="button"
-            tabindex="0"
-            @click="$emit('row-action', row)"
-            @keydown.enter.prevent="$emit('row-action', row)"
-          />
-        </div>
+          <div
+            v-for="(row, index) in rows"
+            :key="row.id || index"
+            class="home-attr__tr"
+          >
+            <img
+              v-if="index % 2 === 0"
+              class="home-attr__tr-bg"
+              :src="hf.attrRow"
+              alt=""
+              aria-hidden="true"
+            />
+            <span class="home-attr__td" :style="cellStyle('index')">{{ index + 1 }}</span>
+            <span
+              class="home-attr__td"
+              :style="cellStyle('district')"
+              :title="row.district"
+            >{{ row.district }}</span>
+            <!--
+              「一条配套都没上报」的区：七列都是空的，旧系统逐列写「未填报配套项目信息」
+              （8%/14.5%/15%…的窄列里被截成「未填报配」），这里改成跨七列一句话。
+            -->
+            <span
+              v-if="row.unreported"
+              class="home-attr__td is-unreported"
+              :style="unreportedStyle"
+            >未填报配套项目信息</span>
+            <template v-else>
+              <span
+                v-for="col in indicatorColumns"
+                :key="col.key"
+                class="home-attr__td"
+                :class="toneClass(row, col.key)"
+                :style="cellStyle(col.key)"
+                :title="toneTitle(row, col.key)"
+              >{{ percentText(row[col.key]) }}</span>
+            </template>
+            <img
+              class="home-attr__action"
+              :src="hf.actionView"
+              alt="查看"
+              role="button"
+              tabindex="0"
+              @click="$emit('row-action', row, activeTab)"
+              @keydown.enter.prevent="$emit('row-action', row, activeTab)"
+            />
+          </div>
         </div>
 
         <p v-if="!rows.length" class="home-attr__empty">
@@ -116,7 +142,7 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-import { warningTabs } from '../config'
+import { warningTabs, warningTierKey, warningTiers, warningTone } from '../config'
 
 /**
  * 列横向位置。
@@ -134,7 +160,7 @@ const COL_LEFT = {
   fund: 568,
   notStarted: 668,
   notCompleted: 743,
-  notHandedOver: 819,
+  notHandedOver: 819
 }
 /** 「操作」列靠右锚定：设计稿 x=895、图标/文字宽约 28，即距表右边界 37px */
 const ACTION_RIGHT = DESIGN_TABLE_WIDTH - 895 - 28
@@ -161,8 +187,17 @@ const COLUMNS = [
   { key: 'notStarted', title: '未开工' },
   { key: 'notCompleted', title: '未竣工' },
   { key: 'notHandedOver', title: '未移交' },
-  { key: 'action', title: '操作' },
+  { key: 'action', title: '操作' }
 ]
+
+/**
+ * 七个百分比列（从「项建批复未完成」到「未移交」）。
+ * 旧系统对这几列逐列上色（datagrid 的 styler 从第 3 列起生效，即 index ≥ 2），
+ * 「序号 / 行政区划」不上色 —— 这里用同一份列清单驱动，避免漏列或多列。
+ */
+const INDICATOR_KEYS = COLUMNS
+  .map((col) => col.key)
+  .filter((key) => key !== 'index' && key !== 'district' && key !== 'action')
 
 export default {
   name: 'HomeAttrPanel',
@@ -174,13 +209,13 @@ export default {
     /** 接口加载态 */
     loading: { type: Boolean, default: false },
     /** 点击后开弹窗的页签 key（不切换面板内容） */
-    plotTabKey: { type: String, default: 'plot' },
+    plotTabKey: { type: String, default: 'plot' }
   },
   data () {
     return {
       hf,
       activeTab: (this.tabs[0] && this.tabs[0].key) || 'city',
-      collapsed: false,
+      collapsed: false
     }
   },
   computed: {
@@ -191,25 +226,60 @@ export default {
         style:
           col.key === 'action'
             ? { right: `${ACTION_RIGHT}px` }
-            : { left: COL_PCT[col.key] },
+            : { left: COL_PCT[col.key] }
       }))
     },
     rows () {
+      // 「地块预警信息」走弹窗，不在这块定尺表格里渲染（它一行一宗地、几百行）；
+      // 这里返回空数组是兜底：万一 activeTab 被外部改成 plot，面板显示空态而不是一堆 0.00%
+      if (this.activeTab === this.plotTabKey) return []
       return (this.data && this.data[this.activeTab]) || []
     },
-    dataColumns () {
-      return this.columns.filter((col) => col.key !== 'action')
+    indicatorColumns () {
+      return this.columns.filter((col) => INDICATOR_KEYS.indexOf(col.key) > -1)
     },
+    /** 「未填报配套项目信息」跨列的起止：从第一个指标列左缘铺到最后一个指标列右缘 */
+    unreportedStyle () {
+      const start = COL_LEFT[INDICATOR_KEYS[0]]
+      const lastKey = INDICATOR_KEYS[INDICATOR_KEYS.length - 1]
+      // 最后一个指标列的右缘与 COL_WIDTH 的算法一致（末列到 890 为止）
+      const end = COL_LEFT[lastKey] + (890 - COL_LEFT[lastKey])
+      return {
+        left: COL_PCT[INDICATOR_KEYS[0]],
+        width: `${(((end - start) / DESIGN_TABLE_WIDTH) * 100).toFixed(4)}%`
+      }
+    },
+    /** 当前页签对应的档位表（市级 5 档 / 区级 3 档），供单元格 title 提示用 */
+    tiers () {
+      return warningTiers[warningTierKey(this.activeTab)] || []
+    }
   },
   methods: {
     /** 单元格定位：与表头同一套列位置 */
     cellStyle (key) {
       return { left: COL_PCT[key], width: COL_WIDTH[key] }
     },
-    cellText (row, index, key) {
-      if (key === 'index') return String(index + 1)
-      if (key === 'district') return row.district
-      return this.percent(row, row[key])
+    /** 百分比文案：后端给的是 2 位小数的数字，展示时统一补「%」 */
+    percentText (value) {
+      const num = Number(value)
+      return `${Number.isNaN(num) ? 0 : num.toFixed(2)}%`
+    },
+    /**
+     * 阈值着色（★ 市级 5 档 / 区级 3 档，口径见 config.js 的 warningTiers）。
+     * 行上带 projectType 时以它为准：地块预警那种市/区混排的表里，
+     * 一行可能不属于当前页签的层级，用页签档位会着色错。
+     */
+    toneClass (row, key) {
+      const tone = warningTone((row && row.projectType) || this.activeTab, row && row[key])
+      return tone ? `is-tone-${tone}` : ''
+    },
+    /** 单元格悬停提示：把「这个颜色代表什么区间」讲清楚，省得用户去问阈值 */
+    toneTitle (row, key) {
+      const text = this.percentText(row && row[key])
+      const value = Number(row && row[key])
+      if (Number.isNaN(value)) return text
+      const tier = this.tiers.find((item) => value < item.lt) || this.tiers[this.tiers.length - 1]
+      return tier ? `${text}（${tier.label}）` : text
     },
     /**
      * 高保真只有两个页签（x=603 / 778，步进 175，宽 160）。保留原有
@@ -228,12 +298,8 @@ export default {
         return
       }
       this.activeTab = tab.key
-    },
-    percent (row, value) {
-      if (row && row.unreported) return '未填报配套项目信息'
-      return `${Number(value).toFixed(2)}%`
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -436,6 +502,37 @@ export default {
     white-space: nowrap;
     text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * 预警百分比的分档着色（市级 5 档 / 区级 3 档，档位见 views/screen/config.js）。
+   * 旧系统用 CSS 具名色（green/blue/yellow/orange/red），在深海蓝底上黄色与橙色
+   * 几乎分不开，这里换成 tokens 里的 --screen-level-*，色相不变、可读性提升。
+   */
+  &__td.is-tone-green {
+    color: var(--screen-level-green);
+  }
+
+  &__td.is-tone-blue {
+    color: var(--screen-level-blue);
+  }
+
+  &__td.is-tone-yellow {
+    color: var(--screen-level-yellow);
+  }
+
+  &__td.is-tone-orange {
+    color: var(--screen-level-orange);
+  }
+
+  &__td.is-tone-red {
+    color: var(--screen-level-red);
+  }
+
+  /* 「未填报配套项目信息」：跨七列居中，弱化处理（不是 0%，是没有数据） */
+  &__td.is-unreported {
+    color: #4a7396;
+    text-align: center;
   }
 
   &__action {

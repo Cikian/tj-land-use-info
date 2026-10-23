@@ -29,11 +29,20 @@ export const systemTitle = '天津市经营性用地市政配套设施动态监�
 
 /**
  * 底部「属性表」的页签。
- * 只有市级项目预警和区级项目预警，没有地块预警。
+ *
+ * 与高保真设计稿、原型（prototype/home.html）一致的三项：
+ *   市级项目预警 / 区级项目预警 / 地块预警信息。
+ *
+ * ★ 第三个页签**不切换面板内容**：它点击后开一张独立弹窗
+ *   （home/HomePlotModal.vue 的 variant="plot"），与设计稿里那块浮层一致 ——
+ *   前两个页签是一行一个行政区（10 / 25 行），地块预警是一行一宗地（几百行），
+ *   塞进同一块定尺表格里既放不下也没有可比性。
+ *   key 必须是 'plot'：HomeAttrPanel 的 plotTabKey 默认值就是它。
  */
 export const warningTabs = [
   { key: 'city', label: '市级项目预警' },
-  { key: 'district', label: '区级项目预警' }
+  { key: 'district', label: '区级项目预警' },
+  { key: 'plot', label: '地块预警信息' }
 ]
 
 /**
@@ -52,3 +61,62 @@ export const warningFields = [
   'notCompleted',
   'notHandedOver'
 ]
+
+/**
+ * 预警百分比的分档阈值。
+ *
+ * ★★ 两套档位**故意不一样**，不是笔误，必须照搬旧系统 ★★
+ *   · 市级 5 档：0–20 绿 → 20–40 蓝 → 40–60 黄 → 60–80 橙 → ≥80 红
+ *   · 区级 3 档：0–33.33 绿 → 33.33–66.66 黄 → ≥66.66 红
+ * 旧实现分别在 homePage.js 的 GetColumn717()(:410) 与 GetColumn0805()(:512)，
+ * 也就是「市级项目预警 / 区级项目预警」两张表的单元格着色规则。
+ * 见 docs/升级改造工作内容清单.md（C）节「必须照搬，否则视觉验收不过」。
+ *
+ * 边界语义与旧代码逐条对齐（旧代码取百分比字符串前 4 个字符再比大小）：
+ *   · 市级：< 20 绿、< 40 蓝、< 60 黄、< 80 橙、其余（含 80 及以上）红；
+ *   · 区级：< 33.33 绿、< 66.66 黄、其余红 —— 所以「恰好 33.33」是黄、
+ *     「恰好 66.66」是红。旧代码因为 substring(0,4) 把 33.33 截成 33.3，
+ *     边界值会差一档；这里按**真实数值**比较，属有意修正（D-612）。
+ *
+ * 颜色值不写在这里：档位 → CSS 类（is-tone-green 等），
+ * 色值取 screen-tokens.less 的 --screen-level-*，两处各自维护不会打架。
+ */
+export const warningTiers = {
+  city: [
+    { lt: 20, tone: 'green', label: '0–20%' },
+    { lt: 40, tone: 'blue', label: '20–40%' },
+    { lt: 60, tone: 'yellow', label: '40–60%' },
+    { lt: 80, tone: 'orange', label: '60–80%' },
+    { lt: Infinity, tone: 'red', label: '≥80%' }
+  ],
+  district: [
+    { lt: 33.33, tone: 'green', label: '0–33.33%' },
+    { lt: 66.66, tone: 'yellow', label: '33.33–66.66%' },
+    { lt: Infinity, tone: 'red', label: '≥66.66%' }
+  ]
+}
+
+/**
+ * 取某个百分比该用的档位（tone）。
+ *
+ * @param {string} projectType 项目分类：city / district，或「市级项目 / 区级项目」；
+ *   为空时按市级档位（市级 5 档是旧系统的主表口径，缺省不会「看起来没颜色」）
+ * @param {number|string} value 百分比数值（后端给的是 2 位小数的数字）
+ * @returns {string} green / blue / yellow / orange / red；值不可解析时返回空串（不着色）
+ */
+export function warningTone (projectType, value) {
+  const tiers = warningTiers[warningTierKey(projectType)]
+  const num = Number(value)
+  // NaN 不能参与比较（NaN < 20 恒为 false，会一路落到红色），先挡掉
+  if (!tiers || value === null || value === undefined || value === '' || Number.isNaN(num)) return ''
+  for (let i = 0; i < tiers.length; i += 1) {
+    if (num < tiers[i].lt) return tiers[i].tone
+  }
+  return tiers[tiers.length - 1].tone
+}
+
+/** 项目分类归一：'区级项目' / 'district' → district，其余 → city */
+export function warningTierKey (projectType) {
+  const value = String(projectType || '')
+  return value === 'district' || value === '区级项目' ? 'district' : 'city'
+}
