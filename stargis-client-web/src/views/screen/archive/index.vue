@@ -27,11 +27,6 @@
         <i class="archive-screen__nav-bar" aria-hidden="true" />
         <span class="archive-screen__nav-text">{{ tab.label }}</span>
       </button>
-
-      <span class="archive-screen__tip">
-        <screen-icon name="info" :size="13" />
-        档案类别挂在卷内文件上，一个档案可以包含多个类别的文件
-      </span>
     </nav>
 
     <!-- ========== 内容区 ========== -->
@@ -53,7 +48,6 @@
 <script>
 import { ScreenIcon } from '@/components/screen'
 import ArchiveMaintain from './modules/ArchiveMaintain.vue'
-import ArchiveQuery from './modules/ArchiveQuery.vue'
 import ArchiveStatistics from './modules/ArchiveStatistics.vue'
 import ArchiveCategory from './modules/ArchiveCategory.vue'
 import DocManager from './modules/doc/DocManager.vue'
@@ -64,14 +58,20 @@ import CompletionPanel from './modules/completion/CompletionPanel.vue'
 
 /**
  * 页签 key 到组件的映射。
- * 顺序固定为：档案维护 → 档案查询 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
+ * 顺序固定为：档案维护 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
  *            → 竣工验收历史档案 → 收发文管理 → 档案类别管理
  * （第 6/7/8 项插在统计与收发文之间，正好与方案 2.3.2 的条目序号 6、7、8、9 一致，
  *   见 data().tabs；「收发文管理」是第 9 项，不占一级导航）
+ *
+ * ★ 为什么没有独立的「档案查询」页签：它和「档案维护」共用同一套检索条件、
+ *   同一个列表组件、同一个接口（`/land/archive/list`），差别只有「只读 + 条件默认全展开
+ *   + 每页 20 条」——在大屏上这是同一个功能的两种用法，合并后查询能力一项没减。
+ *   方案 2.3.2 第 3 项「档案查询」由「档案维护」承载；管理端仍保留独立菜单，
+ *   那里才是「只查不改」的权限边界（查询角色只有 land:archive:list + export）。
+ *   历史深链 `?tab=query` 会静默落回「档案维护」，条件照常生效。
  */
 const PANELS = {
   maintain: ArchiveMaintain,
-  query: ArchiveQuery,
   statistics: ArchiveStatistics,
   handover: HandoverPanel,
   ledger: LedgerPanel,
@@ -81,7 +81,7 @@ const PANELS = {
 }
 
 /** 需要接收下钻条件（initial-query）的面板：只有它们声明了这个 prop */
-const DRILLABLE_PANELS = ['query', 'ledger', 'handover', 'completion']
+const DRILLABLE_PANELS = ['maintain', 'ledger', 'handover', 'completion']
 
 /**
  * 路由 query 里属于「控制参数」的键，不当下钻条件用。
@@ -121,7 +121,6 @@ export default {
       activeTab: PANELS[this.defaultTab] ? this.defaultTab : 'maintain',
       tabs: [
         { key: 'maintain', label: '档案维护' },
-        { key: 'query', label: '档案查询' },
         { key: 'statistics', label: '档案统计' },
         { key: 'handover', label: '道路交付养护移交' },
         { key: 'ledger', label: '道路验收移交台账' },
@@ -166,6 +165,12 @@ export default {
           this.drillQuery = query
           this.$nextTick(() => {
             const panel = this.$refs.panel
+            // archiveId 是「直接打开档案详情」的深链（台账/移交点「查看档案」用），
+            // 不是检索条件：直接开详情，不要拿一个表单不认识的字段去过滤列表。
+            if (panel && query.archiveId && typeof panel.openDetailById === 'function') {
+              panel.openDetailById(query.archiveId)
+              return
+            }
             if (panel && typeof panel.applyDrill === 'function') {
               panel.applyDrill(query)
             }
@@ -177,16 +182,22 @@ export default {
   },
   methods: {
     /**
-     * 从统计页下钻到查询页。
+     * 从统计页 / 台账 / 移交下钻到「档案维护」（原「档案查询」页签，已合并）。
      * 两种到达路径都要覆盖：
-     *   - 查询面板是首次创建 → initialQuery 在 created 里生效；
-     *   - 查询面板已被 keep-alive 缓存 → created 不会再跑，必须调用它的 applyDrill。
+     *   - 维护面板是首次创建 → initialQuery 在 created 里生效；
+     *   - 维护面板已被 keep-alive 缓存 → created 不会再跑，必须调用它的 applyDrill。
      */
     handleDrill (params) {
       this.drillQuery = Object.assign({}, params || {})
-      this.activeTab = 'query'
+      this.activeTab = 'maintain'
       this.$nextTick(() => {
         const panel = this.$refs.panel
+        if (panel && this.drillQuery.archiveId && typeof panel.openDetailById === 'function') {
+          // 台账「查看档案」带 archiveId：直接打开档案详情（卷内文件即可预览），
+          // 少掉「先筛列表、再点一行」两步。
+          panel.openDetailById(this.drillQuery.archiveId)
+          return
+        }
         if (panel && typeof panel.applyDrill === 'function') {
           panel.applyDrill(this.drillQuery)
         }

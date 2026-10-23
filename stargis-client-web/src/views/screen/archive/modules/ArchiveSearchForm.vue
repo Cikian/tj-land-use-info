@@ -2,9 +2,9 @@
   <!--
     ArchiveSearchForm 档案检索条件
     --------------------------------
-    「档案维护」与「档案查询」共用的一套检索条件。默认只露出 4 个最常用的条件
+    档案维护（含原「档案查询」页签）用的检索条件。默认只露出 4 个最常用的条件
     （配套项目 / 出让宗地编号 / 档案类别 / 归档日期），其余 10 个收在「更多条件」后面，
-    避免一进来就被 14 个输入框淹没。
+    避免一进来就被 14 个输入框淹没；只检索不维护的场景传 defaultExpanded 一次展开。
 
     事件：
       search (query)  点击「查询」或按回车时抛出，query 已剔除空值
@@ -169,7 +169,7 @@ export default {
     CategoryPicker,
   },
   props: {
-    /** 是否默认展开全部条件（档案查询页传 true） */
+    /** 是否默认展开全部条件（只检索不维护的场景传 true；维护页保持折叠） */
     defaultExpanded: { type: Boolean, default: false },
     /** 初始条件（例如从统计页按项目下钻带的 ptxmmc / crzdbh） */
     initialQuery: { type: Object, default: () => ({}) },

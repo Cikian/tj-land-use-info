@@ -681,11 +681,18 @@ src/components/screen/
 | 竣工验收项目历史工程资料数字化档案（方案 2.3.2 第 8 项） | 同上 | 深链 `/screen/archive?tab=completion`；`src/views/screen/archive/modules/completion/` |
 | 收发文 | 不占一级导航，是档案模块内的页签 | 深链 `/screen/archive?tab=doc` |
 
-> 档案管理下的页签顺序：档案维护 → 档案查询 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
+> 档案管理下的页签顺序：档案维护 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
 > → 竣工验收历史档案 → 收发文管理 → 档案类别管理。第 6/7/8 项插在统计与收发文之间，
 > 与方案 2.3.2 的条目序号一致。页签 key 的**白名单在 `views/screen/index.vue` 的
 > `ARCHIVE_TABS`**、页签与组件的映射在 `views/screen/archive/index.vue` 的 `tabs` / `PANELS`，
 > 两处必须同步改（漏改白名单的表现是「深链进不去、静默落回默认页签」）。
+>
+> **没有独立的「档案查询」页签**：它与「档案维护」共用同一套检索条件、同一个列表组件、
+> 同一个接口（`/land/archive/list`），差别只有「只读 + 条件默认全展开 + 每页 20 条」，
+> 在大屏上属于同一个功能的两种用法，已合并进「档案维护」（方案 2.3.2 第 3 项由它承载）。
+> 档案统计 / 台账 / 移交的「查看档案」下钻落点是 `tab=maintain`；历史深链 `?tab=query`
+> 会静默落回档案维护且条件照常生效。**管理端 `admin-client` 仍保留独立「档案查询」菜单**
+> —— 那里才是「只查不改」的权限边界（查询角色只有 `land:archive:list` + `export`）。
 >
 > 这三个模块的接口层在 `src/api/land/{ledger,handover,completion}.js`，
 > 与 `admin-client` 的同名文件一一对应（同一套 Java 后端，改接口必须两边同改）。
@@ -698,7 +705,7 @@ src/components/screen/
 | `config.js` | 静态常量：顶栏导航、系统标题、属性表页签、预警字段契约 |
 | `index.vue` | `loadDashboard()` 并发拉取 `LandOverviewVO` + `PendingFacilityVO`，成功后下发给 `home/` 的面板组件；接口失败/无数据时对应区域留白（**不使用设计稿演示数据**） |
 
-接口来自 **Java 业务后端**（`@/api/land/landData`，走 `window._CONFIG.VUE_DATA_JAVA_URL`），
+接口来自 **Java 业务后端**（`@/api/land/landData`，走 `javaBaseUrl()` = `VUE_BUSINESS_JAVA_URL`），
 不是中台；后端实现在 `org.jeecg.modules.land.stat.home`：
 
 - `GET /land/stat/home/landOverview` —— 出让地块情况统计（总数、市级/区级、按区分组）
@@ -720,20 +727,21 @@ src/components/screen/
 ### 档案模块
 
 「档案管理」二级菜单的页签顺序固定为：
-**档案维护 → 档案查询 → 档案统计 → 收发文管理 → 档案类别管理**
+**档案维护 → 档案统计 → 收发文管理 → 档案类别管理**
 （见 `views/screen/archive/index.vue` 的 `tabs` 与 `PANELS`）。
+原「档案查询」页签已并入「档案维护」（同一套检索条件 / 同一个列表 / 同一个接口，
+差别只有只读与条件默认展开），见上一节的说明。
 
 ```
 src/views/screen/archive/
-├─ index.vue                   # 页签壳（上面五个页签）
+├─ index.vue                   # 页签壳（上面四个页签 + 第 6/7/8 项）
 ├─ constants.js                # 共享枚举与展示辅助（唯一实现，页面不许再抄一份）
 └─ modules/
-   ├─ ArchiveMaintain.vue      # 档案维护（列表 + 增删改 + 批量删除 + 导出）
-   ├─ ArchiveQuery.vue         # 档案查询（只读列表 + 导出 + 支持按项目下钻）
+   ├─ ArchiveMaintain.vue      # 档案维护（检索 + 列表 + 增删改 + 批量删除 + 导出 + 下钻落点）
    ├─ ArchiveStatistics.vue    # 档案统计（KPI + 3 张图 + 按项目明细）
    ├─ ArchiveCategory.vue      # 档案类别管理（树 + 详情 + 拖拽排序/改挂）
    ├─ ArchiveSearchForm.vue    # 共享检索条件（4 个常驻 + 10 个折叠）
-   ├─ ArchiveTable.vue         # 共享列表表格（维护 / 查询复用，纯展示）
+   ├─ ArchiveTable.vue         # 共享列表表格（纯展示；readonly / selectable 两个开关）
    ├─ ArchiveFormModal.vue     # 档案新增 / 编辑（三段式表单）
    ├─ ArchiveDetailModal.vue   # 档案详情（全屏 + 四页签）
    ├─ ArchiveFileTable.vue     # 卷内文件表 + 上传
@@ -776,15 +784,20 @@ src/views/screen/archive/
 - 详情页数字不要用 `value || '—'`：`0 页 / 0 份` 是合法值，会被误显示成「—」。
 
 
-### 两个后端：业务请求必须走 `VUE_DATA_JAVA_URL`
+### 三个后端地址：业务请求必须走 `javaBaseUrl()`（`VUE_BUSINESS_JAVA_URL`）
 这是本项目最容易踩的坑，改档案/业务接口前务必先读这一段。
 
-`public/static/config.js` 里定义了两个后端地址，且 `window._CONFIG` 的值会**覆盖** `.env`：
+`public/static/config.js` 里定义了三个后端地址，且 `window._CONFIG` 的值会**覆盖** `.env`：
 
 | 配置项 | 含义 | 示例 |
 | --- | --- | --- |
 | `VUE_APP_API_BASE_URL` | **中台**（网关） | `http://127.0.0.1:4548` |
-| `VUE_DATA_JAVA_URL` | **Java 业务后端** | `http://127.0.0.1:9802/api` |
+| `VUE_BUSINESS_JAVA_URL` | **Java 业务后端**（jeecg，2026-10 新增） | `http://127.0.0.1:9802/api` |
+| `VUE_DATA_JAVA_URL` | **JNI 分析服务**（爆管/断面等 `/pipeline/*`，混淆插件写死读它） | `http://127.0.0.1:38190` |
+
+⚠ **2026-10 起 `VUE_DATA_JAVA_URL` 不再指业务后端**：业务接口一律用 `javaBaseUrl()`
+（优先 `VUE_BUSINESS_JAVA_URL`，旧 config.js 才兜底 `VUE_DATA_JAVA_URL`），
+**不要**在业务代码里显式传 `window._CONFIG.VUE_DATA_JAVA_URL` 当 baseURL（会打到 38190 上）。
 
 而 `src/config/index.js` 里 `domianURL = VUE_APP_API_BASE_URL`，所以
 `@/api/manage`（走 `domianURL`）发出的请求全部落在**中台**上——

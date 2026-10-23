@@ -6,8 +6,9 @@
     3 张图和 1 张按项目明细表。图表全部用手写 SVG / CSS，不引第三方图表库
     （canvas 在大屏里尺寸为 0 的问题不值得为一张图去引一个库）。
 
-    下钻：在明细表点「查看档案」会抛出 drill 事件，由外层切到「档案查询」页签
+    下钻：在明细表点「查看档案」会抛出 drill 事件，由外层切到「档案维护」页签
     并把 ptxmmc / crzdbh 带过去 —— 统计只能说明「哪有问题」，下钻才能拿到案卷。
+    （原「档案查询」页签已并入「档案维护」，见 archive/index.vue 的 PANELS 注释。）
 
     无障碍：每个统计块都同时给出文字数值，环形图/条形图的颜色只是辅助线索，
     颜色语义与图例都有对应文本。
@@ -377,7 +378,7 @@ export default {
       exportArchiveZip(compactQuery(this.query))
       toast.info('已开始导出，请稍候…')
     },
-    /** 下钻到档案查询：带上最精确的项目标识 */
+    /** 下钻到档案维护（原「档案查询」页签）：带上最精确的项目标识 */
     handleDrill (row) {
       const params = row.facilityId
         ? { ptxmmc: row.ptxmmc || undefined }

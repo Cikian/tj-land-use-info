@@ -165,17 +165,19 @@
         :data="warningData"
         :loading="dashboardLoading"
         @row-action="handleAttrAction"
+        @open-plot-warning="plotVisible = true"
       />
 
       <home-plot-modal
         v-if="plotVisible"
         :data="plotWarning"
+        variant="plot"
         @close="plotVisible = false"
-        @row-action="handleAttrAction"
       />
       <home-plot-modal
         v-if="warningDetailVisible"
         :data="warningDetail"
+        variant="detail"
         @close="warningDetailVisible = false"
       />
     </template>
@@ -271,7 +273,7 @@ const IMPLEMENTED_MENUS = ['home', 'archive', 'data', 'review', 'map', 'analysis
  *  ledger / handover / completion = 方案 2.3.2 第 7 / 6 / 8 项（道路验收移交台账、
  *  道路交付及养护协议移交事项、竣工验收项目历史工程资料数字化档案），
  *  与 archive/index.vue 的 tabs / PANELS 保持一致 */
-const ARCHIVE_TABS = ['maintain', 'query', 'statistics', 'ledger', 'handover', 'completion', 'doc', 'category']
+const ARCHIVE_TABS = ['maintain', 'statistics', 'ledger', 'handover', 'completion', 'doc', 'category']
 
 /**
  * 提级论证页允许直接落到某个页签：/screen/review?tab=audit
@@ -336,10 +338,6 @@ function sumRank (ranks, key) {
   return ranks.reduce((sum, item) => sum + toNumber(item[key]), 0)
 }
 
-function percentText (value) {
-  return `${toNumber(value)}%`
-}
-
 /**
  * 后端 ranks → 明细表（明细行 + 合计行）。
  * ★ 列值由 valueKeys 决定，函数本身不认识任何业务字段：
@@ -365,6 +363,14 @@ function rankTable (ranks, valueKeys, totals) {
   return { rows, total }
 }
 
+/**
+ * 后端地块预警 → 「地块预警信息」弹窗（第三个页签）。
+ *
+ * ★ 7 个指标**保持数字**，不在这一层拼成「12.34%」：
+ *   弹窗要按数值比档位着色（市级 5 档 / 区级 3 档），先格式化再让弹窗反解析，
+ *   迟早会出现「颜色和文字对不上」。projectType 也要带上 —— 这张表里
+ *   市/区两级混排，只能逐行选档位。
+ */
 function toPlotWarning (rows) {
   const list = rows || []
   return {
@@ -372,16 +378,17 @@ function toPlotWarning (rows) {
     total: list.length,
     rows: list.map((item) => ({
       id: item.id,
+      projectType: item.projectType,
       district: item.district,
       landNo: item.landNo,
       plotName: item.plotName,
-      landAcquisition: percentText(item.landAcquisition),
-      feasibility: percentText(item.feasibility),
-      preliminaryDesign: percentText(item.preliminaryDesign),
-      fund: percentText(item.fund),
-      notStarted: percentText(item.notStarted),
-      notCompleted: percentText(item.notCompleted),
-      notHandedOver: percentText(item.notHandedOver)
+      landAcquisition: item.landAcquisition,
+      feasibility: item.feasibility,
+      preliminaryDesign: item.preliminaryDesign,
+      fund: item.fund,
+      notStarted: item.notStarted,
+      notCompleted: item.notCompleted,
+      notHandedOver: item.notHandedOver
     }))
   }
 }
@@ -425,6 +432,8 @@ export default {
     } else if (routeQuery.menu && IMPLEMENTED_MENUS.indexOf(routeQuery.menu) > -1) {
       initialMenu = routeQuery.menu
     }
+    // 档案页初始页签。★ 历史深链 `?tab=query`（原「档案查询」页签，已并入档案维护）
+    // 不在白名单里，会落到下面的 'maintain' 兜底 —— 正是期望行为，不必额外映射。
     const initialArchiveTab =
       ARCHIVE_TABS.indexOf(routeQuery.tab) > -1
         ? routeQuery.tab
@@ -808,14 +817,24 @@ export default {
       return hit ? hit.label : key
     },
 
-    handleAttrAction (row) {
-      this.warningDetail = {
-        title: `${row.district || ''}地块预警信息`,
-        total: 0,
-        rows: []
-      }
+    /**
+     * 预警行「操作 → 查看」：下钻到该行政区下的宗地明细。
+     *
+     * 对应旧系统 homePage.js 的 seeDataInfo717 / seeDataInfo0805
+     * （→ byPageQuery），弹一张「地块预警信息」表，一行 = 一宗地。
+     *
+     * @param {Object} row    预警行（district 是分组名：市级 = xzqh、区级 = xzqh2）
+     * @param {string} tabKey 当前页签 key（city / district），由 HomeAttrPanel 一起抛出。
+     *   ★ 为什么用页签而不是从 row.id 里认「区级项目」前缀：靠中文字符串判断业务状态
+     *   是旧系统 changeShowInfo() 的老毛病（需求清单里点名要求改掉），
+     *   而且「地块预警信息」页签里的行并不属于这两张表。
+     */
+    handleAttrAction (row, tabKey) {
+      const projectType = tabKey === 'district' ? 'district' : 'city'
+      const title = `${(row && row.district) || ''}地块预警信息`
+      this.warningDetail = { title, total: 0, rows: [] }
       this.warningDetailVisible = true
-      queryWarningDetail({ projectType: this.warningActiveType(row), district: row.district })
+      queryWarningDetail({ projectType, district: row && row.district })
         .then((response) => {
           if (!response || !response.success) {
             this.$screenToast.error((response && response.message) || '预警详情加载失败')
@@ -823,32 +842,28 @@ export default {
           }
           const rows = response.result || []
           this.warningDetail = {
-            title: `${row.district || ''}地块预警信息`,
+            title,
             total: rows.length,
             rows: rows.map((item) => ({
               id: item.id,
-              landNo: item.crzdbh,
-              plotName: item.dkmc,
-              projectName: item.ptxmmc,
-              landAcquisition: item.xjpfsfwc,
-              feasibility: item.kypfsfwc,
-              preliminaryDesign: item.csjgspfsfwc,
-              fund: item.zjlsqk,
-              notStarted: item.sfkg,
-              notCompleted: item.sfjg,
-              notHandedOver: item.sfyj
+              // 逐行带项目分类：弹窗按它选阈值档位（市级 5 档 / 区级 3 档）
+              projectType: item.projectType,
+              landNo: item.landNo,
+              plotName: item.plotName,
+              facilityCount: item.facilityCount,
+              landAcquisition: item.landAcquisition,
+              feasibility: item.feasibility,
+              preliminaryDesign: item.preliminaryDesign,
+              fund: item.fund,
+              notStarted: item.notStarted,
+              notCompleted: item.notCompleted,
+              notHandedOver: item.notHandedOver
             }))
           }
         })
         .catch((error) => {
           this.$screenToast.error((error && error.message) || '预警详情加载失败')
         })
-    },
-
-    warningActiveType (row) {
-      const id = String((row && row.id) || '')
-      if (id.indexOf('区级项目') === 0) return 'district'
-      return 'city'
     }
   }
 }
