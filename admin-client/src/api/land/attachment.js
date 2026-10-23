@@ -2,6 +2,10 @@ import Vue from 'vue'
 import { getAction, postAction, deleteAction, uploadAction } from '@/api/manage'
 import { ACCESS_TOKEN } from '@/store/mutation-types'
 import { compact, buildDownloadUrl } from '@/api/land/landAdmin'
+import {
+  previewModeText as sharedPreviewModeText,
+  resolvePreviewMode as sharedResolvePreviewMode
+} from '@/api/land/filePreview'
 
 /**
  * 数据管理 · 配套附件管理（上传 / 查询 / 预览 / 下载）接口
@@ -237,41 +241,19 @@ export function deleteAttachment (id) {
 /**
  * 预览方式 → 中文说明。
  *
+ * ★ 委托给 `filePreview.js`：附件管理、档案管理、收发文共用同一套文案与扩展名映射，
+ *   否则「Office / WPS 在线预览」只改了一处，用户在另一个入口看到的还是旧口径。
  * ★ 单独给一句「不支持在线预览」的话术，而不是静默什么都不显示：
  *   旧系统是 `window.open` 裸打开，遇到 Office 文件在没装插件的机器上
  *   表现为「下载了一个文件但没打开」，用户以为系统坏了。
  */
 export function previewModeText (mode) {
-  switch (mode) {
-    case 'image':
-      return '图片预览'
-    case 'pdf':
-      return 'PDF 预览'
-    case 'office':
-      return 'Office 文档（可下载后用本机 Office 打开）'
-    case 'text':
-      return '文本预览'
-    default:
-      return '该格式不支持在线预览，请下载查看'
-  }
+  return sharedPreviewModeText(mode)
 }
 
-/** 扩展名 → 预览方式（前端兜底；后端会给 previewMode 时优先用后端的） */
-export function resolvePreviewMode (ext) {
-  const value = String(ext || '').toLowerCase()
-  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].indexOf(value) >= 0) {
-    return 'image'
-  }
-  if (value === 'pdf') {
-    return 'pdf'
-  }
-  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].indexOf(value) >= 0) {
-    return 'office'
-  }
-  if (['txt', 'csv', 'log', 'md', 'json', 'xml'].indexOf(value) >= 0) {
-    return 'text'
-  }
-  return 'download'
+/** 扩展名 / 文件名 → 预览方式（前端兜底；后端会给 previewMode 时优先用后端的） */
+export function resolvePreviewMode (extOrFileName) {
+  return sharedResolvePreviewMode(extOrFileName)
 }
 
 /** 字节 → 可读大小（后端给了 readableSize 时优先用后端的） */

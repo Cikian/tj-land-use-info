@@ -7,7 +7,10 @@ import {
 } from '@/api/manageJava'
 
 /**
- * 档案管理 · 档案维护 / 档案查询 / 档案统计 接口
+ * 档案管理 · 档案维护 / 档案统计 接口
+ *
+ * （大屏端原「档案查询」页签已并入「档案维护」，两者本来就共用 /list 与 /export，
+ *   接口层没有变化；管理端仍有独立的档案查询菜单，走的是同一批接口。）
  *
  * 后端：org.jeecg.modules.land.archive.controller.ArchiveController
  * 权限码：land:archive:*
@@ -41,12 +44,13 @@ export const archiveUrl = {
   export: '/land/archive/export',
   logs: '/land/archive/logs',
   fileList: '/land/archive/file/list',
+  filePreviewInfo: '/land/archive/file/previewInfo',
   fileDownload: '/land/archive/file/download',
   fileDelete: '/land/archive/file/delete',
   relatedDocuments: '/land/archive/relatedDocuments'
 }
 
-/** 档案分页列表（档案维护 / 档案查询共用） */
+/** 档案分页列表（维护页与所有下钻场景共用） */
 export function queryArchiveList (params) {
   return javaGetAction(archiveUrl.list, params)
 }
@@ -110,6 +114,20 @@ export function queryArchiveFiles (archiveId) {
   return javaGetAction(archiveUrl.fileList, { archiveId })
 }
 
+/**
+ * 单个卷内文件的预览信息。
+ *
+ * <p>返回 {@code { id, fileName, fileExt, fileSize, url, readableSize, previewMode, previewable }}，
+ * 其中 {@code url} 是相对路径（前端用 getJavaFileAccessHttpUrl 拼完整地址），
+ * {@code previewMode} 由后端 FilePreviewUtils 统一判定。
+ *
+ * <p>★ 这个接口会写一条「预览」操作记录，所以只在用户真正打开预览时调用，
+ * 不要在列表渲染时批量调用。
+ */
+export function queryArchiveFilePreview (id) {
+  return javaGetAction(archiveUrl.filePreviewInfo, { id })
+}
+
 /** 删除单个卷内文件 */
 export function deleteArchiveFile (id) {
   return javaDeleteAction(archiveUrl.fileDelete, { id })
@@ -155,6 +173,7 @@ export default {
   queryArchiveStat,
   queryArchiveLogs,
   queryArchiveFiles,
+  queryArchiveFilePreview,
   deleteArchiveFile,
   queryRelatedDocuments,
   downloadArchiveFile,

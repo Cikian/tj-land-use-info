@@ -224,7 +224,9 @@
   /** 允许的扩展名（与后端白名单同源口径；这里只用于文件框的 accept 提示与前端预校验） */
   const ALLOWED_EXT = [
     'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
-    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv', 'ofd',
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv',
+    // WPS 文字 / 表格 / 演示：后端按 office 归口交 kkFileView 预览，上传侧不能再拦住
+    'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
     'rar', 'zip', '7z',
     'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
     'mp4', 'avi', 'mov', 'wmv'

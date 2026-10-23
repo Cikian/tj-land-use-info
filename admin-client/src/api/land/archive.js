@@ -47,6 +47,12 @@ export const archiveUrl = {
   export: '/land/archive/export',
   logs: '/land/archive/logs',
   fileList: '/land/archive/file/list',
+  /**
+   * 单个卷内文件的预览信息。
+   * ★ 每次打开预览都要调用一次：后端会在这里写一条「预览」操作记录，
+   *   不能用列表行里的字段替代，否则操作记录里看不到预览行为。
+   */
+  filePreviewInfo: '/land/archive/file/previewInfo',
   fileDownload: '/land/archive/file/download',
   fileDelete: '/land/archive/file/delete',
   relatedDocuments: '/land/archive/relatedDocuments'
@@ -116,6 +122,17 @@ export function queryArchiveFiles (archiveId) {
   return getAction(archiveUrl.fileList, { archiveId })
 }
 
+/**
+ * 单个卷内文件的预览信息。
+ *
+ * @param {string} id 卷内文件 id
+ * @returns result: ArchiveFile，含 `url`（相对路径）、`previewMode`、`previewable` 等。
+ *          `url` 需由前端用 `getFileAccessHttpUrl` 拼成完整地址后再交给 img / iframe。
+ */
+export function queryArchiveFilePreview (id) {
+  return getAction(archiveUrl.filePreviewInfo, { id })
+}
+
 /** 删除单个卷内文件 */
 export function deleteArchiveFile (id) {
   return deleteAction(archiveUrl.fileDelete, { id })
@@ -161,6 +178,7 @@ export default {
   queryArchiveStat,
   queryArchiveLogs,
   queryArchiveFiles,
+  queryArchiveFilePreview,
   deleteArchiveFile,
   queryRelatedDocuments,
   downloadArchiveFile,

@@ -26,6 +26,8 @@
  *   「页面能选、导入却不认」这种最难查的问题。
  */
 
+import { previewModeText as sharedPreviewModeText, isPreviewableMode as sharedIsPreviewableMode } from '@/api/land/filePreview'
+
 /* ============================ 字典编码 ============================ */
 
 export const DICT_CODES = {
@@ -282,29 +284,17 @@ export function actionTone (action) {
 
 /**
  * 预览方式 → 中文文案（后端 previewMode ∈ image / pdf / office / text / download）。
- * ★ 不自己从扩展名猜：扩展名归一化（大写、多个点、无扩展名）与预览方式的对应关系
- *   只应该有一份实现，就在后端的 previewMode 里。
+ * ★ 不自己从扩展名猜：预览方式的唯一口径在后端 FilePreviewUtils；
+ *   这里的文案与「能否预览」判断统一转调 @/api/land/filePreview，
+ *   避免数据管理、档案、收发文各写一套后漂移。
  */
 export function previewModeText (mode) {
-  switch (mode) {
-    case 'image':
-      return '图片预览'
-    case 'pdf':
-      return 'PDF 预览'
-    case 'text':
-      return '文本预览'
-    case 'office':
-      return 'Office 文档（需下载）'
-    case 'download':
-      return '仅支持下载'
-    default:
-      return '未知格式'
-  }
+  return sharedPreviewModeText(mode)
 }
 
-/** 该预览方式能否在浏览器里直接打开（否则只能下载） */
+/** 该预览方式能否在线打开（Office/WPS 由 kkFileView 承担，也算可预览） */
 export function isPreviewableMode (mode) {
-  return mode === 'image' || mode === 'pdf' || mode === 'text'
+  return sharedIsPreviewableMode(mode)
 }
 
 /**

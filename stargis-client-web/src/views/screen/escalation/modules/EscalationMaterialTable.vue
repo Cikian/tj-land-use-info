@@ -162,6 +162,9 @@
         其中补充材料 {{ supplementCount }} 个
       </span>
     </div>
+
+    <!-- 材料预览：图片/PDF 直连静态资源，Office/WPS 走 kkFileView -->
+    <file-preview-modal ref="previewModal" />
   </div>
 </template>
 
@@ -184,8 +187,8 @@ import {
   saveMaterial,
   deleteMaterial,
   downloadMaterial,
-  previewMaterial,
 } from '@/api/land/escalation'
+import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
 import {
   MATERIAL_TYPE_OPTIONS,
   MATERIAL_ALLOWED_EXT,
@@ -208,6 +211,7 @@ export default {
     ScreenUpload,
     ScreenIcon,
     ScreenPopconfirm,
+    FilePreviewModal
   },
   props: {
     /** 本地模式下的材料数组（v-model） */
@@ -398,16 +402,24 @@ export default {
     },
 
     handlePreview (row) {
-      if (row.id) {
-        previewMaterial(row.id)
+      const raw = row && (row.url || row.storePath)
+      if (!raw) {
+        toast.warning('该材料还没有可访问的地址，请先保存项目')
         return
       }
-      const url = getJavaFileAccessHttpUrl(row.previewPath || row.storePath)
-      if (url) {
-        window.open(url, '_blank')
-      } else {
+      const url = getJavaFileAccessHttpUrl(raw)
+      if (!url) {
         toast.warning('该材料还没有可访问的地址，请先保存项目')
+        return
       }
+      this.$refs.previewModal.open({
+        fileName: row.fileName,
+        fileExt: row.fileExt,
+        fileSize: row.fileSize,
+        previewMode: row.previewMode,
+        url,
+        downloadUrl: url
+      })
     },
 
     handleRemove (row) {

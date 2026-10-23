@@ -53,7 +53,7 @@
       </template>
 
       <template #fileName="{ row }">
-        <button type="button" class="doc-attachment__link" @click="handleDownload(row)">
+        <button type="button" class="doc-attachment__link" @click="handlePreview(row)">
           {{ row.fileName }}
         </button>
       </template>
@@ -86,6 +86,9 @@
     <p v-if="!disabled && rows.length" class="doc-attachment__foot">
       共 <b>{{ rows.length }}</b> 个附件，保存后生效
     </p>
+
+    <!-- 附件预览：图片/PDF 直连静态资源，Office/WPS 走 kkFileView -->
+    <file-preview-modal ref="previewModal" />
   </div>
 </template>
 
@@ -95,6 +98,7 @@ import { ScreenDataTable, ScreenUpload, ScreenPopconfirm } from '@/components/sc
 import { toast } from '@/components/screen/toast'
 import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
 import { javaUploadUrl, getJavaFileAccessHttpUrl } from '@/api/manageJava'
+import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
 import {
   DOC_ALLOWED_EXT,
   DOC_ALLOWED_EXT_TEXT,
@@ -106,7 +110,7 @@ import {
 
 export default {
   name: 'DocAttachmentTable',
-  components: { ScreenDataTable, ScreenUpload, ScreenPopconfirm },
+  components: { ScreenDataTable, ScreenUpload, ScreenPopconfirm, FilePreviewModal },
   props: {
     /** 附件数组（v-model） */
     value: { type: Array, default: () => [] },
@@ -191,6 +195,33 @@ export default {
       if (item.id && record.id) return item.id === record.id
       return item.storePath === record.storePath
     },
+    /**
+     * 预览附件（文件名点击）。
+     * ★ 收发文附件的 previewMode 由后端 DocAttachmentServiceImpl 在详情查询时补齐；
+     *   刚上传还没保存的临时附件没有 previewMode，交给 FilePreviewModal 按扩展名兜底。
+     *   下载仍走操作列的「下载」，两个入口分开，避免「点预览却下载」。
+     */
+    handlePreview (record) {
+      const raw = record && (record.url || record.storePath)
+      if (!raw) {
+        toast.warning('该附件还没有可访问的地址')
+        return
+      }
+      const url = getJavaFileAccessHttpUrl(raw)
+      if (!url) {
+        toast.warning('该附件还没有可访问的地址')
+        return
+      }
+      this.$refs.previewModal.open({
+        fileName: record.fileName,
+        fileExt: record.fileExt,
+        fileSize: record.fileSize,
+        previewMode: record.previewMode,
+        url,
+        downloadUrl: url
+      })
+    },
+
     /**
      * 下载 / 预览。
      * 统一走 Java 后端的静态地址（/sys/common/static 不需要令牌），

@@ -363,6 +363,7 @@ function fallbackTypesOf (bizType) {
 const ALLOWED_EXT = [
   'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv', 'ofd',
+  'wps', 'wpt', 'et', 'ett', 'dps', 'dpt',
   'rar', 'zip', '7z',
   'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
   'mp4', 'avi', 'mov', 'wmv'

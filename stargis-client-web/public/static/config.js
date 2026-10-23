@@ -14,7 +14,10 @@ window._CONFIG = {
   HIGOFFSET : 0,
   LEAFLET_OPEN: false,
   //单点登录地址
-  VUE_APP_CAS_BASE_URL: '', // 文件预览路径
+  VUE_APP_CAS_BASE_URL: '',
+  // 文件预览路径（kkFileView）：运行时改这里不用重新打包。
+  // 例：http://192.168.1.20:8012/onlinePreview 或 /fileview/onlinePreview（nginx 反代）
+  // 留空则使用构建时 .env 的 VUE_APP_ONLINE_BASE_URL。
   VUE_APP_ONLINE_BASE_URL: '',
 
   VUE_MAP_URL: 'http://127.0.0.1:38083', // 配置了服务地址则读取该地址，没有配置则使用本身的地址
@@ -27,3 +30,4 @@ window._CONFIG = {
   lisenceUrl: 'http://106.0.5.113:8083/stargis/rest/services/System/UtileServer/CheckLocker', //cesium权限检验
 
 }
+

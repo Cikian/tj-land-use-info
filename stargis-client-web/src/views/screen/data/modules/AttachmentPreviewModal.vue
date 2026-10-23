@@ -7,16 +7,17 @@
     就在 `AttachmentController` 的 `previewMode` 里。前端另猜一套迟早与后端不一致，
     表现是「同一个文件在这个页面能看、在那个页面说打不开」。
 
-      image    → <img>，静态资源地址（/sys/common/static 是 anon 放行的，不需要 token）
-      pdf      → <iframe>，同上
-      text     → fetch 回来塞进 <pre>（.txt/.md/.csv/.xml 这类）
-      office   → 明确告知「该格式不支持在线预览，请下载查看」+ 下载按钮
-      download → 同上
+    ★ 2026-10-22 起**所有文件统一走 kkFileView**（含 PDF、图片、ZIP、文本）：
+      浏览器直接打开 PDF 会被后端的 Content-Disposition 变成下载，ZIP 直连也不会
+      列目录；交给 kkFileView 才能正常显示，不支持的格式也由它自己的错误页反馈。
+      previewMode 现在只用于页头「预览方式」标签。
 
-    ★ 为什么 office 不硬上「在线预览」：
-      浏览器没有原生的 doc/xls 渲染能力，旧系统用 iframe 套 office 在线预览服务，
-      结果是内网环境下十次有八次是空白页，用户以为「文件坏了」。
-      老实说「请下载查看」比一个永远转圈的加载框好。
+    ★ 为什么 Office/WPS 不自己渲染：
+      浏览器没有原生的 doc/xls/wps 渲染能力。本系统统一接 kkFileView：
+      服务端用 LibreOffice 转 PDF/图片，前端 iframe 展示，地址由
+      `@/api/land/filePreview` 的 buildOnlinePreviewUrl() 拼装。
+      若 kkFileView 的 X-Frame-Options 拦住 iframe，用户可点「新窗口打开」
+      （同一个地址），不会出现「只能看到一个永远转圈的加载框」。
 
     ★ 下载必须走 `/land/data/attachment/download?id=`（token 在 query 上）：
       服务端要按这个入口统计下载次数。用静态资源地址虽然也能拿到文件，
@@ -28,9 +29,9 @@
   <screen-modal
     :visible.sync="visible"
     :title="title"
-    :width="1080"
+    :width="1400"
     :show-footer="false"
-    :body-max-height="'calc(100vh - 180px)'"
+    :body-max-height="'calc(100vh - 130px)'"
     @cancel="handleClose"
   >
     <template #head-extra>
@@ -39,6 +40,15 @@
         <screen-tag v-if="record" tone="muted" size="sm">{{ formatSize(record.fileSize) }}</screen-tag>
         <screen-tag tone="info" size="sm">{{ previewModeText(mode) }}</screen-tag>
       </div>
+
+      <screen-button
+        size="sm"
+        icon="external-link"
+        :disabled="!newWindowUrl"
+        @click="openNewWindow"
+      >
+        新窗口打开
+      </screen-button>
 
       <screen-button
         size="sm"
@@ -57,44 +67,16 @@
         text="正在解析附件预览方式…"
         :overlay="false"
       >
-        <!-- ---------- 图片 ---------- -->
-        <div v-if="mode === 'image'" class="attachment-preview__image">
-          <img v-if="url" :src="url" :alt="fileName || '图片附件'" class="attachment-preview__img" />
-          <p v-else class="attachment-preview__empty">取不到预览地址，请下载查看。</p>
-        </div>
-
-        <!-- ---------- PDF ---------- -->
-        <div v-else-if="mode === 'pdf'" class="attachment-preview__frame">
-          <!--
-            ★ 这里用原生 <iframe>（不是 ScreenPopover / ScreenModal 嵌套）：
-              PDF 阅读器需要完整的文档流上下文，套在任何 transform/overflow 容器里
-              都可能只渲染第一页。所以给它一个确定高度的框。
-          -->
-          <iframe
-            v-if="url"
-            :src="url"
-            class="attachment-preview__pdf"
-            :title="fileName || 'PDF 附件'"
-          />
-          <p v-else class="attachment-preview__empty">取不到预览地址，请下载查看。</p>
-        </div>
-
-        <!-- ---------- 纯文本 ---------- -->
-        <div v-else-if="mode === 'text'" class="attachment-preview__text">
-          <p v-if="textError" class="attachment-preview__empty" role="alert">{{ textError }}</p>
-          <pre v-else class="attachment-preview__pre">{{ textContent || '（空文件）' }}</pre>
-        </div>
-
-        <!-- ---------- Office / 只能下载 ---------- -->
-        <div v-else class="attachment-preview__fallback">
-          <screen-empty
-            :text="fallbackTitle"
-            :description="fallbackDesc"
-          />
-          <screen-button type="primary" icon="download" :disabled="!record || !record.id" @click="handleDownload">
-            下载查看
-          </screen-button>
-        </div>
+        <!--
+          ★ 预览内容区抽到 FilePreviewBody：档案、收发文、提级材料共用。
+            ★ 2026-10-22 起所有文件统一走 kkFileView（PDF/ZIP 直连都有问题），
+              这里只负责把静态地址换成 onlinePreview 地址。
+        -->
+        <file-preview-body
+          :mode="mode"
+          :url="displayUrl"
+          :file-name="fileName"
+        />
       </screen-loading>
     </div>
   </screen-modal>
@@ -105,9 +87,7 @@ import {
   ScreenModal,
   ScreenButton,
   ScreenTag,
-  ScreenIcon,
-  ScreenLoading,
-  ScreenEmpty
+  ScreenLoading
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import {
@@ -115,10 +95,9 @@ import {
   buildAttachmentDownloadUrl,
   buildPreviewHttpUrl
 } from '@/api/land/attachment'
-import { formatSize, previewModeText, isPreviewableMode } from '../constants'
-
-/** 文本预览的体积上限：超过就只提示下载，避免把几 MB 的 csv 塞进 DOM 卡死页面 */
-const TEXT_MAX_BYTES = 1024 * 1024
+import { buildOnlinePreviewUrl } from '@/api/land/filePreview'
+import { formatSize, previewModeText } from '../constants'
+import FilePreviewBody from '@/views/screen/file-preview/FilePreviewBody.vue'
 
 export default {
   name: 'AttachmentPreviewModal',
@@ -126,9 +105,8 @@ export default {
     ScreenModal,
     ScreenButton,
     ScreenTag,
-    ScreenIcon,
     ScreenLoading,
-    ScreenEmpty
+    FilePreviewBody
   },
   data () {
     return {
@@ -136,11 +114,9 @@ export default {
       loading: false,
       record: null,
       info: null,
-      /** 完整静态资源地址（由 /previewUrl 的 storePath 拼出来） */
+      /** 完整静态资源地址（由 /previewUrl 的 storePath 拼出来，下载按钮用） */
       url: '',
-      mode: 'download',
-      textContent: '',
-      textError: ''
+      mode: 'online'
     }
   },
   computed: {
@@ -150,17 +126,21 @@ export default {
     title () {
       return this.fileName ? `附件预览 · ${this.fileName}` : '附件预览'
     },
-    fallbackTitle () {
-      return this.mode === 'office' ? 'Office 文档不支持在线预览' : '该格式不支持在线预览'
+    /**
+     * 实际交给 FilePreviewBody 的地址。
+     * ★ 所有文件都换成 kkFileView 的 onlinePreview 地址：
+     *   PDF 直连会被后端 Content-Disposition 变成下载，ZIP 直连不会列目录。
+     */
+    displayUrl () {
+      return buildOnlinePreviewUrl(this.url, this.fileName)
     },
-    fallbackDesc () {
-      return '该格式不支持在线预览，请下载查看。（浏览器没有原生的 Office 渲染能力，内网环境下第三方在线预览服务多数不可用，因此这里如实告知而不是给一个永远转圈的加载框。）'
+    newWindowUrl () {
+      return this.displayUrl || this.url
     }
   },
   methods: {
     formatSize,
     previewModeText,
-    isPreviewableMode,
 
     /* ---------------- 对外入口 ---------------- */
 
@@ -172,9 +152,7 @@ export default {
       this.record = record
       this.info = null
       this.url = ''
-      this.mode = record.previewMode || 'download'
-      this.textContent = ''
-      this.textError = ''
+      this.mode = record.previewMode || 'online'
       this.visible = true
       this.load(record.id)
     },
@@ -199,51 +177,28 @@ export default {
           this.info = info
           this.mode = info.previewMode || this.mode
           this.url = buildPreviewHttpUrl(info.storePath) || ''
-          if (this.mode === 'text') {
-            this.loadText(info)
-          }
         })
         .finally(() => {
           this.loading = false
         })
     },
 
-    /**
-     * 文本内容单独取。
-     * ★ 用原生 fetch 而不是 axios：静态资源接口返回的是纯文本，
-     *   走 axios 项目实例会被中台拦截器掺和（并且它只带 X-Access-Token，
-     *   而静态资源是 anon 的，不需要任何请求头）。
-     * ★ 超限不取：几 MB 的 csv 塞进 DOM 会把页面卡死，
-     *   这种情况提示下载比「打开了但动不了」好。
-     */
-    loadText (info) {
-      const size = Number((this.record && this.record.fileSize) || 0)
-      if (size > TEXT_MAX_BYTES) {
-        this.textError = '文件较大（超过 1MB），为避免页面卡顿不再在线渲染，请下载查看。'
-        return
-      }
-      if (!this.url) {
-        this.textError = '取不到预览地址，请下载查看。'
-        return
-      }
-      window
-        .fetch(this.url)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`)
-          }
-          return response.text()
-        })
-        .then((text) => {
-          // 后端可能返回很长的内容，这里仍然截一刀，双保险
-          this.textContent = text.length > 200000 ? `${text.slice(0, 200000)}\n\n…（内容过长，已截断，完整内容请下载查看）` : text
-        })
-        .catch((error) => {
-          this.textError = `文本读取失败（${(error && error.message) || '未知错误'}），请下载查看。`
-        })
-    },
-
     /* ---------------- 操作 ---------------- */
+
+    /**
+     * 新窗口打开。
+     * ★ Office/WPS 的 iframe 可能被 kkFileView 的 X-Frame-Options / 反向代理拦截，
+     *   这里用同一个地址新开窗口，既能让用户看到内容，也能快速判断是「服务不可用」
+     *   还是「只是不能嵌在弹窗里」。
+     */
+    openNewWindow () {
+      const url = this.newWindowUrl
+      if (!url) {
+        toast.warning('取不到可打开的预览地址')
+        return
+      }
+      window.open(url, '_blank')
+    },
 
     /**
      * 下载。

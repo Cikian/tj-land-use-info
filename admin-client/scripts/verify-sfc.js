@@ -38,6 +38,8 @@ const files = [
   'src/views/land/archive/modules/CompletionDetailModal.vue',
   'src/views/land/archive/modules/ArchiveDetailModal.vue',
   'src/views/land/archive/modules/ArchiveFileTable.vue',
+  // 档案卷内文件在线预览（Office/WPS 走 kkFileView）
+  'src/views/land/archive/modules/ArchiveFilePreviewModal.vue',
   'src/views/land/archive/modules/ArchiveModal.vue',
   'src/views/land/archive/modules/ArchiveSearchForm.vue',
   'src/views/land/archive/modules/ArchiveTable.vue',
@@ -51,6 +53,8 @@ const files = [
   'src/views/land/data/AttachmentList.vue',
   'src/views/land/data/modules/AttachmentTreeList.vue',
   'src/views/land/data/modules/AttachmentTypeGroups.vue',
+  // 数据管理附件预览（Office/WPS 走 kkFileView）
+  'src/views/land/data/modules/AttachmentPreviewModal.vue',
   'src/views/land/document/modules/DocDetailModal.vue',
   'src/views/land/document/modules/DocFlowModal.vue',
   'src/views/land/document/modules/DocReceiveModal.vue',
