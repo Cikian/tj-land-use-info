@@ -102,14 +102,8 @@ public class FacilityServiceImpl extends ServiceImpl<FacilityMapper, Facility> i
         updateById(facility);
     }
 
-    @Override
-    public List<Facility> queryWarningDetails(String projectType, String district) {
-        if (StringUtils.isBlank(projectType) || StringUtils.isBlank(district)) {
-            return Collections.emptyList();
-        }
-        String projectLabel = "city".equals(projectType) ? "市级项目" : "district".equals(projectType) ? "区级项目" : projectType;
-        return baseMapper.selectWarningDetails(projectLabel, district.trim());
-    }
+    // 说明：queryWarningDetails 已删除 —— 首页预警「查看」明细迁到
+    // stat/home（IHomeStatService#queryWarningLands），与预警行共用同一套口径。
 
     private void prepareFacility(Facility facility, boolean creating) {
         if (facility == null) {

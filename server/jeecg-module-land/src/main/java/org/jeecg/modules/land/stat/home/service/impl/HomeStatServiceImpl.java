@@ -98,6 +98,40 @@ public class HomeStatServiceImpl implements IHomeStatService {
         return result;
     }
 
+    @Override
+    public List<PendingFacilityVO.WarningItem> queryWarningLands(String projectType, String district) {
+        // 参数非法时返回空列表而不是报错：首页面板点开一个空区不该弹错误框
+        if (district == null || district.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        String xmfl = toProjectLabel(projectType);
+        if (xmfl == null) {
+            return new ArrayList<>();
+        }
+        return toWarnings(homeStatMapper.selectWarningLands(xmfl, district.trim()));
+    }
+
+    /**
+     * 前端的 {@code city / district} 与库里的 {@code 市级项目 / 区级项目} 互转。
+     *
+     * <p>两套写法都要认：前端走 {@code HomePlotModal} 时传的是 tab key（city/district），
+     * 而历史深链或手工调接口时可能直接传中文分类。认不出来就返回 null（= 空结果），
+     * 不做「猜一个默认值」—— 猜错会让区级数字出现在市级口径下。
+     */
+    private static String toProjectLabel(String projectType) {
+        if (projectType == null) {
+            return null;
+        }
+        String value = projectType.trim();
+        if ("city".equalsIgnoreCase(value) || "市级项目".equals(value)) {
+            return "市级项目";
+        }
+        if ("district".equalsIgnoreCase(value) || "区级项目".equals(value)) {
+            return "区级项目";
+        }
+        return null;
+    }
+
     /**
      * 完成率：completed / total * 100，保留 2 位。
      *
@@ -142,6 +176,7 @@ public class HomeStatServiceImpl implements IHomeStatService {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", "区级项目-" + district);
         row.put("district", district);
+        row.put("projectType", "区级项目");
         row.put("unreported", Boolean.TRUE);
         return row;
     }
@@ -155,9 +190,11 @@ public class HomeStatServiceImpl implements IHomeStatService {
             PendingFacilityVO.WarningItem item = new PendingFacilityVO.WarningItem();
             item.setId(toString(row, "id"));
             item.setDistrict(toString(row, "district"));
+            item.setProjectType(toString(row, "projectType"));
             item.setUnreported(Boolean.TRUE.equals(findValue(row, "unreported")));
             item.setLandNo(toString(row, "landNo"));
             item.setPlotName(toString(row, "plotName"));
+            item.setFacilityCount(toLong(row, "facilityCount"));
             item.setLandAcquisition(toDecimal(row, "landAcquisition"));
             item.setFeasibility(toDecimal(row, "feasibility"));
             item.setPreliminaryDesign(toDecimal(row, "preliminaryDesign"));

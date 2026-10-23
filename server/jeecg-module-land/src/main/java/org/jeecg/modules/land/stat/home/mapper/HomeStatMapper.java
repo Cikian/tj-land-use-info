@@ -62,4 +62,17 @@ public interface HomeStatMapper {
 
     /** 地块预警（按宗地聚合 7 列指标）。 */
     List<Map<String, Object>> selectLandWarnings();
+
+    /**
+     * 预警下钻：某个行政区下的宗地明细（一行 = 一宗地，7 列指标为该宗地自身的未完成率）。
+     *
+     * <p>对应旧系统预警表的「操作 → 查看」：{@code homePage.js} 的
+     * {@code seeDataInfo717 / seeDataInfo0805} → {@code byPageQuery}。
+     *
+     * @param xmfl     项目分类（市级项目 / 区级项目）——同时决定分组列是 xzqh 还是 xzqh2
+     * @param district 分组名（市级 = xzqh 值、区级 = xzqh2 值）
+     * @return 每行 {@code id / landNo / plotName / facilityCount + 7 个比率}
+     */
+    List<Map<String, Object>> selectWarningLands(@Param("xmfl") String xmfl,
+                                                 @Param("district") String district);
 }

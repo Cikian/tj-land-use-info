@@ -42,11 +42,6 @@ public interface FacilityMapper extends BaseMapper<Facility> {
     /** 该宗地下的配套项目数量 */
     long countByCrzdbh(@Param("crzdbh") String crzdbh);
 
-    /**
-     * 某个行政区下未完成的配套项目。
-     *
-     * <p>★ 保留：数据域的「预警明细」端点还在用它（首页预警行点开看明细），
-     * 它不属于首页看板聚合，因此没有随 dashboard 一起迁走。
-     */
-    List<Facility> selectWarningDetails(@Param("xmfl") String xmfl, @Param("xzqh") String xzqh);
+    // 说明：selectWarningDetails 已删除 —— 首页预警「查看」明细迁到
+    // stat/home 的 selectWarningLands（与预警行共用同一套分组列与比率口径）。
 }

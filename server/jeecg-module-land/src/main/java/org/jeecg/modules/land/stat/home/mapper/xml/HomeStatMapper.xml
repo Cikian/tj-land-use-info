@@ -212,14 +212,31 @@
 
     <!--
       ================================================================
-      三、预警面板（逻辑原样迁移，未改口径）
+      三、预警面板（方案 2.3.1（五）市区两级项目预警 + 地块预警信息）
       ================================================================
+
+      旧系统实现在 ProcessWarningServiceImpl：
+        · getWarningMsgSimple      → 市级：遍历 xzqh 下的每宗地算 7 项「否」的条数，
+                                     汇总后除以该区配套总条数；
+        · getQjWarningMsgSimple    → 区级：同上，分组列换成 xzqh2；某区一条配套都没有时
+                                     七列都写「未填报配套项目信息」；
+        · editWarningMsgLand       → 单宗地的 7 项计数 + ptxmCount（分母）；
+        · byPageQuery              → 点「查看」后的宗地明细（同样 7 项百分比）。
+
+      ★ 分子分母都是「配套记录条数」，不是按 ptxmmc 去重后的项目数 —— 与 3.x 的
+        「配套总数 / 已完成」（去重口径）**故意不同**：预警看的是「有多少条配套卡在这个环节」，
+        同一道路挂两宗地时确实有两条记录各自卡住。D-601 已登记为「与旧系统一致」。
     -->
 
     <!--
       与旧系统 ProcessWarningServiceImpl.editWarningMsgLand 一致：
       只统计明确填写「否 / 未落实」的配套项目，空值不计入分子；
-      分母是该分组下的全部配套项目。
+      分母是该分组下的全部配套项目（条数）。
+
+      ★ 唯一的口径修正（D-613）：旧实现查配套时没有带软删条件，
+        被移除的配套仍留在分母里、把未完成率摊薄。这里统一补
+        COALESCE(f.delFlag,'0')='0'（与「待落实配套」统计一致）。
+        实测当前库 delFlag='1' 为 0 条，因此本次修正不改变现有数字。
     -->
     <sql id="warningRates">
         ROUND(COALESCE(SUM(CASE WHEN f.`xjpfsfwc` = '否' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(f.`id`), 0), 0), 2) AS landAcquisition,
@@ -234,11 +251,17 @@
     <!--
       市级 / 区级预警：区级的分组列同样沿用旧口径 xzqh2（与排行一致），
       否则「区级预警」的行会与「区级排行」的分组对不上，前端点排行下钻会查不到明细。
+
+      ★ 分母为 0 的处理与旧系统不同（D-614）：
+        旧系统某区一宗地都没配配套时是 0/0 = NaN，前端显示「NaN%」；
+        这里 NULLIF 兜成 0.00%。区级那种「一条都没上报」的情况由
+        HomeStatServiceImpl.emptyDistrictWarnings 补 unreported 行提示，不靠 NaN。
     -->
     <select id="selectWarningByProjectType" resultType="java.util.LinkedHashMap">
         SELECT
             CONCAT(#{xmfl}, '-', grouped.district) AS id,
             grouped.district AS district,
+            #{xmfl} AS projectType,
             <include refid="warningRates"/>
         FROM (
             SELECT
@@ -250,6 +273,7 @@
         ) grouped
         JOIN `t_supporting_facilities` f
           ON f.`crzdbh` = grouped.`crzdbh`
+         AND <include refid="facilityNotDeleted"/>
         WHERE grouped.district IS NOT NULL
           AND grouped.district != ''
         GROUP BY grouped.district
@@ -267,24 +291,59 @@
         ORDER BY l.`xzqh2`
     </select>
 
-    <!-- 地块预警：按宗地聚合 7 列指标；district 列拼成「区划 + 地块名称」供前端直接展示 -->
+    <!--
+      地块预警：按宗地聚合 7 列指标（首页第三个页签「地块预警信息」）。
+
+      district 给**纯行政区划**（不是「区划 + 地块名称」）：弹窗里地块名称已经是独立一列，
+      拼在一起会重复显示。旧系统这块是「点某个区才看到该区的宗地」，
+      新系统做成一个页签看全部宗地，所以必须带上区划，否则不知道是哪个区的。
+    -->
     <select id="selectLandWarnings" resultType="java.util.LinkedHashMap">
         SELECT
             l.`id` AS id,
             l.`crzdbh` AS landNo,
             COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`) AS plotName,
-            CONCAT(COALESCE(l.`xzqh`, ''),
-                   CASE WHEN l.`xzqh` IS NULL OR l.`xzqh` = '' THEN '' ELSE ' ' END,
-                   COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`)) AS district,
+            l.`xmfl` AS projectType,
+            COALESCE(l.`xzqh`, '') AS district,
             <include refid="warningRates"/>
         FROM `t_land` l
         JOIN `t_supporting_facilities` f
           ON f.`crzdbh` = l.`crzdbh`
-         AND COALESCE(f.`delFlag`, '0') = '0'
+         AND <include refid="facilityNotDeleted"/>
         WHERE l.`del_flag` = 0
           AND l.`xmfl` IN ('市级项目', '区级项目')
-        GROUP BY l.`id`, l.`xzqh`, l.`dkmc`, l.`crzdbh`
-        ORDER BY notHandedOver DESC, district
+        GROUP BY l.`id`, l.`xzqh`, l.`dkmc`, l.`crzdbh`, l.`xmfl`
+        ORDER BY notHandedOver DESC, district, l.`crzdbh`
+    </select>
+
+    <!--
+      预警下钻：某行政区下的宗地明细（旧系统 byPageQuery）。
+
+      与上面两个聚合查询共用 warningRates，所以「区级预警行里的 40%」和
+      「点开看某宗地的 40%」是同一套分子分母，不会出现点进去对不上。
+
+      分组列同市区两级：市级按 xzqh、区级按 xzqh2 —— 旧系统 byPageQuery 用的是
+      xzqh2，但那是因为它只服务区级；市级那条链路（seeDataInfo717）传的是 xzqh。
+      两者必须与预警行的分组列一致，否则「点进去一宗地都没有」。
+    -->
+    <select id="selectWarningLands" resultType="java.util.LinkedHashMap">
+        SELECT
+            l.`id` AS id,
+            l.`crzdbh` AS landNo,
+            COALESCE(NULLIF(l.`dkmc`, ''), l.`crzdbh`) AS plotName,
+            #{xmfl} AS projectType,
+            COUNT(f.`id`) AS facilityCount,
+            <include refid="warningRates"/>
+        FROM `t_land` l
+        JOIN `t_supporting_facilities` f
+          ON f.`crzdbh` = l.`crzdbh`
+         AND <include refid="facilityNotDeleted"/>
+        WHERE l.`del_flag` = 0
+          AND l.`xmfl` = #{xmfl}
+          AND CASE WHEN #{xmfl} = '区级项目' THEN l.`xzqh2` ELSE l.`xzqh` END = #{district}
+        GROUP BY l.`id`, l.`crzdbh`, l.`dkmc`
+        HAVING COUNT(f.`id`) > 0
+        ORDER BY notHandedOver DESC, l.`crzdbh`
     </select>
 
 </mapper>
