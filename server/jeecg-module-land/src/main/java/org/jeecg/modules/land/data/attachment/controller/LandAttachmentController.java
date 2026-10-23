@@ -295,7 +295,7 @@ public class LandAttachmentController {
      * 取预览所需的相对存储路径（前端据此拼静态资源地址）。
      *
      * <p>返回 {@code storePath}（相对路径，不含前导斜杠）与
-     * {@code previewMode}（image/pdf/office/text/download）、{@code previewable}。
+     * {@code previewMode}（image/pdf/office/text/archive/cad/media/online）、{@code previewable}。
      * ★ 前端不要自己从 {@code fileName} 猜预览方式：扩展名归一化
      * （大写、多个点、无扩展名）与预览方式的对应关系只应该有一份实现，
      * 就是这里的 {@code previewMode}；前端另猜一套，迟早与后端不一致。
@@ -390,3 +390,4 @@ public class LandAttachmentController {
         }
     }
 }
+

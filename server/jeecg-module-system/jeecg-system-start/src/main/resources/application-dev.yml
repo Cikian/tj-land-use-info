@@ -208,8 +208,10 @@ jeecg:
     cluster-name: jeecg-ES
     cluster-nodes: 127.0.0.1:9200
     check-enabled: false
-  # 在线预览文件服务器地址配置
-  file-view-domain: 127.0.0.1:8012
+  # 在线预览文件服务器地址配置（kkFileView，必须带 http:// 或 https://）
+  # ★ 必须与前端 stargis-client-web / admin-client 的 VUE_APP_ONLINE_BASE_URL 指向同一个服务；
+  #   部署说明见 code/new/docs/文件预览-kkFileView接入说明.md
+  file-view-domain: ${TJ_FILE_VIEW_DOMAIN:http://127.0.0.1:8012}
   # minio文件上传
   minio:
     minio_url: http://minio.jeecg.com

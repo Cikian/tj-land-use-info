@@ -197,8 +197,8 @@ jeecg:
     cluster-name: jeecg-ES
     cluster-nodes: 81.70.47.128:9200
     check-enabled: false
-  # 在线预览文件服务器地址配置
-  file-view-domain: http://127.0.0.1:8012
+  # 在线预览文件服务器地址配置（kkFileView，必须带 http:// 或 https://）
+  file-view-domain: ${TJ_FILE_VIEW_DOMAIN:http://127.0.0.1:8012}
   # minio文件上传
   minio:
     minio_url: http://minio.jeecg.com

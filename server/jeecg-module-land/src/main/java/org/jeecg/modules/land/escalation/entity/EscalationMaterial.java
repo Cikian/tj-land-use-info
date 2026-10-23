@@ -108,4 +108,13 @@ public class EscalationMaterial implements Serializable {
     /** 人性化文件大小，如「12.40 MB」 */
     @TableField(exist = false)
     private String readableSize;
+
+    /** 预览方式：image / pdf / office / text / archive / cad / media / online（由 FilePreviewUtils 统一判定） */
+    @TableField(exist = false)
+    private String previewMode;
+
+    /** 是否可以在线预览 */
+    @TableField(exist = false)
+    private Boolean previewable;
 }
+

@@ -13,6 +13,7 @@ import org.jeecg.modules.land.archive.mapper.ArchiveCategoryMapper;
 import org.jeecg.modules.land.archive.mapper.ArchiveFileMapper;
 import org.jeecg.modules.land.archive.mapper.ArchiveMapper;
 import org.jeecg.modules.land.archive.service.IArchiveFileService;
+import org.jeecg.modules.land.common.util.FilePreviewUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -281,13 +282,17 @@ public class ArchiveFileServiceImpl extends ServiceImpl<ArchiveFileMapper, Archi
     // 补齐展示字段
     // ==================================================================
 
-    /** 给单个文件补 url 与可读大小 */
+    /** 给单个文件补 url、可读大小与预览方式 */
     public ArchiveFile enrich(ArchiveFile file) {
         if (file == null) {
             return null;
         }
         file.setUrl(buildUrl(file));
         file.setReadableSize(formatSize(file.getFileSize()));
+        // 历史数据可能只存了 fileName 没存 fileExt，这里用文件名兜底
+        String ext = StringUtils.isNotBlank(file.getFileExt()) ? file.getFileExt() : file.getFileName();
+        file.setPreviewMode(FilePreviewUtils.previewModeOf(ext));
+        file.setPreviewable(FilePreviewUtils.previewableOf(ext));
         return file;
     }
 

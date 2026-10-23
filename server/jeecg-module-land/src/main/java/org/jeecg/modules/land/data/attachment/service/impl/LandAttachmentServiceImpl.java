@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.modules.land.common.util.FilePreviewUtils;
 import org.jeecg.modules.land.data.attachment.entity.LandAttachment;
 import org.jeecg.modules.land.data.attachment.mapper.LandAttachmentMapper;
 import org.jeecg.modules.land.data.attachment.service.ILandAttachmentService;
@@ -150,18 +151,6 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
     private static Map<String, String> typeNamesOf(String bizType) {
         return DataSupport.BIZ_FACILITY.equals(bizType) ? TYPE_NAMES_FACILITY : TYPE_NAMES_LAND;
     }
-
-    /** 可预览的扩展名 → 预览方式（图片） */
-    private static final Set<String> IMAGE_EXTS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "gif", "bmp", "webp")));
-
-    /** 可预览的扩展名 → 预览方式（Office 文档；浏览器不能直接渲染，前端交给在线预览组件） */
-    private static final Set<String> OFFICE_EXTS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList("doc", "docx", "xls", "xlsx", "ppt", "pptx")));
-
-    /** 可预览的扩展名 → 预览方式（纯文本，浏览器直接渲染） */
-    private static final Set<String> TEXT_EXTS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList("txt", "csv", "log", "md")));
 
     @Autowired
     private LandMapper landMapper;
@@ -723,32 +712,14 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
 
     @Override
     public String previewModeOf(String fileExt) {
-        String ext = fileExt == null ? null : fileExt.trim().toLowerCase(Locale.ROOT);
-        if (StringUtils.isBlank(ext)) {
-            return "download";
-        }
-        if (IMAGE_EXTS.contains(ext)) {
-            return "image";
-        }
-        if ("pdf".equals(ext)) {
-            return "pdf";
-        }
-        if (OFFICE_EXTS.contains(ext)) {
-            return "office";
-        }
-        if (TEXT_EXTS.contains(ext)) {
-            return "text";
-        }
-        // ★ 兜底是 download 而不是「猜一个」：猜错会让前端白屏或弹一堆下载，
-        //   用户不知道发生了什么；明确告诉它「这种文件请下载后本地打开」最省事
-        return "download";
+        // 预览方式的唯一口径在 FilePreviewUtils：档案、收发文、提级材料共用同一套，
+        // 这里不再维护第二份扩展名白名单（否则加 wps 只改一处就会「这个页面能看、那个页面不能看」）。
+        return FilePreviewUtils.previewModeOf(fileExt);
     }
 
     @Override
     public boolean previewableOf(String fileExt) {
-        String mode = previewModeOf(fileExt);
-        return "image".equals(mode) || "pdf".equals(mode)
-                || "office".equals(mode) || "text".equals(mode);
+        return FilePreviewUtils.previewableOf(fileExt);
     }
 
     // ==================================================================

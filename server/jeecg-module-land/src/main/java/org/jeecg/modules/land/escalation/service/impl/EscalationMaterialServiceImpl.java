@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.modules.land.common.util.FilePreviewUtils;
 import org.jeecg.modules.land.escalation.entity.EscalationMaterial;
 import org.jeecg.modules.land.escalation.entity.EscalationProject;
 import org.jeecg.modules.land.escalation.mapper.EscalationMaterialMapper;
@@ -49,9 +50,17 @@ import java.util.Set;
 public class EscalationMaterialServiceImpl extends ServiceImpl<EscalationMaterialMapper, EscalationMaterial>
         implements IEscalationMaterialService {
 
-    /** 扩展名白名单（设计文档 4.4 逐项列出） */
+    /**
+     * 扩展名白名单（设计文档 4.4 逐项列出，2026-10 增加 WPS 系列）。
+     *
+     * <p>★ 与 {@link FilePreviewUtils} 的分工：本白名单管「允许上传什么」，
+     * FilePreviewUtils 管「上传后能不能在线看」。两者不是同一件事——
+     * 例如 zip/dwg 允许上传但只能下载。加 WPS 时两边都要记得，
+     * 漏了白名单会表现为「预览模板支持 wps，但用户上传时被拒」。
+     */
     private static final Set<String> ALLOWED_EXT = Collections.unmodifiableSet(new HashSet<>(
-            Arrays.asList("pdf", "doc", "docx", "jpg", "jpeg", "png", "xls", "xlsx")));
+            Arrays.asList("pdf", "doc", "docx", "jpg", "jpeg", "png", "xls", "xlsx",
+                    "wps", "wpt", "et", "ett", "dps", "dpt", "ofd")));
 
     /** 单文件大小上限：50MB（原型界面明示「单个文件不超过 50MB」） */
     private static final long MAX_FILE_SIZE = 50L * 1024 * 1024;
@@ -330,13 +339,18 @@ public class EscalationMaterialServiceImpl extends ServiceImpl<EscalationMateria
     // 展示字段补齐
     // ==================================================================
 
-    /** 给单个材料补 url 与可读大小 */
+    /** 给单个材料补 url、可读大小与预览方式 */
     public EscalationMaterial enrich(EscalationMaterial material) {
         if (material == null) {
             return null;
         }
         material.setUrl(buildUrl(material));
         material.setReadableSize(formatSize(material.getFileSize()));
+        // 历史数据可能 fileExt 为空，用文件名兜底
+        String ext = StringUtils.isNotBlank(material.getFileExt())
+                ? material.getFileExt() : material.getFileName();
+        material.setPreviewMode(FilePreviewUtils.previewModeOf(ext));
+        material.setPreviewable(FilePreviewUtils.previewableOf(ext));
         return material;
     }
 
