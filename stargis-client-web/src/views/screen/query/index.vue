@@ -33,11 +33,6 @@
         <i class="query-screen__nav-bar" aria-hidden="true" />
         <span class="query-screen__nav-text">{{ tab.label }}</span>
       </button>
-
-      <span class="query-screen__tip">
-        <screen-icon name="info" :size="13" />
-        统计口径与旧系统一致：经营性用地按配套名称去重、环节为漏斗；导出含「结果 + 指标」两个页签
-      </span>
     </nav>
 
     <!-- ========== 内容区 ========== -->
