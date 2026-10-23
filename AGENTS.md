@@ -64,10 +64,11 @@ E:\Project\tj-land-use-info\                  ← 工作区根（不是 git 仓�
 | `src/test/java/org/jeecg/modules/land/` | 集成测试（见 §4） |
 
 已实现的业务域：`data`（数据管理，61 类）、`archive`（档案+收发文+台账+移交+竣工档案，87 类）、
-`escalation`（提级论证，28 类）、`stat.home`（首页看板：出让地块情况统计 / 待落实配套统计，
-见 `docs/首页看板-实现说明.md`）、`stat.query` + `stat.export`（查询统计：经营性用地综合查询 /
+`escalation`（提级论证，28 类）、`stat.home`（首页看板：出让地块情况统计 / 待落实配套统计 /
+市区两级项目预警 + 地块预警信息 + 预警下钻，见 `docs/首页看板-实现说明.md`）、
+`stat.query` + `stat.export`（查询统计：经营性用地综合查询 /
 用地配套项目查询 / 高级查询 / Excel 导出，见 `docs/查询统计-实现说明.md`）。
-**只有 `package-info.java` 的域 = 尚未实现**：`stat` 的其余子域（预警算法）、`analysis`、`map`、`common`、`config`。
+**只有 `package-info.java` 的域 = 尚未实现**：`stat` 的其余子域（分级预警算法）、`analysis`、`map`、`common`、`config`。
 
 ### 2.2 前端
 
@@ -234,10 +235,14 @@ mvn -pl jeecg-module-land -am test -Pit -Dtest=数据管理类名   # 单类（-
    指令会在清单为空时把元素**从 DOM 删掉** → 表现是「按钮全部消失」。
    真正的边界是「菜单能不能打开」。见 `src/components/screen/README.md`。
 2. **必须走 `@/api/manageJava`，不要用 `@/api/manage`**。
-   本工程有两个后端：中台 `127.0.0.1:4548`（`VUE_APP_API_BASE_URL`）与
-   Java `127.0.0.1:9802/api`（`VUE_DATA_JAVA_URL`）。`domianURL` 指向**中台**，
-   而 `@/api/manage` 走 `domianURL` → 打到 4548 会 404。
+   本工程有三个后端地址（见 `public/static/config.js`）：中台 `127.0.0.1:4548`（`VUE_APP_API_BASE_URL`）、
+   Java 业务后端 `127.0.0.1:9802/api`（`VUE_BUSINESS_JAVA_URL`）、
+   JNI 分析服务 `127.0.0.1:38190`（`VUE_DATA_JAVA_URL`，混淆插件 `stargis-function` 写死读它）。
+   `domianURL` 指向**中台**，而 `@/api/manage` 走 `domianURL` → 打到 4548 会 404。
    **判据：只要是 jeecg（Spring Boot）提供的接口，就用 `manageJava`。**
+   ⚠ **2026-10 起 `VUE_DATA_JAVA_URL` 不再指业务后端**（改指 38190 JNI 服务）：
+   业务请求一律走 `javaBaseUrl()`（`VUE_BUSINESS_JAVA_URL`，旧配置才兜底 `VUE_DATA_JAVA_URL`），
+   **不要**在业务代码里显式传 `window._CONFIG.VUE_DATA_JAVA_URL` 当 baseURL。
    同理附件静态地址要用 `getJavaFileAccessHttpUrl()`，不能用 `getFileAccessHttpUrl()`。
 3. **Vue 2**：用 `/deep/`，**不要用 `:deep()`**；不要用 `v-bind()` in CSS。
 4. **`pointer-events` 两个方向都要管**：
@@ -364,6 +369,7 @@ git status --porcelain
 | `docs/经营性用地批量导入-实现说明.md` | 批量导入（模板/校验/回执） |
 | `docs/档案管理-实现说明.md` 等 | 各模块实现说明 |
 | `code/new/server/环境变量与敏感信息.md` | `.env` 机制、排查手册 |
+| `code/new/docs/文件预览-kkFileView接入说明.md` | 改文件预览 / 部署 kkFileView 前必读 |
 | `code/new/stargis-client-web/src/components/screen/README.md` | 大屏组件库契约 + 已知坑（**写大屏必读**） |
 
 ---
@@ -406,6 +412,8 @@ git status --porcelain
 | 2026-10-19 | **补 §2.1 已实现域** | `stat.home` 落地（首页看板两个统计，接口 `/land/stat/home/*`）。原 `data` 域的 `/land/data/dashboard`、`/land/data/facility/dashboard` 已删除，前端 `landData.js` 同步改路径。改首页数字前先读 `docs/首页看板-实现说明.md`：区级子表按 `xzqh2` 分组是**旧系统口径**，不是笔误 |
 | 2026-10-20 | **重写 §2.4（括号 → 名称/编号全字符归一）** | 用户确认口径：名称里的半角括号→中文、连字符族→`-`、去掉所有空白；**编号末尾一律补「号」**，`【城更】/【城市更新】` 摘下来记备注。原因是 58 条配套因「带不带号」挂不上宗地、12 对宗地+56 条配套重复录入。写入侧收口到 `DataSupport`（5 个入口，含容易漏的旧接口 `LandServiceImpl`/`FacilityServiceImpl`），历史数据由 `sql/data/12_normalize_codes_and_names.sql` 幂等清洗。注意：**去重必须排在补「号」之前**，否则撞 `uk_land_crzdbh (crzdbh, del_flag)` |
 | 2026-10-21 | **补 §2.1 已实现域** | `stat.query` + `stat.export` 落地（查询统计：经营性用地综合查询 / 用地配套项目查询 / 高级查询 / Excel 导出，接口 `/land/stat/query/*`），前端新增 `views/screen/query` 并接入顶栏「查询统计」。改查询口径前先读 `docs/查询统计-实现说明.md`：**两个数据集的指标口径不同**（宗地口径按配套名称去重 + 环节漏斗；配套口径按条计、不漏斗），别拿两页的数字互相校验 |
+| 2026-10-22 | **大屏「档案查询」页签并入「档案维护」** | 两者本来就共用 `ArchiveSearchForm`（13 个检索条件）、`ArchiveTable`、`/land/archive/list`，差别只有「只读 + 条件默认全展开 + 每页 20 条」，在大屏上属同一功能的两种用法 → 合并，侧栏 8 项→7 项，方案 2.3.2 第 3 项由「档案维护」承载。改动：`ArchiveMaintain.vue` 接管 `applyDrill` / `openDetailById`（原 `ArchiveQuery.vue`，已删除），并新增 `searchInitialQuery` 计算属性把深链参数 `archiveId` 挡在检索条件之外（原来会被「查询/导出」原样带给后端）；`archive/index.vue` 删 `query` 页签、`DRILLABLE_PANELS` 改 `['maintain','ledger','handover','completion']`、`handleDrill` 落点改 `maintain`；`views/screen/index.vue` 的 `ARCHIVE_TABS` 同步删 `query`（历史深链 `?tab=query` 静默落回维护、条件照常生效）；统计页/台账/移交的下钻落点随之改到维护页。**`admin-client` 的「档案查询」菜单保留不动** —— 那里才是「只查不改」的权限边界（`land:archive:list` + `export`），且方案条目由它满足 |
+| 2026-10-22 | **首页「项目预警」补齐（市级 / 区级 / 地块）** | 方案 2.3.1（五）。数据早就在 `pendingFacility.warnings` 里，但前端只把百分比原样印出来，等于没做。本轮：① `views/screen/config.js` 新增 `warningTiers` / `warningTone()` —— **阈值唯一口径**，市级 5 档（0-20/20-40/40-60/60-80/≥80）、区级 3 档（0-33.33/33.33-66.66/≥66.66），照搬旧 `homePage.js` 的 `GetColumn717` / `GetColumn0805`；颜色取 `screen-tokens.less` 的 `--screen-level-*`。**两处都要改**，只改一处会让底部面板与弹窗颜色不一致。② 「一条配套都没上报」的区改成跨七列一句「未填报配套项目信息」。③ 第三个页签「地块预警信息」补回 `warningTabs` 并接上 `plotVisible` —— 此前 `HomeAttrPanel` emit 了 `open-plot-warning` 但**没有任何监听者**，点了没反应。④ 新增 `GET /land/stat/home/warningDetail`（按区下钻、一行一宗地）；下钻按**页签 key** 传 `projectType`，不要从行 id 的中文字符串猜（旧 `changeShowInfo()` 的老毛病）。⑤ 删掉旧 `/land/data/facility/warning/detail`：它按 `l.xzqh` 过滤，而区级预警的分组列是 `xzqh2` → **区级点「查看」永远空表**；口径收口到 `stat/home`。⑥ 预警分子分母补软删过滤（D-613）、`0/0` 不再出 `NaN%`（D-614）、阈值按真实数值比较（D-615）。改预警口径前先读 `docs/首页看板-实现说明.md` 第 6 节：**7 项未完成率按配套条数算、不按 `ptxmmc` 去重**，与同页「配套总数 / 已完成」的去重口径故意不同 |
 
 > 新增陷阱时，请**同时**：① 在本文件 §3 加一条（编号继续，
 > 例如 §3.10）；② 在本表登记。陷阱要写**症状**和**怎么排查**，不要只写结论。
@@ -413,3 +421,4 @@ git status --porcelain
 | 2026-10-16 | 接入「覆土分析」 | 覆土分析 = CoverageAnalysis 引擎 + CoverageAnalysisPop 结果弹窗（配置键 CoverageAnalysis，已在 PipeManager 摊平表里；总线事件 showCoveragePop 已从解码表证实，弹窗已注册 ✓）。净距分析同款 road 式接入：隐藏引擎 + __host 结果弹窗分支（clearance 分支后）+ toggleToolByKey 分发 toggleCover + resetEngineStates 引擎清单加 cover。互斥/兜底/计数全同净距模式。真机验证点：拾取交互由引擎内部流程决定（拾取管线后出覆土结果），中台需配置 CoverageAnalysis 数据源 |
 | 2026-10-16 | 接入「流向分析」 | 流向分析 = FlowDirectionAnalysis 引擎 + FlowDirectionAnalysisPop 结果弹窗（配置键 FlowDirectionAnalysis，已在 PipeManager 摊平表里；总线事件 showFlowDirectionAnalysisPop 已从解码表证实）。净距/覆土同款 road 式接入：隐藏引擎 + __host 结果弹窗分支（cover 分支后）+ toggleToolByKey 分发 toggleFlow + resetEngineStates 引擎清单加 flow。互斥/兜底/计数全同净距模式。真机验证点：拾取交互由引擎内部流程决定（拾取管线后出流向结果），中台需配置 FlowDirectionAnalysis 数据源 |
 | 2026-10-16 | 接入「配套估算」（前端复刻旧公式，用户选方案 1） | 插件无此组件（已查证）；旧系统 ptgsManager.js（163 行）的区间算法实为一行公式：拾取地块 → 读「出让金（亿元）」→ ptf = 出让金×10000（万元），区间 = ptf/2 ∓ ptf/2×0.3（即 ptf 的 35%~65%），填三格：宗地编号/地块名称/估算区间。实现：页面自实现——点「配套估算」卡片 → LEFT_CLICK 拾取模式 → scene.pick 读地块属性（字段名宽松匹配：出让宗地编号/CRZDBH、地块名称/DKMC、出让金，全半角与大小写兜底）→ 旧公式计算 → 结果显示在右面板（宗地编号/地块名称/估算区间大字 + 口径说明）。数值无效/无出让金字段/地图未就绪均有 toast 兜底；resetEngineStates 与 beforeDestroy 清拾取句柄。真机验证点：地块属性里出让金字段名与数值单位（亿元）是否与旧数据一致——用地图管理「拾取查询」点地块看属性即可确认 |
+| 2026-10-23 | **合并远端 `e122f25`（导入）后修掉 `VUE_DATA_JAVA_URL` 语义漂移** | 远端把 `public/static/config.js` 的后端地址拆成三个：`VUE_APP_API_BASE_URL`（中台 4548）、**新增** `VUE_BUSINESS_JAVA_URL`（jeecg 9802/api）、`VUE_DATA_JAVA_URL`（改为 JNI 分析服务 38190，混淆插件写死读它），`manageJava.javaBaseUrl()` 改为优先取新变量。合并时发现本分支 `landData.js` 的 `queryWarningDetail` 仍显式传 `window._CONFIG.VUE_DATA_JAVA_URL` 当 baseURL → 首页预警下钻会打到 38190 上（404/连不上）。已改为走默认 `javaBaseUrl()`，并同步 §3.6 第 2 条口径。**判据：业务（jeecg）接口一律不显式传 baseURL；`VUE_DATA_JAVA_URL` 只属于插件 / `/pipeline/*` 分析服务族** |
