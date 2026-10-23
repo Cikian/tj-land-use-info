@@ -7,17 +7,23 @@ import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
  * Java 业务后端请求层
  * ===============================================================
  * 【为什么需要这个文件】
- * 本系统有两个后端，配置见 public/static/config.js：
+ * 本系统有三个后端地址，配置见 public/static/config.js：
  *
- *   VUE_APP_API_BASE_URL = http://127.0.0.1:4548          中台（网关）
- *   VUE_DATA_JAVA_URL    = http://127.0.0.1:9802/api      Java 业务后端
+ *   VUE_APP_API_BASE_URL    = http://127.0.0.1:4548      中台（网关）
+ *   VUE_BUSINESS_JAVA_URL   = http://127.0.0.1:9802/api  Java 业务后端（2026-10 新增）
+ *   VUE_DATA_JAVA_URL       = http://127.0.0.1:38190     JNI 后台服务（爆管分析等，混淆插件写死读它）
+ *
+ * 【2026-10 拆分】原先 VUE_DATA_JAVA_URL 一个变量两端共用：插件读它连
+ * JNI 服务（38190），业务请求（manageJava）也读它连 jeecg（9802/api）。
+ * 现在业务后端改用 VUE_BUSINESS_JAVA_URL，VUE_DATA_JAVA_URL 只留给插件。
+ * 旧 config.js 若没有新变量，javaBaseUrl() 会退回 VUE_DATA_JAVA_URL 兼容。
  *
  * 而 `src/config/index.js` 里 `domianURL = VUE_APP_API_BASE_URL`，
  * 并且 window._CONFIG 的值会覆盖 .env，所以 `@/api/manage`（走 domianURL）
  * 里发出去的请求全部落在**中台**上。
  *
  * 档案管理这类业务接口（/land/**、/sys/common/**）是 Java 后端的，
- * 必须显式切到 VUE_DATA_JAVA_URL，否则请求会打到中台上 404。
+ * 必须显式切到 javaBaseUrl()（=VUE_BUSINESS_JAVA_URL），否则请求会打到中台上 404。
  * 这与 admin-client 的行为一致：那边的 public/static/config.js 把
  * VUE_APP_API_BASE_URL 留空，domianURL 退化成 .env 的 9802/api，正好就是 Java 后端。
  *
@@ -40,10 +46,18 @@ import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
  * 需要取当前 jeecg 令牌时统一用下面的 javaAccessToken()。
  */
 
-/** Java 业务后端基址；缺配置时退回中台地址，再缺就退回 jeecg 默认前缀 */
+/**
+ * Java 业务后端基址。
+ *
+ * 【2026-10 拆分】VUE_DATA_JAVA_URL 原先被两端共用：混淆插件（stargis-function，
+ * 爆管分析等）写死读它指向 JNI 服务（38190），而业务后端（jeecg，9802/api）也走它。
+ * 现在业务后端改用新变量 VUE_BUSINESS_JAVA_URL（见 public/static/config.js），
+ * VUE_DATA_JAVA_URL 只留给 JNI 插件。旧部署的 config.js 若还没有新变量，则
+ * 退回 VUE_DATA_JAVA_URL 兼容（此时两者本就同指业务后端的旧配置）。
+ */
 export function javaBaseUrl () {
   const config = window._CONFIG || {}
-  return config.VUE_DATA_JAVA_URL || config.domianURL || '/jeecg-boot'
+  return config.VUE_BUSINESS_JAVA_URL || config.VUE_DATA_JAVA_URL || config.domianURL || '/jeecg-boot'
 }
 
 /**

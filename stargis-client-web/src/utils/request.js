@@ -31,7 +31,8 @@ const service = axios.create({
 /**
  * 【stargis 改造】这次失败的请求是不是打到 Java 业务后端（jeecg）的？
  *
- * 业务请求统一走 src/api/manageJava.js，它显式传 baseURL = window._CONFIG.VUE_DATA_JAVA_URL；
+ * 业务请求统一走 src/api/manageJava.js，它显式传 baseURL = javaBaseUrl()
+ * （优先 VUE_BUSINESS_JAVA_URL，旧配置兜底 VUE_DATA_JAVA_URL）；
  * 而本 axios 实例的默认 baseURL 是中台的 domianURL（VUE_APP_API_BASE_URL），
  * 两个后端地址不同，据此区分即可。
  *
@@ -39,16 +40,18 @@ const service = axios.create({
  * @returns {boolean}
  */
 function isJeecgRequest (error) {
-  const jeecgBase = (window._CONFIG || {}).VUE_DATA_JAVA_URL
+  const config = (window._CONFIG || {})
+  // 新变量优先；旧 config.js 没有新变量时退回老变量（与 manageJava.javaBaseUrl 的兜底顺序一致）
+  const jeecgBase = config.VUE_BUSINESS_JAVA_URL || config.VUE_DATA_JAVA_URL
   if (!jeecgBase) {
     return false
   }
-  const config = (error && error.config) || {}
-  const base = config.baseURL || ''
+  const errConfig = (error && error.config) || {}
+  const base = errConfig.baseURL || ''
   if (base && base.indexOf(jeecgBase) === 0) {
     return true
   }
-  return (config.url || '').indexOf(jeecgBase) === 0
+  return (errConfig.url || '').indexOf(jeecgBase) === 0
 }
 
 /**

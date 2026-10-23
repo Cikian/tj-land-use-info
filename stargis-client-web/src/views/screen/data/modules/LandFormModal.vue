@@ -414,6 +414,7 @@ import { uid } from '@/components/screen/utils'
 import { startPick, endPick, isPickIssuer } from '@/views/screen/pickSession'
 // 画完留在地图上的常驻预览面（生命周期跟表单会话：提交/取消/重画/清除时清掉）
 import { show as showDkPreview, clear as clearDkPreview } from '@/views/screen/previewPolygon'
+import { countVertices } from '@/views/screen/geoPolygons'
 import {
   queryLandAdminById,
   addLandAdmin,
@@ -520,21 +521,12 @@ export default {
   computed: {
     /**
      * 已绘制地块图形的顶点数（未绘制时为 0，状态行据此显隐）。
-     * 每次都重新 JSON.parse：编辑量小（一个环、几十个点），不值得缓存；
-     * 解析失败（脏数据）按未绘制处理，不让状态行把表单搞崩。
+     * 走 geoPolygons.countVertices：同时认 Polygon（绘制产物）与 MultiPolygon
+     * （GeoJSON 导入合并产物），跨全部块统计 —— 不然导入过多块图形的宗地
+     * 编辑时会被误显示成「尚未绘制」。解析失败（脏数据）按未绘制处理。
      */
     drawnVertexCount () {
-      const raw = this.model && this.model.dkGeojson
-      if (!raw) return 0
-      try {
-        const geometry = JSON.parse(raw)
-        const ring = geometry && geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]
-        if (!Array.isArray(ring) || ring.length < 4) return 0
-        // GeoJSON 环首尾闭合，最后一个点不数
-        return ring.length - 1
-      } catch (e) {
-        return 0
-      }
+      return countVertices((this.model && this.model.dkGeojson) || '')
     }
   },
   watch: {

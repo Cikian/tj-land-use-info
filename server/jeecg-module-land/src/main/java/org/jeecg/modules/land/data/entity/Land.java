@@ -139,8 +139,10 @@ public class Land implements Serializable {
 
     /**
      * 地块图形（GeoJSON）。
-     * 大屏表单「添加地块」在地图上画出的多边形，裸 Polygon geometry 字符串
-     * （{@code {"type":"Polygon","coordinates":[[[lon,lat],…]]}}，WGS84 经纬度、首尾闭合）。
+     * 大屏表单「添加地块」画出的多边形、或「导入地块图形」上传的多块图形合并，
+     * 裸 geometry 字符串（WGS84 经纬度、6 位小数、首尾闭合）：
+     * 单块 {@code {"type":"Polygon","coordinates":[[[lon,lat],…]]}}，
+     * 多块 {@code {"type":"MultiPolygon","coordinates":[[[[…]]],[[…]]]}}。
      * 与 {@link #crzdtxsj}（「是否已有 shp」的是/否标志）语义不同：本列存的是图形本身。
      */
     private String dkGeojson;

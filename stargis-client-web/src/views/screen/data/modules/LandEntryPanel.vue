@@ -69,6 +69,8 @@
 
           <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增宗地</screen-button>
 
+          <screen-button size="sm" icon="upload" @click="handleGeoImport">导入地块图形</screen-button>
+
           <screen-popconfirm
             v-if="selectedRowKeys.length"
             title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的宗地吗？"
@@ -112,6 +114,7 @@
     </div>
 
     <land-form-modal ref="formModal" @ok="handleSaved" />
+    <land-geo-import-modal ref="geoImportModal" @ok="handleGeoImported" />
     <land-detail-modal
       ref="detailModal"
       @edit="handleEdit"
@@ -171,6 +174,7 @@ import LandSearchForm from './LandSearchForm.vue'
 import LandTable from './LandTable.vue'
 import LandFormModal from './LandFormModal.vue'
 import LandDetailModal from './LandDetailModal.vue'
+import LandGeoImportModal from './LandGeoImportModal.vue'
 import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch, queryLandGeoList } from '@/api/land/landAdmin'
 import { queryLandOptions } from '@/api/land/landData'
 // 宗地几何图层：进菜单把全部已画图宗地面铺到地图上，列表双击定位 + 高亮
@@ -211,7 +215,8 @@ export default {
     LandSearchForm,
     LandTable,
     LandFormModal,
-    LandDetailModal
+    LandDetailModal,
+    LandGeoImportModal
   },
   props: {
     /** 下钻条件（例如从别处带 crzdbh 过来）；只在首次创建时生效 */
@@ -381,6 +386,20 @@ export default {
 
     handleAdd () {
       this.$refs.formModal.showAdd()
+    },
+
+    /** 打开「导入地块图形（GeoJSON）」弹窗 */
+    handleGeoImport () {
+      this.$refs.geoImportModal.open()
+    },
+
+    /**
+     * GeoJSON 图形导入完成：刷新列表，并**重铺几何图层** ——
+     * 刚导进来的图形要立刻在地球上可见、可双击定位，这是大屏端导图形单独的价值。
+     */
+    handleGeoImported () {
+      this.loadData()
+      this.loadGeoLayer()
     },
 
     handleEdit (record) {

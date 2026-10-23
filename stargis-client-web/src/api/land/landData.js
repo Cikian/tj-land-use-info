@@ -89,7 +89,7 @@ export function queryFacilityById (id) {
  *       ranks[{ projectType, name, value, roadCount }]。
  */
 export function queryLandDashboard () {
-  return javaGetAction(landDataUrl.landDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
+  return javaGetAction(landDataUrl.landDashboard)
 }
 
 /**
@@ -100,7 +100,7 @@ export function queryLandDashboard () {
  *       warnings{ city, district, plot }。
  */
 export function queryFacilityDashboard () {
-  return javaGetAction(landDataUrl.facilityDashboard, {}, window._CONFIG.VUE_DATA_JAVA_URL)
+  return javaGetAction(landDataUrl.facilityDashboard)
 }
 
 /** 首页某个行政区的预警配套明细。 */

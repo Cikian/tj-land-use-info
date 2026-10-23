@@ -19,8 +19,11 @@
  *
  * 【数据来源】dk_geojson 列。没画过图的地块（存量数据）没有几何，
  *   不在 geoList 返回里，自然也不上图 —— 这是数据现实，不是 bug；
- *   面上的几何目前只能由大屏「添加地块」产生。
+ *   面上的几何由大屏「添加地块」绘制（单 Polygon）或「导入地块图形」
+ *   （同编号多块合并为 MultiPolygon）产生，两种格式都认（geoPolygons.js）。
  */
+
+import { parsePolygons } from './geoPolygons'
 
 /** 普通态：淡填充（贴地面不支持 outline，边界靠明暗差区分） */
 function normalFill (Cesium) {
@@ -37,28 +40,16 @@ function ringMaterial (Cesium) {
   return Cesium.Color.YELLOW.withAlpha(0.9)
 }
 
-/** 解析一条 dk_geojson；非法/环点数不足返回 null */
-function parseRing (geojsonString) {
-  let geometry = null
-  try {
-    geometry = JSON.parse(geojsonString)
-  } catch (e) {
-    return null
-  }
-  const ring = geometry && geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]
-  if (!Array.isArray(ring) || ring.length < 4) return null
-  return ring
-}
-
 /**
  * 创建一个地块几何图层实例。
  * @returns {{renderAll: Function, has: Function, highlight: Function, flyTo: Function, clearAll: Function, size: Function}}
  */
 export function createGeoLayer () {
-  /** 图层状态：[{ id, crzdbh, entity, positions }] */
+  /** 图层状态：[{ id, crzdbh, entities: [...], positionsList: [[...],[...]] }] */
   let items = []
   let highlightId = ''
-  let ringEntity = null
+  /** 高亮描边（MultiPolygon 有多块，一宗地可能多条描边线） */
+  let ringEntities = []
 
   /**
    * 重铺全部地块面（先清后画，幂等）。
@@ -71,20 +62,26 @@ export function createGeoLayer () {
     if (!Cesium || !viewer || !Array.isArray(list)) return
     list.forEach((item) => {
       if (!item || !item.id || !item.dkGeojson) return
-      const ring = parseRing(item.dkGeojson)
-      if (!ring) return
-      const positions = ring.map(c => Cesium.Cartesian3.fromDegrees(c[0], c[1], 0))
-      const entity = viewer.entities.add({
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(positions),
-          material: normalFill(Cesium),
-          perPositionHeight: false,
-          clampToGround: true,
-          // S3DM 定制构建扩展：同时贴在 3D Tiles 上（MapPlacePanel 同款）
-          clampToS3M: true
-        }
+      const rings = parsePolygons(item.dkGeojson)
+      if (!rings.length) return
+      // 一宗地 N 块图形 = N 个面实体（MultiPolygon 时 rings.length > 1）
+      const entities = []
+      const positionsList = []
+      rings.forEach((ring) => {
+        const positions = ring.map(c => Cesium.Cartesian3.fromDegrees(c[0], c[1], 0))
+        entities.push(viewer.entities.add({
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(positions),
+            material: normalFill(Cesium),
+            perPositionHeight: false,
+            clampToGround: true,
+            // S3DM 定制构建扩展：同时贴在 3D Tiles 上（MapPlacePanel 同款）
+            clampToS3M: true
+          }
+        }))
+        positionsList.push(positions)
       })
-      items.push({ id: item.id, crzdbh: item.crzdbh || '', entity, positions })
+      items.push({ id: item.id, crzdbh: item.crzdbh || '', entities, positionsList })
     })
   }
 
@@ -94,7 +91,7 @@ export function createGeoLayer () {
   }
 
   /**
-   * 高亮某条地块（换填充色 + 画黄色描边环）；再次传同一个 id 无副作用。
+   * 高亮某条地块（全部面换填充色 + 每块各画黄色描边环）；再次传同一个 id 无副作用。
    * @param {string} id 地块主键
    */
   function highlight (id) {
@@ -103,37 +100,42 @@ export function createGeoLayer () {
     if (!Cesium || !viewer) return
     highlightId = id || ''
     items.forEach((item) => {
-      item.entity.polygon.material = item.id === highlightId
-        ? highlightFill(Cesium)
-        : normalFill(Cesium)
+      item.entities.forEach((entity) => {
+        entity.polygon.material = item.id === highlightId
+          ? highlightFill(Cesium)
+          : normalFill(Cesium)
+      })
     })
-    // 描边环重建（贴地面不支持 outline，只能用折线画边界）
-    if (ringEntity) {
-      viewer.entities.remove(ringEntity)
-      ringEntity = null
-    }
+    // 描边环重建（贴地面不支持 outline，只能用折线画边界）；
+    // MultiPolygon 每块一条线
+    ringEntities.forEach((entity) => viewer.entities.remove(entity))
+    ringEntities = []
     const hit = items.find(item => item.id === highlightId)
     if (!hit) return
-    const closed = hit.positions.concat([hit.positions[0]])
-    ringEntity = viewer.entities.add({
-      polyline: {
-        positions: closed,
-        width: 3,
-        material: ringMaterial(Cesium),
-        clampToGround: true,
-        clampToS3M: true
-      }
+    hit.positionsList.forEach((positions) => {
+      if (!positions.length) return
+      ringEntities.push(viewer.entities.add({
+        polyline: {
+          positions: positions.concat([positions[0]]),
+          width: 3,
+          material: ringMaterial(Cesium),
+          clampToGround: true,
+          clampToS3M: true
+        }
+      }))
     })
   }
 
-  /** 相机飞到某条地块（按包围球，带 45° 俯视角）；没有该地块时不做任何事 */
+  /** 相机飞到某条地块（按**全部块**顶点合集的包围球，带 45° 俯视角）；没有该地块时不做任何事 */
   function flyTo (id) {
     const Cesium = window.Cesium
     const viewer = window.viewer
     if (!Cesium || !viewer) return
     const hit = items.find(item => item.id === id)
-    if (!hit || !hit.positions.length) return
-    const sphere = Cesium.BoundingSphere.fromPoints(hit.positions)
+    if (!hit) return
+    const allPositions = [].concat(...hit.positionsList)
+    if (!allPositions.length) return
+    const sphere = Cesium.BoundingSphere.fromPoints(allPositions)
     viewer.camera.flyToBoundingSphere(sphere, {
       duration: 1.2,
       offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), sphere.radius * 2.4)
@@ -144,11 +146,11 @@ export function createGeoLayer () {
   function clearAll () {
     const viewer = window.viewer
     if (viewer) {
-      items.forEach((item) => viewer.entities.remove(item.entity))
-      if (ringEntity) viewer.entities.remove(ringEntity)
+      items.forEach((item) => item.entities.forEach((entity) => viewer.entities.remove(entity)))
+      ringEntities.forEach((entity) => viewer.entities.remove(entity))
     }
     items = []
-    ringEntity = null
+    ringEntities = []
     highlightId = ''
   }
 

@@ -451,6 +451,7 @@ import { uid } from '@/components/screen/utils'
 import { startPick, endPick, isPickIssuer } from '@/views/screen/pickSession'
 // 画完留在地图上的常驻预览面（生命周期跟表单会话：提交/取消/重画/清除时清掉）
 import { show as showDkPreview, clear as clearDkPreview } from '@/views/screen/previewPolygon'
+import { countVertices } from '@/views/screen/geoPolygons'
 import {
   queryFacilityAdminById,
   addFacilityAdmin,
@@ -610,20 +611,11 @@ export default {
   computed: {
     /**
      * 已绘制地块图形的顶点数（未绘制时为 0，状态行据此显隐）。
-     * 解析失败（脏数据）按未绘制处理 —— 与 LandFormModal 的同名 computed 保持一致。
+     * 走 geoPolygons.countVertices（Polygon / MultiPolygon 双格式，解析失败按 0），
+     * 与 LandFormModal 的同名 computed 保持一致。
      */
     drawnVertexCount () {
-      const raw = this.model && this.model.dkGeojson
-      if (!raw) return 0
-      try {
-        const geometry = JSON.parse(raw)
-        const ring = geometry && geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]
-        if (!Array.isArray(ring) || ring.length < 4) return 0
-        // GeoJSON 环首尾闭合，最后一个点不数
-        return ring.length - 1
-      } catch (e) {
-        return 0
-      }
+      return countVertices((this.model && this.model.dkGeojson) || '')
     }
   },
   watch: {

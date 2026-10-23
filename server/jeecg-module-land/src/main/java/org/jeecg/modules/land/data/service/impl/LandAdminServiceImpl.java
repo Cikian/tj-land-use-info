@@ -512,7 +512,10 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         // 空串 = 真正把列写空。这里若把空串规整成 null，「清除」就永远清不掉。
         if (dto.getDkGeojson() != null) {
             String geo = DataSupport.clean(dto.getDkGeojson());
-            land.setDkGeojson(geo == null ? "" : DataSupport.capLength(geo, 60000));
+            // ★ 上限 200 万（列已是 mediumtext，见 sql/data/13_t_land_dk_geojson_mediumtext.sql）：
+            //   GeoJSON 导入会把同编号多块图形合并成 MultiPolygon，实测单块即可到 9 万字符，
+            //   若仍按旧上限 60000 截断，会把 JSON 截坏 —— 编辑透传一次就废掉整块图形。
+            land.setDkGeojson(geo == null ? "" : DataSupport.capLength(geo, 2000000));
         }
         land.setTdzljh(DataSupport.cleanAndCap(dto.getTdzljh(), 100));
         land.setLrdw(DataSupport.cleanAndCap(dto.getLrdw(), 100));

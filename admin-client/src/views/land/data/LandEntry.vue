@@ -17,6 +17,10 @@
         <a-button v-has="'land:data:land'" type="primary" icon="plus" @click="handleAdd">新增宗地</a-button>
         <a-button
           v-has="'land:data:land'"
+          icon="upload"
+          @click="handleGeoImport">导入地块图形</a-button>
+        <a-button
+          v-has="'land:data:land'"
           icon="delete"
           :disabled="!selectedRowKeys.length"
           @click="handleBatchRemove">批量移除{{ selectedRowKeys.length ? '（' + selectedRowKeys.length + '）' : '' }}</a-button>
@@ -174,6 +178,7 @@
     <land-form-modal ref="formModal" @ok="handleSaved" />
     <land-detail-modal ref="detailModal" @history="handleHistory" />
     <land-history-modal ref="historyModal" />
+    <land-geo-import-modal ref="geoImportModal" @ok="handleGeoImported" />
 
     <!-- ============ 移除原因（选填） ============ -->
     <a-modal
@@ -208,6 +213,7 @@
   import LandFormModal from './modules/LandFormModal'
   import LandDetailModal from './modules/LandDetailModal'
   import LandHistoryModal from './modules/LandHistoryModal'
+  import LandGeoImportModal from './modules/LandGeoImportModal'
   import { getDictItems } from '@/components/dict/JDictSelectUtil'
   import {
     deleteLand,
@@ -238,7 +244,7 @@
    */
   export default {
     name: 'LandEntry',
-    components: { LandFormModal, LandDetailModal, LandHistoryModal },
+    components: { LandFormModal, LandDetailModal, LandHistoryModal, LandGeoImportModal },
     data () {
       return {
         loading: false,
@@ -460,6 +466,14 @@
         this.$refs.formModal.open(record)
       },
       handleSaved () {
+        this.loadData()
+      },
+      /** 打开「导入地块图形（GeoJSON）」弹窗 */
+      handleGeoImport () {
+        this.$refs.geoImportModal.open()
+      },
+      /** GeoJSON 图形导入完成：刷新列表让「有图形」状态及时反映 */
+      handleGeoImported () {
         this.loadData()
       },
       handleDetail (record) {
