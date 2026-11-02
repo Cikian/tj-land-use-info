@@ -125,6 +125,20 @@ const FILES = [
   'src/views/screen/query/modules/QueryResultPanel.vue',
   'src/views/screen/query/modules/LandFacilityDetailModal.vue',
   'src/views/screen/query/modules/FacilityDetailModal.vue',
+
+  // ===== 查询统计 · 预警信息查询（分级预警 D-603，2026-11-02 新增）=====
+  // ★ 必须登记：新增页签是 6 个 SFC + 1 个 less 混入文件，
+  //   不登记就等于「自检绿灯但其实没检查过这一页」（与上面查询统计同一个坑）。
+  //   level-tones.less 也列进来：它被三处 less 用 @import 引用，写错语法时
+  //   只有真正编译过的文件才会报出来。
+  'src/api/land/statWarning.js',
+  'src/views/screen/query/modules/WarningQueryView.vue',
+  'src/views/screen/query/modules/warning/constants.js',
+  'src/views/screen/query/modules/warning/level-tones.less',
+  'src/views/screen/query/modules/warning/WarningFilterBar.vue',
+  'src/views/screen/query/modules/warning/WarningSummaryCards.vue',
+  'src/views/screen/query/modules/warning/WarningResultPanel.vue',
+  'src/views/screen/query/modules/warning/WarningDetailModal.vue',
 ]
 
 const problems = []

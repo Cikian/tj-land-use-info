@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.land.stat.warning.mapper.ProcessWarningMapper">
+
+    <!--
+      ==========================================================================
+      分级预警（差异清单 D-603）· 预警记录表手写 SQL
+      ==========================================================================
+      ★ 三件必须先知道的事：
+
+      1) 本表**没有 del_flag**，预警是「算出来的快照」，重算时该消失的行物理删除
+         （见 ProcessWarning 类注释）。所以下面的语句都**不带**软删条件 ——
+         别顺手补一个 `del_flag = 0`，会直接 SQL 报错。
+         与 t_process_warning_level / t_decision_opinion 的处理正好相反。
+
+      2) 两张关联表的软删列名不同（AGENTS.md §3.3）：
+           t_supporting_facilities  delFlag   驼峰 varchar '0'/'1'
+           t_land                   del_flag  下划线 tinyint 0/1
+         `@TableLogic` 只对实体查询生效，本文件全是手写 SQL，所以每条语句自己带条件。
+
+      3) 筛选条件全部落在预警表**自己的冗余列**上（crzdbh / xzqh / dkmc / ptxmmc），
+         不联表：既走得到 idx_pw_crzdbh / idx_pw_xzqh，也不会因为配套改名而
+         筛不到历史预警（预警是快照，就该按当时的名称筛）。
+
+      口径核对入口：docs/分级预警-实现契约.md §3（算法）与 §5.1（列表字段）。
+    -->
+
+    <!-- ================================================================
+         一、列清单（与 WarningVO 字段一一对应，改字段名要同时改这里）
+         ================================================================ -->
+    <sql id="warningColumns">
+        w.`id`                AS id,
+        w.`yj_name`           AS yjName,
+        w.`yj_type`           AS yjType,
+        w.`pt_id`             AS ptId,
+        w.`pt_name`           AS ptName,
+        w.`ptxmmc`            AS ptxmmc,
+        w.`crzdbh`            AS crzdbh,
+        w.`xzqh`              AS xzqh,
+        w.`xzqh2`             AS xzqh2,
+        w.`dkmc`              AS dkmc,
+        w.`lc_id`             AS lcId,
+        w.`lc_name`           AS lcName,
+        w.`stage_id`          AS stageId,
+        w.`level_id`          AS levelId,
+        w.`level_code`        AS levelCode,
+        w.`level_name`        AS levelName,
+        w.`yj_value`          AS yjValue,
+        <!-- 展示用百分比：库里存比率（1.1000），这里一次乘好并保留 1 位。
+             前端不要再乘 —— 两边各乘一次会出现 11000%（契约 §3.5）。 -->
+        ROUND(w.`yj_value` * 100, 1) AS yjPercent,
+        w.`overdue_days`      AS overdueDays,
+        w.`std_days`          AS stdDays,
+        w.`actual_days`       AS actualDays,
+        w.`problem_type`      AS problemType,
+        w.`problem_detail`    AS problemDetail,
+        w.`decision_opinion`  AS decisionOpinion,
+        w.`zrbm`              AS zrbm,
+        DATE_FORMAT(w.`calc_time`, '%Y-%m-%d %H:%i:%s') AS calcTime
+    </sql>
+
+    <!-- ================================================================
+         二、筛选条件（列表 / 汇总 / 导出三处共用，保证三个入口口径一致）
+         ================================================================ -->
+    <sql id="warningWhere">
+        <where>
+            <if test="q != null">
+                <if test="q.yjType != null and q.yjType != ''">
+                    AND w.`yj_type` = #{q.yjType}
+                </if>
+                <if test="q.levelId != null and q.levelId != ''">
+                    AND w.`level_id` = #{q.levelId}
+                </if>
+                <if test="q.levelCode != null and q.levelCode != ''">
+                    AND w.`level_code` = #{q.levelCode}
+                </if>
+                <!-- 行政区划：精确匹配预警行自己的 xzqh（不碰 xzqh2 —— 那是「录入单位」口径，
+                     区级统计才用它，筛选按 xzqh 才是用户理解的「行政区」） -->
+                <if test="q.xzqh != null and q.xzqh != ''">
+                    AND w.`xzqh` = #{q.xzqh}
+                </if>
+                <if test="q.dkmc != null and q.dkmc != ''">
+                    AND w.`dkmc` LIKE CONCAT('%', #{q.dkmc}, '%')
+                </if>
+                <if test="q.ptxmmc != null and q.ptxmmc != ''">
+                    AND w.`ptxmmc` LIKE CONCAT('%', #{q.ptxmmc}, '%')
+                </if>
+                <if test="q.crzdbh != null and q.crzdbh != ''">
+                    AND w.`crzdbh` = #{q.crzdbh}
+                </if>
+                <!-- 关键词：三个名称列一起模糊，OR 必须整体括起来，
+                     否则会和前面的 AND 条件串成「(A OR B OR C) 之外还漏条件」 -->
+                <if test="q.keyword != null and q.keyword != ''">
+                    AND (
+                        w.`yj_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                        OR w.`pt_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                        OR w.`lc_name` LIKE CONCAT('%', #{q.keyword}, '%')
+                    )
+                </if>
+            </if>
+        </where>
+    </sql>
+
+    <!-- ================================================================
+         三、查询
+         ================================================================ -->
+
+    <!--
+      分页明细。
+      ★ 排序：先按逾期天数倒序（最严重的在最前，这是预警列表的第一诉求），
+        再按计算时间倒序，最后用 id 兜底保证翻页稳定 ——
+        只按 overdue_days 排，同天数的一批行在两次查询间可能换位，
+        翻到第 2 页会看到第 1 页出现过的行。
+    -->
+    <select id="selectWarningPage" resultType="org.jeecg.modules.land.stat.warning.vo.WarningVO">
+        SELECT
+        <include refid="warningColumns"/>
+        FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+        ORDER BY w.`overdue_days` DESC, w.`calc_time` DESC, w.`id` ASC
+    </select>
+
+    <!-- 导出明细：与分页同一套 where / 排序，只是手写 OFFSET/LIMIT -->
+    <select id="selectWarningList" resultType="org.jeecg.modules.land.stat.warning.vo.WarningVO">
+        SELECT
+        <include refid="warningColumns"/>
+        FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+        ORDER BY w.`overdue_days` DESC, w.`calc_time` DESC, w.`id` ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countWarnings" resultType="long">
+        SELECT COUNT(1) FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+    </select>
+
+    <!--
+      按等级计数。
+      ★ 只返回「有数据」的等级；缺的等级由 Service 用等级表补齐 count=0
+        （四色卡片缺一档会跳色，契约 §5.2）。
+    -->
+    <select id="selectCountByLevel" resultType="java.util.LinkedHashMap">
+        SELECT w.`level_id` AS levelId, COUNT(1) AS cnt
+        FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+        GROUP BY w.`level_id`
+    </select>
+
+    <!-- 按分类计数（同样只返回有数据的分类，前端分类下拉不该凭空多出 0 值项） -->
+    <select id="selectCountByType" resultType="java.util.LinkedHashMap">
+        SELECT w.`yj_type` AS yjType, COUNT(1) AS cnt
+        FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+        GROUP BY w.`yj_type`
+    </select>
+
+    <!-- 最后计算时间：汇总卡上的「数据截止时刻」，取 MAX(calc_time) 而不是 update_time -->
+    <select id="selectLastCalcTime" resultType="java.lang.String">
+        SELECT DATE_FORMAT(MAX(w.`calc_time`), '%Y-%m-%d %H:%i:%s')
+        FROM `t_process_warning` w
+        <include refid="warningWhere"/>
+    </select>
+
+    <!-- ================================================================
+         四、重算：按配套查 / 更新 / 删除
+         ================================================================ -->
+
+    <!--
+      某个配套现有的预警行（只取差集需要的列，不查 26 列）。
+      create_by / create_time 必须取：重算是「更新」而不是「重建」，
+      这两列要原样保留，否则列表里的录入人会变成最后一次重算的人。
+    -->
+    <select id="selectByPtId" resultType="org.jeecg.modules.land.stat.warning.entity.ProcessWarning">
+        SELECT w.`id`, w.`yj_type` AS yjType, w.`pt_id` AS ptId, w.`lc_id` AS lcId,
+               w.`level_id` AS levelId, w.`calc_time` AS calcTime,
+               w.`create_by` AS createBy, w.`create_time` AS createTime
+        FROM `t_process_warning` w
+        WHERE w.`pt_id` = #{ptId}
+    </select>
+
+    <!--
+      整行覆盖更新。
+      ★ 显式 SET 每一列（含 null）：MyBatis-Plus 的 updateById 默认「null 字段不更新」，
+        而重算会出现「字段变 null」（决策意见被删、阶段预警本来就没有 problem_type），
+        用 updateById 会留下旧值 —— 表现为「意见删了、预警上还挂着」。
+      ★ 刻意不更新 create_by / create_time / pt_id / yj_type / lc_id：
+        前三个是定位与留痕，后两个是唯一键（改了就不是同一行了）。
+    -->
+    <update id="updateWarning"
+            parameterType="org.jeecg.modules.land.stat.warning.entity.ProcessWarning">
+        UPDATE `t_process_warning`
+        SET `yj_name`          = #{yjName},
+            `pt_name`          = #{ptName},
+            `ptxmmc`           = #{ptxmmc},
+            `crzdbh`           = #{crzdbh},
+            `xzqh`             = #{xzqh},
+            `xzqh2`            = #{xzqh2},
+            `dkmc`             = #{dkmc},
+            `lc_name`          = #{lcName},
+            `stage_id`         = #{stageId},
+            `level_id`         = #{levelId},
+            `level_code`       = #{levelCode},
+            `level_name`       = #{levelName},
+            `yj_value`         = #{yjValue},
+            `overdue_days`     = #{overdueDays},
+            `std_days`         = #{stdDays},
+            `actual_days`      = #{actualDays},
+            `problem_type`     = #{problemType},
+            `problem_detail`   = #{problemDetail},
+            `decision_opinion` = #{decisionOpinion},
+            `zrbm`             = #{zrbm},
+            `calc_time`        = #{calcTime},
+            `update_by`        = #{updateBy},
+            `update_time`      = #{updateTime}
+        WHERE `id` = #{id}
+    </update>
+
+    <!-- 物理删除某配套的残留预警（配套已被移除时清理；本表无 del_flag，见文件头） -->
+    <delete id="deleteByPtId">
+        DELETE FROM `t_process_warning` WHERE `pt_id` = #{ptId}
+    </delete>
+
+    <!-- ================================================================
+         五、重算的扫描范围与冗余列
+         ================================================================ -->
+
+    <!--
+      全量重算只扫「存在环节进度记录」的配套（契约 §3.8）。
+      一条进度都没录的配套必然算不出任何预警，扫它只会让回执虚高。
+      排除空串 pt_id：历史脏数据里可能有，IN 查询时还会让后面的 IN 列表出现无意义值。
+    -->
+    <select id="selectDistinctPtIds" resultType="java.lang.String">
+        SELECT DISTINCT p.`pt_id`
+        FROM `t_facility_process` p
+        WHERE p.`pt_id` IS NOT NULL AND p.`pt_id` &lt;&gt; ''
+    </select>
+
+    <!--
+      冗余列一次取全（避免逐个配套查库的 N+1）。
+      ★ 配套表用 f.`delFlag` = '0'（驼峰 varchar），宗地表用 l.`del_flag` = 0（下划线 tinyint）。
+      ★ 宗地 LEFT JOIN：配套挂不上宗地（实测有 58 条历史数据）时宗地侧为 null，
+        由 Service 决定回落顺序 —— 这里不要用 INNER JOIN 把它们整个丢掉，
+        否则「挂不上宗地的配套」永远不会有预警，且没人知道为什么。
+      ★ 不查宗地表其它列：本场景只用 dkmc / xzqh / xzqh2，多查一列就是多一次网络传输。
+    -->
+    <select id="selectFacilityInfos" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.`id`      AS ptId,
+            f.`ptxmmc`  AS ptName,
+            f.`crzdbh`  AS crzdbh,
+            f.`dkmc`    AS facilityDkmc,
+            f.`xzqh`    AS facilityXzqh,
+            l.`dkmc`    AS landDkmc,
+            l.`xzqh`    AS landXzqh,
+            l.`xzqh2`   AS landXzqh2
+        FROM `t_supporting_facilities` f
+        LEFT JOIN `t_land` l ON l.`crzdbh` = f.`crzdbh` AND l.`del_flag` = 0
+        WHERE f.`delFlag` = '0'
+          AND f.`id` IN
+        <foreach collection="ptIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+</mapper>

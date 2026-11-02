@@ -88,7 +88,19 @@ import javax.sql.DataSource;
         //   Service 实现在 stat.query.service.impl，导出实现在 stat.export；
         //   两者都依赖 stat.query.mapper（见下面 MapperScannerConfigurer）。
         "org.jeecg.modules.land.stat.query.service.impl",
-        "org.jeecg.modules.land.stat.export"
+        "org.jeecg.modules.land.stat.export",
+        // ★ 统计域 · 分级预警（差异清单 D-603）
+        //   service.impl：重算 / 查询 / 汇总 / 导出 + 等级与决策意见维护 —— 主要被测对象；
+        //   controller：只给 MockMvc 用例用（standaloneSetup 直接拿 Bean 装一版路由），
+        //               生产环境的鉴权与过滤器链不在测试范围内，见 WarningQueryTest 类注释；
+        //   support：等级匹配与预警值的纯函数（本身不是 Bean，扫进来只是为了让
+        //            「这个域的包全部登记在册」，将来加 @Component 时不会漏）。
+        //   ★ 不登记这里的后果不是「测试少几条」，而是 FacilityAdminServiceImpl 的
+        //     预警钩子注入不到 Service（它写的是 required = false）→ 保存环节后
+        //     静默不重算，测试会以为「钩子没实现」。
+        "org.jeecg.modules.land.stat.warning.service.impl",
+        "org.jeecg.modules.land.stat.warning.controller",
+        "org.jeecg.modules.land.stat.warning.support"
 })
 public class LandTestConfig {
 
@@ -307,7 +319,10 @@ public class LandTestConfig {
                 // 统计域 · 首页看板 Mapper（HomeStatMapper.xml 在 stat/home/mapper/xml 下）
                 "org.jeecg.modules.land.stat.home.mapper",
                 // 统计域 · 查询统计 Mapper（StatQueryMapper.xml 在 stat/query/mapper/xml 下）
-                "org.jeecg.modules.land.stat.query.mapper"));
+                "org.jeecg.modules.land.stat.query.mapper",
+                // 统计域 · 分级预警 Mapper（ProcessWarningMapper.xml 在 stat/warning/mapper/xml 下；
+                // 上面 sqlSessionFactory 的 mapper-locations 已按 **/mapper/xml/*Mapper.xml 通配到它）
+                "org.jeecg.modules.land.stat.warning.mapper"));
         configurer.setSqlSessionFactoryBeanName("sqlSessionFactory");
         return configurer;
     }

@@ -1,0 +1,34 @@
+/**
+ * 预警等级着色（四档：蓝 / 黄 / 橙 / 红）
+ * ===============================================================
+ * 色值一律取 `screen-tokens.less` 的 `--screen-level-*` —— 与首页看板
+ * （`config.js` 的 `warningTiers` + `HomeAttrPanel` 的分档着色）用的是同一套令牌，
+ * **不要**在这里另写一组色值（契约 §6.1：等级着色复用 `--screen-level-*` 的思路）。
+ *
+ * 为什么单独一个 less 文件而不是各自在组件里写四行：
+ *   表格的等级列、详情弹窗的等级值、四色统计卡三处都要这套颜色，
+ *   抄三遍的话以后改一档颜色必然漏改一处，表现是「表格是深蓝、卡片是浅蓝」。
+ *
+ * 用法（挂上 `levelToneClass(levelCode)` 给出的类名后）：
+ *   .warning-result__level { .warning-level-tones(); }
+ * 注意：`.warning-level-tones()` 产出的是后代无关的 `&.is-blue` 规则，
+ *   所以它只作用于**带类名的那个元素**的 color；要染子元素请在子元素上再挂一次类名，
+ *   或者让子元素 `color: inherit`。
+ */
+.warning-level-tones() {
+  &.is-blue {
+    color: var(--screen-level-blue);
+  }
+
+  &.is-yellow {
+    color: var(--screen-level-yellow);
+  }
+
+  &.is-orange {
+    color: var(--screen-level-orange);
+  }
+
+  &.is-red {
+    color: var(--screen-level-red);
+  }
+}

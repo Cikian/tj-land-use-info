@@ -6,10 +6,11 @@
       二级导航  左侧栏 (30,104) 宽 200，纵向铺到 底-40
       内容区    left:250 right:30 top:104 bottom:40
 
-    三个页签对应高保真 `查询统计.html` 的三个动态面板：
+    四个页签对应高保真 `查询统计.html` 的三个动态面板 + 分级预警（方案 2.3.1（五）D-603）：
       经营性用地查询  condition + 分析结果 + 结果表（点编号看该宗地配套）
       用地配套项目查询 同上，条件换成配套的 14 个环节字段
       查询导出        字段/运算符/值/关系符自由组合 → 查询 或 导出 Excel
+      预警信息查询     筛选条 + 四色统计卡 + 预警结果表（重新计算 / 导出）
 
     ★ 为什么本页仍保持地图可见（不加 stage-hit、容器 pointer-events: none）：
       查询结果里常要「照着地块核编号」，把地图挡死就得多切一次页面。
@@ -41,6 +42,7 @@
       <keep-alive>
         <stat-query-view v-if="activeTab === 'land'" key="land" data-type="land" />
         <stat-query-view v-else-if="activeTab === 'facility'" key="facility" data-type="facility" />
+        <warning-query-view v-else-if="activeTab === 'warning'" key="warning" />
         <advanced-query-view v-else key="advanced" />
       </keep-alive>
     </div>
@@ -52,13 +54,14 @@ import { ScreenIcon } from '@/components/screen'
 import { QUERY_TABS } from './constants'
 import StatQueryView from './modules/StatQueryView.vue'
 import AdvancedQueryView from './modules/AdvancedQueryView.vue'
+import WarningQueryView from './modules/WarningQueryView.vue'
 
 /** 页签 key → 是否合法（供深链校验，与 QUERY_TABS 同源） */
 const TAB_KEYS = QUERY_TABS.map((tab) => tab.key)
 
 export default {
   name: 'QueryScreen',
-  components: { AdvancedQueryView, ScreenIcon, StatQueryView },
+  components: { AdvancedQueryView, ScreenIcon, StatQueryView, WarningQueryView },
   props: {
     /** 初始页签，支持 /screen/query?tab=facility 深链 */
     defaultTab: { type: String, default: 'land' }

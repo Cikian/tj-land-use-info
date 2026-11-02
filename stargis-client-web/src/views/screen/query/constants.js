@@ -2,7 +2,7 @@
  * 查询统计 · 页面常量
  * ===============================================================
  * 只放「不随接口变化」的东西：
- *   · 三个页签（经营性用地查询 / 用地配套项目查询 / 查询导出）；
+ *   · 四个页签（经营性用地查询 / 用地配套项目查询 / 查询导出 / 预警信息查询）；
  *   · 「分析结果」指标的展示顺序与单位（与高保真 `查询统计.html` 一致）；
  *   · 若干枚举下拉的候选值（是/否、批复状态、项目分类）。
  *
@@ -11,11 +11,22 @@
  *   「下拉里有、实际查不到」这种最难排查的漂移。
  */
 
-/** 三个页签（与 views/screen/query/index.vue 的 activeTab 对应） */
+/**
+ * 四个页签（与 views/screen/query/index.vue 的 activeTab 对应）。
+ *
+ * ★ 页签 key 的白名单在 `views/screen/index.vue` 的 `QUERY_TABS`，两处必须同步改；
+ *   漏改白名单的表现是「深链 /screen/query?tab=warning 进不去、静默落回默认页签」。
+ *
+ * ★ `icon` 取 ScreenIcon 里**真实存在**的图形名：契约写的是 `warning`，但
+ *   components/screen/ScreenIcon.vue 的几何表里没有 `warning`（查不到就静默不渲染，
+ *   不报错也不告警），所以用同语义的 `alert-triangle`。当前页签壳只渲染文字、
+ *   不渲染图标，这个字段是给「以后页签带图标」预留的。
+ */
 export const QUERY_TABS = [
   { key: 'land', label: '经营性用地查询' },
   { key: 'facility', label: '用地配套项目查询' },
-  { key: 'advanced', label: '查询导出' }
+  { key: 'advanced', label: '查询导出' },
+  { key: 'warning', label: '预警信息查询', icon: 'alert-triangle' }
 ]
 
 /** 项目分类（旧系统 getCnd 的 xmfl 取值） */

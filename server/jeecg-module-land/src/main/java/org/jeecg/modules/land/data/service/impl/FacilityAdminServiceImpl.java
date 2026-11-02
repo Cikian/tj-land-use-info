@@ -25,6 +25,7 @@ import org.jeecg.modules.land.data.service.IFacilityAdminService;
 import org.jeecg.modules.land.data.service.ILandService;
 import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.vo.FacilityProcessTreeVO;
+import org.jeecg.modules.land.stat.warning.service.IWarningService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -104,6 +105,32 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
 
     @Autowired
     private DataSupport dataSupport;
+
+    /**
+     * 分级预警 Service（stat.warning 域）。
+     *
+     * <p><b>★ 为什么要在这里反依赖统计域</b>：环节进度的录入是预警数据的<b>唯一来源</b>，
+     * 而预警库里的行是「算出来的快照」，没有事件流可以增量推导（契约 §3.8 / §3.9）。
+     * 所以触发点只能挂在「环节进度发生变化」的地方：
+     * {@link #saveProcess} / {@link #saveProcessBatch} / {@link #removeProcess}。
+     *
+     * <p><b>★ 不会形成循环依赖</b>：{@code WarningServiceImpl} 只依赖本域的
+     * Mapper / 实体 / {@code WorkdayCalculator}，<b>不依赖</b>本 Service。
+     * 反向依赖（本 Service → 预警 Service）是单向的。
+     *
+     * <p><b>★ 为什么是 {@code @Autowired(required = false)}</b>：
+     * 预警是<b>可降级</b>的能力 —— 缺了它，「录入环节进度」这件主线业务必须照常可用。
+     * 生产环境里 {@code stat.warning} 一定在容器中（同一模块，组件扫描覆盖），
+     * 注入是正常的；而集成测试的 {@code LandTestConfig} 是按<b>白名单</b>扫包与注册 Mapper 的，
+     * 万一没登记预警域，整个测试上下文会因为「找不到 IWarningService」而起不来 ——
+     * 一个统计功能的开关不该让全模块的测试集体挂掉。
+     * 所以这里允许缺失，缺失时 {@link #recalcWarningSafely} 直接跳过并记 debug 日志。
+     *
+     * <p>所有调用都包在 {@link #recalcWarningSafely} 里：预警算不出来，
+     * 绝不能让「用户保存环节进度」这件事失败。
+     */
+    @Autowired(required = false)
+    private IWarningService warningService;
 
     // ==================================================================
     // 一、查询
@@ -580,6 +607,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         log.info("保存环节进度成功：ptId={}, lcId={}, lcName={}, lcqk={}, 操作人={}",
                 ptId, lcId, config.getName(), lcqk,
                 DataSupport.nameOrPlaceholder(dataSupport.currentRealname()));
+        // 环节进度变了 → 该配套的预警可能新增/降级/消失，重算一次（契约 §3.9）。
+        // 容错：算不出来不影响本次保存（见 recalcWarningSafely 注释）。
+        recalcWarningSafely(ptId);
         return target.getId();
     }
 
@@ -611,6 +641,14 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         result.put("successCount", success);
         result.put("failCount", failures.size());
         result.put("failures", failures);
+        // ★ 分级预警钩子：批量保存的每一项都已经走过 saveProcess 里的重算
+        //   （重算是「整配套重算」，每次都产出该配套的完整快照，所以最后一项之后的
+        //   钩子已经给出最终结果）。这里**不再补一次全量重算** ——
+        //   那只是把最新状态再算一遍，纯浪费，会让「批量保存 24 项」变成 25 次重算。
+        //   全部失败时（successCount=0）没有任何钩子被触发，
+        //   该配套的预警保持重算前的状态，与「本次什么都没改」一致。
+        log.info("批量保存环节进度：ptId={}, 成功 {} 项，失败 {} 项（每项成功后已重算该配套预警）",
+                ptId, success, failures.size());
         return result;
     }
 
@@ -628,6 +666,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
                         (existing.getLcName() == null ? "" : existing.getLcName()))
                 .save(DataChangeLog.ACTION_DELETE,
                         "撤回环节进度：" + existing.getLcName(), request);
+        // 撤回一条进度后，该环节可能不再是「已开始」，阶段/总体口径的历时随之变小 →
+        // 重算一次，让「补录错了撤回」之后预警立刻跟着回退（旧系统从不删，这是被投诉的点）。
+        recalcWarningSafely(ptId);
     }
 
     @Override
@@ -1004,5 +1045,48 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
             bucket.add(row);
         }
         return map;
+    }
+
+    // ==================================================================
+    // 六、分级预警钩子
+    // ==================================================================
+
+    /**
+     * 环节进度变化后重算该配套的预警（契约 §3.9）。
+     *
+     * <p><b>★ 这个方法存在的唯一目的就是「兜住异常」</b>：
+     * 预警是派生数据 —— 算错了顶多是列表上的数字不对，下次重算就修正；
+     * 而「保存环节进度」是用户的真实劳动，绝不能因为预警算不出来而失败。
+     * 所以这里 {@code try/catch} 全捕获 + {@code log.warn}，**不重新抛出**。
+     *
+     * <p>几个刻意的选择：
+     * <ul>
+     *   <li><b>同步调用而不是异步</b>：重算量级是「一个配套的 24 个环节」，
+     *       毫秒级；异步反而会让「保存完立刻看预警列表」看到旧数据。
+     *       全量重算（1433 条配套）才走手动接口。</li>
+     *   <li><b>用 warn 而不是 error</b>：预警算不出来属于「可降级」，不是系统故障；
+     *       用 error 会把真正需要立刻处理的问题淹没在告警里。</li>
+     *   <li><b>不吞 stack trace</b>：{@code log.warn(msg, e)} 带上异常，
+     *       否则线上只会看到一句「重算失败」而不知道失败在哪。</li>
+     * </ul>
+     *
+     * @param ptId 配套项目ID
+     */
+    private void recalcWarningSafely(String ptId) {
+        if (StringUtils.isBlank(ptId)) {
+            return;
+        }
+        if (warningService == null) {
+            // 预警域未装配（例如集成测试的组件扫描白名单里没有 stat.warning）
+            log.debug("分级预警 Service 未装配，跳过本次重算：ptId={}", ptId);
+            return;
+        }
+        try {
+            warningService.recalc(ptId);
+        } catch (Exception e) {
+            // 不影响本次保存：事务里已经写好的环节进度照常提交
+            log.warn("环节保存后重算分级预警失败（不影响本次保存，可稍后手动重算）：ptId={}，原因={}",
+                    ptId, e.getMessage(), e);
+        }
     }
 }

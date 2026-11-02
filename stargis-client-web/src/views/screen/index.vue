@@ -357,7 +357,7 @@ const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachme
  * 查询统计页允许直接落到某个页签：/screen/query?tab=facility
  * （与 src/views/screen/query/constants.js 的 QUERY_TABS 保持一致）
  */
-const QUERY_TABS = ['land', 'facility', 'advanced']
+const QUERY_TABS = ['land', 'facility', 'advanced', 'warning']
 
 /**
  * 右面板的两个页签（由 HomeSideRail 的竖排小页签切换）：

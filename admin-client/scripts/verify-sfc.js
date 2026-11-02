@@ -71,7 +71,13 @@ const files = [
   'src/views/land/escalation/modules/EscalationMaterialTable.vue',
   'src/views/land/escalation/modules/EscalationRecordPanel.vue',
   'src/views/land/escalation/modules/EscalationDetailModal.vue',
-  'src/views/land/escalation/modules/EscalationStatCharts.vue'
+  'src/views/land/escalation/modules/EscalationStatCharts.vue',
+  // 统计预警 · 分级预警维护页（2026-11-02 新增；api/land/statWarning.js 不是 SFC，无需列在这里）
+  // ★ 必须登记：不登记 = 自检绿灯但其实没检查过新增页（本清单是硬编码的，不会自动发现新文件）
+  'src/views/land/stat/WarningLevelList.vue',
+  'src/views/land/stat/modules/WarningLevelModal.vue',
+  'src/views/land/stat/DecisionOpinionList.vue',
+  'src/views/land/stat/modules/DecisionOpinionModal.vue'
 ]
 
 let failed = 0
