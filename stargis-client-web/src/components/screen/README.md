@@ -49,10 +49,10 @@
 
 > 落实配套情况的环形图在高保真里用的是红 `#e95b43` / 金 `#c99e54`（原切图
 > `assets/screen-blue/ring-fill-red.svg` / `ring-fill-gold.svg`），表示「未落实」，
-> 与出让情况的绿 / 青不是同一套语义，实现时按页签区分引用，不要统一。
+> 与出让情况的绿 / 青不是同一套语义，实现时按面板（左右两块统计）区分引用，不要统一。
 >
 > ⚠ 这两组切图的**弧长是写死的**（28% / 72%），只能当配色参考，**不要直接拿来显示占比**。
-> 首页左面板已改为内联 SVG + `stroke-dasharray` 现画（见 `HomeLeftPanel.vue` 的
+> 首页两块统计面板已改为内联 SVG + `stroke-dasharray` 现画（见 `HomeStatPanel.vue` 的
 > `ringColor / ringDash`）：画布 56×56、`r=26.25`、线宽 3.1，与 `ring-track.svg` 重合。
 
 全局工具类：`.stage-hit` —— `ScreenStage` 画布整体 `pointer-events: none`
@@ -70,7 +70,7 @@
 | --- | --- | --- |
 | `ScreenStage` | 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边） | `width` `height` `minDesignWidth` `maxScale` `minScale`；插槽 `map` / 默认；事件 `resize` |
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
-| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
+| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 导航行内的实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁；可选非模态：不压暗背景 + 可拖动） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` `dimmed`(默认 `true`) `draggable`(默认 `false`)；事件 `drag-end({x,y})` |
 | `ScreenPickStage` | 「选取地块」模式（**不再隐藏页面**，只提供取消选择/选择完成两个按钮 + 提示） | `mapReady` `source` `title`；事件 `cancel` `done(geometry)` |
@@ -237,6 +237,14 @@ k  = clamp(min(视口高 / 1080, 视口宽 / minDesignWidth), minScale, maxScale
 | 比 16:9 更宽 | 宽 > 1920，高 = 1080 | 中间的**地图与属性表横向变宽**，两侧面板保持 400 不变 |
 | 比 16:9 更窄 | 宽 = 1920，高 > 1080 | 中间的**地图纵向变高**，各面板与属性表仍按定尺高度摆放 |
 
+> 首页两侧面板可折叠（`HomeSideRail` 的屏边把手）：折叠 = 面板整体**滑出屏幕**
+> （`translateX(±430)` = 面板宽 400 + 屏边 30），底部属性表的左右内缩同步从
+> 460 收到 30，两边都是 320ms 的同一套过渡。折叠**只会让中间变宽**，不影响
+> `minDesignWidth` 这条下限。
+> ⚠ 两侧那两张氛围蒙版（`.land-screen__vignette.is-left/is-right`）同时也是面板的暗底：
+> 面板滑走后必须让它一起淡出（`.is-folded`），否则屏幕两侧会留下两条与面板等量的
+> 暗带，看着像面板还挂着（只有首页版式跟着折叠，其它页面不受影响）。
+
 所以画布内组件的写法约定：
 
 - 靠左用 `left`、靠右用 `right`、靠上用 `top`、靠下用 `bottom`；
@@ -261,9 +269,10 @@ UI 画布缩放后与它完全重合，地图交互坐标也保持正确。
 ```
 
 `ScreenHeader` 内部同样只在可点击元素上开启 `pointer-events: auto`，
-因此顶部栏的空白处依旧可以拖动地图。顶栏的导航用「弹性收缩的 flex 行」实现
-（`left`/`right` 定边界 + 各项 `flex: 0 1 140px`），设计画布比 1920 窄时等比收窄，
-不会压到标题切图上。
+因此顶部栏的空白处依旧可以拖动地图。顶栏右侧是一整行右对齐的 flex
+（`left`/`right` 定边界 + 内部 `gap` 16）：**导航 → 实时时钟 → 用户区**，
+导航项 `flex: 0 1 128px`，画布比 1920 窄时收窄的是导航，不会压到标题切图上；
+时钟（`showClock`）与用户区 `flex: 0 0 auto`，不参与收缩。
 
 右上角用户区（头像 + 用户名 + 下拉箭头）是**点击展开**的账户菜单，
 菜单项由 `@logout` 抛给页面处理：
@@ -674,7 +683,7 @@ src/components/screen/
 | 页面 | 路由 | 文件 |
 | --- | --- | --- |
 | 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue` |
-| 首页定尺面板 | — | `src/views/screen/home/`：`HomeLeftPanel`（出让地块情况统计）、`HomeLayerTree`（地图管理图层面板）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
+| 首页定尺面板 | — | `src/views/screen/home/`：`HomeStatPanel`（统计面板，左右两块各一份：出让地块情况统计 / 落实配套情况统计）、`HomeSideRail`（屏边轨道：折叠把手 + 右面板「统计 / 图层树」竖排小页签）、`HomeLayerTree`（地图管理图层面板，右面板第二个页签内容）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
 | 档案管理（大屏子页面） | 顶栏「档案管理」，深链 `/screen/archive` | `src/views/screen/archive/index.vue` |
 | 道路交付及养护协议移交事项（方案 2.3.2 第 6 项） | 档案模块内的页签，不占一级导航 | 深链 `/screen/archive?tab=handover`；`src/views/screen/archive/modules/handover/` |
 | 道路设施验收及移交资料台账（方案 2.3.2 第 7 项） | 同上 | 深链 `/screen/archive?tab=ledger`；`src/views/screen/archive/modules/ledger/` |

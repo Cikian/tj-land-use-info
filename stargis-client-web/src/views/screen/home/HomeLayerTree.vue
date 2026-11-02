@@ -2,6 +2,10 @@
   <!--
     HomeLayerTree 首页右面板「地图管理」图层树
     ==================================================================
+    ★ 2026-10-27 起：右面板默认展示「落实配套情况统计」（HomeStatPanel），
+      本组件是右面板的**第二个页签内容**，由屏幕右边缘的竖排小页签切换过来
+      （HomeSideRail 的 tabs），父组件用 v-if 控制懒挂载 —— 没切过来就不拉起
+      插件引擎、也不发图层树请求。
     与地图管理页（../map/index.vue）的「图层管理」同款：stargis-function
     的 LayerTreePop 弹层 + LayerTree 隐藏引擎，图层树数据 / 服务懒加载 /
     显隐全部由插件内部完成（请求 /app/sceneCreateApi/getSceneAndTree），
@@ -11,7 +15,7 @@
       标题文字 地图管理（右对齐）    (1763, 104)  18px #FFFFFF
       面板底   panel-right-bg.png  (1490, 149)  400×881
   -->
-  <div class="home-tree">
+  <div class="home-tree" :style="slideStyle">
     <img class="home-tree__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
     <h2 class="home-tree__title">地图管理</h2>
 
@@ -37,13 +41,29 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 
+/** 面板滑出距离 = 面板宽 400 + 距屏边 30（与 .home-tree__panel 的 right 对齐） */
+const SLIDE_DISTANCE = 430
+
 export default {
   name: 'HomeLayerTree',
+  props: {
+    /**
+     * 右面板是否已折叠（整体滑出屏幕）。把手在 HomeSideRail 上，
+     * 这里只负责位移 —— 与 HomeStatPanel 的右面板折叠距离一致（400 + 30）。
+     */
+    collapsed: { type: Boolean, default: false }
+  },
   data () {
     return {
       hf,
       // 同 map 页注册表 layers 工具传给插件的 config-min
       pluginConfig: { icon: 'map-btns/QueryPick' },
+    }
+  },
+  computed: {
+    /** 折叠 = 向右滑出（面板 right:30、宽 400，滑 430 刚好整块离屏） */
+    slideStyle () {
+      return this.collapsed ? { transform: `translateX(${SLIDE_DISTANCE}px)` } : null
     }
   },
   mounted () {
@@ -117,6 +137,18 @@ export default {
 @import '~@/components/screen/styles/screen-mixins.less';
 
 .home-tree {
+  /*
+    与 HomeStatPanel 同款定位根：铺满设计画布再整体位移（折叠 = 向右滑出屏幕）。
+    ⚠ 根节点必须是「定尺画布大小」的定位容器，否则 absolute 的面板会相对
+      0 尺寸盒子定位；根节点不开 pointer-events，交互由面板的 .stage-hit 负责。
+  */
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  transition: transform var(--screen-duration-slow) var(--screen-ease);
+
   &__title-deco {
     position: absolute;
     // 设计稿 x=1491..1911（420 宽），即**距右边界 9px**；

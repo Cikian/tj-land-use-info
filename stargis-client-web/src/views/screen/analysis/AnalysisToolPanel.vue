@@ -8,13 +8,12 @@
       面板底   bg-模块-左 panel-left-bg.png    (30, 149)  400×881
       工具卡片 110×128，三列（x=50/175/300）、四行（y=179 起步进 139）：
         卡片底   tool-card.png / 选中 tool-card-active.png
-        图标     68×54 槽位居中 40×40（卡片内 (35, 18)）
+        图标     44×44 统一线性 SVG，卡片内 (33, 18)
         文字     14px 居中，卡片内 y=82；普通 #82C6FF / 选中 #FFFFFF
 
     功能清单来自方案 2.3.1（四）11 项（与 jeecg-module-land 的 analysis 域
-    子包一一对应）；图标取自旧工作台配套分析（旧库 stargis_menu 的
-    功能 → 图标映射），配色按现行系统工具图标规则重上色，见
-    assets/screen-blue/index.js 的「配套分析管理页」一节。
+    子包一一对应）；图标与地图管理共用 ScreenIcon 的线性几何规范，
+    不再混用旧系统的彩色填充图片。
 
     与 MapToolPanel 不同：管线统计、标注管理已接插件引擎，其余工具的
     功能面板尚未接入 stargis-function，因此不做本地高亮兜底——点击统一
@@ -40,7 +39,7 @@
       >
         <img class="analysis-tools__card-bg" :src="hf.toolCard" alt="" aria-hidden="true" />
         <img class="analysis-tools__card-bg analysis-tools__card-bg--on" :src="hf.toolCardActive" alt="" aria-hidden="true" />
-        <img class="analysis-tools__icon" :src="tool.icon" alt="" aria-hidden="true" />
+        <screen-icon class="analysis-tools__icon" :name="tool.icon" :size="44" :stroke-width="1.5" />
         <span class="analysis-tools__label">{{ tool.label }}</span>
       </button>
     </section>
@@ -49,6 +48,7 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
+import ScreenIcon from '@/components/screen/ScreenIcon.vue'
 
 /** 三列卡片的左边缘（设计稿 x=50/175/300，卡片 110 宽、列间隙 15） */
 const CARD_LEFT = [20, 145, 270]
@@ -62,21 +62,22 @@ const CARD_PITCH = 139
  *   与 jeecg-module-land analysis 域子包名保持一致（label/pipeline/section…）。
  */
 export const ANALYSIS_TOOLS = [
-  { key: 'label', label: '标注管理', icon: hf.analysisLabel },
-  { key: 'pipeline', label: '管线统计', icon: hf.analysisPipeline },
-  { key: 'sectionH', label: '横断面分析', icon: hf.analysisSectionH },
-  { key: 'sectionV', label: '纵断面分析', icon: hf.analysisSectionV },
-  { key: 'clearance', label: '净距分析', icon: hf.analysisClearance },
-  { key: 'cover', label: '覆土分析', icon: hf.analysisCover },
-  { key: 'flow', label: '流向分析', icon: hf.analysisFlow },
-  { key: 'burst', label: '爆管分析', icon: hf.analysisBurst },
-  { key: 'excavation', label: '开挖分析', icon: hf.analysisExcavation },
-  { key: 'maturity', label: '成熟度分析', icon: hf.analysisMaturity },
-  { key: 'estimate', label: '配套估算', icon: hf.analysisEstimate }
+  { key: 'label', label: '标注管理', icon: 'analysis-label' },
+  { key: 'pipeline', label: '管线统计', icon: 'analysis-pipeline' },
+  { key: 'sectionH', label: '横断面分析', icon: 'analysis-section-h' },
+  { key: 'sectionV', label: '纵断面分析', icon: 'analysis-section-v' },
+  { key: 'clearance', label: '净距分析', icon: 'analysis-clearance' },
+  { key: 'cover', label: '覆土分析', icon: 'analysis-cover' },
+  { key: 'flow', label: '流向分析', icon: 'analysis-flow' },
+  { key: 'burst', label: '爆管分析', icon: 'analysis-burst' },
+  { key: 'excavation', label: '开挖分析', icon: 'analysis-excavation' },
+  { key: 'maturity', label: '成熟度分析', icon: 'analysis-maturity' },
+  { key: 'estimate', label: '配套估算', icon: 'analysis-estimate' }
 ]
 
 export default {
   name: 'AnalysisToolPanel',
+  components: { ScreenIcon },
   props: {
     /**
      * 当前激活的工具 key（'' = 无）。
@@ -173,12 +174,11 @@ export default {
 
   &__icon {
     position: absolute;
-    left: 35px;
+    left: 33px;
     top: 18px;
-    width: 40px;
-    height: 40px;
-    object-fit: contain;
-    display: block;
+    width: 44px;
+    height: 44px;
+    color: var(--screen-accent);
     pointer-events: none;
   }
 
@@ -189,13 +189,14 @@ export default {
     width: 100%;
     font-size: var(--screen-font-sm);
     line-height: 20px;
-    color: #82c6ff;
+    color: var(--screen-accent);
     text-align: center;
     white-space: nowrap;
   }
 
+  &__card.is-active &__icon,
   &__card.is-active &__label {
-    color: #ffffff;
+    color: var(--screen-text);
   }
 }
 </style>

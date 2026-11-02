@@ -174,15 +174,19 @@ window.__pick = {
   /**
    * 画布元素的可见性统计。
    * ★ 选择器必须覆盖**需求里说的「所有页面」**，漏一个就会出现假绿：
-   *   早先只查了「蒙版 + 整页模块 + 顶栏」，而首页那三块常驻面板
-   *   （左统计 / 右图层树 / 底部属性表）与两个首页浮层**根本不在统计里** ——
+   *   早先只查了「蒙版 + 整页模块 + 顶栏」，而首页那几块常驻面板
+   *   （左出让统计 / 右面板 / 屏边轨道 / 底部属性表）与两个首页浮层**根本不在统计里** ——
    *   漏挂 canvasFade 时这条断言照样全绿。现在把它们全部纳入。
    *   各类根元素名取自各组件自己的根 class（都是单根组件，class 会落到根节点）。
+   * ⚠ 2026-10-27：首页左统计 `HomeLeftPanel`(.home-left) 已拆成左右两块
+   *   `HomeStatPanel`(.home-stat)，另加屏边轨道 `HomeSideRail`(.home-rail)。
+   *   注意「选取地块」模式已不再隐藏页面（见 views/screen/index.vue 的 activePick），
+   *   所以下面这套「应当全部 opacity=0」的断言本身也已过期，跑之前先确认需求口径。
    */
   canvas: function () {
     const nodes = Array.from(document.querySelectorAll(
       '.land-screen__vignette, .land-screen__module, .screen-header, ' +
-      '.home-left, .home-tree, .home-attr, .home-plot'
+      '.home-stat, .home-tree, .home-rail, .home-attr, .home-plot'
     ))
     const hidden = nodes.filter(function (n) { return Number(getComputedStyle(n).opacity) === 0 })
     return { total: nodes.length, hidden: hidden.length }

@@ -5,18 +5,23 @@
     完全按高保真模型 docs/高保真/.../首页.html 的定尺布局实现：
       底图      bg-top_u6.png           (0, 0)    1920×128（横向跟随拉伸）
       系统标题  大标题切图 title.png      (34, 18)   599×35
-      导航项    nav-*.png              y=6      宽 140 高 54，右对齐到设计右边界 -140
-      用户区    头像/用户名/下拉箭头      设计右边界 -130 起（点击展开下拉：退出登录）
-      时钟      15:36 + 星期 + 日期      (477, 115) 起
+      右侧工具区 一级导航 + 实时时钟 + 用户区一行 flex（y=6，高 60），
+                 右对齐到设计右边界 -30，靠左止于 x=660（标题切图止于 633）
+        ├─ 导航   nav-*.png            宽 128 高 60，紧随其后是 ↓
+        ├─ 时钟   15:36 + 星期/日期两行（原先在地图留白区 (477,115)）
+        └─ 用户区 头像/用户名/下拉箭头（点击展开下拉：退出登录）
 
     ⚠ 自适应：顶栏宽度随设计画布宽度变化（见 ScreenStage），
-      所以导航与用户区一律用 right 定位、底图用 width:100% 拉伸，
+      所以工具区一律用 left/right 定边界、底图用 width:100% 拉伸，
       不能写 1920 的固定值。
 
-    ⚠ 导航项数量：高保真是 6 项（140 宽 / 150 间距）。本系统一级菜单为
+    ⚠ 导航项数量与宽度：高保真是 6 项（140 宽 / 150 间距）。本系统一级菜单为
       7 项（新增「档案管理」「提级论证管理」，「收发文」是档案管理模块内的
-      页签、不单独占一级菜单），因此间距由 150 收紧到 140，
-      整块右对齐，保证仍落在标题切图（止于 x=633）与用户区之间。
+      页签、不单独占一级菜单）。**2026-10-27 起时钟从设计稿的 (477,115)
+      （地图留白区）挪进这一行、紧贴最后一项「查询统计」的右侧**，
+      于是导航项宽度再收一档 150 → 128（7 项共 896）给时钟（约 175）让位：
+      1920 画布下 896 + 时钟约 175 + 用户区约 105 + 两个 16px 间距 ≈ 1208，
+      仍在「660 → 1890」这 1230px 可用宽内留有余量；画布更宽时余量更大。
   -->
   <header class="screen-header">
     <!-- 底图：整条顶栏的深蓝渐变 + 装饰线 -->
@@ -25,57 +30,78 @@
     <!-- 系统标题（切图，含左侧徽标与下方蓝色装饰线） -->
     <img class="screen-header__title" :src="hf.title" :alt="title" />
 
-    <!-- 一级导航 -->
-    <nav
-      v-if="menus && menus.length"
-      class="screen-header__nav"
-      :style="navStyle()"
-      aria-label="主导航"
-    >
-      <button
-        v-for="item in menus"
-        :key="item.key"
-        type="button"
-        class="screen-header__nav-item stage-hit"
-        :class="{ 'is-active': item.key === activeMenu }"
-        :style="navItemStyle()"
-        :aria-current="item.key === activeMenu ? 'page' : undefined"
-        @click="handleMenu(item)"
+    <!-- ===== 右侧工具区：一级导航 + 实时时钟 + 用户区（单行 flex，右对齐） ===== -->
+    <div class="screen-header__bar" :style="barStyle()">
+      <!-- 一级导航 -->
+      <nav
+        v-if="menus && menus.length"
+        class="screen-header__nav"
+        aria-label="主导航"
       >
-        <img
-          class="screen-header__nav-bg"
-          :src="item.key === activeMenu ? hf.navActive : hf.navIdle"
-          alt=""
-          aria-hidden="true"
-        />
-        <span class="screen-header__nav-text">{{ item.label }}</span>
-      </button>
-    </nav>
+        <button
+          v-for="item in menus"
+          :key="item.key"
+          type="button"
+          class="screen-header__nav-item stage-hit"
+          :class="{ 'is-active': item.key === activeMenu }"
+          :style="navItemStyle()"
+          :aria-current="item.key === activeMenu ? 'page' : undefined"
+          @click="handleMenu(item)"
+        >
+          <img
+            class="screen-header__nav-bg"
+            :src="item.key === activeMenu ? hf.navActive : hf.navIdle"
+            alt=""
+            aria-hidden="true"
+          />
+          <span class="screen-header__nav-text">{{ item.label }}</span>
+        </button>
+      </nav>
 
-    <!--
-      用户区（设计稿：头像 + 用户名 + 下拉箭头）
-      ----------------------------------------------------------------
-      点击展开下拉，菜单里是账户操作（当前只有「退出登录」）。
-      ⚠ 之前这里只有头像和箭头、**没有实现下拉**：箭头看着能点，点下去却什么都
-        不发生，用户因此没法自己退出登录。退出动作不在这里做，通过 @logout
-        抛给页面处理（组件保持纯展示，不依赖 store / 路由）。
-      浮层用 ScreenPopover（挂 body），避免被顶栏或画布的 overflow 裁掉。
-    -->
-    <div
-      ref="user"
-      class="screen-header__user stage-hit"
-      :class="{ 'is-open': userMenuOpen }"
-      role="button"
-      tabindex="0"
-      :aria-expanded="userMenuOpen ? 'true' : 'false'"
-      aria-haspopup="menu"
-      :aria-label="userMenuLabel"
-      @click="toggleUserMenu"
-      @keydown="handleUserKeydown"
-    >
-      <img class="screen-header__avatar" :src="hf.avatar" alt="" aria-hidden="true" />
-      <span class="screen-header__user-name">{{ userName }}</span>
-      <img class="screen-header__caret" :src="hf.caretDown" alt="" aria-hidden="true" />
+      <!--
+        实时时钟（大号时间 + 右侧星期 / 日期两行小字）
+        ----------------------------------------------------------------
+        ★ 2026-10-27：原先按设计稿贴在 (477, 115) 的地图留白区，现挪进导航行，
+          紧跟最后一项「查询统计」的右侧（用户要求），所以：
+          · 尺寸从 56px 收到 30px（导航行只有 60 高，56px 会顶出上下沿）；
+          · 定位从 absolute 改成 flex 项，不再有 left/top 坐标；
+          · 时间与星期/日期之间加一条竖向分隔线，和左侧导航区分开。
+          星期/日期不写死 left —— 时间实际宽度随字体变，两列用 flex 相邻排版。
+      -->
+      <div v-if="showClock" class="screen-header__clock-wrap">
+        <span class="screen-header__clock-divider" aria-hidden="true" />
+        <time class="screen-header__clock" :datetime="clockISO">{{ clockTime }}</time>
+        <span class="screen-header__clock-meta">
+          <span v-if="showWeekday" class="screen-header__weekday">{{ weekText }}</span>
+          <span class="screen-header__date">{{ clockDate }}</span>
+        </span>
+      </div>
+
+      <!--
+        用户区（设计稿：头像 + 用户名 + 下拉箭头）
+        ----------------------------------------------------------------
+        点击展开下拉，菜单里是账户操作（当前只有「退出登录」）。
+        ⚠ 之前这里只有头像和箭头、**没有实现下拉**：箭头看着能点，点下去却什么都
+          不发生，用户因此没法自己退出登录。退出动作不在这里做，通过 @logout
+          抛给页面处理（组件保持纯展示，不依赖 store / 路由）。
+        浮层用 ScreenPopover（挂 body），避免被顶栏或画布的 overflow 裁掉。
+      -->
+      <div
+        ref="user"
+        class="screen-header__user stage-hit"
+        :class="{ 'is-open': userMenuOpen }"
+        role="button"
+        tabindex="0"
+        :aria-expanded="userMenuOpen ? 'true' : 'false'"
+        aria-haspopup="menu"
+        :aria-label="userMenuLabel"
+        @click="toggleUserMenu"
+        @keydown="handleUserKeydown"
+      >
+        <img class="screen-header__avatar" :src="hf.avatar" alt="" aria-hidden="true" />
+        <span class="screen-header__user-name">{{ userName }}</span>
+        <img class="screen-header__caret" :src="hf.caretDown" alt="" aria-hidden="true" />
+      </div>
     </div>
 
     <screen-popover
@@ -100,20 +126,8 @@
     </screen-popover>
 
     <!--
-      实时时钟（高保真：大号时间 + 右侧星期 / 日期两行小字）
-      ⚠ 星期/日期不能按设计稿写死 left:597 —— 设计稿用的 D-DIN-PRO 数字更窄，
-        实际字体下 "15:42" 比设计稿预留的 104px 宽，写死 left 会和时间挤在一起。
-        改成 flex：时间 + 「星期/日期」两行小字列，间距 16px（设计稿的 581→597）。
+      在线状态（高保真未出现，保留能力，默认不渲染）
     -->
-    <div v-if="showClock" class="screen-header__clock-wrap">
-      <time class="screen-header__clock" :datetime="clockISO">{{ clockTime }}</time>
-      <span class="screen-header__clock-meta">
-        <span v-if="showWeekday" class="screen-header__weekday">{{ weekText }}</span>
-        <span class="screen-header__date">{{ clockDate }}</span>
-      </span>
-    </div>
-
-    <!-- 在线状态（高保真未出现，保留能力，默认不渲染） -->
     <span
       v-if="online !== null"
       class="screen-header__online stage-hit"
@@ -135,23 +149,28 @@ const WEEK = ['星期日', '星期一', '星期二', '星期三', '星期四', '
 
 /**
  * 高保真定尺参数（设计稿 1920×1080 坐标）。
- *   navLeft       导航区左边界：标题切图止于 x=633，留 27px 呼吸
- *   navRightMargin 导航区右边界到设计画布右边界的距离（设计稿最后一项止于 1780）
- *   userRightMargin 用户区右边界到设计画布右边界的距离（设计稿收尾于 1890）
- * 导航用「弹性收缩的 flex 行」实现：设计画布比 1920 窄时，
- * 各项等比收窄而不是跟标题切图重叠。
+ *   barTop / barHeight 工具区竖向位置：与设计稿导航项同一行（y=6、高 60）
+ *   barLeft           工具区左边界：标题切图止于 x=633，留 27px 呼吸
+ *   barRightMargin    工具区右边界到设计画布右边界的距离（设计稿用户区收尾于 1890）
+ *   barGap            导航 / 时钟 / 用户区三块之间的间距
+ * 工具区（导航 + 时钟 + 用户区）是**一行 flex、右对齐**：
+ * 画布比 1920 窄时按 flex-shrink 收窄导航项（flex: 0 1 navItemWidth），
+ * 而不是跟标题切图重叠；时钟与用户区不收缩。
  *
- * ⚠ 尺寸已随全局字号上移一档：导航项 54 → 60 高、宽 140 → 150，
- *   保证 17px 的导航文字有足够的左右留白（中文菜单最长 6 字 ≈ 102px）。
+ * ⚠ 尺寸已随全局字号上移一档：导航项 54 → 60 高。
+ *   宽度 140 → 150 是「导航行只有 7 项、没有时钟」时代的取值；
+ *   2026-10-27 时钟（约 177px）挪进这一行后收到 128（7 项共 896），
+ *   才塞得进 660 → 1890 这 1230px。17px 导航文字最长 6 字 ≈ 102px，
+ *   128 宽左右各留约 13px —— 背景切图是满宽的柔光底纹，收窄不会露边。
  */
 export const HEADER_LAYOUT = {
   height: 128,
-  navTop: 6,
-  navItemWidth: 150,
-  navItemHeight: 60,
-  navLeft: 660,
-  navRightMargin: 140,
-  userRightMargin: 30,
+  barTop: 6,
+  barHeight: 60,
+  barLeft: 660,
+  barRightMargin: 30,
+  barGap: 16,
+  navItemWidth: 128,
 }
 
 export default {
@@ -217,26 +236,28 @@ export default {
   },
   methods: {
     /**
-     * 导航行样式：左右边界固定，行内各项用 flex 平分剩余空间。
-     * 设计画布 ≥1920 时 7 项总宽 980 < 可用宽，右对齐到设计位置；
-     * 更窄时等比收缩，绝不会压到标题切图上。
+     * 工具区样式：左右边界 + 竖向位置 + 块间距固定，行内元素用 flex 右对齐。
+     * 设计画布 ≥1920（ScreenStage 保证不会更窄）时，7 项导航 896 + 时钟约 175
+     * + 用户区约 105 + 两个 16px 间距 ≈ 1208 < 可用宽 1230，右对齐后正好落在
+     * 设计位置；万一画布更窄，收窄的是导航项（flex-shrink），不会压到标题切图。
      */
-    navStyle () {
-      const { navTop, navLeft, navRightMargin, navItemHeight } = HEADER_LAYOUT
+    barStyle () {
+      const { barTop, barLeft, barRightMargin, barHeight, barGap } = HEADER_LAYOUT
       return {
-        left: `${navLeft}px`,
-        right: `${navRightMargin}px`,
-        top: `${navTop}px`,
-        height: `${navItemHeight}px`,
+        left: `${barLeft}px`,
+        right: `${barRightMargin}px`,
+        top: `${barTop}px`,
+        height: `${barHeight}px`,
+        gap: `${barGap}px`,
       }
     },
-    /** 单个导航项：定宽 140，空间不足时按 flex-shrink 等比收窄 */
+    /** 单个导航项：定宽 128，空间不足时按 flex-shrink 等比收窄 */
     navItemStyle () {
-      const { navItemWidth, navItemHeight } = HEADER_LAYOUT
+      const { navItemWidth, barHeight } = HEADER_LAYOUT
       return {
         width: `${navItemWidth}px`,
         flex: `0 1 ${navItemWidth}px`,
-        height: `${navItemHeight}px`,
+        height: `${barHeight}px`,
       }
     },
     startClock () {
@@ -315,12 +336,28 @@ export default {
     display: block;
   }
 
-  &__nav {
+  /* ---------- 右侧工具区（导航 + 时钟 + 用户区） ---------- */
+  /*
+    一行 flex、右对齐：右边界到画布 30px（设计稿用户区收尾于 1890），
+    左边界 660（标题切图止于 633）。位置与间距由 barStyle() 给出，
+    见 HEADER_LAYOUT。容器本身不开 pointer-events（画布整体穿透，
+    只有 .stage-hit 的子元素接事件），顶栏空白处仍旧可以拖动地图。
+  */
+  &__bar {
     position: absolute;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    // 左右边界由 navStyle() 给出，见 HEADER_LAYOUT
+    min-width: 0;
+  }
+
+  &__nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    // 空间不足时只收窄导航，不挤压时钟 / 用户区
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   &__nav-item {
@@ -372,13 +409,13 @@ export default {
   }
 
   /* ---------- 用户区 ---------- */
-  /* 靠右定位：设计稿里头像起于 x=1790、下拉箭头收尾于 1890，即距右边界 30px */
+  /* 工具区最右一格：设计稿里头像起于 x=1790、下拉箭头收尾于 1890（距右边界 30px，
+     由 barStyle() 的 right 保证）。这里只负责行内对齐，不要再写 right/top。 */
   &__user {
-    position: absolute;
-    right: 30px;
-    top: 20px;
+    position: relative;
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
     height: 32px;
     cursor: pointer;
     border-radius: var(--screen-radius-sm);
@@ -405,6 +442,10 @@ export default {
 
   &__user-name {
     margin-left: 10px;
+    // 名字过长时省略，避免把左侧导航挤窄（导航是 flex-shrink 的唯一受害者）
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: var(--screen-font-sm);
     font-weight: 500;
     line-height: 1.2;
@@ -447,15 +488,32 @@ export default {
     }
   }
 
-  /* ---------- 时钟 ---------- */
-  /* 设计稿：时间左上角 (477, 115)，星期 (597, 117)，日期 (597, 141) */
+  /* ---------- 时钟（导航行内，紧跟「查询统计」右侧） ---------- */
+  /*
+    设计稿里时钟贴在地图留白区 (477, 115)：时间 52px、星期/日期各一行 17px。
+    2026-10-27 挪进导航行（行高只有 60）后按行高重排：
+      · 尺寸收到 30px（约等于导航文字的 1.75 倍，仍明显是「大号时间」）；
+      · 从 absolute 改成 flex 项，竖向和导航项 / 用户区居中对齐（中心都是 y=36）；
+      · 左侧加一条竖向分隔线，与导航区分开；时钟不参与收缩（flex: 0 0 auto）。
+  */
   &__clock-wrap {
-    position: absolute;
-    left: 477px;
-    top: 115px;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    flex: 0 0 auto;
+    // 分隔线 → 时间 → 星期/日期（与 bar 的 16px 块间距叠加成 16 + 12）
+    gap: 12px;
     white-space: nowrap;
+  }
+
+  &__clock-divider {
+    width: 1px;
+    height: 26px;
+    background: linear-gradient(
+      180deg,
+      rgba(102, 175, 212, 0) 0%,
+      rgba(102, 175, 212, 0.6) 50%,
+      rgba(102, 175, 212, 0) 100%
+    );
   }
 
   &__clock {
@@ -469,9 +527,9 @@ export default {
     font-family: 'DIN Alternate', 'Bahnschrift', 'Arial Narrow', var(--screen-font-number-family);
     // Bahnschrift 是可变字体，默认落在 Normal 字宽（并不窄），要显式取窄体实例
     font-stretch: 75%;
-    font-size: 56px;
+    font-size: 30px;
     font-weight: 400;
-    line-height: 42px;
+    line-height: 1;
     color: #ffffff;
     letter-spacing: 0;
     font-variant-numeric: tabular-nums;
@@ -482,23 +540,23 @@ export default {
   &__clock-meta {
     display: flex;
     flex-direction: column;
-    margin-left: 16px;
-    // 设计稿里星期比时间顶端低 2px（115 → 117）
-    padding-top: 2px;
+    // 两行整体在 60 高的行内居中（星期在上、日期在下）
+    justify-content: center;
+    margin-left: 4px;
   }
 
   &__weekday {
-    font-size: var(--screen-font-md);
-    line-height: 1.25;
+    font-size: var(--screen-font-xs);
+    line-height: 1.2;
     color: #66afd4;
     white-space: nowrap;
   }
 
   &__date {
-    // 设计稿：星期 117..133，日期 141 起，间隔 8px
-    margin-top: 8px;
-    font-size: var(--screen-font-md);
-    line-height: 1.25;
+    // 日期与星期之间留 3px，两行合计 39px，仍在 60 高的行内居中
+    margin-top: 3px;
+    font-size: var(--screen-font-xs);
+    line-height: 1.2;
     color: #66afd4;
     white-space: nowrap;
   }

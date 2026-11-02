@@ -2,7 +2,7 @@
  * 存放配置常量
  */
 window._CONFIG = {
-  PROJECT_NAME: '星际GIS统一开发协同平台', // 系统名称
+  PROJECT_NAME: '天津市经营性用地市政配套设施动态监管工作站', // 系统名称
   UE4_URL: 'http://127.0.0.1',  // 当前版本不可用
   //中台接口父路径
   VUE_APP_API_BASE_URL: 'http://127.0.0.1:4548',

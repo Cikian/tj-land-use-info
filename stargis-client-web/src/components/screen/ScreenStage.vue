@@ -152,6 +152,16 @@ export default {
   inset: 0;
   overflow: hidden;
   background: var(--screen-bg-deep);
+  /*
+    窗口边缘兜底（2026-10-27）：真机截图里四边有一条 1~3px 的**白缝** ——
+    大屏自己的底色是 #04091a，所以那圈白不是我们画出来的，而是内容没铺到的那点
+    面积露出了页面默认白底（分数像素 / 浏览器缩放 / 嵌入容器的留边都可能造成）。
+    这里用同色阴影向外再铺 32px：元素自身的 overflow 不会裁掉自己的 box-shadow，
+    于是舞台外侧那一圈也是深色，白缝消失。
+    ⚠ 不要改成 inset:-Npx 去「变大一点」——那会连 clientWidth/Height 一起变，
+      缩放比与画布原点都会偏，UI 与地图对不齐。
+  */
+  box-shadow: 0 0 0 32px var(--screen-bg-deep);
 
   &__map {
     position: absolute;

@@ -4,7 +4,7 @@
     <div class="system-title">
       {{sysName}}
     </div>
-      <!-- 星际GIS统一开发协同平台
+      <!-- 天津市经营性用地市政配套设施动态监管工作站
     </div> -->
     <div class="login_bg_bg">
       <img src="~@/assets/dlkbg.png" alt="" style="width: 589px" />

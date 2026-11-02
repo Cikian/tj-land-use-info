@@ -25,3 +25,6 @@ dist/
 # perf 验证脚本每次跑都会重新生成的截图（脚本在库里，产物不入库；
 # 需要留证据时从本地 perf/shots/ 取，见 perf/README.md）
 **/perf/shots/
+
+miiddle
+BKService

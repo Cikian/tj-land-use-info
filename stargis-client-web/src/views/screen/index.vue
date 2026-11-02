@@ -9,13 +9,23 @@
       真实地图层（不参与缩放，保证 Cesium 交互坐标正确）
       设计稿画布层
         ├─ 全屏蒙版：上 / 下 / 左 / 右四张切图
-        ├─ 顶栏     ScreenHeader（bg-top + 标题切图 + 8 项导航 + 时钟）
-        ├─ 左面板   HomeLeftPanel（出让地块情况统计，双页签）
-        ├─ 右面板   HomeLayerTree（地图管理 · stargis-function 图层树插件，进首页自动拉起）
-        ├─ 底部     HomeAttrPanel（属性表，市级 / 区级 / 地块预警信息）
+        ├─ 顶栏     ScreenHeader（bg-top + 标题切图 + 7 项导航 + 时钟 + 用户区）
+        ├─ 左面板   HomeStatPanel side=left（出让地块情况统计）
+        ├─ 右面板   HomeStatPanel side=right（落实配套情况统计，默认）
+        │           └ 右边缘竖排小页签可切到 HomeLayerTree（地图管理 · 图层树插件，懒挂载）
+        ├─ 边缘     HomeSideRail ×2（折叠把手；右侧另带「统计 / 图层树」小页签）
+        ├─ 底部     HomeAttrPanel（属性表，市级 / 区级 / 地块预警信息；两侧折叠时左右内缩跟着收）
         └─ 浮层     HomePlotModal（地块预警信息弹窗）
       档案管理 / 收发文 作为整页模块覆盖在画布正文区
       地图管理 作为静态页面叠在画布上（地图保持可交互）
+
+    ★ 2026-10-27 三处布局调整（用户要求）：
+      1. 左侧统计拆开：左 = 出让地块情况统计，右 = 落实配套情况统计（原先是一块
+         面板里两个页签）；两块面板共用 HomeStatPanel，由 side 决定镜像位置与底图。
+      2. 右面板默认展示统计，屏幕右边缘的竖排小页签可切到「图层树」。
+      3. 左右面板都能折叠（整体滑出屏幕，屏边只留把手），折叠时底部属性表的
+         左右内缩从 460 收到 30、宽度带过渡一起长出来；两侧那两张氛围蒙版
+         同时是面板的暗底，所以也跟着一起淡出（否则边缘会剩两条暗带）。
 
     数据来源：
       loadDashboard() 并发拉取 LandOverviewVO（出让地块情况统计，/land/stat/home/landOverview）
@@ -45,6 +55,12 @@
     />
 
     <!-- ===== 全屏蒙版（设计稿的四张氛围切图） ===== -->
+    <!--
+      ★ 左右两张同时也是两侧面板的「暗底」：面板折叠（整体滑出屏幕）后如果让它们
+        留在原处，屏幕两侧会剩两条与面板等量的暗带，看着像面板还挂着 ——
+        所以左右两张跟着各自那一侧的面板一起淡出（同 320ms 过渡）。
+        上下两张与面板无关（顶栏 / 底部属性表仍在），不参与。
+    -->
     <img
       class="land-screen__vignette is-top"
       :src="hf.vignetteTop"
@@ -59,12 +75,14 @@
     />
     <img
       class="land-screen__vignette is-left"
+      :class="{ 'is-folded': leftVignetteFolded }"
       :src="hf.vignetteLeft"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-right"
+      :class="{ 'is-folded': rightVignetteFolded }"
       :src="hf.vignetteRight"
       alt=""
       aria-hidden="true"
@@ -72,10 +90,8 @@
 
     <!-- ===== 顶栏 ===== -->
     <!--
-      时钟在首页 / 地图管理 / 配套分析管理显示：高保真里时钟位于 (477,115)，
-      落在中间的地图留白区（配套分析管理与地图管理同版式，左面板标题装饰
-      到 x=429 为止，不与时钟重叠）；档案管理 / 收发文是整页模块，横向铺满
-      后会和时钟重叠，因此隐藏。
+      时钟已在顶栏的导航行内（紧跟最后一项「查询统计」右侧，见 ScreenHeader），
+      不再压在地图留白区、也不会和整页模块重叠；所有带顶栏导航的页面统一显示。
     -->
     <screen-header
       :title="title"
@@ -83,7 +99,7 @@
       :active-menu="activeMenu"
       :user-name="user.name"
       :online="user.online"
-      :show-clock="activeMenu === 'home' || activeMenu === 'map' || activeMenu === 'analysis'"
+      :show-clock="true"
       @menu-change="handleMenuChange"
       @logout="handleLogout"
     />
@@ -148,22 +164,69 @@
 
     <!-- ===== 首页工作台 ===== -->
     <!--
-      ★ 这三块首页面板同样要参与「选取模式下隐藏」：它们是不透明面板，
-        漏掉任何一块都会直接盖在「只显示地图」的画面上，与需求原文
-        「所有页面全部隐藏，只显示下方地图」不符。
+      首页的五块：左右统计面板 + 右侧图层树（与统计共用右面板）+ 两条屏边轨道
+      + 底部属性表。★ 「选取地块」模式现在**不再隐藏页面**（见 activePick 的说明），
+      所以这里没有额外的隐藏包装。
     -->
     <template v-else>
-      <home-left-panel
-        :panel="leftPanel"
-        :transfer-rank="transferRank"
-        :supporting-rank="supportingRank"
+      <!-- ===== 左面板：出让地块情况统计（折叠 = 整体滑出屏幕，把手在屏边） ===== -->
+      <home-stat-panel
+        side="left"
+        title="出让地块情况统计"
+        :section="homeStats.transfer"
+        :rank="transferRank"
+        rank-title="各区出让排行"
         :loading="dashboardLoading"
+        :collapsed="leftCollapsed"
       />
-      <home-layer-tree />
+      <home-side-rail
+        side="left"
+        :collapsed="leftCollapsed"
+        collapse-text="收起出让统计"
+        expand-text="展开出让统计"
+        @toggle="leftCollapsed = !leftCollapsed"
+      />
+
+      <!-- ===== 右面板：默认统计（落实配套情况统计），小页签可切到图层树 ===== -->
+      <home-stat-panel
+        v-show="rightTab === 'stat'"
+        side="right"
+        title="落实配套情况统计"
+        :section="homeStats.support"
+        :rank="supportingRank"
+        rank-title="各区配套落实"
+        :loading="dashboardLoading"
+        :collapsed="rightCollapsed"
+      />
+      <!--
+        图层树懒挂载：只有第一次切到「图层树」页签才挂载（那时才拉起
+        stargis-function 引擎、才发图层树请求）；之后用 v-show 保活 ——
+        来回切换不会重新拉一遍树，勾选的图层显隐状态也不会丢。
+      -->
+      <home-layer-tree
+        v-if="treeMounted"
+        v-show="rightTab === 'tree'"
+        :collapsed="rightCollapsed"
+      />
+      <home-side-rail
+        side="right"
+        :tabs="rightTabs"
+        :active-tab="rightTab"
+        :collapsed="rightCollapsed"
+        tabs-label="右侧面板切换"
+        collapse-text="收起右侧面板"
+        expand-text="展开右侧面板"
+        @select="handleRightTab"
+        @toggle="rightCollapsed = !rightCollapsed"
+      />
+
+      <!-- ===== 底部属性表：左右内缩随两侧折叠过渡（宽度跟着长出来） ===== -->
       <home-attr-panel
         :tabs="warningTabs"
         :data="warningData"
         :loading="dashboardLoading"
+        :left-inset="attrInsets.left"
+        :right-inset="attrInsets.right"
         @row-action="handleAttrAction"
         @open-plot-warning="plotVisible = true"
       />
@@ -191,7 +254,8 @@ import DataScreen from './data/index.vue'
 import EscalationScreen from './escalation/index.vue'
 import MapScreen from './map/index.vue'
 import AnalysisScreen from './analysis/index.vue'
-import HomeLeftPanel from './home/HomeLeftPanel.vue'
+import HomeStatPanel from './home/HomeStatPanel.vue'
+import HomeSideRail from './home/HomeSideRail.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
 import HomePlotModal from './home/HomePlotModal.vue'
@@ -239,13 +303,13 @@ function emptyPanelSection (cube, label, columns) {
   }
 }
 
-function emptyLeftPanel () {
+/**
+ * 首页两块统计面板的空数据。
+ * ★ 2026-10-27 起两块面板各放一份统计（左出让 / 右配套），不再有页签，
+ *   所以这里只返回两份 section，页签那层结构整体去掉。
+ */
+function emptyHomeStats () {
   return {
-    tabs: [
-      { key: 'transfer', label: '出让情况' },
-      // 高保真设计稿 u32 的页签文字就是「落实配套情况」（不是「落实配套」）
-      { key: 'support', label: '落实配套情况' }
-    ],
     transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS),
     support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS)
   }
@@ -296,8 +360,18 @@ const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachme
 const QUERY_TABS = ['land', 'facility', 'advanced']
 
 /**
- * 左面板明细表的列（横向位置见 home/HomeLeftPanel.vue 的 TH_OFFSET）。
- * ★ 两套列不能合并：两个页签的数值口径不同，合并就会把「已完成配套数」
+ * 右面板的两个页签（由 HomeSideRail 的竖排小页签切换）：
+ *   stat 统计（落实配套情况统计，默认）
+ *   tree 图层树（地图管理 · stargis-function 图层树，首次切过去才挂载）
+ */
+const RIGHT_TABS = [
+  { key: 'stat', label: '统计' },
+  { key: 'tree', label: '图层树' }
+]
+
+/**
+ * 两块统计面板的明细列（横向位置见 home/HomeStatPanel.vue 的 TH_OFFSET）。
+ * ★ 两套列不能合并：两个统计的数值口径不同，合并就会把「已完成配套数」
  *   渲染到「涉及道路」列下（本轮修的就是这个错位）。
  *   key 必须与 TH_OFFSET 的键一一对应，否则单元格 left 会变成 undefinedpx。
  */
@@ -404,7 +478,8 @@ export default {
     AnalysisScreen,
     QueryScreen,
     ScreenPickStage,
-    HomeLeftPanel,
+    HomeStatPanel,
+    HomeSideRail,
     HomeLayerTree,
     HomeAttrPanel,
     HomePlotModal,
@@ -479,9 +554,17 @@ export default {
       /** 数据管理页初始页签（?tab=facility 之类的深链） */
       dataTab: initialDataTab,
 
-      leftPanel: emptyLeftPanel(),
+      homeStats: emptyHomeStats(),
       transferRank: [],
       supportingRank: [],
+      /** 右面板当前页签：stat 统计（默认）/ tree 图层树 */
+      rightTab: 'stat',
+      rightTabs: RIGHT_TABS,
+      /** 图层树是否已挂载过：首次切到「图层树」才置真（懒挂载，之后 v-show 保活） */
+      treeMounted: false,
+      /** 左右面板是否折叠（折叠 = 整体滑出屏幕，屏边只留把手） */
+      leftCollapsed: false,
+      rightCollapsed: false,
       warningData: { city: [], district: [], plot: [] },
       warningTabs,
       plotWarning: emptyPlotWarning(),
@@ -567,6 +650,41 @@ export default {
       // 这两个弹窗都渲染 HomePlotModal（position:absolute + inset:0 的全画布遮罩）
       const coveredByModal = this.plotVisible || this.warningDetailVisible
       return fullPageModule || coveredByModal
+    },
+
+    /**
+     * 当前是否首页版式。
+     * 首页与「尚未接入」的菜单都落到模板最后的 v-else 分支，共用同一套面板。
+     */
+    isHomeLayout () {
+      return this.activeMenu === 'home' || IMPLEMENTED_MENUS.indexOf(this.activeMenu) === -1
+    },
+
+    /**
+     * 两侧氛围蒙版是否随面板一起收起。
+     * ★ 只认「首页版式 + 该侧已折叠」：地图管理 / 配套分析管理 / 整页模块也有
+     *   同样的蒙版，但它们没有折叠状态，不该被首页的折叠状态带偏。
+     */
+    leftVignetteFolded () {
+      return this.isHomeLayout && this.leftCollapsed
+    },
+
+    rightVignetteFolded () {
+      return this.isHomeLayout && this.rightCollapsed
+    },
+
+    /**
+     * 底部属性表的左右内缩。
+     * 设计稿是 460（= 两侧面板宽 400 + 30 间距）；对应侧栏折叠后只剩 30 的
+     * 屏边留白，属性表因此变宽。过渡写在 HomeAttrPanel 的 CSS 里
+     * （left / right 各 320ms），与面板滑出的时长一致 —— 两者一起动，
+     * 不会出现「面板滑走了、属性表卡着不动」的错帧。
+     */
+    attrInsets () {
+      return {
+        left: this.leftCollapsed ? 30 : 460,
+        right: this.rightCollapsed ? 30 : 460
+      }
     }
   },
   watch: {
@@ -590,9 +708,16 @@ export default {
   },
   mounted () {
     this.loadDashboard()
+    // 大屏页把 <body> 也刷成深海蓝：窗口边缘万一有 1~3px 没被内容盖住（分数像素 /
+    // 浏览器缩放 / 嵌入容器留边），露出来的是这个深色底而不是页面默认白底。
+    // ⚠ 只在大屏页挂这个类、离开时摘掉 —— 登录页是浅色主题，不能被一起染黑。
+    document.body.classList.add('is-screen-dark')
     // 刷新页面时如果正处于选取模式（会话不落盘，正常不会出现），兜底清一次，
     // 避免留下「一张没有出口的全屏地图」——那种状态用户只能刷新页面。
     if (pickState.active) endPick(pickState.token)
+  },
+  beforeDestroy () {
+    document.body.classList.remove('is-screen-dark')
   },
   methods: {
     /** 并发拉取宗地与配套两个看板；失败或没有数据时对应区域保持空白 */
@@ -603,14 +728,14 @@ export default {
           if (landResponse && landResponse.success) {
             this.applyLandDashboard(landResponse.result || {})
           } else {
-            this.leftPanel = Object.assign({}, this.leftPanel, { transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS) })
+            this.homeStats = Object.assign({}, this.homeStats, { transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS) })
             this.transferRank = []
             this.$screenToast.error((landResponse && landResponse.message) || '宗地统计加载失败')
           }
           if (facilityResponse && facilityResponse.success) {
             this.applyFacilityDashboard(facilityResponse.result || {})
           } else {
-            this.leftPanel = Object.assign({}, this.leftPanel, { support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS) })
+            this.homeStats = Object.assign({}, this.homeStats, { support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS) })
             this.supportingRank = []
             this.warningData = { city: [], district: [], plot: [] }
             this.plotWarning = emptyPlotWarning()
@@ -618,7 +743,7 @@ export default {
           }
         })
         .catch((error) => {
-          this.leftPanel = emptyLeftPanel()
+          this.homeStats = emptyHomeStats()
           this.transferRank = []
           this.supportingRank = []
           this.warningData = { city: [], district: [], plot: [] }
@@ -643,7 +768,7 @@ export default {
       const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
       const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
 
-      this.leftPanel = Object.assign({}, this.leftPanel, {
+      this.homeStats = Object.assign({}, this.homeStats, {
         transfer: {
           cube: 'a',
           stat: { label: '已出让土地总数', value: total, unit: '宗' },
@@ -686,7 +811,7 @@ export default {
       const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
       const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
 
-      this.leftPanel = Object.assign({}, this.leftPanel, {
+      this.homeStats = Object.assign({}, this.homeStats, {
         support: {
           cube: 'b',
           stat: { label: '需要落实配套', value: total, unit: '宗' },
@@ -717,6 +842,20 @@ export default {
 
     handleStageResize (scale) {
       this.stageScale = scale
+    },
+
+    /* ---------------- 右侧面板：统计 / 图层树 切换 ---------------- */
+
+    /**
+     * 点右边缘竖排小页签切换右面板内容。
+     * ★ 顺手展开：折叠状态下点页签，用户意图显然是「看这个内容」，
+     *   只切内容不展开会让面板继续留在屏幕外，看起来像点了没反应。
+     * ★ 首次切到「图层树」才置 treeMounted（懒挂载），之后 v-show 保活。
+     */
+    handleRightTab (key) {
+      this.rightTab = key
+      if (key === 'tree') this.treeMounted = true
+      this.rightCollapsed = false
     },
 
     /* ---------------- 「添加地块」绘制模式 ---------------- */
@@ -882,6 +1021,13 @@ export default {
     position: absolute;
     display: block;
     pointer-events: none;
+    // 折叠时淡出：与面板滑出用同一套时长，两块一起动
+    transition: opacity var(--screen-duration-slow) var(--screen-ease);
+
+    /* 两侧面板折叠 → 对应那一侧的暗底一起收起（见模板里的说明） */
+    &.is-folded {
+      opacity: 0;
+    }
 
     &.is-top {
       left: 0;
@@ -921,5 +1067,19 @@ export default {
     position: absolute;
     inset: 0;
   }
+}
+</style>
+
+<style lang="less">
+/*
+  ⚠ 非 scoped：这条规则要作用到 <body>（大屏页最底层底色）。
+  为什么不能写在 scoped 块里：scoped 会给选择器加 data-v 属性，body 上没有那个属性。
+  为什么需要：真机截图里窗口四边有一条 1~3px 的白缝 —— 大屏底色是 #04091a，
+  那圈白只能是「内容没铺到的那点面积露出了页面默认白底」。body 背景会铺满整个
+  文档画布，所以只要它在，露出来的就一定是深色。
+  类名由 mounted 挂上、beforeDestroy 摘掉（见 script），登录页等浅色页面不受影响。
+*/
+body.is-screen-dark {
+  background: var(--screen-bg-deep);
 }
 </style>

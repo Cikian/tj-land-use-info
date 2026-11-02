@@ -22,7 +22,11 @@
       3. 「操作 → 查看」把行连同**当前页签 key** 抛给父组件（第二个 emit 参数），
          父组件据此决定下钻用市级还是区级口径 —— 不要靠行 id 里的中文字符串去猜。
   -->
-  <section class="home-attr stage-hit" :class="{ 'is-collapsed': collapsed }">
+  <section
+    class="home-attr stage-hit"
+    :class="{ 'is-collapsed': collapsed }"
+    :style="insetStyle"
+  >
     <!-- 展开态 -->
     <template v-if="!collapsed">
       <img class="home-attr__bg" :src="hf.attrBg" alt="" aria-hidden="true" />
@@ -209,7 +213,14 @@ export default {
     /** 接口加载态 */
     loading: { type: Boolean, default: false },
     /** 点击后开弹窗的页签 key（不切换面板内容） */
-    plotTabKey: { type: String, default: 'plot' }
+    plotTabKey: { type: String, default: 'plot' },
+    /**
+     * 左右内缩距离（px）：设计稿是 460（= 两侧面板宽 400 + 30 间距），
+     * 左/右面板折叠时由页面把它改成 30（只剩屏边留白），属性表随之变宽。
+     * ⚠ 必须由页面下发：折叠状态属于页面，面板自己不知道对面那侧的状态。
+     */
+    leftInset: { type: Number, default: 460 },
+    rightInset: { type: Number, default: 460 }
   },
   data () {
     return {
@@ -219,6 +230,10 @@ export default {
     }
   },
   computed: {
+    /** 左右内缩（侧栏折叠时页面会给 30，宽度随之生长；过渡在 CSS 里） */
+    insetStyle () {
+      return { left: `${this.leftInset}px`, right: `${this.rightInset}px` }
+    },
     columns () {
       return COLUMNS.map((col) => ({
         key: col.key,
@@ -311,10 +326,14 @@ export default {
   // 设计稿 x=460..1460（左右各留 460，即与两侧面板保持 30px 间距）。
   // 纵向下贴 50、定尺高 321：设计比例下顶边正好落在 709，与设计稿一致；
   // 下贴边保证画布变高时它始终和左右面板的底边对齐。
+  // ★ 左右内缩改为由页面下发（insetStyle，侧栏折叠时从 460 收到 30），
+  //   这里的 460 只是模板默认值；transition 让宽度变化跟着侧栏一起动。
   left: 460px;
   right: 460px;
   bottom: 50px;
   height: 321px;
+  transition: left var(--screen-duration-slow) var(--screen-ease),
+    right var(--screen-duration-slow) var(--screen-ease);
 
   &__bg,
   &__bar {
@@ -571,7 +590,10 @@ export default {
   /* ---------------- 收起 / 展开 ---------------- */
   &__toggle {
     position: absolute;
-    left: 963px;
+    // 设计稿 x=963（面板宽 1000、图标 14）→ 距右边界 23px。
+    // ★ 用 right 而不是 left：属性表会随侧栏折叠变宽（最多铺到 30..1890），
+    //   写死 left:963 会让收起按钮留在面板中间、离右侧边界几百像素。
+    right: 23px;
     top: 18px;
     width: 14px;
     height: 14px;

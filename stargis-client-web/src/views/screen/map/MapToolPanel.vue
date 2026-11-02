@@ -8,7 +8,7 @@
       面板底   bg-模块-左_u23.png  (30, 149)  400×881
       工具卡片 110×128，三列（x=50/175/300）、六行（y=179 起步进 139）：
         卡片底   tool-card.png / 选中 tool-card-active.png
-        图标     68×54，卡片内 (18, 11)
+        图标     44×44 统一线性 SVG，卡片内 (33, 18)
         文字     14px 居中，卡片内 y=82；普通 #82C6FF / 选中 #FFFFFF
 
     卡片选中态分两类：
@@ -35,7 +35,7 @@
         @click="handleCardClick(index, tool)"
       >
         <img class="map-tools__card-bg" :src="isCardActive(index, tool) ? hf.toolCardActive : hf.toolCard" alt="" aria-hidden="true" />
-        <img class="map-tools__icon" :src="tool.icon" alt="" aria-hidden="true" />
+        <screen-icon class="map-tools__icon" :name="tool.icon" :size="44" :stroke-width="1.5" />
         <span class="map-tools__label">{{ tool.label }}</span>
       </button>
     </section>
@@ -44,6 +44,7 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
+import ScreenIcon from '@/components/screen/ScreenIcon.vue'
 
 /** 三列卡片的左边缘（设计稿 x=50/175/300，卡片 110 宽、列间隙 15） */
 const CARD_LEFT = [20, 145, 270]
@@ -56,44 +57,45 @@ const WIRED_KEYS = [
   'pick', 'locateName', 'locateRoad', 'querySpatial', 'queryAttr',
   'queryCombined', 'statistics', 'measureLine', 'measureHorizontal',
   'measureVertical', 'measureArea', 'bookmark', 'tour', 'hdExport',
-  'terrainHeight', 'underground', 'layers', 'terrainAlpha',
+  'terrainHeight', 'underground', 'layers', 'terrainAlpha'
 ]
 
 export default {
   name: 'MapToolPanel',
+  components: { ScreenIcon },
   props: {
     /**
      * 当前激活的工具 key（'' = 无）。
      * 已接入工具的选中态全部由父容器统一管理，本地不再维护。
      */
-    activeTool: { type: String, default: '' },
+    activeTool: { type: String, default: '' }
   },
   data () {
     return {
       hf,
       /** 本地选中：全部 18 个工具均已接入，选中态由父容器统一管理 */
       activeIndex: -1,
-      /** 18 个工具，按设计稿行优先排列；icon 用 hf 里的 key 动态取 */
+      /** 18 个工具，按设计稿行优先排列；icon 对应 ScreenIcon 的业务图标名 */
       tools: [
-        { key: 'pick', label: '拾取查询', icon: hf.toolPick },
-        { key: 'locateName', label: '地名定位', icon: hf.toolLocateName },
-        { key: 'locateRoad', label: '道路定位', icon: hf.toolLocateRoad },
-        { key: 'querySpatial', label: '空间查询', icon: hf.toolQuerySpatial },
-        { key: 'queryAttr', label: '属性查询', icon: hf.toolQueryAttr },
-        { key: 'queryCombined', label: '综合查询', icon: hf.toolQueryCombined },
-        { key: 'statistics', label: '综合统计', icon: hf.toolStatistics },
-        { key: 'measureLine', label: '直线量测', icon: hf.toolMeasureLine },
-        { key: 'measureHorizontal', label: '水平量测', icon: hf.toolMeasureHorizontal },
-        { key: 'measureVertical', label: '垂直量测', icon: hf.toolMeasureVertical },
-        { key: 'measureArea', label: '面积量测', icon: hf.toolMeasureArea },
-        { key: 'bookmark', label: '视图书签', icon: hf.toolBookmark },
-        { key: 'tour', label: '动画导航', icon: hf.toolTour },
-        { key: 'hdExport', label: '高清出图', icon: hf.toolHdExport },
-        { key: 'terrainHeight', label: '开启高程', icon: hf.toolTerrainHeight },
-        { key: 'underground', label: '开启地下模式', icon: hf.toolUnderground },
-        { key: 'layers', label: '图层管理', icon: hf.toolLayers },
-        { key: 'terrainAlpha', label: '地形透明', icon: hf.toolTerrainAlpha },
-      ],
+        { key: 'pick', label: '拾取查询', icon: 'map-pick' },
+        { key: 'locateName', label: '地名定位', icon: 'map-locate-name' },
+        { key: 'locateRoad', label: '道路定位', icon: 'map-locate-road' },
+        { key: 'querySpatial', label: '空间查询', icon: 'map-query-spatial' },
+        { key: 'queryAttr', label: '属性查询', icon: 'map-query-attr' },
+        { key: 'queryCombined', label: '综合查询', icon: 'map-query-combined' },
+        { key: 'statistics', label: '综合统计', icon: 'map-statistics' },
+        { key: 'measureLine', label: '直线量测', icon: 'map-measure-line' },
+        { key: 'measureHorizontal', label: '水平量测', icon: 'map-measure-horizontal' },
+        { key: 'measureVertical', label: '垂直量测', icon: 'map-measure-vertical' },
+        { key: 'measureArea', label: '面积量测', icon: 'map-measure-area' },
+        { key: 'bookmark', label: '视图书签', icon: 'map-bookmark' },
+        { key: 'tour', label: '动画导航', icon: 'map-tour' },
+        { key: 'hdExport', label: '高清出图', icon: 'map-hd-export' },
+        { key: 'terrainHeight', label: '开启高程', icon: 'map-terrain-height' },
+        { key: 'underground', label: '开启地下模式', icon: 'map-underground' },
+        { key: 'layers', label: '图层管理', icon: 'map-layers' },
+        { key: 'terrainAlpha', label: '地形透明', icon: 'map-terrain-alpha' }
+      ]
     }
   },
   methods: {
@@ -113,8 +115,8 @@ export default {
       const row = Math.floor(index / 3)
       const col = index % 3
       return { left: `${CARD_LEFT[col]}px`, top: `${CARD_TOP + row * CARD_PITCH}px` }
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -178,11 +180,11 @@ export default {
 
   &__icon {
     position: absolute;
-    left: 18px;
-    top: 11px;
-    width: 68px;
-    height: 54px;
-    display: block;
+    left: 33px;
+    top: 18px;
+    width: 44px;
+    height: 44px;
+    color: var(--screen-accent);
     pointer-events: none;
   }
 
@@ -193,13 +195,14 @@ export default {
     width: 100%;
     font-size: var(--screen-font-sm);
     line-height: 20px;
-    color: #82c6ff;
+    color: var(--screen-accent);
     text-align: center;
     white-space: nowrap;
   }
 
+  &__card.is-active &__icon,
   &__card.is-active &__label {
-    color: #ffffff;
+    color: var(--screen-text);
   }
 }
 </style>
