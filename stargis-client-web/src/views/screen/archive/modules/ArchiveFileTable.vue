@@ -133,6 +133,9 @@
         有 {{ missingCategoryCount }} 个文件还没选择档案类别，请补齐后再提交
       </span>
     </div>
+
+    <!-- 文件预览：图片/PDF 直连静态资源，Office/WPS 走 kkFileView -->
+    <file-preview-modal ref="previewModal" />
   </div>
 </template>
 
@@ -146,9 +149,10 @@ import {
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
-import { archiveUrl, buildJavaDownloadUrl } from '@/api/land/archive'
+import { archiveUrl, buildJavaDownloadUrl, queryArchiveFilePreview } from '@/api/land/archive'
 import { javaUploadUrl, getJavaFileAccessHttpUrl } from '@/api/manageJava'
 import CategoryPicker from './CategoryPicker.vue'
+import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
 import {
   ALLOWED_EXT,
   ALLOWED_EXT_TEXT,
@@ -161,7 +165,7 @@ import {
 
 export default {
   name: 'ArchiveFileTable',
-  components: { ScreenDataTable, ScreenTag, ScreenUpload, ScreenIcon, CategoryPicker },
+  components: { ScreenDataTable, ScreenTag, ScreenUpload, ScreenIcon, CategoryPicker, FilePreviewModal },
   props: {
     /** 文件数组（v-model） */
     value: { type: Array, default: () => [] },
@@ -291,22 +295,57 @@ export default {
       this.$emit('input', next)
     },
     /**
-     * 预览 / 下载。
-     * 已落库的文件走 Java 后端的 /land/archive/file/download（服务端会记一条
-     * 「下载」操作记录，并且能校验文件是否真的还在磁盘上）；
-     * 刚上传还没保存的临时文件只能走 Java 后端的静态访问 /sys/common/static。
+     * 预览（文件名点击）。
+     *
+     * <p>已落库的文件调 `/land/archive/file/previewInfo`：
+     * 后端会返回统一的 previewMode 与相对路径，并顺带写一条「预览」操作记录。
+     * 刚上传还没保存的临时文件没有 id，只能按扩展名兜底 + 直接走静态地址。
+     *
+     * <p>下载仍走操作列的「下载」按钮（`/file/download`，服务端记下载次数），
+     * 不把预览和下载混在同一个入口，避免「点文件名却下载了一个文件」。
      */
     handlePreview (row) {
       if (row.id) {
-        window.open(buildJavaDownloadUrl(archiveUrl.fileDownload, { id: row.id }), '_blank')
+        queryArchiveFilePreview(row.id)
+          .then((res) => {
+            if (!res || !res.success) {
+              toast.error((res && res.message) || '取预览信息失败')
+              return
+            }
+            const info = res.result || {}
+            const url = getJavaFileAccessHttpUrl(info.url)
+            if (!url) {
+              toast.warning('该文件还没有可访问的地址')
+              return
+            }
+            this.$refs.previewModal.open({
+              fileName: info.fileName || row.fileName,
+              fileExt: info.fileExt || row.fileExt,
+              fileSize: info.fileSize || row.fileSize,
+              previewMode: info.previewMode,
+              url,
+              downloadUrl: buildJavaDownloadUrl(archiveUrl.fileDownload, { id: info.id })
+            })
+          })
+          .catch(() => {
+            toast.error('取预览信息失败，请稍后重试')
+          })
         return
       }
+
       const url = getJavaFileAccessHttpUrl(row.url || row.storePath)
-      if (url) {
-        window.open(url, '_blank')
-      } else {
+      if (!url) {
         toast.warning('该文件还没有可访问的地址，请先保存档案')
+        return
       }
+      this.$refs.previewModal.open({
+        fileName: row.fileName,
+        fileExt: row.fileExt,
+        fileSize: row.fileSize,
+        previewMode: row.previewMode,
+        url,
+        downloadUrl: url
+      })
     },
 
     /* ---------------- 对外校验 ---------------- */

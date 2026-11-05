@@ -15,7 +15,7 @@
       open(record)  按列表行打开（内部再按 id 拉全量详情）
     事件：
       edit(detail)        点「编辑」时抛出，由面板接手打开编辑弹窗
-      open-archive(row)   点档案号 / 「查看档案」时抛出，由面板（或页面接线）跳转到档案查询
+      open-archive(row)   点档案号 / 「查看档案」时抛出，由面板（或页面接线）跳转到档案维护
       changed             关联关系变化时抛出，面板据此刷新列表（archive_count 变了）
   -->
   <screen-modal

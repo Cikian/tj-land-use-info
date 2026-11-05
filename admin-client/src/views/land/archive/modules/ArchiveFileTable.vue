@@ -61,7 +61,7 @@
       </template>
 
       <template slot="action" slot-scope="text, record">
-        <a v-has="'land:archive:download'" @click="handlePreview(record)">下载</a>
+        <a v-has="'land:archive:download'" @click="handleDownload(record)">下载</a>
         <template v-if="!disabled">
           <span v-has="'land:archive:delete'">
             <a-divider type="vertical" />
@@ -79,6 +79,9 @@
         · 有 {{ missingCategoryCount }} 个文件还没选择档案类别
       </span>
     </div>
+
+    <!-- 预览弹窗挂在表格内：新增/编辑两种场景都由本组件触发预览，避免各自再挂一份 -->
+    <archive-file-preview-modal ref="previewModal" />
   </div>
 </template>
 
@@ -86,8 +89,10 @@
   import Vue from 'vue'
   import { ACCESS_TOKEN } from '@/store/mutation-types'
   import { getFileAccessHttpUrl } from '@/api/manage'
-  import { archiveUrl, buildDownloadUrl } from '@/api/land/archive'
+  import { archiveUrl, buildDownloadUrl, queryArchiveFilePreview } from '@/api/land/archive'
+  import { resolvePreviewMode } from '@/api/land/filePreview'
   import CategoryPicker from './CategoryPicker'
+  import ArchiveFilePreviewModal from './ArchiveFilePreviewModal'
 
   /**
    * 档案卷内文件表格（含上传）
@@ -102,7 +107,7 @@
    */
   export default {
     name: 'ArchiveFileTable',
-    components: { CategoryPicker },
+    components: { CategoryPicker, ArchiveFilePreviewModal },
     props: {
       /** v-model：文件数组 */
       value: {
@@ -128,6 +133,8 @@
         allowedExt: [
           'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
           'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv',
+          // WPS 文字 / 表格 / 演示与国产版式文档：预览交给 kkFileView，上传白名单也要放行
+          'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
           'rar', 'zip', '7z', 'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
           'mp4', 'avi', 'mov', 'wmv'
         ],
@@ -144,7 +151,7 @@
         })
       },
       allowedExtText () {
-        return 'pdf / doc(x) / xls(x) / ppt(x) / 图片 / dwg / shp / zip / rar 等'
+        return 'pdf / doc(x) / xls(x) / ppt(x) / wps / et / dps / ofd / 图片 / dwg / shp / zip / rar 等'
       },
       totalSizeText () {
         const total = (this.value || []).reduce((sum, item) => sum + (Number(item.fileSize) || 0), 0)
@@ -250,13 +257,64 @@
         }
         return item.storePath === record.storePath
       },
+      /**
+       * 文件名点击 → 在线预览。
+       *
+       * ★ 已保存的文件必须先调 previewInfo：后端在这里写「预览」操作记录，
+       *   同时给出权威的 previewMode。不能拿列表行的字段直接开窗口，
+       *   否则操作记录里看不到预览行为，预览方式也可能与后端白名单不一致。
+       * ★ 临时文件（刚上传还没落库）没有 id，只能按 storePath 拼静态地址，
+       *   预览方式用前端兜底。
+       */
       handlePreview (record) {
+        if (!record) {
+          return
+        }
+        if (!record.id) {
+          this.openPreview(record)
+          return
+        }
+        queryArchiveFilePreview(record.id).then(res => {
+          if (res && res.success && res.result) {
+            this.openPreview(record, res.result)
+          } else {
+            this.$message.warning((res && res.message) || '取预览信息失败，文件可能已被删除')
+          }
+        }).catch(e => {
+          this.$message.error((e && e.message) || '取预览信息失败')
+        })
+      },
+      /** @param {object} record 表格行；@param {object} [info] previewInfo 返回的文件信息 */
+      openPreview (record, info) {
+        const source = info || {}
+        const storePath = source.url || record.url || record.storePath
+        const url = getFileAccessHttpUrl(storePath)
+        const modal = this.$refs.previewModal
+        if (!modal) {
+          this.$message.warning('预览组件未就绪，请稍后重试')
+          return
+        }
+        modal.open({
+          fileName: source.fileName || record.fileName,
+          fileExt: source.fileExt || record.fileExt,
+          fileSize: source.fileSize || record.fileSize,
+          readableSize: source.readableSize || record.readableSize,
+          previewMode: source.previewMode || resolvePreviewMode(record.fileExt || record.fileName),
+          url: url,
+          // 已保存文件走后端流式下载（会写「下载」操作记录）；临时文件直接开静态地址
+          downloadUrl: record.id
+            ? buildDownloadUrl(archiveUrl.fileDownload, { id: record.id })
+            : url
+        })
+      },
+      /** 操作列的「下载」：保持原有逻辑，与预览分开 */
+      handleDownload (record) {
         // 已保存的文件走后端下载接口（会写「下载」操作记录）；新上传的还没落库，走静态地址
         if (record.id) {
           window.open(buildDownloadUrl(archiveUrl.fileDownload, { id: record.id }), '_blank')
           return
         }
-        const url = record.url ? getFileAccessHttpUrl(record.url) : getFileAccessHttpUrl(record.storePath)
+        const url = getFileAccessHttpUrl(record.url || record.storePath)
         if (url) {
           window.open(url, '_blank')
         }

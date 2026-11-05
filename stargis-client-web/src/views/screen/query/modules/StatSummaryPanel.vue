@@ -11,12 +11,6 @@
       必须同源，否则中心对账时会出现「同一个指标三个值」。
   -->
   <screen-panel class="stat-summary" title="分析结果" scrollable>
-    <template #extra>
-      <span class="stat-summary__hint">
-        <screen-icon name="info" :size="13" />
-        口径与旧系统一致：经营性用地按配套名称去重、各环节为漏斗；配套项目按条计
-      </span>
-    </template>
 
     <div v-if="loading" class="stat-summary__loading">
       <screen-loading inline text="正在统计…" />

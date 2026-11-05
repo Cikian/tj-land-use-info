@@ -269,8 +269,8 @@ export function archiveStatusTone (status) {
 /* ============================ 前端下载/跳转链接 ============================ */
 
 /**
- * 台账 → 档案查询页的下钻链接（双向跳转的「台账 → 档案」方向）。
- * 大屏的档案查询页（ArchiveQuery）读 $route.query 作为初始条件，
+ * 台账 → 档案页的下钻链接（双向跳转的「台账 → 档案」方向）。
+ * 大屏的档案页（ArchiveMaintain，原 ArchiveQuery 已并入）读 $route.query 作为初始条件，
  * 带上档案号即可；没有档案号时退化为按配套项目名过滤。
  */
 export function archiveQueryUrl (record) {

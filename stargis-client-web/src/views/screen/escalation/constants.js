@@ -73,8 +73,12 @@ export const RECORD_QUICK_PHRASES = ['同意', '基本同意', '请补充材料'
 
 /** 材料上传白名单与上限（设计文档 3.2 第 9 条 / Q5：50MB） */
 export const MATERIAL_MAX_SIZE_MB = 50
-export const MATERIAL_ALLOWED_EXT = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']
-export const MATERIAL_ALLOWED_EXT_TEXT = 'pdf / doc / docx / jpg / jpeg / png'
+export const MATERIAL_ALLOWED_EXT = [
+  'pdf', 'doc', 'docx', 'xls', 'xlsx',
+  'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
+  'jpg', 'jpeg', 'png',
+]
+export const MATERIAL_ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / wps / et / dps / ofd / jpg / png'
 
 /** 台账顶部状态页签（'all' 是「全部」，其余取 STATUS_OPTIONS） */
 export const STATUS_TABS = ['all'].concat(STATUS_OPTIONS)

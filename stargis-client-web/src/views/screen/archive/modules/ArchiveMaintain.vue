@@ -6,13 +6,27 @@
     新增/编辑弹窗里的配套项目只能从已有记录里选，不能手工输入新项目名；
     所有写操作都会在后端写 t_archive_log 操作记录（详情页「操作记录」页签可查）。
 
+    ★ 本组件同时承担方案 2.3.2 第 3 项「档案查询」：
+      原 ArchiveQuery.vue 与本组件共用同一套检索条件、同一个列表、同一个接口，
+      差别只有「只读 + 条件默认全展开 + 每页 20 条」，在大屏上属于同一个功能的两种用法，
+      因此合并成一个页签（侧栏少一个几乎一样的入口），查询能力一项没减：
+        · 检索条件仍是全部 13 项，点「展开更多条件」即可（默认只露 4 项常用条件）；
+        · 导出仍是同一份条件口径（按条件导出 ZIP）；
+        · 档案统计 / 台账 / 移交的下钻落点改到本页签（见 applyDrill / openDetailById）。
+      管理端的「档案查询」菜单**保留不动** —— 那里是权限边界（查询角色只有
+      land:archive:list + export，不该看到增删改），大屏端不做按钮级权限。
+
     布局：
       上排：检索条件（可折叠）
       下排：列表面板（工具条 + 表格 + 分页），列表吃掉剩余高度
   -->
   <div class="archive-maintain">
     <screen-panel class="archive-maintain__search" title="档案检索" collapsible>
-      <archive-search-form ref="search" @search="handleSearch" />
+      <archive-search-form
+        ref="search"
+        :initial-query="searchInitialQuery"
+        @search="handleSearch"
+      />
     </screen-panel>
 
     <screen-panel class="archive-maintain__list" title="档案列表">
@@ -93,6 +107,7 @@ import ArchiveFormModal from './ArchiveFormModal.vue'
 import ArchiveDetailModal from './ArchiveDetailModal.vue'
 import {
   queryArchiveList,
+  queryArchiveById,
   deleteArchive,
   deleteArchiveBatch,
   exportArchiveZip,
@@ -110,6 +125,13 @@ export default {
     ArchiveFormModal,
     ArchiveDetailModal,
   },
+  props: {
+    /**
+     * 外部（统计页下钻 / 台账与移交点「查看档案」/ 路由 query）带进来的初始条件。
+     * 只有首次创建时生效；组件已被 keep-alive 缓存后由父级调 applyDrill。
+     */
+    initialQuery: { type: Object, default: () => ({}) },
+  },
   data () {
     return {
       loading: false,
@@ -120,8 +142,29 @@ export default {
       pagination: defaultPagination(10),
     }
   },
+  computed: {
+    /**
+     * 给检索表单的初始条件。
+     * ★ archiveId 是「直接打开某份档案详情」的深链参数（台账/移交点「查看档案」用），
+     *   不是检索条件 —— 混进表单会被「查询/导出」原样带给后端。
+     */
+    searchInitialQuery () {
+      const query = Object.assign({}, this.initialQuery || {})
+      delete query.archiveId
+      return query
+    },
+  },
   created () {
+    // archiveId 是「直接打开某份档案详情」的深链参数（台账/移交点「查看档案」用），
+    // 不是检索条件：从列表查询里摘掉，列表按普通条件加载；详情在 DOM 就绪后单独打开。
+    const initial = Object.assign({}, this.initialQuery || {})
+    const detailId = initial.archiveId
+    delete initial.archiveId
+    this.query = initial
     this.loadData()
+    if (detailId) {
+      this.$nextTick(() => this.openDetailById(detailId))
+    }
   },
   methods: {
     loadData () {
@@ -196,6 +239,55 @@ export default {
 
     handleDetail (record) {
       this.$refs.detailModal.open(record)
+    },
+
+    /**
+     * 按 id 直接打开档案详情（台账 / 移交点「查看档案」下钻用）。
+     *
+     * <p>★ 为什么不只传 archiveNo 让列表过滤：台账里点「查看档案」，用户要看的是
+     * 那份档案的卷内文件（并直接预览），不是「再筛一次列表、再点一行」。
+     * 这里按 id 拉详情并打开同一个 ArchiveDetailModal，少两步操作。
+     *
+     * <p>★ 为什么要有 _openingDetailId 去重：首次下钻时面板是新建的，
+     * created() 与父级的 handleDrill 会在相邻两个 tick 各调一次本方法（同一份档案），
+     * 不去重就会白拉两次详情、开两次弹窗。
+     */
+    openDetailById (id) {
+      if (!id) return
+      if (this._openingDetailId === id) return
+      this._openingDetailId = id
+      queryArchiveById(id)
+        .then((res) => {
+          if (!res || !res.success || !res.result) {
+            toast.error((res && res.message) || '打开档案详情失败')
+            return
+          }
+          this.$refs.detailModal.open(res.result)
+        })
+        .catch(() => {
+          toast.error('打开档案详情失败，请稍后重试')
+        })
+        .finally(() => {
+          this._openingDetailId = null
+        })
+    },
+
+    /**
+     * 按条件下钻（统计页「查看档案」/ 台账「查看档案」/ 路由 query 带条件进入）。
+     * 同时把条件写回检索表单，用户能看到是「按什么筛出来的」，
+     * 而不是面对一个结果被悄悄过滤却看不出原因的列表。
+     * @param {{ptxmmc?: string, crzdbh?: string, archiveNo?: string, facilityId?: string}} params
+     */
+    applyDrill (params) {
+      const query = Object.assign({}, params || {})
+      delete query.archiveId
+      this.query = query
+      this.pagination.current = 1
+      this.selectedRowKeys = []
+      if (this.$refs.search && this.$refs.search.setQuery) {
+        this.$refs.search.setQuery(query)
+      }
+      this.loadData()
     },
 
     handleDelete (record) {

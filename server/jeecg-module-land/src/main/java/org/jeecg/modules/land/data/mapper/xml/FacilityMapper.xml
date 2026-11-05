@@ -63,28 +63,9 @@
       selectWarningByProjectType / selectLandWarnings 已整体迁到
       stat/home/mapper/xml/HomeStatMapper.xml，本文件不再保留第二份口径。
 
-      下面保留的 selectWarningDetails 是「数据域」的预警明细查询（首页预警行点开看明细），
-      不属于看板聚合，因此没有随 dashboard 一起迁走。
+      原 selectWarningDetails（首页预警行「查看」的配套明细）同样已迁走，
+      换成 stat/home 的 selectWarningLands：它按宗地聚合、与预警行共用
+      warningRates，并且区级用 xzqh2 过滤（旧实现用 xzqh，区级点开永远是空表）。
     -->
-
-    <select id="selectWarningDetails" resultType="org.jeecg.modules.land.data.entity.Facility">
-        SELECT f.*
-        FROM `t_supporting_facilities` f
-        JOIN `t_land` l ON l.`crzdbh` = f.`crzdbh`
-        WHERE l.`del_flag` = 0
-          AND COALESCE(f.`delFlag`, '0') = '0'
-          AND l.`xmfl` = #{xmfl}
-          AND l.`xzqh` = #{xzqh}
-          AND (
-            f.`xjpfsfwc` = '否'
-            OR f.`kypfsfwc` = '否'
-            OR f.`csjgspfsfwc` = '否'
-            OR f.`zjlsqk` = '未落实'
-            OR f.`sfkg` = '否'
-            OR f.`sfjg` = '否'
-            OR f.`sfyj` = '否'
-          )
-        ORDER BY f.`crzdbh`, f.`ptxmmc`
-    </select>
 
 </mapper>

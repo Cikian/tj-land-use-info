@@ -87,6 +87,7 @@ import java.util.stream.Collectors;
  *   GET    /land/archive/export            按当前条件导出 ZIP
  *   GET    /land/archive/logs              操作记录
  *   GET    /land/archive/file/list         某档案的卷内文件
+ *   GET    /land/archive/file/previewInfo  单个文件的预览信息（含预览方式，并写「预览」操作记录）
  *   GET    /land/archive/file/download     下载单个文件（写「下载」操作记录）
  *   DELETE /land/archive/file/delete       删除单个文件
  *   GET    /land/archive/relatedDocuments  该项目的收发文情况（详情页用）
@@ -366,6 +367,34 @@ public class ArchiveController {
     }
 
     /**
+     * 单个卷内文件的预览信息。
+     *
+     * <p><b>为什么不让前端直接拿 storePath 拼静态地址</b>：
+     * <ol>
+     *   <li>方案要求「记录相关操作」，预览也要落一条 {@code t_archive_log}（action=预览）；</li>
+     *   <li>预览方式（image / pdf / office / text / archive / cad / media / online）必须由后端统一判定——
+     *       前端另猜一套扩展名白名单，迟早出现「档案页说能看、收发文说不能看」；</li>
+     *   <li>返回相对 {@code storePath}（{@code url} 字段），前端按部署环境拼静态地址，
+     *       后端不把域名/磁盘路径写死。</li>
+     * </ol>
+     *
+     * <p>操作记录采用「打开预览即记一条」的口径：用户每打开一次预览弹窗调用一次。
+     * 记录失败不会影响预览（ArchiveLogService 内部吞异常）。
+     */
+    @ApiOperation(value = "档案-文件预览信息", notes = "返回 previewMode 与相对 url，并写一条「预览」操作记录")
+    @RequiresPermissions(PERM_LIST)
+    @GetMapping(value = "/file/previewInfo")
+    public Result<ArchiveFile> filePreviewInfo(@RequestParam(name = "id", required = true) String id) {
+        ArchiveFile file = archiveFileService.queryFileById(id);
+        if (file == null) {
+            return Result.error("文件不存在或已被删除");
+        }
+        archiveLogService.record(file.getArchiveId(), file.getId(), ArchiveLog.ACTION_PREVIEW,
+                "预览文件「" + file.getFileName() + "」", file.getCategoryName());
+        return Result.OK(file);
+    }
+
+    /**
      * 下载单个卷内文件。
      *
      * <p><b>安全约定</b>：只接受 fileId，磁盘路径由服务端查库 + 前缀校验得到，
@@ -497,3 +526,4 @@ public class ArchiveController {
         }
     }
 }
+

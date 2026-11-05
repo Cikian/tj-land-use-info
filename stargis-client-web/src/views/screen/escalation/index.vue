@@ -31,11 +31,6 @@
         <i class="escalation-screen__nav-bar" aria-hidden="true" />
         <span class="escalation-screen__nav-text">{{ tab.label }}</span>
       </button>
-
-      <span class="escalation-screen__tip">
-        <screen-icon name="info" :size="13" />
-        论证流程在线下办理，系统只做登记与台账留存；意见记录只增不改不删
-      </span>
     </nav>
 
     <!-- ========== 内容区 ========== -->

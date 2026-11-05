@@ -47,6 +47,11 @@ public interface IFacilityService extends IService<Facility> {
      */
     void updateFacility(Facility facility);
 
-    /** 首页预警行的配套项目明细。 */
-    List<Facility> queryWarningDetails(String projectType, String district);
+    /**
+     * 说明：首页预警行的「查看」明细已迁到统计域，
+     * 见 {@code IHomeStatService#queryWarningLands(String, String)} /
+     * {@code GET /land/stat/home/warningDetail}。
+     * 旧实现在这里按 {@code l.xzqh} 过滤，而区级预警的分组列是 {@code xzqh2}，
+     * 区级点「查看」必然空表 —— 迁走后与预警行共用同一套分组列与比率口径。
+     */
 }

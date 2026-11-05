@@ -353,7 +353,7 @@ export const constantRouterMap = [
     component: () => import(/* webpackChunkName: "user" */ '@/views/screen/index')
   },
   // 档案管理深链：直接落到大屏的「档案管理」整页模块。
-  // 支持 ?tab=maintain|query|statistics|category 指定初始页签，
+  // 支持 ?tab=maintain|statistics|handover|ledger|completion|doc|category 指定初始页签，
   // 也支持 ?map=0 关闭 Cesium 便于无地图服务时预览界面。
   // 说明：这里与 /screen 共用同一个组件，页面内部按 path 判断要高亮哪个顶栏导航项，
   //       因此不需要额外维护一份布局。

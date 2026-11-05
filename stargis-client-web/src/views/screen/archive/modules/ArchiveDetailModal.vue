@@ -46,14 +46,14 @@
         <screen-tag v-if="detail" tone="info" size="sm">{{ files.length }} 个卷内文件</screen-tag>
       </div>
 
-      <screen-button
-        size="sm"
-        icon="edit"
-        :disabled="!detail"
-        @click="handleEdit"
-      >
-        编辑
-      </screen-button>
+<!--      <screen-button-->
+<!--        size="sm"-->
+<!--        icon="edit"-->
+<!--        :disabled="!detail"-->
+<!--        @click="handleEdit"-->
+<!--      >-->
+<!--        编辑-->
+<!--      </screen-button>-->
 
       <screen-button
         size="sm"
@@ -67,7 +67,7 @@
       <!--
         反向闭环：从档案跳到「同一配套项目/宗地下」的方案 2.3.2 第 6/7/8 项页面。
         用路由跳转而不是事件穿透：这些页面是档案模块的兄弟页签，
-        档案详情又被「档案维护」「档案查询」两个面板复用，逐层 $emit 要改 4 个文件；
+        档案详情被多个面板复用（维护页、台账、移交…），逐层 $emit 要改 4 个文件；
         改走路由后，页签切换与条件下发由 archive/index.vue 的 `$route.query` watcher 统一处理。
         没有关联项目的档案（facilityId 与 crzdbh 都为空）不显示按钮，避免跳过去看到空列表。
       -->
@@ -174,7 +174,7 @@
               </template>
 
               <template #fileName="{ row }">
-                <button type="button" class="archive-detail__link" @click="downloadFile(row)">
+                <button type="button" class="archive-detail__link" @click="previewFile(row)">
                   {{ row.fileName }}
                 </button>
                 <span v-if="row.fileTitle && row.fileTitle !== row.fileName" class="archive-detail__sub">
@@ -276,6 +276,9 @@
         </div>
       </screen-loading>
     </div>
+
+    <!-- 文件预览：图片/PDF 直连静态资源，Office/WPS 走 kkFileView -->
+    <file-preview-modal ref="previewModal" />
   </screen-modal>
 </template>
 
@@ -294,6 +297,7 @@ import {
   queryArchiveById,
   queryArchiveLogs,
   queryRelatedDocuments,
+  queryArchiveFilePreview,
   buildJavaDownloadUrl,
   archiveUrl,
 } from '@/api/land/archive'
@@ -306,6 +310,8 @@ import {
   archiveTypeText,
   sourceTypeText,
 } from '../constants'
+import { getJavaFileAccessHttpUrl } from '@/api/manageJava'
+import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
 
 /** 操作记录里不同动作对应的标签语气 */
 function logActionTone (action) {
@@ -335,6 +341,7 @@ export default {
     ScreenDescriptions,
     ScreenButton,
     ScreenLoading,
+    FilePreviewModal
   },
   data () {
     return {
@@ -552,6 +559,43 @@ export default {
     },
 
     /* ---------------- 操作 ---------------- */
+
+    /**
+     * 预览卷内文件。
+     * ★ 调 `/file/previewInfo` 而不是直接拼静态地址：后端会统一判定
+     *   previewMode（Office/WPS 走 kkFileView），并写一条「预览」操作记录。
+     *   下载仍走操作列的「下载」按钮，两个入口分开，服务端的下载次数才准。
+     */
+    previewFile (row) {
+      if (!row || !row.id) {
+        toast.warning('该文件还没保存，请先保存档案')
+        return
+      }
+      queryArchiveFilePreview(row.id)
+        .then((res) => {
+          if (!res || !res.success) {
+            toast.error((res && res.message) || '取预览信息失败')
+            return
+          }
+          const info = res.result || {}
+          const url = getJavaFileAccessHttpUrl(info.url)
+          if (!url) {
+            toast.warning('该文件还没有可访问的地址')
+            return
+          }
+          this.$refs.previewModal.open({
+            fileName: info.fileName || row.fileName,
+            fileExt: info.fileExt || row.fileExt,
+            fileSize: info.fileSize || row.fileSize,
+            previewMode: info.previewMode,
+            url,
+            downloadUrl: buildJavaDownloadUrl(archiveUrl.fileDownload, { id: info.id })
+          })
+        })
+        .catch(() => {
+          toast.error('取预览信息失败，请稍后重试')
+        })
+    },
 
     /** 已落库的文件走下载接口，服务端会记录「下载」操作 */
     downloadFile (row) {

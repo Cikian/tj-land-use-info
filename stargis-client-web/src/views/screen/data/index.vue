@@ -43,11 +43,6 @@
         <i class="data-screen__nav-bar" aria-hidden="true" />
         <span class="data-screen__nav-text">{{ tab.label }}</span>
       </button>
-
-      <span class="data-screen__tip">
-        <screen-icon name="info" :size="13" />
-        移除是软删，可在「数据更新与移除」里恢复；所有写操作都会留下字段级变更履历
-      </span>
     </nav>
 
     <!-- ========== 内容区 ========== -->
@@ -136,9 +131,9 @@ export default {
     return {
       activeTab: PANELS[this.defaultTab] ? this.defaultTab : 'land',
       tabs: [
+        { key: 'land', label: '经营性用地信息' },
+        { key: 'facility', label: '配套项目信息' },
         { key: 'landImport', label: '经营性用地批量导入' },
-        { key: 'land', label: '经营性用地信息录入' },
-        { key: 'facility', label: '配套地块数据录入' },
         { key: 'facilityImport', label: '配套信息批量导入' },
         { key: 'attachment', label: '配套附件管理' },
         { key: 'recycle', label: '数据更新与移除' }

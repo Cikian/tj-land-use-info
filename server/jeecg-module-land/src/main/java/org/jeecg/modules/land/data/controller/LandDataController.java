@@ -206,15 +206,12 @@ public class LandDataController {
      *   GET /land/stat/home/pendingFacility
      * </pre>
      * data 域不再保留第二份看板实现，避免两处口径各自演化。
+     *
+     * <p>同理，原来的 {@code /facility/warning/detail}（首页预警行「查看」）也已迁走，
+     * 换成 {@code GET /land/stat/home/warningDetail}：旧实现按 {@code l.xzqh} 过滤，
+     * 而区级预警的分组列是 {@code xzqh2} —— 区级点「查看」永远查不到数据；
+     * 迁到 stat/home 后与预警行共用同一个 {@code warningRates} 片段与同一套分组列。
      */
-
-    @AutoLog(value = "数据管理-首页预警明细")
-    @ApiOperation(value = "首页预警明细", notes = "某个行政区下未完成的配套项目")
-    @GetMapping(value = "/facility/warning/detail")
-    public Result<List<Facility>> warningDetail(@RequestParam(name = "projectType") String projectType,
-                                                @RequestParam(name = "district") String district) {
-        return Result.OK(facilityService.queryWarningDetails(projectType, district));
-    }
 
     @AutoLog(value = "经营性用地-分页列表")
     @ApiOperation(value = "经营性用地-分页列表")

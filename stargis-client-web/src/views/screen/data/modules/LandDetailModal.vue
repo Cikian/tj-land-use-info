@@ -235,6 +235,7 @@
           </template>
         </screen-data-table>
       </screen-modal>
+      <attachment-preview-modal ref="previewModal" />
     </div>
   </screen-modal>
 </template>
@@ -254,6 +255,7 @@ import { toast } from '@/components/screen/toast'
 import { queryLandAdminById, queryLandHistory } from '@/api/land/landAdmin'
 import { queryAttachmentTree, buildAttachmentDownloadUrl } from '@/api/land/attachment'
 import AttachmentTreeView from './AttachmentTreeView.vue'
+import AttachmentPreviewModal from './AttachmentPreviewModal.vue'
 import { actionTone, formatTime, formatSize, joinInfo } from '../constants'
 
 /** 履历表格里展示的时间格式（后端给的是 yyyy-MM-dd HH:mm:ss） */
@@ -272,7 +274,8 @@ export default {
     ScreenButton,
     ScreenLoading,
     ScreenEmpty,
-    AttachmentTreeView
+    AttachmentTreeView,
+    AttachmentPreviewModal
   },
   data () {
     return {
@@ -481,7 +484,13 @@ export default {
      * 详情页不内嵌预览弹窗，避免与附件管理页出现两套预览实现。
      */
     previewAttachment (row) {
-      this.downloadAttachment(row)
+      // 详情页与「配套附件管理」共用同一个预览弹窗：图片/PDF/文本直接看，
+      // Office/WPS 走 kkFileView。以前这里直接下载，用户以为「预览按钮坏了」。
+      if (!row || !row.id) {
+        toast.warning('该附件还没有落库，无法预览')
+        return
+      }
+      this.$refs.previewModal.open(row)
     },
 
     loadHistory (id) {

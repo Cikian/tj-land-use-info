@@ -269,6 +269,7 @@
           </template>
         </screen-data-table>
       </screen-modal>
+      <attachment-preview-modal ref="previewModal" />
     </div>
   </screen-modal>
 </template>
@@ -288,6 +289,7 @@ import {
 import { toast } from '@/components/screen/toast'
 import ProcessTreePanel from './ProcessTreePanel.vue'
 import AttachmentTreeView from './AttachmentTreeView.vue'
+import AttachmentPreviewModal from './AttachmentPreviewModal.vue'
 import { queryFacilityAdminById } from '@/api/land/facilityAdmin'
 import { queryAttachmentTree, buildAttachmentDownloadUrl } from '@/api/land/attachment'
 import { queryChangeHistory } from '@/api/land/dataRecycle'
@@ -327,7 +329,8 @@ export default {
     ScreenEmpty,
     ScreenPopconfirm,
     ProcessTreePanel,
-    AttachmentTreeView
+    AttachmentTreeView,
+    AttachmentPreviewModal
   },
   data () {
     return {
@@ -587,14 +590,16 @@ export default {
 
     /**
      * 预览附件。
-     * ★ 详情页没有内嵌预览弹窗（那是附件管理页的职责），
-     *   所以这里复用「下载」打开同一个地址：浏览器能直接渲染的
-     *   （图片 / PDF）会当场显示，不能渲染的（dwg / zip）会走下载 ——
-     *   对用户来说「点一下就看到内容」这个预期是满足的。
-     *   不新引一个预览弹窗，是为了避免详情页与附件管理两套预览实现。
+     * ★ 详情页与「配套附件管理」共用同一个预览弹窗（AttachmentPreviewModal）：
+     *   图片/PDF/文本直接看，Office/WPS 走 kkFileView。
+     *   以前这里直接调下载，用户点「预览」却只得到下载，以为按钮坏了。
      */
     previewAttachment (row) {
-      this.downloadAttachment(row)
+      if (!row || !row.id) {
+        toast.warning('该附件还没有落库，无法预览')
+        return
+      }
+      this.$refs.previewModal.open(row)
     },
 
     handleHistoryRowClick (row) {

@@ -1,6 +1,7 @@
 package org.jeecg.modules.land.archive.document.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -87,4 +88,25 @@ public class DocAttachment implements Serializable {
     /** 删除状态 0正常 1已删除 */
     @TableLogic
     private Integer delFlag;
+
+    // ------------------------------------------------------------------
+    // 非表字段（Service 查询时补齐，供大屏 / 管理端直接渲染）
+    // ------------------------------------------------------------------
+
+    /** 前端拼静态资源地址用的相对路径（与 storePath 同值，语义更明确） */
+    @TableField(exist = false)
+    private String url;
+
+    /** 可读文件大小，如 5.7 MB */
+    @TableField(exist = false)
+    private String readableSize;
+
+    /** 预览方式：image / pdf / office / text / archive / cad / media / online（由 FilePreviewUtils 统一判定） */
+    @TableField(exist = false)
+    private String previewMode;
+
+    /** 是否可以在线预览 */
+    @TableField(exist = false)
+    private Boolean previewable;
 }
+

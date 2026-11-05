@@ -10,6 +10,7 @@ import org.jeecg.modules.land.stat.home.vo.LandOverviewVO;
 import org.jeecg.modules.land.stat.home.vo.PendingFacilityVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -47,6 +48,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       的「已竣工」不能算完成；</li>
  *   <li>{@link #actionableConditionExcludesCurrentStateAndNotInvolved()} ——
  *       「现状 / 不涉及」不计入需落实配套。</li>
+ *   <li>{@link #districtWarningDetailFiltersByXzqh2NotXzqh()} —— 区级预警下钻
+ *       必须按 {@code xzqh2} 过滤（旧实现用 xzqh，区级点「查看」永远是空表）；</li>
+ *   <li>{@link #warningRatesIgnoreDeletedFacility()} —— 预警的分子分母都要排除
+ *       已移除的配套（D-613）。</li>
  * </ul>
  */
 public class HomeStatTest extends LandIntegrationTestBase {
@@ -283,8 +288,138 @@ public class HomeStatTest extends LandIntegrationTestBase {
     }
 
     // ==================================================================
+    // 四、预警下钻（操作 → 查看）与预警的软删口径
+    // ==================================================================
+
+    /**
+     * 预警下钻：某行政区下逐宗地的 7 项未完成率。
+     *
+     * <p>对应旧系统 {@code byPageQuery}：点预警行的「查看」，弹出的
+     * 「地块预警信息」表里一行 = 一宗地，比率 = 该宗地「否」条数 / 该宗地配套条数。
+     */
+    @Test
+    public void warningDetailReturnsPerLandRates() {
+        String tag = uniqueTag();
+        String xzqh = TEST_PREFIX + "下钻区-" + tag;
+        String crzdbh = TEST_PREFIX + "wd-" + tag;
+        landAdminService.createLand(buildLand(crzdbh, "下钻测试地", "市级项目", xzqh, null), null);
+
+        // 两条配套：一条「项建批复=否」、一条「=是」 → 该宗地未完成率应为 1/2 = 50.00%
+        // ⚠ 不能写成 buildFacility(...).setXjpfsfwc(...)：该 setter 继承自 Facility，
+        //   返回 void（@Accessors(chain) 只作用于 DTO 自己声明的字段）
+        FacilitySaveDTO noXjpf = buildFacility(crzdbh, TEST_PREFIX + "下钻否-" + tag, "新建", "否", "否");
+        noXjpf.setXjpfsfwc("否");
+        facilityAdminService.createFacility(noXjpf, null);
+        FacilitySaveDTO yesXjpf = buildFacility(crzdbh, TEST_PREFIX + "下钻是-" + tag, "新建", "否", "否");
+        yesXjpf.setXjpfsfwc("是");
+        facilityAdminService.createFacility(yesXjpf, null);
+
+        List<PendingFacilityVO.WarningItem> rows = homeStatService.queryWarningLands("city", xzqh);
+
+        PendingFacilityVO.WarningItem row = findByLandNo(rows, storedCode(crzdbh));
+        assertNotNull(row, "★ 下钻必须能按 xzqh 找到市级宗地（找不到 = 分组列用错）：" + xzqh);
+        assertEquals(2L, row.getFacilityCount(), "分母是该宗地下的配套条数");
+        assertEquals(0, new BigDecimal("50.00").compareTo(row.getLandAcquisition()),
+                "★ 两条配套里一条项建未完成 → 50.00%，实际 " + row.getLandAcquisition());
+        assertEquals("市级项目", row.getProjectType(), "下钻行要带项目分类，前端按它选 5 档/3 档阈值");
+    }
+
+    /**
+     * 区级下钻必须按 {@code xzqh2} 过滤，不是 {@code xzqh}。
+     *
+     * <p>★ 这是旧系统 {@code byPageQuery} 与预警行分组列的一致性要求：
+     * 区级预警行是按 {@code xzqh2} 分组的，若下钻用 {@code xzqh} 过滤，
+     * 用户点开「咸水沽镇」这一行会得到空表（实测区级 632 条里两列一致的只有 352 条）。
+     */
+    @Test
+    public void districtWarningDetailFiltersByXzqh2NotXzqh() {
+        String tag = uniqueTag();
+        String xzqh = TEST_PREFIX + "区级真区-" + tag;
+        String xzqh2 = TEST_PREFIX + "区级街镇-" + tag;
+        String crzdbh = TEST_PREFIX + "wd-qj-" + tag;
+        landAdminService.createLand(buildLand(crzdbh, "区级下钻测试地", "区级项目", xzqh, xzqh2), null);
+        facilityAdminService.createFacility(buildFacility(crzdbh,
+                TEST_PREFIX + "区级下钻配套-" + tag, "新建", "否", "否"), null);
+
+        List<PendingFacilityVO.WarningItem> byXzqh2 = homeStatService.queryWarningLands("district", xzqh2);
+        assertNotNull(findByLandNo(byXzqh2, storedCode(crzdbh)),
+                "★ 区级下钻必须按 xzqh2 命中：" + xzqh2);
+
+        List<PendingFacilityVO.WarningItem> byXzqh = homeStatService.queryWarningLands("district", xzqh);
+        assertNull(findByLandNo(byXzqh, storedCode(crzdbh)),
+                "★ 区级下钻不能按 xzqh 命中（旧实现的 bug）：" + xzqh);
+    }
+
+    /**
+     * 预警的分子分母都要排除已移除（软删）的配套。
+     *
+     * <p>★ D-613：旧系统 {@code editWarningMsgLand} 查配套时没带软删条件，
+     * 被移除的配套仍留在分母里，把未完成率摊薄。本实现补上了过滤，
+     * 这条用例把「补丁真的生效」钉住。
+     */
+    @Test
+    public void warningRatesIgnoreDeletedFacility() {
+        String tag = uniqueTag();
+        String xzqh = TEST_PREFIX + "软删区-" + tag;
+        String crzdbh = TEST_PREFIX + "wd-del-" + tag;
+        landAdminService.createLand(buildLand(crzdbh, "软删口径测试地", "市级项目", xzqh, null), null);
+
+        FacilitySaveDTO noXjpf = buildFacility(crzdbh, TEST_PREFIX + "软删否-" + tag, "新建", "否", "否");
+        noXjpf.setXjpfsfwc("否");
+        facilityAdminService.createFacility(noXjpf, null);
+        FacilitySaveDTO yesXjpf = buildFacility(crzdbh, TEST_PREFIX + "软删是-" + tag, "新建", "否", "否");
+        yesXjpf.setXjpfsfwc("是");
+        facilityAdminService.createFacility(yesXjpf, null);
+
+        // 移除那条「否」的配套（软删：delFlag='1'，列名是驼峰）
+        new JdbcTemplate(dataSource).update(
+                "UPDATE `t_supporting_facilities` SET `delFlag` = '1' WHERE `crzdbh` = ? AND `ptxmmc` = ?",
+                storedCode(crzdbh), TEST_PREFIX + "软删否-" + tag);
+
+        List<PendingFacilityVO.WarningItem> rows = homeStatService.queryWarningLands("city", xzqh);
+        PendingFacilityVO.WarningItem row = findByLandNo(rows, storedCode(crzdbh));
+        assertNotNull(row, "还有一条未删除的配套，该宗地仍应出现在下钻结果里");
+        assertEquals(1L, row.getFacilityCount(), "★ 分母只算未删除的配套");
+        assertEquals(0, BigDecimal.ZERO.compareTo(row.getLandAcquisition()),
+                "★ 剩下那条是「是」，未完成率应为 0.00%，实际 " + row.getLandAcquisition());
+
+        // 聚合行（市级预警表）也必须跟着排除：否则「行里 0%、点开 0%」但汇总仍是 50%
+        PendingFacilityVO.WarningItem aggregate = findByDistrict(
+                homeStatService.queryPendingFacility().getWarnings().get("city"), xzqh);
+        assertNotNull(aggregate, "测试区应出现在市级预警表里");
+        assertEquals(0, BigDecimal.ZERO.compareTo(aggregate.getLandAcquisition()),
+                "★ 市级预警行同样要排除软删配套，实际 " + aggregate.getLandAcquisition());
+    }
+
+    // ==================================================================
     // 辅助
     // ==================================================================
+
+    private static PendingFacilityVO.WarningItem findByLandNo(
+            List<PendingFacilityVO.WarningItem> rows, String landNo) {
+        if (rows == null) {
+            return null;
+        }
+        for (PendingFacilityVO.WarningItem item : rows) {
+            if (landNo.equals(item.getLandNo())) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    private static PendingFacilityVO.WarningItem findByDistrict(
+            List<PendingFacilityVO.WarningItem> rows, String district) {
+        if (rows == null) {
+            return null;
+        }
+        for (PendingFacilityVO.WarningItem item : rows) {
+            if (district.equals(item.getDistrict())) {
+                return item;
+            }
+        }
+        return null;
+    }
 
     private static void assertWarningItems(List<PendingFacilityVO.WarningItem> items, String key) {
         if (items == null) {

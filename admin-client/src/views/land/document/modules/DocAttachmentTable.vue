@@ -26,7 +26,7 @@
       :locale="{ emptyText: disabled ? '该公文没有附件' : '还没有附件' }">
       <template slot="index" slot-scope="text, record, index">{{ index + 1 }}</template>
       <template slot="fileName" slot-scope="text, record">
-        <a @click="handleDownload(record)">{{ text }}</a>
+        <a @click="handlePreview(record)">{{ text }}</a>
       </template>
       <template slot="fileSize" slot-scope="text, record">
         {{ record.readableSize || formatSize(text) }}
@@ -41,6 +41,9 @@
         </template>
       </template>
     </a-table>
+
+    <!-- 附件预览：图片/PDF 直连静态资源，Office/WPS 走 kkFileView -->
+    <archive-file-preview-modal ref="previewModal" />
   </div>
 </template>
 
@@ -48,6 +51,7 @@
   import Vue from 'vue'
   import { ACCESS_TOKEN } from '@/store/mutation-types'
   import { getFileAccessHttpUrl } from '@/api/manage'
+  import ArchiveFilePreviewModal from '@/views/land/archive/modules/ArchiveFilePreviewModal'
 
   /**
    * 收发文附件表格（含上传）
@@ -59,6 +63,7 @@
    */
   export default {
     name: 'DocAttachmentTable',
+    components: { ArchiveFilePreviewModal },
     props: {
       value: {
         type: Array,
@@ -81,7 +86,9 @@
         allowedExt: [
           'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
           'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv',
-          'rar', 'zip', '7z', 'wps', 'et', 'ofd', 'dwg', 'dxf', 'shp', 'dbf', 'shx',
+          // WPS 文字 / 表格 / 演示 + 国产版式文档：预览统一交 kkFileView，上传白名单同步放行
+          'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
+          'rar', 'zip', '7z', 'dwg', 'dxf', 'shp', 'dbf', 'shx',
           'mp4', 'avi', 'mov', 'wmv'
         ],
         uploadAction: window._CONFIG['domianURL'] + '/sys/common/upload',
@@ -95,7 +102,7 @@
         }))
       },
       allowedExtText () {
-        return 'pdf / doc(x) / xls(x) / 图片 / ofd / zip / rar 等'
+        return 'pdf / doc(x) / xls(x) / ppt(x) / wps / et / dps / ofd / 图片 / zip / rar 等'
       },
       columns () {
         const list = [
@@ -168,6 +175,32 @@
           return item.id === record.id
         }
         return item.storePath === record.storePath
+      },
+      /**
+       * 预览附件（文件名点击）。
+       * ★ previewMode 由后端 DocAttachmentServiceImpl 在详情查询时补齐；
+       *   刚上传还没保存的临时附件没有 previewMode，交给预览弹窗按扩展名兜底。
+       *   下载仍走操作列的「下载」，两个入口分开，避免「点预览却下载」。
+       */
+      handlePreview (record) {
+        const raw = record && (record.url || record.storePath)
+        if (!raw) {
+          this.$message.warning('该附件还没有可访问的地址')
+          return
+        }
+        const url = getFileAccessHttpUrl(raw)
+        if (!url) {
+          this.$message.warning('该附件还没有可访问的地址')
+          return
+        }
+        this.$refs.previewModal.open({
+          fileName: record.fileName,
+          fileExt: record.fileExt,
+          fileSize: record.fileSize,
+          previewMode: record.previewMode,
+          url,
+          downloadUrl: url
+        })
       },
       handleDownload (record) {
         // 已保存的附件走后端接口会带鉴权；这里统一用静态地址（jeecg 的 /sys/common/static 无需令牌）

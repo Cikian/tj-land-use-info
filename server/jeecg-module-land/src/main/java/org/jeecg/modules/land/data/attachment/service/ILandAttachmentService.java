@@ -220,18 +220,18 @@ public interface ILandAttachmentService {
     List<LandAttachment> enrichAll(List<LandAttachment> list);
 
     /**
-     * 预览方式（前端据此选打开方式）。
+     * 预览方式（**仅用于界面标签**；所有文件统一交 kkFileView 预览）。
      *
-     * @return {@code image} / {@code pdf} / {@code office} / {@code text} / {@code download}
+     * @return {@code image} / {@code pdf} / {@code office} / {@code text}
+     *         / {@code archive} / {@code cad} / {@code media} / {@code online}
      */
     String previewModeOf(String fileExt);
 
     /**
-     * 是否可以在浏览器里直接预览。
+     * 是否可以在线预览。
      *
-     * <p>★ 与 {@link #previewModeOf} 分开而不是「previewMode != download」：
-     * 将来若新增一种「只能用本机 Office 打开」的 {@code office} 之外的模式，
-     * 两个判断会分化；现在就写成显式判断，避免那天来改这个隐式等式。
+     * <p>★ 2026-10-22 起**恒为 true**：所有文件都交 kkFileView，
+     * 不支持的格式由 kkFileView 自己的错误页反馈，业务侧不再提前判死。
      */
     boolean previewableOf(String fileExt);
 }

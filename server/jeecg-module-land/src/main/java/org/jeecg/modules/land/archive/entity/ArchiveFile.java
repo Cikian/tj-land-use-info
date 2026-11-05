@@ -139,4 +139,19 @@ public class ArchiveFile implements Serializable {
     /** 便于列表展示的可读大小，如 5.7 MB */
     @TableField(exist = false)
     private String readableSize;
+
+    /**
+     * 预览方式：image / pdf / office / text / archive / cad / media / online。
+     *
+     * <p>★ 由后端按 {@code fileExt} 统一判定（见 {@code FilePreviewUtils}），
+     * 前端不要自己按扩展名猜——否则同一个文件在「档案维护」和「收发文」里
+     * 可能给出两种打开方式。
+     */
+    @TableField(exist = false)
+    private String previewMode;
+
+    /** 是否可以在线预览（false = 只能下载） */
+    @TableField(exist = false)
+    private Boolean previewable;
 }
+

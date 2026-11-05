@@ -53,6 +53,7 @@ export const SOURCE_TYPES = [
 export const ALLOWED_EXT = [
   'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf',
+  'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
   'txt', 'xml', 'md', 'csv',
   'rar', 'zip', '7z',
   'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
@@ -60,7 +61,7 @@ export const ALLOWED_EXT = [
 ]
 
 /** 卷内文件允许的扩展名的人类可读描述（上传提示文案） */
-export const ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / ppt(x) / 图片 / dwg / shp / zip / rar 等'
+export const ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / ppt(x) / wps / et / dps / ofd / 图片 / dwg / shp / zip / rar 等'
 
 /** 单文件大小上限（MB），与后端 multipart 上限一致 */
 export const MAX_SIZE_MB = 200
@@ -106,19 +107,19 @@ export const DOC_FLOW_ACTIONS = [
 
 /**
  * 收发文附件允许的扩展名。
- * 比档案的卷内文件多了 wps / et / ofd（国产办公与版式文件），
- * 因为公文附件里这三类很常见，而档案侧更偏工程图纸。
+ * 比档案的卷内文件多了完整的 WPS 系列（wps/wpt/et/ett/dps/dpt）与 ofd，
+ * 因为公文附件里这些很常见，而档案侧更偏工程图纸。
  */
 export const DOC_ALLOWED_EXT = [
   'gif', 'jpg', 'jpeg', 'png', 'bmp', 'webp',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv',
-  'rar', 'zip', '7z', 'wps', 'et', 'ofd', 'dwg', 'dxf',
+  'rar', 'zip', '7z', 'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd', 'dwg', 'dxf',
   'shp', 'dbf', 'shx',
   'mp4', 'avi', 'mov', 'wmv',
 ]
 
 /** 收发文附件扩展名的人类可读描述 */
-export const DOC_ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / 图片 / ofd / zip / rar 等'
+export const DOC_ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / wps / et / dps / 图片 / ofd / zip / rar 等'
 
 /* ============================ 选项构造 ============================ */
 
@@ -346,7 +347,7 @@ export function compactQuery (query) {
   return result
 }
 
-/** 分页默认配置（档案维护 / 档案查询共用） */
+/** 分页默认配置（档案列表通用；维护页 10 条/页） */
 export function defaultPagination (pageSize = 10) {
   return {
     current: 1,

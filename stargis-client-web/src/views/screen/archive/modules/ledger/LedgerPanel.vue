@@ -623,19 +623,22 @@ export default {
     },
 
     /**
-     * 台账 → 档案查询 的下钻（双向跳转的「台账 → 档案」方向）。
+     * 台账 → 档案 的下钻（双向跳转的「台账 → 档案」方向）。
      *
      * 走页签壳**已有的 drill 通道**：views/screen/archive/index.vue 上挂着
-     * `@drill="handleDrill"`，它会把条件写进 drillQuery、切到「档案查询」页签，
-     * 并调用档案查询面板的 applyDrill —— 于是这里不需要改任何共享文件就能跳过去，
+     * `@drill="handleDrill"`，它会把条件写进 drillQuery、切到「档案维护」页签
+     * （原「档案查询」页签已并入维护），并调用维护面板的 applyDrill ——
+     * 于是这里不需要改任何共享文件就能跳过去，
      * 而且用户能看到「是按什么筛出来的」，不是被悄悄过滤的列表。
      *
-     * 条件口径：优先按档案号（精确定位到用户点的那一卷档案），
-     * 没有档案号时退化为按配套项目名（看该项目的全部档案）。
+     * 条件口径：**优先用 archiveId 直接打开档案详情**（用户接下来要看卷内文件并预览，
+     * 不该再让他在列表里找一遍）；没有 id 时才退化为按档案号/项目名过滤列表。
      */
     handleOpenArchive (row) {
       if (!row) return
-      if (row.archiveNo) {
+      if (row.id) {
+        this.$emit('drill', { archiveId: row.id })
+      } else if (row.archiveNo) {
         this.$emit('drill', { archiveNo: row.archiveNo })
       } else if (row.ptxmmc) {
         this.$emit('drill', { ptxmmc: row.ptxmmc })
@@ -767,7 +770,7 @@ export default {
   }
 }
 
-// 列表标题栏按钮多，允许换行右对齐（与档案查询同一处理）
+// 列表标题栏按钮多，允许换行右对齐（与档案维护列表同一处理）
 .ledger-panel__list /deep/ .screen-panel__extra {
   flex-wrap: wrap;
   justify-content: flex-end;

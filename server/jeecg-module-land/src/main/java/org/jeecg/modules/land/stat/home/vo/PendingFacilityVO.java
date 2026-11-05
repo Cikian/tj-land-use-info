@@ -96,11 +96,28 @@ public class PendingFacilityVO implements Serializable {
         /** 行标识（市级/区级预警为「项目分类-区划」，地块预警为宗地 id） */
         private String id;
 
-        /** 行政区（区级为 xzqh2；地块预警为「区划 + 地块名称」） */
+        /** 行政区（区级为 xzqh2；地块预警为纯 xzqh，地块名称另有 plotName 列） */
         private String district;
 
         /** 该区级行政区在库里一条配套都没有时置 true（前端提示「未上报」） */
         private boolean unreported;
+
+        /**
+         * 项目分类：市级项目 / 区级项目。
+         *
+         * <p>为什么预警行要带它：前端按「市级 5 档、区级 3 档」两套阈值给百分比着色
+         * （旧系统 {@code GetColumn717} / {@code GetColumn0805}），
+         * 「地块预警信息」弹窗里市/区两级混在一张表里，只能逐行看分类才知道用哪套档位。
+         */
+        private String projectType;
+
+        /**
+         * 该行涉及的配套项目条数（分母）。
+         *
+         * <p>只有「按区下钻的宗地明细」会填（一行 = 一宗地）；
+         * 市区两级预警行填 0 —— 那里的分母是整区合计，单行没有意义。
+         */
+        private long facilityCount;
 
         /** 出让宗地编号（仅地块预警有） */
         private String landNo;

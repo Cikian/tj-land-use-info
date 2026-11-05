@@ -103,7 +103,7 @@
                 :locale="{ emptyText: '该档案还没有卷内文件' }">
                 <template slot="index" slot-scope="text, record, index">{{ index + 1 }}</template>
                 <template slot="fileName" slot-scope="text, record">
-                  <a @click="downloadFile(record)">{{ text }}</a>
+                  <a @click="handlePreview(record)">{{ text }}</a>
                   <div v-if="record.fileTitle && record.fileTitle !== text" class="archive-detail__muted">
                     题名：{{ record.fileTitle }}
                   </div>
@@ -178,12 +178,25 @@
         </a-tabs>
       </template>
     </a-spin>
+
+    <!-- 卷内文件预览：文件名点击走预览，操作列仍保留下载 -->
+    <archive-file-preview-modal ref="previewModal" />
   </a-modal>
 </template>
 
 <script>
-  import { queryArchiveById, queryArchiveLogs, queryRelatedDocuments, buildDownloadUrl, archiveUrl } from '@/api/land/archive'
+  import {
+    queryArchiveById,
+    queryArchiveLogs,
+    queryArchiveFilePreview,
+    queryRelatedDocuments,
+    buildDownloadUrl,
+    archiveUrl
+  } from '@/api/land/archive'
+  import { getFileAccessHttpUrl } from '@/api/manage'
+  import { resolvePreviewMode } from '@/api/land/filePreview'
   import { ledgerPageUrl } from '@/api/land/ledger'
+  import ArchiveFilePreviewModal from './ArchiveFilePreviewModal'
 
   /**
    * 档案详情（全屏弹窗）
@@ -195,6 +208,7 @@
    */
   export default {
     name: 'ArchiveDetailModal',
+    components: { ArchiveFilePreviewModal },
     data () {
       return {
         visible: false,
@@ -340,6 +354,53 @@
           }
         })
       },
+      /**
+       * 文件名点击 → 在线预览。
+       *
+       * ★ 详情页的文件都已落库（有 id），统一调 previewInfo：后端会写「预览」操作记录，
+       *   并返回权威的 previewMode 与相对 url；不要用列表里的旧字段拼地址。
+       */
+      handlePreview (record) {
+        if (!record) {
+          return
+        }
+        if (!record.id) {
+          this.openPreview(record)
+          return
+        }
+        queryArchiveFilePreview(record.id).then(res => {
+          if (res && res.success && res.result) {
+            this.openPreview(record, res.result)
+          } else {
+            this.$message.warning((res && res.message) || '取预览信息失败，文件可能已被删除')
+          }
+        }).catch(e => {
+          this.$message.error((e && e.message) || '取预览信息失败')
+        })
+      },
+      /** @param {object} record 表格行；@param {object} [info] previewInfo 返回的文件信息 */
+      openPreview (record, info) {
+        const source = info || {}
+        const storePath = source.url || record.url || record.storePath
+        const url = getFileAccessHttpUrl(storePath)
+        const modal = this.$refs.previewModal
+        if (!modal) {
+          this.$message.warning('预览组件未就绪，请稍后重试')
+          return
+        }
+        modal.open({
+          fileName: source.fileName || record.fileName,
+          fileExt: source.fileExt || record.fileExt,
+          fileSize: source.fileSize || record.fileSize,
+          readableSize: source.readableSize || record.readableSize,
+          previewMode: source.previewMode || resolvePreviewMode(record.fileExt || record.fileName),
+          url: url,
+          downloadUrl: record.id
+            ? buildDownloadUrl(archiveUrl.fileDownload, { id: record.id })
+            : url
+        })
+      },
+      /** 操作列的「下载」：保持原有逻辑，与预览分开 */
       downloadFile (record) {
         if (!record.id) {
           return

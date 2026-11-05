@@ -49,10 +49,10 @@
 
 > 落实配套情况的环形图在高保真里用的是红 `#e95b43` / 金 `#c99e54`（原切图
 > `assets/screen-blue/ring-fill-red.svg` / `ring-fill-gold.svg`），表示「未落实」，
-> 与出让情况的绿 / 青不是同一套语义，实现时按页签区分引用，不要统一。
+> 与出让情况的绿 / 青不是同一套语义，实现时按面板（左右两块统计）区分引用，不要统一。
 >
 > ⚠ 这两组切图的**弧长是写死的**（28% / 72%），只能当配色参考，**不要直接拿来显示占比**。
-> 首页左面板已改为内联 SVG + `stroke-dasharray` 现画（见 `HomeLeftPanel.vue` 的
+> 首页两块统计面板已改为内联 SVG + `stroke-dasharray` 现画（见 `HomeStatPanel.vue` 的
 > `ringColor / ringDash`）：画布 56×56、`r=26.25`、线宽 3.1，与 `ring-track.svg` 重合。
 
 全局工具类：`.stage-hit` —— `ScreenStage` 画布整体 `pointer-events: none`
@@ -70,7 +70,7 @@
 | --- | --- | --- |
 | `ScreenStage` | 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边） | `width` `height` `minDesignWidth` `maxScale` `minScale`；插槽 `map` / 默认；事件 `resize` |
 | `ScreenPanel` | 面板外框（标题栏 / 内容 / 底栏 / 折叠 / 四角装饰） | `title` `subTitle` `bar` `collapsible` `scrollable` `decorated` `variant` `flat` |
-| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
+| `ScreenHeader` | 顶栏（高保真切图 + 7 项导航 + 导航行内的实时时钟 + 用户区下拉） | `title` `menus` `activeMenu` `showClock` `showWeekday` `userName` `logoutText` `online`；事件 `menu-change` `logout` |
 | `ScreenMapStage` | 地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角） | `enabled` `showGrid` `showVignette` `showFrame` `status` |
 | `ScreenModal` | 弹窗（挂 body + 焦点陷阱 + 滚动锁；可选非模态：不压暗背景 + 可拖动） | `visible`(`.sync`) `title` `width` `size` `fullscreen` `maskClosable` `escClosable` `showFooter` `confirmLoading` `dimmed`(默认 `true`) `draggable`(默认 `false`)；事件 `drag-end({x,y})` |
 | `ScreenPickStage` | 「选取地块」模式（**不再隐藏页面**，只提供取消选择/选择完成两个按钮 + 提示） | `mapReady` `source` `title`；事件 `cancel` `done(geometry)` |
@@ -237,6 +237,14 @@ k  = clamp(min(视口高 / 1080, 视口宽 / minDesignWidth), minScale, maxScale
 | 比 16:9 更宽 | 宽 > 1920，高 = 1080 | 中间的**地图与属性表横向变宽**，两侧面板保持 400 不变 |
 | 比 16:9 更窄 | 宽 = 1920，高 > 1080 | 中间的**地图纵向变高**，各面板与属性表仍按定尺高度摆放 |
 
+> 首页两侧面板可折叠（`HomeSideRail` 的屏边把手）：折叠 = 面板整体**滑出屏幕**
+> （`translateX(±430)` = 面板宽 400 + 屏边 30），底部属性表的左右内缩同步从
+> 460 收到 30，两边都是 320ms 的同一套过渡。折叠**只会让中间变宽**，不影响
+> `minDesignWidth` 这条下限。
+> ⚠ 两侧那两张氛围蒙版（`.land-screen__vignette.is-left/is-right`）同时也是面板的暗底：
+> 面板滑走后必须让它一起淡出（`.is-folded`），否则屏幕两侧会留下两条与面板等量的
+> 暗带，看着像面板还挂着（只有首页版式跟着折叠，其它页面不受影响）。
+
 所以画布内组件的写法约定：
 
 - 靠左用 `left`、靠右用 `right`、靠上用 `top`、靠下用 `bottom`；
@@ -261,9 +269,10 @@ UI 画布缩放后与它完全重合，地图交互坐标也保持正确。
 ```
 
 `ScreenHeader` 内部同样只在可点击元素上开启 `pointer-events: auto`，
-因此顶部栏的空白处依旧可以拖动地图。顶栏的导航用「弹性收缩的 flex 行」实现
-（`left`/`right` 定边界 + 各项 `flex: 0 1 140px`），设计画布比 1920 窄时等比收窄，
-不会压到标题切图上。
+因此顶部栏的空白处依旧可以拖动地图。顶栏右侧是一整行右对齐的 flex
+（`left`/`right` 定边界 + 内部 `gap` 16）：**导航 → 实时时钟 → 用户区**，
+导航项 `flex: 0 1 128px`，画布比 1920 窄时收窄的是导航，不会压到标题切图上；
+时钟（`showClock`）与用户区 `flex: 0 0 auto`，不参与收缩。
 
 右上角用户区（头像 + 用户名 + 下拉箭头）是**点击展开**的账户菜单，
 菜单项由 `@logout` 抛给页面处理：
@@ -674,18 +683,25 @@ src/components/screen/
 | 页面 | 路由 | 文件 |
 | --- | --- | --- |
 | 地图大屏首页 | `/`、`/screen` | `src/views/screen/index.vue` |
-| 首页定尺面板 | — | `src/views/screen/home/`：`HomeLeftPanel`（出让地块情况统计）、`HomeLayerTree`（地图管理图层面板）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
+| 首页定尺面板 | — | `src/views/screen/home/`：`HomeStatPanel`（统计面板，左右两块各一份：出让地块情况统计 / 落实配套情况统计）、`HomeSideRail`（屏边轨道：折叠把手 + 右面板「统计 / 图层树」竖排小页签）、`HomeLayerTree`（地图管理图层面板，右面板第二个页签内容）、`HomeAttrPanel`（属性表）、`HomePlotModal`（地块预警信息弹窗） |
 | 档案管理（大屏子页面） | 顶栏「档案管理」，深链 `/screen/archive` | `src/views/screen/archive/index.vue` |
 | 道路交付及养护协议移交事项（方案 2.3.2 第 6 项） | 档案模块内的页签，不占一级导航 | 深链 `/screen/archive?tab=handover`；`src/views/screen/archive/modules/handover/` |
 | 道路设施验收及移交资料台账（方案 2.3.2 第 7 项） | 同上 | 深链 `/screen/archive?tab=ledger`；`src/views/screen/archive/modules/ledger/` |
 | 竣工验收项目历史工程资料数字化档案（方案 2.3.2 第 8 项） | 同上 | 深链 `/screen/archive?tab=completion`；`src/views/screen/archive/modules/completion/` |
 | 收发文 | 不占一级导航，是档案模块内的页签 | 深链 `/screen/archive?tab=doc` |
 
-> 档案管理下的页签顺序：档案维护 → 档案查询 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
+> 档案管理下的页签顺序：档案维护 → 档案统计 → 道路交付养护移交 → 道路验收移交台账
 > → 竣工验收历史档案 → 收发文管理 → 档案类别管理。第 6/7/8 项插在统计与收发文之间，
 > 与方案 2.3.2 的条目序号一致。页签 key 的**白名单在 `views/screen/index.vue` 的
 > `ARCHIVE_TABS`**、页签与组件的映射在 `views/screen/archive/index.vue` 的 `tabs` / `PANELS`，
 > 两处必须同步改（漏改白名单的表现是「深链进不去、静默落回默认页签」）。
+>
+> **没有独立的「档案查询」页签**：它与「档案维护」共用同一套检索条件、同一个列表组件、
+> 同一个接口（`/land/archive/list`），差别只有「只读 + 条件默认全展开 + 每页 20 条」，
+> 在大屏上属于同一个功能的两种用法，已合并进「档案维护」（方案 2.3.2 第 3 项由它承载）。
+> 档案统计 / 台账 / 移交的「查看档案」下钻落点是 `tab=maintain`；历史深链 `?tab=query`
+> 会静默落回档案维护且条件照常生效。**管理端 `admin-client` 仍保留独立「档案查询」菜单**
+> —— 那里才是「只查不改」的权限边界（查询角色只有 `land:archive:list` + `export`）。
 >
 > 这三个模块的接口层在 `src/api/land/{ledger,handover,completion}.js`，
 > 与 `admin-client` 的同名文件一一对应（同一套 Java 后端，改接口必须两边同改）。
@@ -698,7 +714,7 @@ src/components/screen/
 | `config.js` | 静态常量：顶栏导航、系统标题、属性表页签、预警字段契约 |
 | `index.vue` | `loadDashboard()` 并发拉取 `LandOverviewVO` + `PendingFacilityVO`，成功后下发给 `home/` 的面板组件；接口失败/无数据时对应区域留白（**不使用设计稿演示数据**） |
 
-接口来自 **Java 业务后端**（`@/api/land/landData`，走 `window._CONFIG.VUE_DATA_JAVA_URL`），
+接口来自 **Java 业务后端**（`@/api/land/landData`，走 `javaBaseUrl()` = `VUE_BUSINESS_JAVA_URL`），
 不是中台；后端实现在 `org.jeecg.modules.land.stat.home`：
 
 - `GET /land/stat/home/landOverview` —— 出让地块情况统计（总数、市级/区级、按区分组）
@@ -720,20 +736,21 @@ src/components/screen/
 ### 档案模块
 
 「档案管理」二级菜单的页签顺序固定为：
-**档案维护 → 档案查询 → 档案统计 → 收发文管理 → 档案类别管理**
+**档案维护 → 档案统计 → 收发文管理 → 档案类别管理**
 （见 `views/screen/archive/index.vue` 的 `tabs` 与 `PANELS`）。
+原「档案查询」页签已并入「档案维护」（同一套检索条件 / 同一个列表 / 同一个接口，
+差别只有只读与条件默认展开），见上一节的说明。
 
 ```
 src/views/screen/archive/
-├─ index.vue                   # 页签壳（上面五个页签）
+├─ index.vue                   # 页签壳（上面四个页签 + 第 6/7/8 项）
 ├─ constants.js                # 共享枚举与展示辅助（唯一实现，页面不许再抄一份）
 └─ modules/
-   ├─ ArchiveMaintain.vue      # 档案维护（列表 + 增删改 + 批量删除 + 导出）
-   ├─ ArchiveQuery.vue         # 档案查询（只读列表 + 导出 + 支持按项目下钻）
+   ├─ ArchiveMaintain.vue      # 档案维护（检索 + 列表 + 增删改 + 批量删除 + 导出 + 下钻落点）
    ├─ ArchiveStatistics.vue    # 档案统计（KPI + 3 张图 + 按项目明细）
    ├─ ArchiveCategory.vue      # 档案类别管理（树 + 详情 + 拖拽排序/改挂）
    ├─ ArchiveSearchForm.vue    # 共享检索条件（4 个常驻 + 10 个折叠）
-   ├─ ArchiveTable.vue         # 共享列表表格（维护 / 查询复用，纯展示）
+   ├─ ArchiveTable.vue         # 共享列表表格（纯展示；readonly / selectable 两个开关）
    ├─ ArchiveFormModal.vue     # 档案新增 / 编辑（三段式表单）
    ├─ ArchiveDetailModal.vue   # 档案详情（全屏 + 四页签）
    ├─ ArchiveFileTable.vue     # 卷内文件表 + 上传
@@ -776,15 +793,20 @@ src/views/screen/archive/
 - 详情页数字不要用 `value || '—'`：`0 页 / 0 份` 是合法值，会被误显示成「—」。
 
 
-### 两个后端：业务请求必须走 `VUE_DATA_JAVA_URL`
+### 三个后端地址：业务请求必须走 `javaBaseUrl()`（`VUE_BUSINESS_JAVA_URL`）
 这是本项目最容易踩的坑，改档案/业务接口前务必先读这一段。
 
-`public/static/config.js` 里定义了两个后端地址，且 `window._CONFIG` 的值会**覆盖** `.env`：
+`public/static/config.js` 里定义了三个后端地址，且 `window._CONFIG` 的值会**覆盖** `.env`：
 
 | 配置项 | 含义 | 示例 |
 | --- | --- | --- |
 | `VUE_APP_API_BASE_URL` | **中台**（网关） | `http://127.0.0.1:4548` |
-| `VUE_DATA_JAVA_URL` | **Java 业务后端** | `http://127.0.0.1:9802/api` |
+| `VUE_BUSINESS_JAVA_URL` | **Java 业务后端**（jeecg，2026-10 新增） | `http://127.0.0.1:9802/api` |
+| `VUE_DATA_JAVA_URL` | **JNI 分析服务**（爆管/断面等 `/pipeline/*`，混淆插件写死读它） | `http://127.0.0.1:38190` |
+
+⚠ **2026-10 起 `VUE_DATA_JAVA_URL` 不再指业务后端**：业务接口一律用 `javaBaseUrl()`
+（优先 `VUE_BUSINESS_JAVA_URL`，旧 config.js 才兜底 `VUE_DATA_JAVA_URL`），
+**不要**在业务代码里显式传 `window._CONFIG.VUE_DATA_JAVA_URL` 当 baseURL（会打到 38190 上）。
 
 而 `src/config/index.js` 里 `domianURL = VUE_APP_API_BASE_URL`，所以
 `@/api/manage`（走 `domianURL`）发出的请求全部落在**中台**上——

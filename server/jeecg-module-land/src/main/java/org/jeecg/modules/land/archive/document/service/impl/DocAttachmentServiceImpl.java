@@ -9,6 +9,7 @@ import org.jeecg.modules.land.archive.document.entity.DocAttachment;
 import org.jeecg.modules.land.archive.document.mapper.DocAttachmentMapper;
 import org.jeecg.modules.land.archive.document.service.IDocAttachmentService;
 import org.jeecg.modules.land.archive.document.support.DocSupport;
+import org.jeecg.modules.land.common.util.FilePreviewUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,48 @@ public class DocAttachmentServiceImpl extends ServiceImpl<DocAttachmentMapper, D
         if (StringUtils.isBlank(docType) || StringUtils.isBlank(docId)) {
             return Collections.emptyList();
         }
-        return baseMapper.selectByDoc(docType, docId);
+        return enrichAll(baseMapper.selectByDoc(docType, docId));
+    }
+
+    /** 给单个附件补 url / 可读大小 / 预览方式 */
+    private DocAttachment enrich(DocAttachment attachment) {
+        if (attachment == null) {
+            return null;
+        }
+        attachment.setUrl(FilePreviewUtils.toRelativePath(attachment.getStorePath()));
+        attachment.setReadableSize(formatSize(attachment.getFileSize()));
+        String ext = StringUtils.isNotBlank(attachment.getFileExt())
+                ? attachment.getFileExt() : attachment.getFileName();
+        attachment.setPreviewMode(FilePreviewUtils.previewModeOf(ext));
+        attachment.setPreviewable(FilePreviewUtils.previewableOf(ext));
+        return attachment;
+    }
+
+    private List<DocAttachment> enrichAll(List<DocAttachment> list) {
+        if (list == null || list.isEmpty()) {
+            return list;
+        }
+        for (DocAttachment item : list) {
+            enrich(item);
+        }
+        return list;
+    }
+
+    /** 人性化文件大小（与档案/附件模块保持同一展示口径） */
+    private static String formatSize(Long bytes) {
+        if (bytes == null || bytes <= 0) {
+            return "—";
+        }
+        String[] units = {"B", "KB", "MB", "GB", "TB"};
+        double size = bytes;
+        int unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit++;
+        }
+        return unit == 0
+                ? ((long) size) + " " + units[unit]
+                : String.format("%.2f %s", size, units[unit]);
     }
 
     @Override
