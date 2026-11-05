@@ -291,6 +291,33 @@ node scripts/verify-sfc.js
   （前缀 `7a1f0d2c4e5b4d8a9c3f6b1e`）。曾经用 34 字符导致 `ERROR 1406 Data too long`。
 - SQL 脚本要**幂等**（可重复执行），并带核对查询。
 
+### 3.10 合并远端后必须先跑两个 `verify-sfc`：它会抓到「文件被截断」
+
+**症状**：合并零冲突、`git status` 干净，但某个文件在尾部被截断——不是合并造成的，
+是**提交时文件就没写完**（文件结尾是半个标识符）。2026-11-05 合并 `f6c3b6e` 一次撞到 5 个：
+
+| 文件 | 被截断成 | 后果 |
+|---|---|---|
+| `admin-client/scripts/verify-sfc.js` | `failed++` 之后直接结束 | 脚本本身语法错误，自检根本跑不起来 |
+| `admin-client/…/data/FacilityEntry.vue` | `&__met` | `<style>` 尾部规则与 `</style>` 丢失 |
+| `admin-client/src/api/land/facilityAdmin.js` | `deleteProcess` + `}` | 默认导出少 3 个名字，GeoJSON 导入两个函数整节丢失 → 弹窗一用就 `TypeError` |
+| `stargis-client-web/…/screen/ScreenPopover.vue` | `<` | `</style>` 被截成半个标签 |
+| `stargis-client-web/…/maps/S3dmViewer.vue` | `.cesium` | `<style>` 尾部两条规则与 `</style>` 丢失 |
+
+**为什么合并会「原样保留」坏文件**：这类截断落在「只有远端改过」的行上，本地改动在别处，
+git 直接取远端那一侧 → 冲突为零，坏内容进主干。**冲突为零 ≠ 合并正确。**
+
+**怎么排查（三分钟）**：
+1. 两个前端各跑一次 `node scripts/verify-sfc.js`（模板 / less 编译不过会当场报）；
+2. `git diff <合并基点> <远端分支> | Select-String 'No newline at end of file'`，
+   逐个看这几个文件**结尾是不是半个标识符**（`.cesium` / `<` / `&__met` 一眼可辨）；
+3. `.js` 尾部被吃掉时看**孤儿线索**：新加的 import 从未被使用、新加的 url 常量无人消费、
+   别处 import 的具名导出在目标文件里 0 处定义——三者出现任意一个，基本就是截断吞了尾部函数。
+
+**怎么修**：按「远端新增内容 + 共同祖先里被截断掉的那段」补齐（`git show <基点>:<文件>` 取尾），
+**不要**整文件回退到祖先（那会抹掉同事的功能），也**不要**只补冲突标记里看得见的部分。
+补完把新文件登记进 `scripts/verify-sfc.js` 的硬编码清单——不登记就等于「自检绿灯但其实没检查过」。
+
 ---
 
 ## 4. 常用命令速查
@@ -438,3 +465,4 @@ git status --porcelain
 | 2026-10-30 | **地图管理 / 配套分析管理左侧图标统一为政务风线性 SVG** | 两页共 29 个入口不再使用彩色填充、立体 PNG，改为复用 `ScreenIcon` 并补齐 `map-*` / `analysis-*` 业务几何；统一 44×44、1.5px 圆头描边、`--screen-accent` 普通态与 `--screen-text` 选中态。只替换图标及槽位尺寸，卡片布局、工具 key、点击分发与插件交互均不变；旧 PNG 资源与 `hf` 映射暂保留，避免影响其它引用 |
 | 2026-10-30 | **大屏顶栏时钟改为全页面显示** | `views/screen/index.vue` 不再按首页 / 地图管理 / 配套分析管理限制 `show-clock`，所有带顶栏导航的页面统一显示时间日期；时钟位置、样式与实时刷新逻辑不变 |
 | 2026-11-02 | **补 §2.1 已实现域 + 登记 D-603 收口** | `stat.warning` 落地（分级预警：逾期天数 → 蓝/黄/橙/红等级 + 预警值 + 决策意见 + 预警记录；环节/阶段/总体三种口径；接口 `/land/stat/warning/*`）。入口两处：大屏端「查询统计 → 预警信息查询」（**只加页签、不占菜单**）、管理端「统计预警 → 预警等级维护 / 决策意见维护」（菜单与 4 个按钮权限由 `sql/stat/04_stat_warning_menu.sql` 建）。改这块前先读 `docs/分级预警-实现说明.md`：**阶段/总体预警没有决策意见**（没有「问题类型」可套）、**`byLevel` 必须四档齐全并含 0**（缺一档前端四色卡跳色）、**`yjPercent` 已由后端乘过 100**（前端再乘会显示 11000%）。另有 6 处**刻意不照抄旧系统**的实现（工作日递归、并行判定、过期预警删除、决策意见兜底、问题类型存文本、唯一键去重），已登记为差异清单 D-616~D-621 —— 改回去就是制造 bug。测试：`mvn -pl jeecg-module-land -am test -Pit -Dtest="Warning*"` |
+| 2026-11-05 | **合并远端 `f6c3b6e`（MVT 服务 / 空间导入 / 配套图形导入）＋ 补回 5 个被截断的文件** | 远端新增 MVT 瓦片服务（`map/mvt/*`）、SHP 空间导入（`spatial/*`，依赖 GeoTools 28.2 + osgeo 仓库）、地块/配套图形 GeoJSON 导入（`data/imports/facilitygeo/*`）；本地新增 `stat.warning` 分级预警，并把界面「变更履历 / 六阶段」统一为「操作记录 / 配套流程」（仅文案，不动逻辑）。**文本冲突 0 处**：两侧都改过的 7 个文件（`admin-client/scripts/verify-sfc.js`、`stargis-client-web/scripts/verify-sfc.js`、`FacilityAdminServiceImpl.java`、`FacilityEntry.vue`、`FacilityEntryPanel.vue`、`LandEntryPanel.vue`、`LandTable.vue`）都是自动合并，逐个人工核对过两侧改动都在。**但远端有 5 个文件被截断**（提交时没写完，尾部是半个标识符）：`admin-client/scripts/verify-sfc.js`（丢收尾 `Promise.all`，脚本本身语法错误）、`admin-client/…/FacilityEntry.vue` 与 `stargis-client-web/…/S3dmViewer.vue`（丢 `<style>` 尾部与 `</style>`）、`ScreenPopover.vue`（`</style>` 变成 `<`）、`admin-client/src/api/land/facilityAdmin.js`（默认导出少 3 个名字 + 配套图形导入两个函数整节丢失 → 管理端「导入地块图形」一点就 `TypeError`）。按「远端新增 + 共同祖先补齐」修复（`f265d82` → `0ab9605` → `75dd6a4`），并把本次新增的 10 个文件登记进两个 `verify-sfc.js` 清单。判据与三分钟排查法见 §3.10 |
