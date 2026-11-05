@@ -443,4 +443,11 @@ export default {
   overflow: hidden;
 }
 
-.cesium
+.cesium-viewer-navigationContainer {
+  top: 66px;
+}
+
+.cesium-viewer-bottom {
+  pointer-events: none;
+}
+</style>

@@ -198,4 +198,15 @@ files.forEach(file => {
         .catch(err => {
           console.error(`✗ ${file}：style[${index}] less 编译失败 —— ${err.message}`)
           failed++
-     
+        })
+    )
+  })
+})
+
+Promise.all(tasks).then(() => {
+  if (failed) {
+    console.error(`\n共有 ${failed} 个问题。`)
+    process.exit(1)
+  }
+  console.log(`✓ ${files.length} 个 .vue 文件：模板编译、less 编译、name 检查全部通过。`)
+})

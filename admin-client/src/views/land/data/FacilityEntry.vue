@@ -895,4 +895,36 @@
         color: #0f172a;
       }
 
-      &__met
+      &__meta {
+        font-size: 12px;
+        font-weight: 400;
+        color: @text-weak;
+      }
+
+      &__bar {
+        display: inline-block;
+        width: 120px;
+        margin: 0 0 0 12px;
+        vertical-align: middle;
+      }
+    }
+
+    .is-error {
+      color: #ef4444;
+    }
+
+    .is-unfilled {
+      color: @text-muted;
+    }
+
+    .unfilled-tag {
+      margin-left: 6px;
+      font-size: 11px;
+      transform: scale(0.9);
+    }
+
+    .is-danger {
+      color: #ff4d4f;
+    }
+  }
+</style>
