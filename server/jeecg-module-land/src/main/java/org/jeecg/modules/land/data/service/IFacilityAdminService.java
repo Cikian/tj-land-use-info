@@ -1,6 +1,7 @@
 package org.jeecg.modules.land.data.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
@@ -51,11 +52,23 @@ public interface IFacilityAdminService {
     IPage<Facility> queryPage(LandAdminQueryDTO query);
 
     /**
-     * 全部有地块图形的配套项目（轻量列：id / crzdbh / ptxmmc / dkGeojson）。
-     * 大屏「配套地块数据录入」进菜单时把已画图的配套面一次性铺到地图上，
-     * 列表双击某条时据此定位与高亮 —— 分页接口带全量实体太重，这里只取图形相关字段。
+     * 铺图概览数据（<b>版本化增量</b>）——与经营性用地 queryGeoOverview 同一套协议，
+     * 数据源为配套表：版本 = 全表 MAX(updateTime)；一致只回「无变化」（几十字节），
+     * 不一致回全量概览（概览列预计算，每环 ≤40 点，总体 <1MB）。
+     * 精确边界由 {@link #queryFacilityGeoDetail(String)} 按需单条拉取。
+     *
+     * @param clientVersion 前端持有的版本（首次为 null）
      */
-    List<Facility> queryGeoList();
+    FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion);
+
+    /**
+     * 单条配套的<b>定位档</b>地块图形（每环 ≤800 点，视觉与精确边界无差别，消除定位卡顿）。
+     * 双击定位时前端按 id 拉取替换概览轮廓。
+     *
+     * @param id 配套主键
+     * @return 仅 id / crzdbh / ptxmmc / dkGeojson 有值；不存在或没有图形时返回 null
+     */
+    Facility queryFacilityGeoDetail(String id);
 
     /** 详情（含宗地信息与阶段进度汇总） */
     Facility queryDetail(String id);

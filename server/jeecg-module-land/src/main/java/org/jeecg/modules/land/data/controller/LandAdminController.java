@@ -8,6 +8,7 @@ import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
+import org.jeecg.modules.land.data.dto.LandGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.service.ILandAdminService;
@@ -83,12 +84,44 @@ public class LandAdminController {
         return Result.OK(landAdminService.queryPage(query));
     }
 
+    /**
+     * 铺图概览数据（<b>版本化增量</b>）。
+     *
+     * <p><b>协议</b>：前端带上次拿到的 {@code version}（首次不传）——
+     * <ul>
+     *   <li>版本一致 → {@code unchanged=true}，不传宗地数据（几十字节）；
+     *       进页面的耗时与宗地总数解耦，图形没变就永远是快的；</li>
+     *   <li>不一致 → {@code unchanged=false} + 全量概览列表（预计算概览列，&lt;1MB）+ 新版本号。</li>
+     * </ul>
+     * 两级加载不变：概览用于铺图/定位，精确边界走 {@code /geoDetail} 按需单宗拉取。
+     */
     @AutoLog(value = "经营性用地录入-地块图形清单")
-    @ApiOperation(value = "经营性用地录入-地块图形清单", notes = "全部画过图形的宗地（id/编号/名称/GeoJSON 轻量列），进菜单铺地图用")
+    @ApiOperation(value = "经营性用地录入-地块图形清单",
+            notes = "铺图概览（版本化）：传上次返回的 version，无变化时只回 unchanged=true")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/geoList")
-    public Result<List<Land>> geoList() {
-        return Result.OK(landAdminService.queryGeoList());
+    public Result<LandGeoOverviewVO> geoList(
+            @RequestParam(name = "version", required = false) String version) {
+        return Result.OK(landAdminService.queryGeoOverview(version));
+    }
+
+    /**
+     * 单宗地的精确地块图形（不抽稀）。
+     *
+     * <p>两级加载的「按需档」：双击定位时按 id 拉这一宗的精确图形（几 KB），
+     * 前端替换概览轮廓后再高亮，边界就是测绘精度。
+     */
+    @AutoLog(value = "经营性用地录入-地块图形详情")
+    @ApiOperation(value = "经营性用地录入-地块图形详情",
+            notes = "单宗地的精确 dk_geojson（不抽稀）；宗地不存在或没有图形时返回错误提示")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/geoDetail")
+    public Result<Land> geoDetail(@RequestParam(name = "id") String id) {
+        Land land = landAdminService.queryGeoDetail(id);
+        if (land == null) {
+            return Result.error("该宗地没有地块图形（或记录不存在）");
+        }
+        return Result.OK(land);
     }
 
     @AutoLog(value = "经营性用地录入-详情")

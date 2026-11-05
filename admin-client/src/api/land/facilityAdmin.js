@@ -1,4 +1,4 @@
-import { getAction, postAction, putAction, deleteAction } from '@/api/manage'
+import { getAction, postAction, putAction, deleteAction, uploadAction } from '@/api/manage'
 import { compact } from '@/api/land/landAdmin'
 
 /**
@@ -22,6 +22,7 @@ import { compact } from '@/api/land/landAdmin'
 
 export const facilityAdminUrl = {
   list: '/land/data/facilityAdmin/list',
+  geoDetail: '/land/data/facilityAdmin/geoDetail',
   detail: '/land/data/facilityAdmin/detail',
   byLand: '/land/data/facilityAdmin/byLand',
   checkPtxmmc: '/land/data/facilityAdmin/checkPtxmmc',
@@ -236,8 +237,5 @@ export default {
   queryProcessConfig,
   saveProcess,
   saveProcessBatch,
-  deleteProcess,
-  calcExpectEnd,
-  normalizeFacility,
-  normalizeProcess
+  deleteProcess
 }

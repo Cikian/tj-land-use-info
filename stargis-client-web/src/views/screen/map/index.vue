@@ -96,7 +96,7 @@
       <img class="map-screen__plugin-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
       <h2 class="map-screen__plugin-title">{{ activePopTool.title }}</h2>
       <div class="map-screen__plugin-host stage-hit">
-        <component :is="activePopTool.popTag" ref="activePopRef" :config-min="activePopTool.config" />
+        <component :is="activePopTool.popTag" ref="activePopRef" v-mvt-layer-tree :config-min="activePopTool.config" />
       </div>
     </template>
     <map-pick-panel v-else :result="pickRows" :layer-name="pickLayer" />
@@ -206,6 +206,7 @@ import MapToolPanel from './MapToolPanel.vue'
 import MapPickPanel from './MapPickPanel.vue'
 import MapPlacePanel from './MapPlacePanel.vue'
 import { hf } from '@/assets/screen-blue'
+import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
 
 /**
  * 插件开关/弹窗类工具注册表（卡片 key → stargis-function 组件）。
@@ -245,6 +246,7 @@ function toKebab (name) {
 
 export default {
   name: 'MapScreen',
+  directives: { mvtLayerTree },
   components: { MapToolPanel, MapPickPanel, MapPlacePanel },
   data () {
     return {
@@ -927,7 +929,30 @@ export default {
         this._layerProbeHandler.setInputAction((movement) => {
           try {
             const picked = window.viewer.scene.pick(movement.position)
-            if (!picked) return
+            if (!picked) {
+              // MVT 影像层拾取：scene.pick 不含影像层，走 Cesium 标准 imagery 拾取
+              // （MvtPublicController 的 provider 实现了 pickFeatures，返回点内地块属性）
+              const ray = window.viewer.camera.getPickRay(movement.position)
+              if (!ray) return
+              const imageryPicks = window.viewer.imageryLayers.pickImageryLayerFeatures(ray, window.viewer.scene)
+              if (!imageryPicks) return
+              Promise.resolve(imageryPicks).then(features => {
+                if (!features || !features.length) return
+                const f = features[0]
+                // 清理上一次的临时拾取点
+                const prev = window.viewer.entities.getById('__mvt_pick_temp')
+                if (prev) window.viewer.entities.remove(prev)
+                const entity = window.viewer.entities.add({
+                  id: '__mvt_pick_temp',
+                  position: Cesium.Cartesian3.fromDegrees(f.coordinate.longitude, f.coordinate.latitude),
+                  point: { pixelSize: 10, color: Cesium.Color.LIME, outlineColor: Cesium.Color.BLACK, outlineWidth: 1 },
+                  name: '地块 ' + (f.name || ''),
+                  description: f.description
+                })
+                window.viewer.selectedEntity = entity
+              }).catch(() => { /* 影像拾取失败静默 */ })
+              return
+            }
             const entity = picked.id
             const primitive = picked.primitive || picked
             const name = (entity && entity.name) || primitive.name || primitive.path

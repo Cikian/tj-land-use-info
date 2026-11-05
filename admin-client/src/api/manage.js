@@ -180,7 +180,7 @@ export function downloadFile(url, fileName, parameter) {
  * @param parameter
  * @returns {*}
  */
-export function uploadAction(url,parameter){
+export function uploadAction(url,parameter,options){
   return axios({
     url: url,
     data: parameter,
@@ -188,6 +188,9 @@ export function uploadAction(url,parameter){
     headers: {
       'Content-Type': 'multipart/form-data',  // 文件上传
     },
+    // 可选覆盖：GeoJSON 批量导入这类长事务（几十 MB 文件解析 + 几千条远程库写入）
+    // 远超全局 9s 超时，调用方传 { timeout: 300000 } 放行
+    ...(options && options.timeout ? { timeout: options.timeout } : {}),
   })
 }
 

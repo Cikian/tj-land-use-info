@@ -213,10 +213,18 @@ public class Facility implements Serializable {
 
     /**
      * 地块图形（GeoJSON）。
-     * 大屏表单「添加地块」在地图上画出的多边形，裸 Polygon geometry 字符串
-     * （{@code {"type":"Polygon","coordinates":[[[lon,lat],…]]}}，WGS84 经纬度、首尾闭合）。
+     * 大屏表单「添加地块」在地图上画出的多边形、或「导入地块图形」按名称匹配更新的图形，
+     * 裸 geometry 字符串（WGS84 经纬度、首尾闭合）：单块 Polygon，多块合并 MultiPolygon。
      */
     private String dkGeojson;
+
+    /**
+     * 地块图形概览（预计算）。
+     * {@link #dkGeojson} 的概览抽稀版（每环 ≤40 点，{@code GeoJsonSimplify.OVERVIEW_ENTRY_POINTS}），
+     * 在导入 / 大屏绘制保存时同步生成，铺图层（geoList）专用 —— geoList 只读本列
+     * 不碰 dk_geojson 大列。精确边界走 /geoDetail 按 id 单宗拉取。清除图形时一并写空。
+     */
+    private String dkGeojsonOverview;
 
     /** 录入单位 */
     private String lrdw;
@@ -243,4 +251,10 @@ public class Facility implements Serializable {
     /** 创建账号（列名 createAccount，非 create_account） */
     @TableField("createAccount")
     private String createAccount;
+
+    /** 更新时间（列名 updateTime；配套 GeoJSON 导入 / 编辑 / 移除 / 恢复时刷新，
+     *  铺图概览接口以 MAX(updateTime) 作数据版本号） */
+    @TableField("updateTime")
+    @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date updateTime;
 }

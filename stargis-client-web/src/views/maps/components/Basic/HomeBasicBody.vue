@@ -1,6 +1,6 @@
 <template>
   <div class="home-body">
-    <layer-tree-pop ref="layerTreePop" @changeStyle="changeStyle"></layer-tree-pop>
+    <layer-tree-pop ref="layerTreePop" v-mvt-layer-tree @changeStyle="changeStyle"></layer-tree-pop>
     <manager-approval-pop ref="managerApprovalPop" :style="{ right: rightPosition }"></manager-approval-pop>
     <query-pick-pop ref="queryPickPop" />
     <bookmarks-pop
@@ -58,9 +58,11 @@
 </template>
 
 <script>
+import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
 
 export default {
   name: 'HomeBasicBody',
+  directives: { mvtLayerTree },
   components: {
   },
   data() {

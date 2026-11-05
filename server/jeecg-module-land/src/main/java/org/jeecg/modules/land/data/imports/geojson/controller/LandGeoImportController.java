@@ -8,16 +8,12 @@ import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.modules.land.data.imports.geojson.ILandGeoImportService;
 import org.jeecg.modules.land.data.imports.geojson.LandGeoImportResultVO;
-import org.jeecg.modules.land.data.imports.mapper.LandImportLogMapper;
-import org.jeecg.modules.land.data.imports.support.LandImportSupport;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.UUID;
 
 /**
  * @Description: 数据管理 · 地块图形（GeoJSON）导入
@@ -59,12 +55,6 @@ public class LandGeoImportController {
     @Autowired
     private ILandGeoImportService geoImportService;
 
-    @Autowired
-    private LandImportSupport support;
-
-    @Autowired
-    private LandImportLogMapper importLogMapper;
-
     /**
      * 预览校验（★ 不写库）。
      *
@@ -100,72 +90,31 @@ public class LandGeoImportController {
     @RequiresPermissions(PERM_LAND)
     @PostMapping(value = "/confirm")
     public Result<LandGeoImportResultVO> confirm(@RequestParam("file") MultipartFile file) {
-        LandGeoImportResultVO result;
         try {
-            result = geoImportService.confirm(file);
+            return Result.OK(geoImportService.confirm(file));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
             log.error("地块图形导入入库失败", e);
             return Result.error("导入失败：" + e.getMessage());
         }
-        writeImportLog(file, result);
-        return Result.OK(result);
     }
 
     // ==================================================================
-    // 导入日志
+    // 留痕说明
     // ==================================================================
 
     /**
-     * 写导入日志（复用 {@code t_land_import_log}，与 Excel 批量导入同表可见）。
+     * ★ 本功能<b>刻意不写</b> {@code t_land_import_log}（Excel 批量导入的日志表）。
      *
-     * <p>★ 刻意 try/catch 吞掉：日志是「辅助追溯」，失败不该让一次成功的
-     * 导入在用户眼里变成「导入失败」（与 Excel 导入同一处理）。
+     * <p>初版曾复用该表「与 Excel 导入记录同表可见」，实测发现是错误设计：
+     * 那张表是「经营性用地批量导入」页面的「导入记录」，混入 .geojson 行
+     * 会让用户以为 Excel 导入功能被改动/记录被覆盖 —— 两个功能互不相关，
+     * 页面上也各看各的。
+     *
+     * <p>本功能的留痕走<b>字段级变更履历</b>（每条被更新宗地的
+     * {@code ACTION_IMPORT} 记录，含来源文件名 / 时间 / 操作人，
+     * 见 {@code LandGeoImportServiceImpl#write}）——
+     * 在「详情 → 变更履历」里按宗地精确可查，信息量远大于一张流水表。
      */
-    private void writeImportLog(MultipartFile file, LandGeoImportResultVO result) {
-        try {
-            importLogMapper.insertLog(
-                    UUID.randomUUID().toString().replace("-", ""),
-                    file == null ? null : file.getOriginalFilename(),
-                    file == null ? null : file.getSize(),
-                    result.getTotalFeatures(),
-                    0,
-                    result.getUpdatedRows(),
-                    result.getUnmatchedCount(),
-                    result.getErrorCount(),
-                    null,
-                    0,
-                    result.isAborted() ? 1 : 0,
-                    buildErrorSummary(result),
-                    support.currentUsername(),
-                    support.currentRealname());
-        } catch (Exception e) {
-            log.warn("写地块图形导入日志失败（不影响导入结果）：{}", e.getMessage());
-        }
-    }
-
-    /** 错误摘要：只取前 5 条，避免日志列被撑爆（与 Excel 导入同一口径） */
-    private String buildErrorSummary(LandGeoImportResultVO result) {
-        if (result == null || result.getErrors().isEmpty()) {
-            return null;
-        }
-        StringBuilder sb = new StringBuilder();
-        int limit = Math.min(5, result.getErrors().size());
-        for (int i = 0; i < limit; i++) {
-            LandGeoImportResultVO.FeatureError error = result.getErrors().get(i);
-            if (sb.length() > 0) {
-                sb.append(" | ");
-            }
-            sb.append("第").append(error.getFeatureIndex()).append("个地块 ");
-            if (org.apache.commons.lang.StringUtils.isNotBlank(error.getCrzdbh())) {
-                sb.append("[").append(error.getCrzdbh()).append("] ");
-            }
-            sb.append(error.getMessage());
-        }
-        if (result.getErrors().size() > limit) {
-            sb.append(" | …共 ").append(result.getErrors().size()).append(" 条");
-        }
-        return sb.length() > 2000 ? sb.substring(0, 2000) : sb.toString();
-    }
 }

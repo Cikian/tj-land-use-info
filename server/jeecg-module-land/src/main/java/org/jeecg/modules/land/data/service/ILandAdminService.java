@@ -2,6 +2,7 @@ package org.jeecg.modules.land.data.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
+import org.jeecg.modules.land.data.dto.LandGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
 import org.jeecg.modules.land.data.entity.Land;
 
@@ -35,11 +36,32 @@ public interface ILandAdminService {
     IPage<Land> queryPage(LandAdminQueryDTO query);
 
     /**
-     * 全部有地块图形的宗地（轻量列：id / crzdbh / dkmc / dkGeojson）。
-     * 大屏「经营性用地信息录入」进菜单时把已画图的宗地面一次性铺到地图上，
-     * 列表双击某条时据此定位与高亮 —— 分页接口带全量实体太重，这里只取图形三两字段。
+     * 铺图概览数据（<b>版本化增量</b>）。
+     *
+     * <p>前端带上次拿到的 {@code clientVersion}；后端比对当前版本（全表
+     * MAX(update_time)，任何导入/编辑/移除/恢复都会推高它）：
+     * <ul>
+     *   <li>一致 → {@code unchanged=true}，不传宗地数据（几十字节）——
+     *       进页面的加载量与「总共有多少宗」解耦，图形没变就永远是快的；</li>
+     *   <li>不一致（首次 / 有变更）→ 全量概览列表（概览列预计算，总体 &lt;1MB）
+     *       + 新版本号，前端替换本地缓存后渲染。</li>
+     * </ul>
+     * 精确边界由 {@link #queryGeoDetail(String)} 按需单宗拉取。
+     *
+     * @param clientVersion 前端持有的版本（首次为 null）
      */
-    List<Land> queryGeoList();
+    LandGeoOverviewVO queryGeoOverview(String clientVersion);
+
+    /**
+     * 单宗地的地块图形（定位档：每环 ≤800 点，视觉与精确边界无差别）。
+     *
+     * <p>配合 {@link #queryGeoOverview(String)} 的两级加载：首屏铺概览档（40 点）秒开，
+     * 双击定位某宗地时前端再按 id 拉这一宗的图形替换渲染。
+     *
+     * @param id 宗地主键
+     * @return 仅 id / crzdbh / dkmc / dkGeojson 四列有值；宗地不存在或没有图形时返回 null
+     */
+    Land queryGeoDetail(String id);
 
     /** 详情（含配套项目数量、附件数量、变更次数等展示字段） */
     Land queryDetail(String id);

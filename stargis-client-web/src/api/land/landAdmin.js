@@ -60,6 +60,7 @@ import {
 export const landAdminUrl = {
   list: '/land/data/landAdmin/list',
   geoList: '/land/data/landAdmin/geoList',
+  geoDetail: '/land/data/landAdmin/geoDetail',
   detail: '/land/data/landAdmin/detail',
   history: '/land/data/landAdmin/history',
   codeOptions: '/land/data/landAdmin/codeOptions',
@@ -93,16 +94,40 @@ export function queryLandAdminPage (params) {
 }
 
 /**
- * 地块图形清单：全部画过图形的宗地（轻量列 id / crzdbh / dkmc / dkGeojson）。
+ * 铺图概览数据（<b>版本化增量</b>）。
  *
- * 「经营性用地信息录入」进菜单时一次性拉全量、把面铺到地图上，
- * 列表双击某条时据此定位与高亮。没画过图形的宗地不在返回里 ——
- * 那些行的几何数据本系统里没有（图形只能由大屏「添加地块」产生）。
+ * 「经营性用地信息录入」进菜单时铺全部宗地面。协议：
+ *  - 传上次拿到的 version：后端比对（版本=全表 MAX(update_time)，任何变更都会推高）；
+ *    一致 → { unchanged:true }，不传宗地数据（几十字节）——
+ *    进页面的加载量与「总共有多少宗」解耦，图形没变就永远是快的；
+ *  - 不传或版本不同 → { unchanged:false, lands:[...], version:'...' } 全量概览
+ *    （概览列预计算，总体 <1MB），前端替换本地缓存后渲染。
  *
- * @returns {Promise} result 为 Land[]（仅 4 个字段有值）
+ * 两级加载：概览用于铺图/飞行定位，双击某条时再按 id 调
+ * {@link queryLandGeoDetail} 拉精确图形替换渲染。
+ *
+ * @param {string} [version] 上次返回的数据版本（首次不传）
+ * @returns {Promise} result 为 { version, unchanged, lands }
  */
-export function queryLandGeoList () {
-  return javaGetAction(landAdminUrl.geoList, {})
+export function queryLandGeoList (version) {
+  const params = {}
+  if (version) {
+    params.version = version
+  }
+  return javaGetAction(landAdminUrl.geoList, params)
+}
+
+/**
+ * 单宗地的精确地块图形（不抽稀）。
+ *
+ * 两级加载的「按需档」：双击定位时按 id 拉这一宗的精确图形（几 KB），
+ * 替换概览轮廓后再高亮，边界就是测绘精度。
+ *
+ * @param {string} id 宗地主键
+ * @returns {Promise} result 为 Land（仅 4 个字段有值）；宗地无图形时 success=false
+ */
+export function queryLandGeoDetail (id) {
+  return javaGetAction(landAdminUrl.geoDetail, { id })
 }
 
 /**

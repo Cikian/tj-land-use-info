@@ -12,6 +12,7 @@ import org.jeecg.modules.land.data.imports.geojson.LandGeoImportResultVO;
 import org.jeecg.modules.land.data.imports.support.LandImportSupport;
 import org.jeecg.modules.land.data.mapper.LandMapper;
 import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
+import org.jeecg.modules.land.data.support.GeoJsonSimplify;
 import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
 import org.jeecg.modules.land.data.service.ILandService;
 import org.jeecg.modules.land.data.support.DataSupport;
@@ -98,6 +99,9 @@ public class LandGeoImportServiceImpl implements ILandGeoImportService {
 
     @Autowired
     private ChangeLogSupport changeLogSupport;
+
+    @Autowired
+    private org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper changeLogMapper;
 
     @Autowired
     private LandImportSupport support;
@@ -189,23 +193,21 @@ public class LandGeoImportServiceImpl implements ILandGeoImportService {
             // ---- 编号：properties 里大小写不敏感取 crzdbh，按库内口径归一 ----
             String rawCrzdbh = readCrzdbh(node);
             if (rawCrzdbh == null) {
-                result.addError(featureIndex, null,
-                        "properties 里没有 CRZDBH（出让宗地编号）属性，无法匹配宗地");
+                result.addWarning("第 " + featureIndex + " 个地块：properties 里没有 CRZDBH（出让宗地编号）属性，已跳过");
                 continue;
             }
             String crzdbh = DataSupport.normalizeCode(rawCrzdbh).getCode();
             if (crzdbh == null) {
-                result.addError(featureIndex, rawCrzdbh, "CRZDBH 属性为空白，无法匹配宗地");
+                result.addWarning("第 " + featureIndex + " 个地块：CRZDBH 属性为空白，已跳过");
                 continue;
             }
 
             // ---- 图形：每个 Feature 必须是合法 Polygon，坐标归一为 [lon,lat] 二维、闭合、6 位小数 ----
             String geojson = normalizeGeometry(node.path("geometry"));
             if (geojson == null) {
-                result.addError(featureIndex, crzdbh,
-                        "geometry 不是可用的图形（认 Polygon / MultiPolygon，"
-                                + "且每个环至少 " + MIN_RING_POINTS + " 个坐标点、"
-                                + "经纬度在 WGS84 范围内；若来自 shp 请确认已转 WGS84 地理坐标）");
+                result.addWarning("第 " + featureIndex + " 个地块（" + crzdbh + "）：geometry 不是可用的图形"
+                        + "（认 Polygon / MultiPolygon，且每个环至少 " + MIN_RING_POINTS
+                        + " 个坐标点、经纬度在 WGS84 范围内），已跳过");
                 continue;
             }
 
@@ -224,10 +226,10 @@ public class LandGeoImportServiceImpl implements ILandGeoImportService {
         for (Feature feature : matched) {
             String merged = mergePolygons(feature.polygons);
             if (merged == null || merged.length() > GEO_MAX_LENGTH) {
-                result.addError(feature.indexes.get(0).intValue(), feature.crzdbh,
-                        "地块图形数据过大（合并 " + feature.polygons.size() + " 块后 "
-                                + (merged == null ? 0 : merged.length()) + " 字符，上限 " + GEO_MAX_LENGTH
-                                + "），请先简化多边形后重试");
+                result.addWarning("第 " + feature.indexes.get(0) + " 个地块（" + feature.crzdbh
+                        + "）：地块图形数据过大（合并 " + feature.polygons.size() + " 块后 "
+                        + (merged == null ? 0 : merged.length()) + " 字符，上限 " + GEO_MAX_LENGTH
+                        + "），已跳过");
                 continue;
             }
             feature.geojson = merged;
@@ -482,24 +484,39 @@ public class LandGeoImportServiceImpl implements ILandGeoImportService {
      */
     private void write(List<Feature> toUpdate, String fileName, LandGeoImportResultVO result) {
         String operator = support.currentUsername();
+        Date now = new Date();
+        List<Land> patches = new ArrayList<>();
+        List<DataChangeLog> logs = new ArrayList<>();
         for (Feature feature : toUpdate) {
             Land land = new Land();
             land.setId(feature.landId);
             land.setDkGeojson(feature.geojson);
+            // 概览列同步预计算（铺图层 geoList 只读概览列，不把 30MB 大列拉出库）
+            land.setDkGeojsonOverview(GeoJsonSimplify.simplify(
+                    feature.geojson, GeoJsonSimplify.OVERVIEW_ENTRY_POINTS));
             land.setUpdateBy(operator);
-            land.setUpdateTime(new Date());
-            landMapper.updateById(land);
+            land.setUpdateTime(now);
+            patches.add(land);
 
-            changeLogSupport.collector(DataSupport.BIZ_LAND, feature.landId, feature.crzdbh)
-                    .add("dkGeojson", "地块图形（GeoJSON）",
-                            "原图形", "导入图形（来源：" + StringUtils.defaultString(fileName, "手动上传") + "）")
-                    .save(DataChangeLog.ACTION_IMPORT,
-                            "导入地块图形（GeoJSON），来源文件：" + StringUtils.defaultString(fileName, "手动上传")
-                                    + (StringUtils.isNotBlank(feature.dkmc)
-                                    ? "（" + feature.dkmc + "）" : ""),
-                            null);
+            DataChangeLog record = changeLogSupport.buildGeoImportRecord(
+                    DataSupport.BIZ_LAND, feature.landId, feature.crzdbh, fileName);
+            if (StringUtils.isNotBlank(feature.dkmc)) {
+                record.setChangeSummary(DataSupport.capLength(
+                        record.getChangeSummary() + "（" + feature.dkmc + "）", 500));
+            }
+            logs.add(record);
         }
-        result.setUpdatedRows(toUpdate.size());
+        // ★ 分批批量写：逐条 updateById + 逐条履历在远程库上是几千次往返
+        //   （实测 810 条拖了 2.5 分钟、前端直接超时），一次往返写一批后秒级完成
+        int GEO_CHUNK = 50;
+        for (int i = 0; i < patches.size(); i += GEO_CHUNK) {
+            landMapper.batchUpdateGeo(patches.subList(i, Math.min(i + GEO_CHUNK, patches.size())));
+        }
+        int LOG_CHUNK = 200;
+        for (int i = 0; i < logs.size(); i += LOG_CHUNK) {
+            changeLogMapper.batchInsert(logs.subList(i, Math.min(i + LOG_CHUNK, logs.size())));
+        }
+        result.setUpdatedRows(patches.size());
     }
 
     // ------------------------------------------------------------------

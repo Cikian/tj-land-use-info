@@ -42,7 +42,8 @@ export const landGeoImportUrl = {
 export function previewLandGeoImport (file) {
   const formData = new FormData()
   formData.append('file', file)
-  return javaPostAction(landGeoImportUrl.preview, formData)
+  // 长事务：单独放宽到 5 分钟
+  return javaPostAction(landGeoImportUrl.preview, formData, { timeout: 300000 })
 }
 
 /**
@@ -54,5 +55,5 @@ export function previewLandGeoImport (file) {
 export function confirmLandGeoImport (file) {
   const formData = new FormData()
   formData.append('file', file)
-  return javaPostAction(landGeoImportUrl.confirm, formData)
+  return javaPostAction(landGeoImportUrl.confirm, formData, { timeout: 300000 })
 }

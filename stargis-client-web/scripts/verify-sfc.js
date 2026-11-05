@@ -28,6 +28,12 @@ const less = require(path.join(root, 'node_modules', 'less'))
 
 /** 默认校验清单：本次新增的三个模块（后续新增模块请登记到这里） */
 const FILES = [
+  'src/utils/mvt/imageryProvider.js',
+  'src/utils/mvt/layerTreeDirective.js',
+  'src/views/screen/home/HomeLayerTree.vue',
+  'src/views/screen/map/index.vue',
+  'src/views/maps/components/Basic/HomeBasicBody.vue',
+  'src/views/maps/S3dmViewer.vue',
   'src/api/land/ledger.js',
   'src/api/land/handover.js',
   'src/api/land/completion.js',

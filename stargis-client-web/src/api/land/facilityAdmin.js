@@ -34,6 +34,7 @@ import {
 export const facilityAdminUrl = {
   list: '/land/data/facilityAdmin/list',
   geoList: '/land/data/facilityAdmin/geoList',
+  geoDetail: '/land/data/facilityAdmin/geoDetail',
   detail: '/land/data/facilityAdmin/detail',
   byLand: '/land/data/facilityAdmin/byLand',
   checkPtxmmc: '/land/data/facilityAdmin/checkPtxmmc',
@@ -72,12 +73,33 @@ export function queryFacilityAdminPage (params) {
  *
  * 「配套地块数据录入」进菜单时一次性拉全量、把面铺到地图上，
  * 列表双击某条时据此定位与高亮。没画过图形的配套不在返回里 ——
- * 那些行的几何数据本系统里没有（图形只能由大屏「添加地块」产生）。
+ * ★ 版本化增量 + 两级加载（与经营性用地 geoList 同一套协议）：
+ *  - 传上次拿到的 version（后端 = 配套表全表 MAX(updateTime)）——图形没变时只回
+ *    { unchanged:true }（几十字节），进页面耗时与配套总数解耦；
+ *  - 不传或版本不同 → { unchanged:false, lands:[...], version } 全量概览
+ *    （概览列预计算，每环 ≤40 点），前端替换本地缓存后渲染；
+ *  - 双击定位某条时再按 id 调 {@link queryFacilityGeoDetail} 拉定位档图形替换渲染。
  *
- * @returns {Promise} result 为 Facility[]（仅 4 个字段有值）
+ * @param {string} [version] 上次返回的数据版本（首次不传）
+ * @returns {Promise} result 为 { version, unchanged, lands }
  */
-export function queryFacilityGeoList () {
-  return javaGetAction(facilityAdminUrl.geoList, {})
+export function queryFacilityGeoList (version) {
+  const params = {}
+  if (version) {
+    params.version = version
+  }
+  return javaGetAction(facilityAdminUrl.geoList, params)
+}
+
+/**
+ * 单条配套的定位档地块图形（每环 ≤800 点，视觉与精确边界无差别）。
+ * 双击定位时按 id 拉取替换概览轮廓。
+ *
+ * @param {string} id 配套主键
+ * @returns {Promise} result 为 Facility（仅 4 个字段有值）；无图形时 success=false
+ */
+export function queryFacilityGeoDetail (id) {
+  return javaGetAction(facilityAdminUrl.geoDetail, { id })
 }
 
 /** 配套项目详情（返回 Facility 实体；已移除的返回 success=false） */

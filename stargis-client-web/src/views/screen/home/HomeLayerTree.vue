@@ -21,7 +21,7 @@
 
     <!-- 插件弹层宿主：铺满右面板框（同 map 页 __plugin-host 定位与底图） -->
     <div class="home-tree__panel stage-hit">
-      <layer-tree-pop ref="layerTreePop" :config-min="pluginConfig" />
+      <layer-tree-pop ref="layerTreePop" v-mvt-layer-tree :config-min="pluginConfig" />
     </div>
 
     <!--
@@ -40,12 +40,14 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
+import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
 
 /** 面板滑出距离 = 面板宽 400 + 距屏边 30（与 .home-tree__panel 的 right 对齐） */
 const SLIDE_DISTANCE = 430
 
 export default {
   name: 'HomeLayerTree',
+  directives: { mvtLayerTree },
   props: {
     /**
      * 右面板是否已折叠（整体滑出屏幕）。把手在 HomeSideRail 上，

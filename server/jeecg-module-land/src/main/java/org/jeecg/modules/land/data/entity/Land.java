@@ -148,6 +148,15 @@ public class Land implements Serializable {
     private String dkGeojson;
 
     /**
+     * 地块图形概览（预计算）。
+     * {@link #dkGeojson} 的概览抽稀版（每环 ≤40 点，{@code GeoJsonSimplify.OVERVIEW_ENTRY_POINTS}），
+     * 在导入 / 大屏绘制保存时同步生成，铺图层（geoList）专用 —— geoList 只读本列
+     * 不碰 dk_geojson 大列，避免把 30MB+ 精确图形从远程库拉到应用侧（实测 41 秒）。
+     * 精确边界走 /geoDetail 按 id 单宗拉取。清除图形时本列与 dk_geojson 一并写空。
+     */
+    private String dkGeojsonOverview;
+
+    /**
      * 录入单位简称。
      * 旧字段名 {@code xzqh2}（注释写「行政区划2」）与实际内容（录入单位简称）不符，
      * 设计文档 3.0-9 记为数据质量问题；这里保留列名、修正注释，不再当作行政区划使用。
