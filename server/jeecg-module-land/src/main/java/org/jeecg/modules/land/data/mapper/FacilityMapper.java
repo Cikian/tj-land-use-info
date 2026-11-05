@@ -42,6 +42,28 @@ public interface FacilityMapper extends BaseMapper<Facility> {
     /** 该宗地下的配套项目数量 */
     long countByCrzdbh(@Param("crzdbh") String crzdbh);
 
+    /**
+     * 某个行政区下未完成的配套项目。
+     *
+     * <p>★ 保留：数据域的「预警明细」端点还在用它（首页预警行点开看明细），
+     * 它不属于首页看板聚合，因此没有随 dashboard 一起迁走。
+     */
+    List<Facility> selectWarningDetails(@Param("xmfl") String xmfl, @Param("xzqh") String xzqh);
+
+    /**
+     * 数据版本：全表 MAX(updateTime)。
+     *
+     * <p>配套写路径（导入 / 编辑 / 移除 / 恢复）都会刷新该行的 updateTime，
+     * 铺图概览接口拿它当「版本号」：前端版本与它一致 = 图形没变，直接回
+     * 「无变化」，不再传概览数据。不过滤 delFlag——移除/恢复也要推高版本。
+     */
+    java.util.Date selectMaxUpdateTime();
+
+    /**
+     * 批量更新配套地块图形（配套 GeoJSON 导入专用）：一次往返写一批
+     * （调用方分批，每批 ≤50 条；依赖 JDBC URL 的 allowMultiQueries=true）。
+     */
+    void batchUpdateGeo(@Param("list") java.util.List<org.jeecg.modules.land.data.entity.Facility> list);
     // 说明：selectWarningDetails 已删除 —— 首页预警「查看」明细迁到
     // stat/home 的 selectWarningLands（与预警行共用同一套分组列与比率口径）。
 }

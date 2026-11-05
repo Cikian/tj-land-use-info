@@ -77,6 +77,8 @@ public class ShiroConfig {
         }
         // 配置不会被拦截的链接 顺序判断
 //        filterChainDefinitionMap.put("/land/**", "anon");
+        // MVT 的公开读接口供中台地图加载，连接配置和管理目录不在放行范围内。
+        filterChainDefinitionMap.put("/land/mvt/public/**", "anon");
 
         filterChainDefinitionMap.put("/sys/cas/client/validateLogin", "anon"); //cas验证登录
         filterChainDefinitionMap.put("/sys/randomImage/**", "anon"); //登录验证码接口排除

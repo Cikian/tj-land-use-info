@@ -122,7 +122,7 @@
           <screen-popconfirm
             title="移除后可在「数据更新与移除」里恢复，确定移除该宗地吗？"
             :description="row.crzdbh ? `宗地编号：${row.crzdbh}` : ''"
-            width="300"
+            :width="300"
             @confirm="$emit('remove', row)"
           >
             <button type="button" class="land-table__link is-danger">移除</button>

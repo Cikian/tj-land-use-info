@@ -97,7 +97,7 @@ public interface DataRecycleMapper {
     int restoreLand(@Param("id") String id, @Param("updateBy") String updateBy);
 
     /** 恢复一条配套项目 */
-    @Update("UPDATE `t_supporting_facilities` SET `delFlag` = '0' "
+    @Update("UPDATE `t_supporting_facilities` SET `delFlag` = '0', `updateTime` = NOW() "
             + "WHERE `id` = #{id} AND `delFlag` = '1'")
     int restoreFacility(@Param("id") String id);
 

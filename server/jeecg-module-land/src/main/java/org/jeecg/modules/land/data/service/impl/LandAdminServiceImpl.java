@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
+import org.jeecg.modules.land.data.dto.LandGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.fieldconfig.DataFieldLabels;
@@ -18,6 +19,7 @@ import org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper;
 import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
 import org.jeecg.modules.land.data.service.ILandAdminService;
 import org.jeecg.modules.land.data.support.DataSupport;
+import org.jeecg.modules.land.data.support.GeoJsonSimplify;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -93,24 +95,138 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
     // ==================================================================
 
     /**
-     * 全部有地块图形的宗地（轻量列）。
-     * ★ 只取 id / crzdbh / dkmc / dk_geojson 四列：进菜单时一次拉全量铺地图，
-     *   带 34 列全实体会白白传输几百 KB；isNotNull + ne('') 过滤掉没画过图的行。
-     *   软删行由 @TableLogic 自动排除。
+     * 铺图概览数据（版本化增量 + 内存缓存）。
+     *
+     * <p>★ 三级加速，让进页面的耗时与「宗地总数」解耦：
+     * <ol>
+     *   <li><b>版本比对</b>：版本 = 全表 MAX(update_time)（{@code selectMaxUpdateTime}，
+     *       毫秒级）。与前端一致 → 直接回「无变化」，不查列表、不传 0.7MB；</li>
+     *   <li><b>内存缓存</b>：版本不一致时，若缓存版本就是当前版本（别的请求刚建过 /
+     *       多标签页），直接复用，不再查 MySQL；</li>
+     *   <li><b>概览列</b>：真要重建时只读 dk_geojson_overview（&lt;1MB），
+     *       不碰 30MB 精确大列；发现缺概览的行现场抽稀并回写（自愈兜底）。</li>
+     * </ol>
+     * 版本取自数据库而非内存计数器：多实例部署也不会各说各话；
+     * 缓存失效的粒度是「任何一次写」，宁可多刷一次也不返回旧图。
      */
     @Override
-    public List<Land> queryGeoList() {
+    public LandGeoOverviewVO queryGeoOverview(String clientVersion) {
+        Date currentVersion = baseMapper.selectMaxUpdateTime();
+        String version = currentVersion == null ? "" : String.valueOf(currentVersion.getTime());
+
+        LandGeoOverviewVO vo = new LandGeoOverviewVO();
+        vo.setVersion(version);
+        // 版本一致 → 客户端手里的数据就是当前状态，直接回「无变化」。
+        // ★ 不要求服务端内存缓存存在：后端重启后客户端缓存依然有效
+        if (clientVersion != null && clientVersion.equals(version)) {
+            vo.setUnchanged(true);
+            return vo;
+        }
+
+        List<Land> lands;
+        if (cachedVersionEquals(version)) {
+            // 内存缓存正好是当前版本（别的请求刚建过 / 多标签页）：不查 MySQL
+            lands = cachedOverviewList;
+        } else {
+            lands = buildGeoOverview();
+            cachedOverviewVersion = version;
+            cachedOverviewList = lands;
+        }
+
+        vo.setUnchanged(false);
+        vo.setLands(lands);
+        return vo;
+    }
+
+    /** 概览缓存：版本 + 已构建的列表（只读使用；构建走 {@link #buildGeoOverview()}） */
+    private volatile String cachedOverviewVersion = "";
+    private volatile List<Land> cachedOverviewList = null;
+
+    private boolean cachedVersionEquals(String version) {
+        return cachedOverviewList != null && version != null && version.equals(cachedOverviewVersion);
+    }
+
+    /**
+     * 构建概览列表：只读概览列（&lt;1MB），缺概览的行现场抽稀并回写（自愈兜底）。
+     * 返回的实体只填 id / crzdbh / dkmc / dkGeojson（概览值），前端直接渲染。
+     */
+    private List<Land> buildGeoOverview() {
+        List<Land> list = new ArrayList<>();
+        QueryWrapper<Land> fast = new QueryWrapper<>();
+        fast.select("id", "crzdbh", "dkmc", "dk_geojson_overview")
+                .isNotNull("dk_geojson_overview")
+                .ne("dk_geojson_overview", "");
+        List<Land> fastList = baseMapper.selectList(fast);
+        for (Land land : fastList) {
+            land.setDkGeojson(land.getDkGeojsonOverview());
+        }
+        list.addAll(fastList);
+
+        QueryWrapper<Land> legacy = new QueryWrapper<>();
+        legacy.select("id", "crzdbh", "dkmc", "dk_geojson")
+                .isNotNull("dk_geojson")
+                .ne("dk_geojson", "")
+                .and(w -> w.isNull("dk_geojson_overview").or().eq("dk_geojson_overview", ""));
+        List<Land> legacyList = baseMapper.selectList(legacy);
+        if (!legacyList.isEmpty()) {
+            log.info("地块图形概览列回填：{} 条宗地缺 dk_geojson_overview，现场抽稀并落库（一次性）", legacyList.size());
+            for (Land land : legacyList) {
+                String overview = GeoJsonSimplify.simplify(
+                        land.getDkGeojson(), GeoJsonSimplify.OVERVIEW_ENTRY_POINTS);
+                Land patch = new Land();
+                patch.setId(land.getId());
+                patch.setDkGeojsonOverview(overview);
+                // ★ 必须刷新 update_time：它是版本号（selectMaxUpdateTime），
+                //   不刷新的话版本不变，回填完成后客户端仍认为「无变化」——
+                //   下次重建时会再算一遍这些行，兜底永远收不了尾
+                patch.setUpdateTime(new Date());
+                baseMapper.updateById(patch);
+                land.setDkGeojson(overview);
+                list.add(land);
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 单宗地的地块图形（不抽稀到概览档，但按<b>定位档</b>限点）。
+     * 双击定位时前端拿它替换概览轮廓，编辑回显走 detail 接口，互不影响。
+     *
+     * <p>★ 为什么要限点：实测单宗精确图形可达 3979 顶点（47 万字符），
+     * 定位瞬间现场创建贴地面会卡一下。{@code LOCATE_MAX_POINTS=800} 对
+     * 铺满屏幕的一个地块与原边界视觉无差别，创建开销降为几分之一。
+     */
+    @Override
+    public Land queryGeoDetail(String id) {
+        if (StringUtils.isBlank(id)) {
+            return null;
+        }
         QueryWrapper<Land> wrapper = new QueryWrapper<>();
         wrapper.select("id", "crzdbh", "dkmc", "dk_geojson")
+                .eq("id", id)
                 .isNotNull("dk_geojson")
                 .ne("dk_geojson", "");
-        return baseMapper.selectList(wrapper);
+        Land land = baseMapper.selectOne(wrapper);
+        if (land != null) {
+            land.setDkGeojson(GeoJsonSimplify.simplify(
+                    land.getDkGeojson(), GeoJsonSimplify.LOCATE_MAX_POINTS));
+        }
+        return land;
     }
 
     @Override
     public IPage<Land> queryPage(LandAdminQueryDTO query) {
         LandAdminQueryDTO condition = query == null ? new LandAdminQueryDTO() : query;
         QueryWrapper<Land> wrapper = new QueryWrapper<>();
+
+        // ★ 列表不查图形两列：dk_geojson（精确，单宗可达几十万字符）与
+        //   dk_geojson_overview（概览副本）都是列表/详情用不到的文本，
+        //   SELECT * 会让每页白拖几 MB。大屏编辑表单按 id 拉 detail 回显图形，
+        //   不依赖列表行。按实体字段谓词排除，其余列照常。
+        wrapper.select(Land.class, field -> {
+            String column = field.getColumn();
+            return !"dk_geojson".equals(column) && !"dk_geojson_overview".equals(column);
+        });
 
         likeIfPresent(wrapper, "crzdbh", condition.getCrzdbh());
         likeIfPresent(wrapper, "dkmc", condition.getDkmc());
@@ -516,6 +632,10 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
             //   GeoJSON 导入会把同编号多块图形合并成 MultiPolygon，实测单块即可到 9 万字符，
             //   若仍按旧上限 60000 截断，会把 JSON 截坏 —— 编辑透传一次就废掉整块图形。
             land.setDkGeojson(geo == null ? "" : DataSupport.capLength(geo, 2000000));
+            // 概览列同步维护（预计算，铺图层 geoList 只读概览不读大列）：
+            // 精确图形非空 → 抽稀成 40 点/环概览；清除图形（空串）→ 概览一并写空
+            land.setDkGeojsonOverview(geo == null ? ""
+                    : GeoJsonSimplify.simplify(land.getDkGeojson(), GeoJsonSimplify.OVERVIEW_ENTRY_POINTS));
         }
         land.setTdzljh(DataSupport.cleanAndCap(dto.getTdzljh(), 100));
         land.setLrdw(DataSupport.cleanAndCap(dto.getLrdw(), 100));

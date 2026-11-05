@@ -27,6 +27,12 @@
       无需在此重复声明。
     -->
     <dependencies>
+        <!-- 瓦片缓存复用当前运行时已有版本，限制容量并合并相同瓦片的并发生成。 -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>29.0-jre</version>
+        </dependency>
         <dependency>
             <groupId>org.jeecgframework.boot</groupId>
             <artifactId>jeecg-boot-base-core</artifactId>
@@ -74,7 +80,33 @@
             <artifactId>HikariCP</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!--
+          GeoTools：spatial 域 SHP 上传入库的 GeoTools 引擎（信创推荐，纯 Java）。
+          ★ 版本必须 28.x：29.0+ 起 GeoTools 改为 Java 11 编译（class 55.0），
+            本项目是 Java 8（52.0），只能用 28.x（28.2 是 Java 8 稳定版）。
+          仓库在中央没有，需要 osgeo 官方仓库（见下）。
+        -->
+        <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-shapefile</artifactId>
+            <version>28.2</version>
+        </dependency>
+        <!-- GeoAPI 接口包（org.opengis.feature.*），gt-shapefile 不传递携带，需显式引入 -->
+        <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-opengis</artifactId>
+            <version>28.2</version>
+        </dependency>
     </dependencies>
+
+    <repositories>
+        <repository>
+            <id>osgeo</id>
+            <name>OSGeo Release Repository</name>
+            <url>https://repo.osgeo.org/repository/release/</url>
+        </repository>
+    </repositories>
 
     <!--
       ★ 集成测试的开关。

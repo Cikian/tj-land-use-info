@@ -132,7 +132,7 @@ export function javaGetAction (url, parameter, explicitBaseUrl) {
 }
 
 /** POST：JSON body */
-export function javaPostAction (url, parameter) {
+export function javaPostAction (url, parameter, options) {
   const data = parameter || {}
   return axios({
     url,
@@ -140,6 +140,9 @@ export function javaPostAction (url, parameter) {
     baseURL: javaBaseUrl(),
     data,
     headers: buildHeaders(url, data),
+    // 可选覆盖：批量导入这类长事务（37MB 文件解析 + 几千条远程库写入）
+    // 会远超全局 60s 超时，调用方传 { timeout: 300000 } 放行
+    ...(options && options.timeout ? { timeout: options.timeout } : {}),
   })
 }
 

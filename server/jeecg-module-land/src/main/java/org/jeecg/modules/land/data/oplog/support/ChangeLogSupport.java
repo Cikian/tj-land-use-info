@@ -80,8 +80,9 @@ public class ChangeLogSupport {
             "createBy", "createTime", "createAccount",
             "delFlag", "sourceId", "serialVersionUID",
             // dkGeojson：整段 GeoJSON 是数 KB 的长文本，参与 diff 会把变更履历撑爆；
-            // 图形是否被改过看「编辑」这条记录本身即可，不在逐字段明细里展开
-            "dkGeojson"));
+            // 图形是否被改过看「编辑」这条记录本身即可，不在逐字段明细里展开。
+            // dkGeojsonOverview：dkGeojson 的预计算概览副本（铺图层专用），同理跳过
+            "dkGeojson", "dkGeojsonOverview"));
 
     /** 字段缓存（按类缓存，避免每次比对都反射一遍） */
     private static final Map<Class<?>, List<java.lang.reflect.Field>> FIELD_CACHE =
@@ -166,6 +167,41 @@ public class ChangeLogSupport {
      */
     public Collector collector(String bizType, String bizId, String bizKey) {
         return new Collector(bizType, bizId, bizKey);
+    }
+
+    /**
+     * 构建一条「导入地块图形（GeoJSON）」的动作级履历记录——<b>只构建不落库</b>。
+     *
+     * <p>批量导入的确认入库一次要写几百上千条履历，逐条
+     * {@code collector(...).save(...)} 在远程库上是几千次往返，
+     * 会把请求拖到超时——批量导入服务改为构建后分批
+     * {@code DataChangeLogMapper#batchInsert}。字段口径与
+     * {@code Collector.save} 完全一致（前端履历表解析的 JSON 结构不变）。
+     *
+     * @param bizType  业务类型（{@link DataSupport#BIZ_LAND} / {@link DataSupport#BIZ_FACILITY}）
+     * @param bizId    业务主键
+     * @param bizKey   业务可读键（宗地编号 / 配套项目名称）
+     * @param fileName 来源文件名
+     */
+    public DataChangeLog buildGeoImportRecord(String bizType, String bizId, String bizKey, String fileName) {
+        DataChangeLog record = new DataChangeLog();
+        record.setId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        record.setBizType(bizType);
+        record.setBizId(bizId);
+        record.setBizKey(DataSupport.capLength(bizKey, 200));
+        record.setAction(DataChangeLog.ACTION_IMPORT);
+        List<ChangeItem> items = new ArrayList<>();
+        items.add(new ChangeItem("dkGeojson", "地块图形（GeoJSON）",
+                "原图形", "导入图形（来源：" + StringUtils.defaultString(fileName, "手动上传") + "）"));
+        record.setChangeCount(items.size());
+        record.setChangeDetail(toJson(items));
+        record.setChangeSummary(DataSupport.capLength(
+                "导入地块图形（GeoJSON），来源文件：" + StringUtils.defaultString(fileName, "手动上传"), 500));
+        record.setOperator(dataSupport.currentUsername());
+        record.setOperatorName(dataSupport.currentRealname());
+        record.setOperatorIp(null);
+        record.setCreateTime(new Date());
+        return record;
     }
 
     /**

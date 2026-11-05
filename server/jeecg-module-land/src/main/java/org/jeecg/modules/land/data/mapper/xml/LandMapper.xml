@@ -33,6 +33,25 @@
         SELECT COUNT(1) FROM `t_land` WHERE `del_flag` = 0
     </select>
 
+    <!-- 数据版本：全表 MAX(update_time)。不过滤 del_flag——移除/恢复也会刷新
+         该行 update_time，概览缓存必须随之失效，否则回收站里删掉的地块还在图上 -->
+    <select id="selectMaxUpdateTime" resultType="java.util.Date">
+        SELECT COALESCE(MAX(`update_time`), '1970-01-01 00:00:00') FROM `t_land`
+    </select>
+
+    <!-- 批量更新地块图形（GeoJSON 导入专用）：多语句分号分隔，
+         依赖 JDBC URL 的 allowMultiQueries=true；调用方分批（每批 ≤50 条） -->
+    <update id="batchUpdateGeo">
+        <foreach collection="list" item="f" separator=";">
+            UPDATE `t_land`
+            SET `dk_geojson` = #{f.dkGeojson},
+                `dk_geojson_overview` = #{f.dkGeojsonOverview},
+                `update_by` = #{f.updateBy},
+                `update_time` = #{f.updateTime}
+            WHERE `id` = #{f.id}
+        </foreach>
+    </update>
+
     <select id="selectByCrzdbh" resultType="org.jeecg.modules.land.data.entity.Land">
         SELECT * FROM `t_land`
         WHERE `del_flag` = 0 AND `crzdbh` = #{crzdbh}

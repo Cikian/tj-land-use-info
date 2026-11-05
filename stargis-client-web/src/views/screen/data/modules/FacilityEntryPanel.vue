@@ -92,6 +92,8 @@
 
           <screen-button type="primary" size="sm" icon="plus" @click="handleAdd">新增配套</screen-button>
 
+          <screen-button size="sm" icon="upload" @click="handleGeoImport">导入地块图形</screen-button>
+
           <screen-popconfirm
             v-if="selectedRowKeys.length"
             title="移除后可在「数据更新与移除」里恢复，确定批量移除选中的配套吗？"
@@ -143,6 +145,7 @@
     </div>
 
     <facility-form-modal ref="formModal" @ok="handleSaved" />
+    <facility-geo-import-modal ref="geoImportModal" @ok="handleGeoImported" />
     <facility-detail-modal
       ref="detailModal"
       @edit="handleEdit"
@@ -216,12 +219,14 @@ import {
   queryFacilityAdminPage,
   queryFacilityByLand,
   queryFacilityGeoList,
+  queryFacilityGeoDetail,
   deleteFacilityAdmin,
   deleteFacilityAdminBatch
 } from '@/api/land/facilityAdmin'
 import { queryLandOptions } from '@/api/land/landData'
 // 配套地块几何图层：进菜单把全部已画图配套面铺到地图上，列表双击定位 + 高亮
 import { createGeoLayer } from '@/views/screen/landGeoLayer'
+import FacilityGeoImportModal from './FacilityGeoImportModal'
 import { defaultPagination, compactQuery } from '../constants'
 
 /*
@@ -238,6 +243,14 @@ import { defaultPagination, compactQuery } from '../constants'
 const LIST_DEFAULT_HEIGHT = 360
 const LIST_MIN_HEIGHT = 200
 const LIST_MAX_HEIGHT = 936
+
+/**
+ * 概览数据本地缓存（模块级）——与 LandEntryPanel 同一套「两级加载 + 版本化增量」：
+ * 概览档后端预计算（dk_geojson_overview，每环 ≤40 点）；接口传上次 version，
+ * 图形没变只回 { unchanged:true }，面板从缓存直接铺图（零数据传输）；
+ * 变了才全量刷新并换版本。双击定位时按 id 拉 /geoDetail 替换概览轮廓。
+ */
+const facilityGeoCache = { version: '', lands: null }
 
 export default {
   name: 'FacilityEntryPanel',
@@ -256,6 +269,7 @@ export default {
     FacilitySearchForm,
     FacilityTable,
     FacilityFormModal,
+    FacilityGeoImportModal,
     FacilityDetailModal,
     ProcessTreePanel
   },
@@ -280,7 +294,9 @@ export default {
       removeVisible: false,
       removing: false,
       removeReason: '',
-      removeTargets: []
+      removeTargets: [],
+      /** 当前定位目标（连点保护） */
+      locateTargetId: ''
     }
   },
   computed: {
@@ -316,7 +332,7 @@ export default {
   },
   created () {
     // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
-    this.geoLayer = createGeoLayer()
+    this.geoLayer = createGeoLayer('facility')
     this.loadLandOptions('')
     this.loadData()
   },
@@ -507,10 +523,19 @@ export default {
      * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
      */
     loadGeoLayer () {
-      queryFacilityGeoList()
+      // 版本化增量：图形没变（unchanged）时直接用本地缓存铺图（零数据传输）；
+      // 变了才拉全量概览并更新缓存。概览档后端预计算（40 点/环）。
+      queryFacilityGeoList(facilityGeoCache.version)
         .then((res) => {
           if (!res || !res.success) return
-          this.geoLayer.renderAll(res.result || [])
+          const data = res.result || {}
+          if (data.unchanged && facilityGeoCache.lands) {
+            this.geoLayer.renderAll(facilityGeoCache.lands, false)
+            return
+          }
+          facilityGeoCache.version = data.version || ''
+          facilityGeoCache.lands = data.lands || []
+          this.geoLayer.renderAll(facilityGeoCache.lands, false)
         })
         .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
     },
@@ -523,11 +548,38 @@ export default {
     handleLocate (record) {
       if (!record || !record.id) return
       if (!this.geoLayer.has(record.id)) {
-        toast.warning('该配套还没有地块图形：编辑里点「添加地块」绘制并保存后即可定位')
+        toast.warning('该配套还没有地块图形：可在编辑里「添加地块」绘制，或用工具条「导入地块图形」导入')
         return
       }
+      const t0 = performance.now()
+      console.log('[定位计时] 双击: ' + record.ptxmmc)
+      this.locateTargetId = record.id
       this.geoLayer.highlight(record.id)
-      this.geoLayer.flyTo(record.id)
+      console.log('[定位计时] 高亮调用返回: ' + Math.round(performance.now() - t0) + 'ms')
+      // 图形请求与飞行并行（提前 ~1.2s），飞行落定即可应用
+      const detailPromise = queryFacilityGeoDetail(record.id)
+      this.geoLayer.flyTo(record.id, () => {
+        console.log('[定位计时] 飞行落定: ' + Math.round(performance.now() - t0) + 'ms')
+        detailPromise.then((res) => {
+          console.log('[定位计时] 图形数据到手: ' + Math.round(performance.now() - t0) + 'ms')
+          // 连点了别的行 / 已切走面板：放弃这次替换
+          if (this.locateTargetId !== record.id) return
+          if (!res || !res.success || !res.result || !res.result.dkGeojson) return
+          this.geoLayer.applyPreciseOverlay(record.id, res.result.dkGeojson)
+          console.log('[定位计时] 定位档覆盖层应用完成: 距双击 ' + Math.round(performance.now() - t0) + 'ms')
+        }).catch(() => { /* 概览面仍可查看，失败不打扰 */ })
+      })
+    },
+
+    /** 打开「导入配套地块图形（GeoJSON）」弹窗 */
+    handleGeoImport () {
+      this.$refs.geoImportModal.open()
+    },
+
+    /** GeoJSON 图形导入完成：刷新列表，并重铺几何图层（新图形立即可见、可定位） */
+    handleGeoImported () {
+      this.loadData()
+      this.loadGeoLayer()
     },
 
     handleDetail (record) {

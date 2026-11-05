@@ -39,7 +39,7 @@ export default {
     /** 是否展示（建议加 .sync 以便外部同步关闭状态） */
     open: { type: Boolean, default: false },
     /** 锚点元素：HTMLElement 或返回 HTMLElement 的函数 */
-    anchor: { type: [Object, Function], default: null },
+    anchor: { type: [Object, Function, Element], default: null },
     /** 相对锚点的位置：bottom-start / bottom-end / top-start / top-end */
     placement: { type: String, default: 'bottom-start' },
     /** 浮层宽度：数字（px）或 CSS 字符串；不传则与锚点等宽 */
@@ -207,4 +207,4 @@ export default {
     overflow-x: hidden;
   }
 }
-</style>
+<

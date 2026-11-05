@@ -20,6 +20,10 @@
           @click="handleAddFacility">
           新增配套项目
         </a-button>
+        <a-button
+          v-has="'land:data:facility'"
+          icon="upload"
+          @click="handleGeoImport">导入地块图形</a-button>
         <a-button icon="reload" :loading="loading" @click="refresh">刷新</a-button>
       </div>
     </div>
@@ -259,6 +263,7 @@
 
     <!-- ============ 弹窗 ============ -->
     <facility-form-modal ref="facilityForm" @ok="loadFacilities" />
+    <facility-geo-import-modal ref="geoImportModal" @ok="loadFacilities" />
     <facility-detail-modal ref="facilityDetail" @open-process="handleProcessById" />
     <process-item-modal ref="processItem" :pt-id="processFacility ? processFacility.id : null" :pt-name="processFacility ? processFacility.ptxmmc : ''" @ok="loadProcessTree" />
   </a-card>
@@ -266,6 +271,7 @@
 
 <script>
   import FacilityFormModal from './modules/FacilityFormModal'
+  import FacilityGeoImportModal from './modules/FacilityGeoImportModal'
   import FacilityDetailModal from './modules/FacilityDetailModal'
   import ProcessItemModal from './modules/ProcessItemModal'
   import {
@@ -294,7 +300,7 @@
    */
   export default {
     name: 'FacilityEntry',
-    components: { FacilityFormModal, FacilityDetailModal, ProcessItemModal },
+    components: { FacilityFormModal, FacilityDetailModal, ProcessItemModal, FacilityGeoImportModal },
     data () {
       return {
         loading: false,
@@ -405,6 +411,10 @@
           return
         }
         this.$refs.facilityForm.open(null, this.currentLand)
+      },
+      /** 打开「导入配套地块图形（GeoJSON）」弹窗（导入不需要先选宗地，按名称匹配） */
+      handleGeoImport () {
+        this.$refs.geoImportModal.open()
       },
       handleEditFacility (record) {
         this.$refs.facilityForm.open(record.id, this.currentLand)
@@ -885,36 +895,4 @@
         color: #0f172a;
       }
 
-      &__meta {
-        font-size: 12px;
-        font-weight: 400;
-        color: @text-weak;
-      }
-
-      &__bar {
-        display: inline-block;
-        width: 120px;
-        margin: 0 0 0 12px;
-        vertical-align: middle;
-      }
-    }
-
-    .is-error {
-      color: #ef4444;
-    }
-
-    .is-unfilled {
-      color: @text-muted;
-    }
-
-    .unfilled-tag {
-      margin-left: 6px;
-      font-size: 11px;
-      transform: scale(0.9);
-    }
-
-    .is-danger {
-      color: #ff4d4f;
-    }
-  }
-</style>
+      &__met

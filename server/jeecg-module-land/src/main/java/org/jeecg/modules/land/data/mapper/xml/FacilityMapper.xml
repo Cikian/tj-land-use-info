@@ -68,4 +68,22 @@
       warningRates，并且区级用 xzqh2 过滤（旧实现用 xzqh，区级点开永远是空表）。
     -->
 
+    <!-- 数据版本：全表 MAX(updateTime)。不过滤 delFlag——移除/恢复也会刷新
+         该行 updateTime，概览缓存必须随之失效（列名驼峰，本表惯例） -->
+    <select id="selectMaxUpdateTime" resultType="java.util.Date">
+        SELECT COALESCE(MAX(`updateTime`), '1970-01-01 00:00:00') FROM `t_supporting_facilities`
+    </select>
+
+    <!-- 批量更新配套地块图形（配套 GeoJSON 导入专用）：多语句分号分隔，
+         依赖 JDBC URL 的 allowMultiQueries=true；调用方分批（每批 ≤50 条） -->
+    <update id="batchUpdateGeo">
+        <foreach collection="list" item="f" separator=";">
+            UPDATE `t_supporting_facilities`
+            SET `dk_geojson` = #{f.dkGeojson},
+                `dk_geojson_overview` = #{f.dkGeojsonOverview},
+                `updateTime` = #{f.updateTime}
+            WHERE `id` = #{f.id}
+        </foreach>
+    </update>
+
 </mapper>

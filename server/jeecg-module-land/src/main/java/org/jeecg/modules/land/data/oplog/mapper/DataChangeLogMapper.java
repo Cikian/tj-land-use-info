@@ -25,6 +25,21 @@ import java.util.Map;
 @Mapper
 public interface DataChangeLogMapper extends BaseMapper<DataChangeLog> {
 
+    /**
+     * 批量插入（GeoJSON 批量导入专用）：逐条 insert 在远程库上是几千次往返，
+     * 会把确认导入拖到超时——这里一次往返写一批（调用方分批，每批 ≤200 条）。
+     * id 由调用方显式生成（UUID），不经 MP 的 ASSIGN_ID。
+     */
+    @org.apache.ibatis.annotations.Insert("<script>"
+            + "INSERT INTO t_data_change_log "
+            + "(id, biz_type, biz_id, biz_key, action, change_summary, change_detail, change_count, operator, operator_name, operator_ip, create_time) VALUES "
+            + "<foreach collection='list' item='item' separator=','>"
+            + "(#{item.id}, #{item.bizType}, #{item.bizId}, #{item.bizKey}, #{item.action}, "
+            + "#{item.changeSummary}, #{item.changeDetail}, #{item.changeCount}, "
+            + "#{item.operator}, #{item.operatorName}, #{item.operatorIp}, #{item.createTime})"
+            + "</foreach></script>")
+    int batchInsert(@Param("list") List<DataChangeLog> list);
+
     String COLUMNS = " id, biz_type AS bizType, biz_id AS bizId, biz_key AS bizKey, action, "
             + " change_summary AS changeSummary, change_detail AS changeDetail, "
             + " change_count AS changeCount, operator, operator_name AS operatorName, "

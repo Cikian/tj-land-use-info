@@ -923,6 +923,8 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
             facility.setDelFlag("0");
             facility.setCreateAccount(username);
             facility.setCreateTime(now);
+            // 铺图概览接口以 MAX(updateTime) 作数据版本号，任何写入都要刷新
+            facility.setUpdateTime(now);
             facilityMapper.insert(facility);
             result.setInsertedRows(result.getInsertedRows() + 1);
         }
@@ -935,6 +937,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
             }
             // 审计字段保持原值：updateById 默认不更新 null 字段，
             // 但这里显式不碰它们，避免「导入把创建人改成当前登录人」这种痕迹污染
+            facility.setUpdateTime(now);
             facilityMapper.updateById(facility);
             result.setUpdatedRows(result.getUpdatedRows() + 1);
         }

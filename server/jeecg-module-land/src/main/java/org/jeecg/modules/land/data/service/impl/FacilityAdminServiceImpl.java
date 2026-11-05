@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
@@ -15,6 +16,7 @@ import org.jeecg.modules.land.data.fieldconfig.DataFieldLabels;
 import org.jeecg.modules.land.data.mapper.FacilityMapper;
 import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
 import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
+import org.jeecg.modules.land.data.support.GeoJsonSimplify;
 import org.jeecg.modules.land.data.process.entity.FacilityProcess;
 import org.jeecg.modules.land.data.process.entity.ProcessConfig;
 import org.jeecg.modules.land.data.process.enums.ProcessStatus;
@@ -110,20 +112,101 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
     // ==================================================================
 
     /**
-     * 全部有地块图形的配套项目（轻量列）。
-     * ★ 只取 id / crzdbh / ptxmmc / dk_geojson 四列：进菜单时一次拉全量铺地图，
-     *   带 50 多列全实体会白白传输几百 KB；isNotNull + ne('') 过滤掉没画过图的行。
-     * ★ 手写软删条件：Facility 没有 @TableLogic（delFlag 是 varchar 驼峰列），
-     *   不写 eq("delFlag","0") 就会把已移除的配套也查出来 —— 与 queryPage 同一坑。
+     * 铺图概览数据（<b>版本化增量</b> + 内存缓存）——与经营性用地 queryGeoOverview 同一套三级加速：
+     * 版本比对（MAX(updateTime) 毫秒级）→ 内存缓存 → 概览列（dk_geojson_overview，&lt;1MB）。
+     * 缺概览列的行现场抽稀并回写（自愈兜底）。软删手写 {@code delFlag='0'}
+     * （Facility 无 @TableLogic，与 queryPage 同一坑）。
      */
     @Override
-    public List<Facility> queryGeoList() {
+    public FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion) {
+        Date currentVersion = facilityMapper.selectMaxUpdateTime();
+        String version = currentVersion == null ? "" : String.valueOf(currentVersion.getTime());
+
+        FacilityGeoOverviewVO vo = new FacilityGeoOverviewVO();
+        vo.setVersion(version);
+        // 版本一致 → 客户端手里的数据就是当前状态（不要求服务端内存缓存存在）
+        if (clientVersion != null && clientVersion.equals(version)) {
+            vo.setUnchanged(true);
+            return vo;
+        }
+
+        List<Facility> lands;
+        if (cachedOverviewList != null && version.equals(cachedOverviewVersion)) {
+            lands = cachedOverviewList;
+        } else {
+            lands = buildGeoOverview();
+            cachedOverviewVersion = version;
+            cachedOverviewList = lands;
+        }
+
+        vo.setUnchanged(false);
+        vo.setLands(lands);
+        return vo;
+    }
+
+    /** 概览缓存：版本 + 已构建列表（只读使用） */
+    private volatile String cachedOverviewVersion = "";
+    private volatile List<Facility> cachedOverviewList = null;
+
+    /** 构建概览列表：只读概览列；缺概览的行现场抽稀（DP 40 点）并回写 + 刷 updateTime */
+    private List<Facility> buildGeoOverview() {
+        List<Facility> list = new ArrayList<>();
+        QueryWrapper<Facility> fast = new QueryWrapper<>();
+        fast.select("id", "crzdbh", "ptxmmc", "dk_geojson_overview")
+                .eq("delFlag", "0")
+                .isNotNull("dk_geojson_overview")
+                .ne("dk_geojson_overview", "");
+        for (Facility facility : facilityMapper.selectList(fast)) {
+            facility.setDkGeojson(facility.getDkGeojsonOverview());
+            list.add(facility);
+        }
+
+        QueryWrapper<Facility> legacy = new QueryWrapper<>();
+        legacy.select("id", "crzdbh", "ptxmmc", "dk_geojson")
+                .eq("delFlag", "0")
+                .isNotNull("dk_geojson")
+                .ne("dk_geojson", "")
+                .and(w -> w.isNull("dk_geojson_overview").or().eq("dk_geojson_overview", ""));
+        List<Facility> legacyList = facilityMapper.selectList(legacy);
+        if (!legacyList.isEmpty()) {
+            log.info("配套图形概览列回填：{} 条缺 dk_geojson_overview，现场抽稀并落库（一次性）", legacyList.size());
+            for (Facility facility : legacyList) {
+                String overview = GeoJsonSimplify.simplify(
+                        facility.getDkGeojson(), GeoJsonSimplify.OVERVIEW_ENTRY_POINTS);
+                Facility patch = new Facility();
+                patch.setId(facility.getId());
+                patch.setDkGeojsonOverview(overview);
+                // 刷新 update_time（版本号），否则回填后版本不变、兜底收不了尾
+                patch.setUpdateTime(new Date());
+                facilityMapper.updateById(patch);
+                facility.setDkGeojson(overview);
+                list.add(facility);
+            }
+        }
+        return list;
+    }
+
+    /**
+     * 单条配套的<b>定位档</b>地块图形（每环 ≤800 点，消除定位卡顿）。
+     * 双击定位时前端按 id 拉取替换概览轮廓；编辑回显走 detail 接口。
+     */
+    @Override
+    public Facility queryFacilityGeoDetail(String id) {
+        if (StringUtils.isBlank(id)) {
+            return null;
+        }
         QueryWrapper<Facility> wrapper = new QueryWrapper<>();
         wrapper.select("id", "crzdbh", "ptxmmc", "dk_geojson")
+                .eq("id", id)
                 .eq("delFlag", "0")
                 .isNotNull("dk_geojson")
                 .ne("dk_geojson", "");
-        return facilityMapper.selectList(wrapper);
+        Facility facility = facilityMapper.selectOne(wrapper);
+        if (facility != null) {
+            facility.setDkGeojson(GeoJsonSimplify.simplify(
+                    facility.getDkGeojson(), GeoJsonSimplify.LOCATE_MAX_POINTS));
+        }
+        return facility;
     }
 
     @Override
@@ -132,6 +215,13 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         QueryWrapper<Facility> wrapper = new QueryWrapper<>();
         // ★ 手写软删条件：Facility 没有 @TableLogic，不写就会把已移除的配套也查出来
         wrapper.eq("delFlag", "0");
+        // ★ 列表不查图形两列（dk_geojson 精确大列 + dk_geojson_overview 概览副本）：
+        //   GeoJSON 导入后单条可达几十万字符。大屏编辑表单按 id 拉 detail 回显图形，
+        //   不依赖列表行；按实体字段谓词排除，其余列照常。
+        wrapper.select(Facility.class, field -> {
+            String column = field.getColumn();
+            return !"dk_geojson".equals(column) && !"dk_geojson_overview".equals(column);
+        });
 
         if (StringUtils.isNotBlank(condition.getCrzdbh())) {
             wrapper.like("crzdbh", condition.getCrzdbh().trim());
@@ -271,6 +361,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         facility.setDelFlag("0");
         facility.setCreateAccount(dataSupport.currentAccount());
         facility.setCreateTime(new Date());
+        facility.setUpdateTime(new Date());
         save(facility);
 
         changeLogSupport.collector(DataSupport.BIZ_FACILITY, facility.getId(), ptxmmc)
@@ -320,6 +411,8 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         after.setDelFlag(before.getDelFlag());
         after.setCreateAccount(before.getCreateAccount());
         after.setCreateTime(before.getCreateTime());
+        // 刷新 update_time（铺图概览接口的数据版本号；编辑也可能改了图形）
+        after.setUpdateTime(new Date());
 
         ChangeLogSupport.Collector collector = changeLogSupport
                 .collector(DataSupport.BIZ_FACILITY, before.getId(), ptxmmc)
@@ -349,6 +442,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         Facility patch = new Facility();
         patch.setId(facility.getId());
         patch.setDelFlag("1");
+        patch.setUpdateTime(new Date());
         updateById(patch);
 
         String summary = "移除配套项目「" + facility.getPtxmmc() + "」"
@@ -816,7 +910,13 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         String dkGeojson = facility.getDkGeojson();
         if (dkGeojson != null) {
             String cleaned = DataSupport.clean(dkGeojson);
-            facility.setDkGeojson(cleaned == null ? "" : DataSupport.capLength(cleaned, 60000));
+            // ★ 上限 200 万（配套 GeoJSON 导入会把同名称多段图形合并成 MultiPolygon；
+            //   列如需 mediumtext 见 sql/data/15_t_supporting_facilities_geo_overview.sql 的配套说明）
+            facility.setDkGeojson(cleaned == null ? "" : DataSupport.capLength(cleaned, 2000000));
+            // 概览列同步维护（预计算，铺图层 geoList 只读概览不读大列）：
+            // 精确图形非空 → 抽稀成 40 点/环概览；清除图形（空串）→ 概览一并写空
+            facility.setDkGeojsonOverview(cleaned == null ? ""
+                    : GeoJsonSimplify.simplify(facility.getDkGeojson(), GeoJsonSimplify.OVERVIEW_ENTRY_POINTS));
         }
     }
 

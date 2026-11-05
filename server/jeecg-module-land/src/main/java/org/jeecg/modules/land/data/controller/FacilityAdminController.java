@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
+import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
@@ -79,12 +80,37 @@ public class FacilityAdminController {
         return Result.OK(facilityAdminService.queryPage(query));
     }
 
+    /**
+     * 铺图概览数据（<b>版本化增量</b>）——与经营性用地 geoList 同一套协议：
+     * 前端带上次返回的 version，一致只回 {@code unchanged=true}（几十字节），
+     * 不一致回全量概览（概览列预计算，每环 ≤40 点）+ 新版本号。
+     * 精确边界走 {@code /geoDetail} 按需单条拉取。
+     */
     @AutoLog(value = "配套地块录入-地块图形清单")
-    @ApiOperation(value = "配套地块录入-地块图形清单", notes = "全部画过图形的配套项目（id/编号/名称/GeoJSON 轻量列），进菜单铺地图用")
+    @ApiOperation(value = "配套地块录入-地块图形清单",
+            notes = "配套铺图概览（版本化）：传上次返回的 version，无变化时只回 unchanged=true")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/geoList")
-    public Result<List<Facility>> geoList() {
-        return Result.OK(facilityAdminService.queryGeoList());
+    public Result<FacilityGeoOverviewVO> geoList(
+            @RequestParam(name = "version", required = false) String version) {
+        return Result.OK(facilityAdminService.queryFacilityGeoOverview(version));
+    }
+
+    /**
+     * 单条配套的<b>定位档</b>地块图形（每环 ≤800 点，消除定位卡顿）。
+     * 双击定位时前端按 id 拉取替换概览轮廓。
+     */
+    @AutoLog(value = "配套地块录入-地块图形详情")
+    @ApiOperation(value = "配套地块录入-地块图形详情",
+            notes = "单条配套的 dk_geojson（定位档）；不存在或没有图形时返回错误提示")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/geoDetail")
+    public Result<Facility> geoDetail(@RequestParam(name = "id") String id) {
+        Facility facility = facilityAdminService.queryFacilityGeoDetail(id);
+        if (facility == null) {
+            return Result.error("该配套项目没有地块图形（或记录不存在）");
+        }
+        return Result.OK(facility);
     }
 
     @AutoLog(value = "配套地块录入-详情")

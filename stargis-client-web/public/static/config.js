@@ -26,8 +26,6 @@ window._CONFIG = {
   VUE_DATA_JAVA_URL: 'http://127.0.0.1:38190', // java后端分析
   // VUE_SENSORS_URL:'http://127.0.0.1:8844',    //局域网物联接口
   // VUE_SENSORS_URL:'http://127.0.0.1:8843/api',  //外网物联接口
-
   lisenceUrl: 'http://106.0.5.113:8083/stargis/rest/services/System/UtileServer/CheckLocker', //cesium权限检验
-
 }
 

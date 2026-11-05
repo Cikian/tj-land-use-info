@@ -4,6 +4,7 @@
 
 <script>
 import html2canvas from 'html2canvas'
+import { disposeMvtLayers } from '@/utils/mvt/layerTreeDirective'
 import { axios } from '../../utils/request'
 
 export default {
@@ -50,6 +51,7 @@ export default {
     })
   },
   beforeDestroy() {
+    disposeMvtLayers(this.currentViewer())
     // 组件销毁时把渲染循环停掉，避免 window.viewer 上的 rAF 循环继续跑
     this.pauseRenderLoop()
   },
@@ -441,11 +443,4 @@ export default {
   overflow: hidden;
 }
 
-.cesium-viewer-navigationContainer {
-  top: 66px;
-}
-
-.cesium-viewer-bottom {
-  pointer-events: none;
-}
-</style>
+.cesium
