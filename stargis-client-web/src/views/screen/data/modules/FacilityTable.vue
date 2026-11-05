@@ -4,19 +4,19 @@
     --------------------------------
     纯展示组件：不发任何请求，全部交互通过事件抛给父组件。
 
-    ★ 「六阶段」列有两种数据来源，组件都能吃：
+    ★ 「配套流程」列有两种数据来源，组件都能吃：
       · 从 `/byLand` 来的行带 `stageStatus`（数组，每个阶段一条汇总）——
         这是「按宗地看配套」时的权威口径，直接渲染；
       · 从 `/facilityAdmin/list` 来的行**没有** stageStatus（后端分页返回的是
         Facility 实体本身）—— 此时该列显示「未加载」，而不是假装成「未开启」。
         假装的后患是：用户会以为这六个阶段真的没开始，而实际只是没查。
-      需要阶段汇总时点「六阶段」进入 ProcessTreePanel，那里是权威视图。
+      需要阶段汇总时点「配套流程」进入 ProcessTreePanel，那里是权威视图。
 
     事件：
       byLand    (row)  只看该宗地下的全部配套
       detail    (row)  详情
-      process   (row)  打开六阶段进度树
-      history   (row)  变更履历
+      process   (row)  打开配套流程树
+      history   (row)  操作记录
       edit      (row)  编辑
       remove    (row)  移除
       attachments (row) 该配套的附件（跳到附件面板）
@@ -93,18 +93,18 @@
         v-else
         type="button"
         class="facility-table__link is-muted"
-        title="该视图按分页返回，不含阶段汇总；点这里打开权威的六阶段视图"
+        title="该视图按分页返回，不含阶段汇总；点这里打开权威的配套流程视图"
         @click.stop="$emit('process', row)"
       >
-        点开六阶段
+        点开配套流程
       </button>
     </template>
 
     <template #action="{ row }">
       <span class="facility-table__actions">
-        <button type="button" class="facility-table__link" @click.stop="$emit('process', row)">六阶段</button>
+        <button type="button" class="facility-table__link" @click.stop="$emit('process', row)">配套流程</button>
         <button type="button" class="facility-table__link" @click.stop="$emit('detail', row)">详情</button>
-        <button type="button" class="facility-table__link" @click.stop="$emit('history', row)">履历</button>
+        <button type="button" class="facility-table__link" @click.stop="$emit('history', row)">操作记录</button>
         <button type="button" class="facility-table__link" @click.stop="$emit('attachments', row)">附件</button>
 
         <template v-if="!readonly">

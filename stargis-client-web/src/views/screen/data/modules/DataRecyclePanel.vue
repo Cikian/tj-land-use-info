@@ -17,7 +17,7 @@
     ★ 为什么「移除」这个动作不在这里：
       移除是录入页上的动作（那里已用 land:data:land / land:data:facility 把关）。
       本页只做「恢复」与「留痕查看」—— 既能恢复数据（等于一次写入）又能看到
-      全部变更履历（含别人的操作），敏感度更高，所以单独一个权限码。
+      全部操作记录（含别人的操作），敏感度更高，所以单独一个权限码。
 
     事件：
       drill (payload)  跳到别的面板
@@ -160,7 +160,7 @@
       </screen-panel>
     </template>
 
-    <!-- 单条数据的完整履历（宗地 / 配套 / 环节通用） -->
+    <!-- 单条数据的完整操作记录（宗地 / 配套 / 环节通用） -->
     <history-drawer ref="historyDrawer" />
 
     <!--
@@ -388,7 +388,7 @@ export default {
         bizType: row.bizType,
         bizId: row.id,
         bizKey: row.bizKey || row.name,
-        title: `${row.bizType === 'land' ? '经营性用地' : '配套项目'}履历 · ${row.name || row.bizKey || ''}`
+        title: `${row.bizType === 'land' ? '经营性用地' : '配套项目'}操作记录 · ${row.name || row.bizKey || ''}`
       })
     },
 
@@ -473,7 +473,7 @@ export default {
     /* ---------------- 对外（父组件调用） ---------------- */
 
     /**
-     * 应用下钻条件（例如从某条数据点「履历 / 留痕」跳过来）。
+     * 应用下钻条件（例如从某条数据点「操作记录 / 留痕」跳过来）。
      * ★ 面板被 keep-alive 缓存后 created 不会再跑，必须由父组件显式调用。
      */
     applyDrill (query) {

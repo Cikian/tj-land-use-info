@@ -5,10 +5,10 @@
     全屏弹窗 + 四个页签：
       基本信息 —— 53 个字段按 6 组（标识与属性 / 参建单位 / 前期审批与进度 /
                   档案要件（历史，只读）/ 说明 / 录入信息）分组展示
-      六阶段进度 —— 直接挂 ProcessTreePanel（与列表里的入口是同一个组件）
+      配套流程管理 —— 直接挂 ProcessTreePanel（与列表里的入口是同一个组件）
       附件 —— 该配套的附件列表（按 bizType=facility 查）
-      变更履历 —— 字段级变更（走 `/land/data/recycle/history`，
-                  这是「按业务对象取履历」的唯一入口，与宗地用的
+      操作记录 —— 字段级变更（走 `/land/data/recycle/history`，
+                  这是「按业务对象取操作记录」的唯一入口，与宗地用的
                   `/landAdmin/history` 同一份数据、不同通道）
 
     ★ 「档案要件」为什么单独一组并且是只读：
@@ -50,7 +50,7 @@
       </div>
 
       <screen-button size="sm" icon="layers" :disabled="!detail" @click="handleOpenProcess">
-        六阶段进度
+        配套流程管理
       </screen-button>
       <screen-button size="sm" icon="edit" :disabled="!detail" @click="handleEdit">编辑</screen-button>
       <screen-popconfirm
@@ -134,7 +134,7 @@
         </screen-loading>
       </div>
 
-      <!-- ================= 六阶段进度 ================= -->
+      <!-- ================= 配套流程管理 ================= -->
       <div v-show="activeTab === 'process'" class="facility-detail__pane">
         <!--
           这里直接用列表页那一个组件实例：`processVisible` 为真时才挂载，
@@ -143,11 +143,11 @@
         <div class="facility-detail__placeholder">
           <screen-empty
             v-if="!processVisible"
-            text="六阶段进度在独立视图中录入"
-            description="进度录入需要整屏宽度（6 个阶段 × 每个阶段多个事项），点下方按钮或标题栏的「六阶段进度」打开"
+            text="配套流程管理在独立视图中录入"
+            description="进度录入需要整屏宽度（6 个阶段 × 每个阶段多个事项），点下方按钮或标题栏的「配套流程管理」打开"
           />
           <screen-button v-if="!processVisible" type="primary" icon="layers" @click="handleOpenProcess">
-            打开六阶段进度
+            打开配套流程管理
           </screen-button>
         </div>
       </div>
@@ -180,11 +180,11 @@
         </section>
       </div>
 
-      <!-- ================= 变更履历 ================= -->
+      <!-- ================= 操作记录 ================= -->
       <div v-show="activeTab === 'history'" class="facility-detail__pane">
         <section class="facility-detail__block facility-detail__block--grow">
           <h4 class="facility-detail__block-title">
-            字段级变更履历
+            字段级操作记录
             <span class="facility-detail__block-sub">共 {{ history.length }} 条 · 含环节进度与附件的操作</span>
           </h4>
 
@@ -228,7 +228,7 @@
         </section>
       </div>
 
-      <!-- 六阶段进度：整屏弹窗，与列表页复用的同一个组件 -->
+      <!-- 配套流程管理：整屏弹窗，与列表页复用的同一个组件 -->
       <process-tree-panel
         v-if="processVisible"
         ref="processPanel"
@@ -349,9 +349,9 @@ export default {
       activeDetails: [],
       tabs: [
         { key: 'base', label: '基本信息' },
-        { key: 'process', label: '六阶段进度' },
+        { key: 'process', label: '配套流程管理' },
         { key: 'files', label: '附件' },
-        { key: 'history', label: '变更履历' }
+        { key: 'history', label: '操作记录' }
       ],
       historyColumns: [
         { key: 'createTime', title: '时间', width: 170, type: 'slot' },
@@ -497,7 +497,7 @@ export default {
             return
           }
           this.detail = res.result || {}
-          // 附件与履历不阻塞主信息展示，并行拉取
+          // 附件与操作记录不阻塞主信息展示，并行拉取
           this.loadAttachments(this.detail.id)
           this.loadHistory(this.detail.id)
         })
@@ -531,13 +531,13 @@ export default {
     },
 
     /**
-     * 履历。
+     * 操作记录。
      * ★ 走 `/land/data/recycle/history?bizType=facility&bizId=`：
-     *   这是「按业务对象取履历」的**唯一**通道（宗地之所以另有
+     *   这是「按业务对象取操作记录」的**唯一**通道（宗地之所以另有
      *   `/landAdmin/history`，只是后端顺手开了一个便捷入口，数据是同一张表）。
      * ★ `bizType=facility` 只返回**配套本体**的变更，不含该配套下各环节（bizType=process）
      *   与附件（bizType=attachment）的记录 —— 后端按 bizType 精确匹配。
-     *   所以想看某条环节的改动，要打开那一条环节的详情（ProcessItemModal 的履历入口）；
+     *   所以想看某条环节的改动，要打开那一条环节的详情（ProcessItemModal 的操作记录入口）；
      *   本页要的是「这条配套改过哪些字段」。
      */
     loadHistory (bizId) {

@@ -16,7 +16,7 @@
 
     事件：
       detail  (row)  查看详情
-      history (row)  查看变更履历
+      history (row)  查看操作记录
       edit    (row)  编辑
       remove  (row)  移除（父组件负责收集原因并发请求）
       facilities (row) 跳到该宗地的配套录入面板
@@ -102,7 +102,7 @@
         v-if="row.changeCount"
         type="button"
         class="land-table__link"
-        title="查看该宗地的字段级变更履历"
+        title="查看该宗地的字段级操作记录"
         @click.stop="$emit('history', row)"
       >
         {{ row.changeCount }} 次
@@ -114,7 +114,7 @@
     <template #action="{ row }">
       <span class="land-table__actions">
         <button type="button" class="land-table__link" @click.stop="$emit('detail', row)">详情</button>
-        <button type="button" class="land-table__link" @click.stop="$emit('history', row)">履历</button>
+        <button type="button" class="land-table__link" @click.stop="$emit('history', row)">操作记录</button>
 
         <template v-if="!readonly">
           <button type="button" class="land-table__link" @click.stop="$emit('edit', row)">编辑</button>

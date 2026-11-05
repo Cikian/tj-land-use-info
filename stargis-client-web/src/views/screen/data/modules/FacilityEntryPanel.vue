@@ -15,7 +15,7 @@
         「六大阶段」列展开六段状态标签 + 完成度，并可按需切到只看这一宗地的配套。
       · 总览模式（未指定宗地 / 匹配多条）：走分页列表 `/facilityAdmin/list`，
         该接口返回的是 Facility 实体，**没有**阶段汇总 —— 表格里那列会显示
-        「点开六阶段」，点进去是权威视图。不假装「未开启」。
+        「点开配套流程」，点进去是权威视图。不假装「未开启」。
 
     ★ 为什么两个模式不做成一个接口：
       后端明确把「按宗地取配套 + 阶段汇总」（/byLand）与「跨宗地分页检索」
@@ -103,7 +103,7 @@
           </screen-popconfirm>
 
           <screen-button size="sm" icon="layers" :disabled="!isLandMode" @click="handleOpenFirstProcess">
-            打开六阶段进度
+            打开配套流程管理
           </screen-button>
 
           <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
@@ -172,7 +172,7 @@
         <p class="facility-entry__remove-hint">
           <screen-icon name="info" :size="14" />
           移除是<b>软删</b>：这些配套会进入「数据更新与移除」的回收站，可以恢复。
-          原因会写入变更履历，供日后追溯。
+          原因会写入操作记录，供日后追溯。
         </p>
         <screen-field label="移除原因" label-width="88px" html-for="facility-remove-reason">
           <screen-input
@@ -185,7 +185,7 @@
           />
         </screen-field>
         <p v-if="removeTargets.length > 1" class="facility-entry__remove-hint is-warning">
-          本次将移除 <b>{{ removeTargets.length }}</b> 个配套项目，原因会写进每一条的履历。
+          本次将移除 <b>{{ removeTargets.length }}</b> 个配套项目，原因会写进每一条的操作记录。
         </p>
       </div>
     </screen-modal>
@@ -556,7 +556,7 @@ export default {
       this.$refs.processPanel.open(record)
     },
 
-    /** 标题栏的「打开六阶段进度」：宗地模式下默认打开第一个配套 */
+    /** 标题栏的「打开配套流程管理」：宗地模式下默认打开第一个配套 */
     handleOpenFirstProcess () {
       if (!this.dataSource.length) {
         toast.warning('该宗地还没有配套项目')

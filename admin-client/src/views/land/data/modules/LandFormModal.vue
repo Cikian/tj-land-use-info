@@ -282,7 +282,7 @@
         <div class="land-form__foot">
           <a-icon type="info-circle" />
           保存时会自动把空字符串转成 null（数值与日期列传空串会被后端拒绝），
-          改动的字段会逐条记入「变更履历」。
+          改动的字段会逐条记入「操作记录」。
         </div>
       </a-form>
     </a-spin>

@@ -184,7 +184,7 @@
       <footer class="process-item__foot">
         <span class="process-item__hint">
           <template v-if="context.progressId">
-            该环节已录入过进度，保存会**更新**原记录并留下字段级履历。
+            该环节已录入过进度，保存会**更新**原记录并留下字段级操作记录。
           </template>
           <template v-else>该环节还没录入过进度，保存会**新增**一条记录。</template>
         </span>
@@ -192,7 +192,7 @@
         <div class="process-item__foot-actions">
           <screen-popconfirm
             v-if="context.progressId"
-            title="撤回后该环节回到「未填报」，已录入的进度会被清空（会留一条撤回履历），确定吗？"
+            title="撤回后该环节回到「未填报」，已录入的进度会被清空（会留一条撤回操作记录），确定吗？"
             :description="context.lcName || ''"
             width="320"
             :confirm-loading="withdrawing"

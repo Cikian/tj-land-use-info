@@ -10,7 +10,7 @@
           <b>「出让宗地编号」是整条数据线的业务主键</b> —— 配套项目、档案、收发文、道路台账都按它关联，
           因此录入时实时查重，重复编号不允许保存。
           这里的<b>移除是软删</b>：数据不会被物理删除，可到「数据更新与移除」里恢复，
-          每次新增 / 修改 / 移除都会写入字段级变更履历。
+          每次新增 / 修改 / 移除都会写入字段级操作记录。
         </p>
       </div>
       <div class="page-head__actions">
@@ -174,7 +174,7 @@
       </template>
     </a-table>
 
-    <!-- ============ 表单 / 详情 / 履历 ============ -->
+    <!-- ============ 表单 / 详情 / 操作记录 ============ -->
     <land-form-modal ref="formModal" @ok="handleSaved" />
     <land-detail-modal ref="detailModal" @history="handleHistory" />
     <land-history-modal ref="historyModal" />
@@ -197,7 +197,7 @@
         message="移除是软删：记录仍保留在库里，可在「数据更新与移除」页恢复；宗地编号被移除后可以重新录入同一编号。" />
       <div class="remove-form">
         <div class="remove-form__label">
-          移除原因<span class="remove-form__optional">（选填，会写进变更履历，便于事后核对为什么移除）</span>
+          移除原因<span class="remove-form__optional">（选填，会写进操作记录，便于事后核对为什么移除）</span>
         </div>
         <a-textarea
           v-model="removeReason"
@@ -230,9 +230,9 @@
    *     反过来「有配套 + 配套名称关键词」可以按配套反查宗地（配套台账上只写了路名、
    *     没人记得是哪块地时用这个）。
    *  2. 录入：新增 / 编辑走同一个弹窗（34 个字段分 7 组），编号唯一性前后端各校一次。
-   *  3. 移除：软删 + 可选原因。原因写进变更履历，因为「为什么移除」是事后最常被问到、
+   *  3. 移除：软删 + 可选原因。原因写进操作记录，因为「为什么移除」是事后最常被问到、
    *     而数据本身永远答不上来的问题。
-   *  4. 留痕：新增/修改/移除全部记字段级履历，列表里点「详情 → 变更履历」可查。
+   *  4. 留痕：新增/修改/移除全部记字段级操作记录，列表里点「详情 → 操作记录」可查。
    *
    * ★ 权限只用 `land:data:land` 一个码，挂在「新增 / 批量移除 / 行内编辑 / 行内移除」这些
    *   **写操作**上；查询与详情不加 v-has。后端也是同一个码（见 LandAdminController 的注释：
@@ -480,7 +480,7 @@
         this.$refs.detailModal.open(record.id)
       },
       handleHistory (payload) {
-        // 详情弹窗不自己开履历（会变成弹窗里再弹一层），把 id 抛上来由页面打开
+        // 详情弹窗不自己开操作记录（会变成弹窗里再弹一层），把 id 抛上来由页面打开
         this.$refs.historyModal.open(payload.id, payload.crzdbh)
       },
 

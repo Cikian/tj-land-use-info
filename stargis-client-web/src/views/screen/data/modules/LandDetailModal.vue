@@ -2,24 +2,24 @@
   <!--
     LandDetailModal 经营性用地详情
     --------------------------------
-    全屏弹窗 + 分组描述列表 + 「变更履历」页签。
+    全屏弹窗 + 分组描述列表 + 「操作记录」页签。
 
     ★ 为什么用全屏弹窗而不是窄抽屉：
-      详情要同时展示 6 组共 34 个字段与一份字段级履历表，抽屉宽度不够会到处折行；
-      全屏弹窗保留「浮层」的上下文，又能给履历表足够的横向空间。
+      详情要同时展示 6 组共 34 个字段与一份字段级操作记录表，抽屉宽度不够会到处折行；
+      全屏弹窗保留「浮层」的上下文，又能给操作记录表足够的横向空间。
 
     ★ 为什么用「分组标题 + 分隔线」而不是卡片套卡片：
       描述列表本身是「一段一段的清单」，卡片会把留白吃掉、边界过多，
       读起来像表格而不是详情。分组边界靠竖条标题 + 留白表达即可。
       版式与 ArchiveDetailModal 的「方案 A 左右分栏」同一语言。
 
-    ★ 履历为什么在详情里而不是单独的入口：
+    ★ 操作记录为什么在详情里而不是单独的入口：
       用户看到一条宗地时最常问的两句是「这是什么」和「谁改过」。
-      前者是描述列表、后者是履历，放在同一个弹窗的两个页签里，
-      不必先关掉详情再去别处找履历。
+      前者是描述列表、后者是操作记录，放在同一个弹窗的两个页签里，
+      不必先关掉详情再去别处找操作记录。
 
     公开方法：
-      open(record, tab)  按列表行打开；tab='history' 时直接落到履历页签
+      open(record, tab)  按列表行打开；tab='history' 时直接落到操作记录页签
     事件：
       edit(detail)            点「编辑」时抛出，由列表页接手打开编辑弹窗
       facilities(detail)      点「查看配套」时抛出，由列表页跳到配套面板
@@ -147,11 +147,11 @@
           </section>
         </div>
 
-        <!-- ================= 变更履历 ================= -->
+        <!-- ================= 操作记录 ================= -->
         <div v-show="activeTab === 'history'" class="land-detail__pane">
           <section class="land-detail__block land-detail__block--grow">
             <h4 class="land-detail__block-title">
-              字段级变更履历
+              字段级操作记录
               <span class="land-detail__block-sub">
                 共 {{ history.length }} 条 · 新增 / 修改 / 移除 / 恢复都会留痕
               </span>
@@ -258,7 +258,7 @@ import AttachmentTreeView from './AttachmentTreeView.vue'
 import AttachmentPreviewModal from './AttachmentPreviewModal.vue'
 import { actionTone, formatTime, formatSize, joinInfo } from '../constants'
 
-/** 履历表格里展示的时间格式（后端给的是 yyyy-MM-dd HH:mm:ss） */
+/** 操作记录表格里展示的时间格式（后端给的是 yyyy-MM-dd HH:mm:ss） */
 function historyTime (value) {
   return formatTime(value)
 }
@@ -294,7 +294,7 @@ export default {
       tabs: [
         { key: 'base', label: '基本信息' },
         { key: 'files', label: '附件' },
-        { key: 'history', label: '变更履历' }
+        { key: 'history', label: '操作记录' }
       ],
       historyColumns: [
         { key: 'createTime', title: '时间', width: 170, formatter: (value) => historyTime(value) },
@@ -316,7 +316,7 @@ export default {
     /**
      * 基本信息按「用户填表的顺序」分 4 组。
      * ★ 每组的 label 都用 **中文业务名**（与录入表单上的标签逐字一致），
-     *   不要用实体字段名：履历里已经有 field 名，详情里再出现一遍只是噪音。
+     *   不要用实体字段名：操作记录里已经有 field 名，详情里再出现一遍只是噪音。
      * ★ tone: 'number' 让等宽数字字体生效（出让金 / 面积 / 日期），
      *   金额与日期纵向对齐后一眼能扫。
      */
@@ -399,7 +399,7 @@ export default {
         { key: 'beizhu', label: '备注', value: data.beizhu, stack: true }
       ]
     },
-    /** 履历行加稳定 key（ScreenDataTable 的 row-key 需要唯一值） */
+    /** 操作记录行加稳定 key（ScreenDataTable 的 row-key 需要唯一值） */
     historyRows () {
       return (this.history || []).map((item, index) => Object.assign({ key: item.id || `h-${index}` }, item))
     },
@@ -438,7 +438,7 @@ export default {
             return
           }
           this.detail = res.result || {}
-          // 履历与附件都不阻塞主信息展示，并行拉取
+          // 操作记录与附件都不阻塞主信息展示，并行拉取
           this.loadHistory(id)
           this.loadAttachments(id)
         })
@@ -695,7 +695,7 @@ export default {
     color: var(--screen-text-mute);
   }
 
-  /* 履历区卡片：内容本身是表格，需要卡片把表格与页面背景切开 */
+  /* 操作记录区卡片：内容本身是表格，需要卡片把表格与页面背景切开 */
   &__block {
     display: flex;
     flex-direction: column;
@@ -779,7 +779,7 @@ export default {
 
 /*
   描述列表的字号 / 行距统一在这里收口，只作用于详情内的分组，
-  不影响履历页签的表格。
+  不影响操作记录页签的表格。
   层级靠**颜色**而不是字号：标签弱色定位、值白色承载数据；
   字号与行高一致是对齐的前提（见 ScreenDescriptions 的 is-wrap 分支）。
 */

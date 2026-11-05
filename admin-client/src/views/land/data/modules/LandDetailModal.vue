@@ -27,7 +27,7 @@
               </a-tag>
             </div>
             <div class="land-detail__head-actions">
-              <a-button size="small" icon="history" @click="handleHistory">变更履历</a-button>
+              <a-button size="small" icon="history" @click="handleHistory">操作记录</a-button>
               <a-button size="small" icon="reload" :loading="loading" @click="load">刷新</a-button>
             </div>
           </div>
@@ -170,8 +170,8 @@
    *   录入和查看是同一批字段的两个视角。分组不一致时，用户在详情里记住的位置
    *   （「出让金在上面第二组」）到编辑里就对不上了，改一个字段要多找一遍。
    *
-   * ★ 为什么详情里的「变更履历」只 emit 事件、不自己打开履历弹窗：
-   *   履历弹窗是页面级的（页面上从列表也能直接看履历），若嵌在详情弹窗内部，
+   * ★ 为什么详情里的「操作记录」只 emit 事件、不自己打开操作记录弹窗：
+   *   操作记录弹窗是页面级的（页面上从列表也能直接看操作记录），若嵌在详情弹窗内部，
    *   就变成「弹窗里再弹一层」，关闭顺序、遮罩层级都要额外照顾。
    *   这里把 id 抛给页面，由页面统一打开，层级始终只有两层。
    *

@@ -1,13 +1,13 @@
 <template>
   <!--
-    HistoryDrawer 单条数据的完整履历
+    HistoryDrawer 单条数据的完整操作记录
     --------------------------------
     名字里带 Drawer，实现上是 ScreenModal —— 组件库**没有** ScreenDrawer
     （见 components/screen/index.js 的清单），而为了一个「侧滑」去新增一个
     基础组件会连带改 index.js 的两处登记与文档，收益不成比例。
-    全屏以外的中等宽度弹窗同样能达到「不离开当前页面看履历」的目的。
+    全屏以外的中等宽度弹窗同样能达到「不离开当前页面看操作记录」的目的。
 
-    用途：从宗地 / 配套 / 回收站的某一行点「履历」时打开，
+    用途：从宗地 / 配套 / 回收站的某一行点「操作记录」时打开，
     回答「这一条被谁在什么时候改了什么」。
 
     ★ 与「变更留痕」页签的分工：
@@ -42,7 +42,7 @@
         :min-width="880"
         :animated="false"
         row-clickable
-        empty-text="这条记录还没有变更履历"
+        empty-text="这条记录还没有操作记录"
         @row-click="handleRowClick"
       >
         <template #createTime="{ row }">
@@ -155,9 +155,9 @@ export default {
   },
   computed: {
     title () {
-      return this.context.title || `变更履历 · ${this.context.bizKey || ''}`
+      return this.context.title || `操作记录 · ${this.context.bizKey || ''}`
     },
-    /** 履历行加稳定 key（ScreenDataTable 的 row-key 需要唯一值） */
+    /** 操作记录行加稳定 key（ScreenDataTable 的 row-key 需要唯一值） */
     rows () {
       return (this.history || []).map((item, index) => Object.assign({ key: item.id || `h-${index}` }, item))
     }
@@ -172,7 +172,7 @@ export default {
     open (payload) {
       const context = payload || {}
       if (!context.bizType || !context.bizId) {
-        toast.warning('缺少业务类型或业务主键，无法查看履历')
+        toast.warning('缺少业务类型或业务主键，无法查看操作记录')
         return
       }
       this.context = context
@@ -187,7 +187,7 @@ export default {
       queryChangeHistory(this.context.bizType, this.context.bizId, 100)
         .then((res) => {
           if (!res || !res.success) {
-            toast.error((res && res.message) || '履历加载失败')
+            toast.error((res && res.message) || '操作记录加载失败')
             return
           }
           this.history = res.result || []

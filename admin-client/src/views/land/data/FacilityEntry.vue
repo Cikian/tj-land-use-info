@@ -520,7 +520,7 @@
         }
         this.$confirm({
           title: `确认撤回「${record.lcName}」的环节进度吗？`,
-          content: '撤回后该环节回到「未开启」，已填的开始/结束时间与问题描述都会清除（会留一条变更履历）。',
+          content: '撤回后该环节回到「未开启」，已填的开始/结束时间与问题描述都会清除（会留一条操作记录）。',
           okText: '撤回',
           okType: 'danger',
           cancelText: '取消',

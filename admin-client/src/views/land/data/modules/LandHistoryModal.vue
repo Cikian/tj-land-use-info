@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    title="变更履历"
+    title="操作记录"
     :width="920"
     :visible="visible"
     :footer="null"
@@ -15,12 +15,12 @@
       <a-button size="small" icon="reload" :loading="loading" @click="load">刷新</a-button>
     </div>
 
-    <!-- 没有履历不是错误，但必须说清原因：老数据不补记，否则用户会以为功能坏了 -->
+    <!-- 没有操作记录不是错误，但必须说清原因：老数据不补记，否则用户会以为功能坏了 -->
     <a-alert
       v-if="!loading && !records.length"
       type="info"
       show-icon
-      message="这条宗地还没有变更记录（留痕上线之前录入的历史数据不会补记履历）" />
+      message="这条宗地还没有变更记录（留痕上线之前录入的历史数据不会补记操作记录）" />
 
     <a-table
       row-key="id"
@@ -47,7 +47,7 @@
       </template>
       <template slot="expandedRowRender" slot-scope="record">
         <div v-if="!record.details || !record.details.length" class="land-history__empty">
-          本次操作没有字段级变化（移除 / 恢复这类动作只改状态，履历用于留痕）
+          本次操作没有字段级变化（移除 / 恢复这类动作只改状态，操作记录用于留痕）
         </div>
         <a-table
           v-else
@@ -74,7 +74,7 @@
   import { actionColor, actionText } from '@/api/land/dataRecycle'
 
   /**
-   * 经营性用地 - 变更履历弹窗
+   * 经营性用地 - 操作记录弹窗
    *
    * 数据源是 `queryLandHistory(id)`，返回的是**字段级**明细：
    * [{action, actionText, actionColor, summary, changeCount, details, operatorName, createTime}]，
@@ -86,11 +86,11 @@
    *   表格 + 展开行只有两层，且行号、操作时间、操作人天然对齐，便于扫读。
    *
    * ★ 为什么行点击也能展开（而不是只靠最左边那个小三角）：
-   *   三角图标只有 8px 左右，鼠标要瞄准；履历是「想细看某一条」的场景，
+   *   三角图标只有 8px 左右，鼠标要瞄准；操作记录是「想细看某一条」的场景，
    *   整行可点能少一次瞄准。点三角自身时交给表格内置行为处理，避免一次点击切换两次。
    *
    * ★ 动作的配色/文案一律取 `@/api/land/dataRecycle` 的 `actionColor` / `actionText`：
-   *   回收站、变更留痕、宗地履历、配套履历至少四处要展示同一个动作，
+   *   回收站、变更留痕、宗地操作记录、配套操作记录至少四处要展示同一个动作，
    *   各写一份必然漂移（典型症状是同一个动作在两个页面颜色不同，用户以为是两种状态）。
    */
 
@@ -142,7 +142,7 @@
       actionText: actionText,
 
       /**
-       * 打开履历。
+       * 打开操作记录。
        *
        * @param {string} id    宗地主键
        * @param {string} landKey 出让宗地编号（只用于标题，让用户确认看的是哪条）
@@ -177,7 +177,7 @@
           }
         }).catch(e => {
           this.records = []
-          this.$message.error((e && e.message) || '变更履历加载失败')
+          this.$message.error((e && e.message) || '操作记录加载失败')
         }).finally(() => {
           this.loading = false
         })

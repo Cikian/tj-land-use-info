@@ -16,7 +16,7 @@
 
     事件：
       restore (row)  恢复
-      history (row)  看这条记录的完整履历
+      history (row)  看这条记录的完整操作记录
   -->
   <screen-data-table
     :columns="columns"
@@ -78,7 +78,7 @@
           <button type="button" class="recycle-table__link">恢复</button>
         </screen-popconfirm>
 
-        <button type="button" class="recycle-table__link" @click.stop="$emit('history', row)">履历</button>
+        <button type="button" class="recycle-table__link" @click.stop="$emit('history', row)">操作记录</button>
       </span>
     </template>
   </screen-data-table>

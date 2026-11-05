@@ -19,11 +19,11 @@
       折叠只有「全开/全关」两态，而不同人的屏前工作不一样（有人要一次比对十几条），
       拖动能给出连续区间；键盘用户也能用 ↑/↓/PgUp/PgDn 调。
 
-    弹窗：新增/编辑、详情（含变更履历）、移除原因确认。
+    弹窗：新增/编辑、详情（含操作记录）、移除原因确认。
 
     ★ 移除为什么必须带「原因」：
       宗地移除是软删，数据还在回收站里。半年后有人问「这块地怎么没了」，
-      只有原因能回答。所以移除弹窗里原因虽然可选，但按钮上写明了「原因会写入变更履历」，
+      只有原因能回答。所以移除弹窗里原因虽然可选，但按钮上写明了「原因会写入操作记录」，
       默认聚焦在原因输入框上，引导用户填一句。
 
     ★ 为什么列表里的「配套数 / 附件数 / 变更次数」默认是「—」：
@@ -137,7 +137,7 @@
         <p class="land-entry__remove-hint">
           <screen-icon name="info" :size="14" />
           移除是<b>软删</b>：这条宗地会进入「数据更新与移除」的回收站，可以恢复。
-          原因会写入该宗地的变更履历，供日后追溯。
+          原因会写入该宗地的操作记录，供日后追溯。
         </p>
         <screen-field label="移除原因" label-width="88px" html-for="land-remove-reason">
           <screen-input
@@ -150,7 +150,7 @@
           />
         </screen-field>
         <p v-if="removeTargets.length > 1" class="land-entry__remove-hint is-warning">
-          本次将移除 <b>{{ removeTargets.length }}</b> 宗宗地，原因会写进每一条的履历。
+          本次将移除 <b>{{ removeTargets.length }}</b> 宗宗地，原因会写进每一条的操作记录。
         </p>
       </div>
     </screen-modal>
@@ -426,7 +426,7 @@ export default {
       this.$refs.detailModal.open(record, 'files')
     },
 
-    /** 单条移除：也走原因弹窗（原因会写进履历） */
+    /** 单条移除：也走原因弹窗（原因会写进操作记录） */
     handleRemove (record) {
       if (!record || !record.id) return
       this.removeTargets = [record]
