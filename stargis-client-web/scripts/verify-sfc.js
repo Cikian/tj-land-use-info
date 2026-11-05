@@ -34,6 +34,16 @@ const FILES = [
   'src/views/screen/map/index.vue',
   'src/views/maps/components/Basic/HomeBasicBody.vue',
   'src/views/maps/S3dmViewer.vue',
+  // 数据管理 · 地块 / 配套地块图形（GeoJSON）导入（2026-11 新增）：
+  // ★ 必须登记 —— 本轮合并时 FacilityGeoImportModal.vue（627 行）与 ScreenPopover.vue
+  //   （正是被截断的那个）都在清单外，等于「自检绿灯但其实没检查过」。
+  'src/api/land/facilityGeoImport.js',
+  'src/api/land/landGeoImport.js',
+  'src/api/manageJava.js',
+  'src/views/screen/data/modules/LandGeoImportModal.vue',
+  'src/views/screen/data/modules/FacilityGeoImportModal.vue',
+  'src/views/screen/landGeoLayer.js',
+  'src/components/screen/ScreenPopover.vue',
   'src/api/land/ledger.js',
   'src/api/land/handover.js',
   'src/api/land/completion.js',

@@ -37,7 +37,11 @@ export const facilityAdminUrl = {
   processSave: '/land/data/facilityAdmin/process/save',
   processSaveBatch: '/land/data/facilityAdmin/process/saveBatch',
   processDelete: '/land/data/facilityAdmin/process/delete',
-  expectEnd: '/land/data/facilityAdmin/expectEnd'
+  expectEnd: '/land/data/facilityAdmin/expectEnd',
+  // ---- 配套地块图形（GeoJSON）导入 ----
+  // 后端是另一个 Controller（FacilityGeoImportController），不挂在 facilityAdmin 前缀下
+  geoImportPreview: '/land/data/facilityGeoImport/preview',
+  geoImportConfirm: '/land/data/facilityGeoImport/confirm'
 }
 
 /* ==========================================================================
@@ -222,6 +226,50 @@ export function normalizeProcess (payload) {
   return data
 }
 
+/* ==========================================================================
+ * 四、配套地块图形（GeoJSON）导入
+ *
+ * 后端：org.jeecg.modules.land.data.imports.facilitygeo.controller.FacilityGeoImportController
+ * 权限码：land:data:facility（入口是「配套地块数据录入」页工具条上的「导入地块图形」，
+ *         与大屏端同名按钮走同一套接口）
+ *
+ * 约定（与 landGeoImport.js 结构相同，差异只有匹配键）：
+ *  1. ★ 必须先「预览校验」再「确认导入」：预览绝不写库，有错误时整批不写；
+ *  2. 接口无状态：预览与确认各传一次同一文件（确认时后端重新解析，
+ *     保证写进去的就是此刻文件里的内容）；
+ *  3. ★ 配套按 properties.PTXMMC（配套项目名称，归一后）匹配
+ *     t_supporting_facilities.ptxmmc，同名称跨宗地的多条记录**全部**更新
+ *     （道路类配套「一条路穿过好几宗地」是业务常态）；宗地那边按 CRZDBH 匹配，别照抄；
+ *  4. 留痕走每条配套的变更记录（ACTION_IMPORT，含来源文件/时间/操作人），
+ *     不写 t_facility_import_log —— 那是配套 Excel 导入的「导入记录」表。
+ */
+
+/**
+ * 预览校验（★ 不写库）。
+ *
+ * @param {File} file .geojson / .json 文件
+ * @returns {Promise} result 含 totalFeatures / validFeatures / willUpdateRows /
+ *   updatedRows / unchangedRows / unmatchedCount / multiRecordNames / errors / warnings / notices
+ */
+export function previewFacilityGeoImport (file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  // 几十 MB 文件解析 + 批量写远程库：远超全局超时，单独放宽到 5 分钟
+  return uploadAction(facilityAdminUrl.geoImportPreview, formData, { timeout: 300000 })
+}
+
+/**
+ * 确认入库（重新解析文件后按配套项目名称匹配更新）。
+ *
+ * @param {File} file 与预览时相同的文件
+ * @returns {Promise} result 含 updatedRows 等实际写入计数
+ */
+export function confirmFacilityGeoImport (file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return uploadAction(facilityAdminUrl.geoImportConfirm, formData, { timeout: 300000 })
+}
+
 export default {
   facilityAdminUrl,
   queryFacilityPage,
@@ -237,5 +285,10 @@ export default {
   queryProcessConfig,
   saveProcess,
   saveProcessBatch,
-  deleteProcess
+  deleteProcess,
+  calcExpectEnd,
+  normalizeFacility,
+  normalizeProcess,
+  previewFacilityGeoImport,
+  confirmFacilityGeoImport
 }

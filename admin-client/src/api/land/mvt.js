@@ -10,7 +10,6 @@ export function getMvtTables(source, refresh = false) {
   return axios({ url: '/land/mvt/tables', method: 'get', params: { source, refresh }, timeout: 45000 })
 }
 
-
 /**
  * 从 MVT 管理清单移除一个 GIS 库（不删除 PG 库本身）。
  * 后端：DELETE /land/spatial/source/{id}

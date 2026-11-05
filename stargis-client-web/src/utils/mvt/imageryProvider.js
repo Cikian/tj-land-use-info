@@ -146,7 +146,6 @@ export async function createMvtImageryProvider(url, options = {}) {
     hasAlphaChannel: true,
     errorEvent: new C.Event(),
     getTileCredits() { return undefined },
-    pickFeatures() { return undefined },
     requestImage(x, y, level, request) {
       if (destroyed) return Promise.resolve(transparent)
       // 返回 undefined 让 Cesium 下一帧重试，限制快速缩放时的并发请求。

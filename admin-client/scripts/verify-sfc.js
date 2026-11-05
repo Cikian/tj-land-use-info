@@ -14,7 +14,12 @@ const compiler = require('vue-template-compiler')
 const less = require('less')
 
 const files = [
+  // 地图管理 · MVT 瓦片服务清单（2026-11 新增）+ 空间数据（SHP）导入弹窗
   'src/views/land/map/MvtServiceList.vue',
+  'src/views/land/map/ShpImportModal.vue',
+  // 数据管理 · 宗地 / 配套地块图形（GeoJSON）导入弹窗（2026-11 新增）
+  'src/views/land/data/modules/LandGeoImportModal.vue',
+  'src/views/land/data/modules/FacilityGeoImportModal.vue',
   'src/views/land/archive/ArchiveList.vue',
   'src/views/land/archive/ArchiveQuery.vue',
   'src/views/land/archive/ArchiveStatistics.vue',
