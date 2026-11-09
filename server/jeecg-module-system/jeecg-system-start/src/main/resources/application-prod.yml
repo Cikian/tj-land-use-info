@@ -298,3 +298,25 @@ third-app:
       # appSecret
       client-secret: ??
       agent-id: ??
+land:
+  spatial:
+    # ★ 目标 PG 数据库默认连接信息
+    # SHP 上传入库时用（前端不填则用这里的默认值）
+    # MVT 出图的 DynamicDBUtil 也按此信息取连接
+    pg-host: 49.232.252.56
+    pg-port: 5432
+    pg-user: postgres
+    pg-password: Chen0809@pgsql
+    # shp2pgsql 可执行文件路径。留空则自动探测：
+    #   配置路径 → SHOW data_directory 反推 bin 目录 → 常见安装目录 → PATH
+    # 例：D:/Program Files/PostgreSQL/16/bin/shp2pgsql.exe
+    shp2pgsql-path: ""
+    # 默认导入引擎：shp2pgsql（默认）/ geotools（信创，纯 Java）
+    import-engine: shp2pgsql
+    # SHP zip 解压临时目录
+    temp-dir: ${java.io.tmpdir}/land-spatial
+    # SHP 属性文件(.dbf)读取字符集（国内数据多为此编码）
+    dbf-charset: GBK
+    # shp2pgsql 输出 SQL 的读取字符集（跟随运行环境 locale）
+    # Windows 中文环境 = GBK；Linux UTF-8 环境需改为 UTF-8
+    sql-charset: GBK
