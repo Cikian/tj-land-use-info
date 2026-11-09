@@ -368,7 +368,7 @@ third-app:
 # =============================================================================
 #  ★ 下面两节是 dev 里有、prod 模板里**整节缺失**的，缺了不是"少个开关"而是功能不对：
 #    · ck.crydis / ck.stargis.zk → 中台（ZK-SERVER）同步与令牌存储
-#    · land.*                   → 空间数据（SHP 入库）与提级论证回写
+#    · land.*                   → 空间数据（SHP 入库 / MVT 出图）与提级论证回写
 # =============================================================================
 ck:
   crydis:
@@ -437,11 +437,24 @@ ck:
         # enabled: true
 
 land:
-  # SHP 上传入库（MVT 空间表服务的数据入口）
+  # SHP 上传入库（MVT 空间表服务的数据入口）与 MVT 出图共用的空间库配置
+  # 对应 SpatialProperties.java（jeecg-module-land/spatial/config/）
   spatial:
+    # ★ 目标 PG 数据库默认连接信息（SHP 入库前端不填时用它；MVT 出图的
+    #   DynamicDBUtil 也按这份信息取连接）
+    pg-host: ${TJ_PG_HOST:49.232.252.56}
+    pg-port: ${TJ_PG_PORT:5432}
+    pg-user: ${TJ_PG_USER:postgres}
+    # 口径同其它口令：真实值放 .env，仓库里不留明文（这个口令此前已在提交
+    # 5fbad9f 里明文出现过，建议一并换掉）。缺这个键会启动即报占位符解析失败，
+    # 比「连不上 PG」晚一步暴露要好。
+    pg-password: ${TJ_PG_PASSWORD}
+    # SHP zip 解压临时目录
+    temp-dir: ${java.io.tmpdir}/land-spatial
     # shp2pgsql（快，平台相关）/ geotools（纯 Java，麒麟·鲲鹏等信创环境零适配）
     import-engine: ${TJ_SHP_IMPORT_ENGINE:shp2pgsql}
-    # 留空＝自动探测（SHOW data_directory 反推 → 常见安装目录 → PATH）
+    # 留空＝自动探测（配置路径 → SHOW data_directory 反推 → 常见安装目录 → PATH）
+    # 例：D:/Program Files/PostgreSQL/16/bin/shp2pgsql.exe
     shp2pgsql-path: ${TJ_SHP2PGSQL_PATH:}
     # .dbf 属性文件字符集（国内数据多为 GBK）
     dbf-charset: ${TJ_SHP_DBF_CHARSET:GBK}
