@@ -1,13 +1,50 @@
+# =============================================================================
+#  生产 / 打包测试 profile
+# -----------------------------------------------------------------------------
+#  打包命令：mvn clean package -Pprod   （application.yml 里的
+#  spring.profiles.active=@profile.name@ 会被替换成 prod，jar 里生效的就是本文件）
+#
+#  ★ 本文件里**不出现任何口令**：敏感值、以及「换台机器就要改」的值，
+#    一律写成 ${TJ_XXX} 占位符；真实值放在跟 jar 同目录（或向上最多 4 级）的
+#    .env 里，由 DotEnvEnvironmentPostProcessor 在启动最早期读成
+#    **最低优先级**的 PropertySource。优先级：
+#         -D 系统属性  >  真实环境变量  >  .env  >  本文件里的默认值
+#    → 换机器只改 .env，不用重新打包。
+#    清单见 server/.env.example，排查见 server/环境变量与敏感信息.md。
+#
+#  ★ 与 application-dev.yml 的关系：**业务行为刻意对齐 dev**
+#    （本地上传、中台同步、200MB 上传上限、ES 不检查……），这样「打出来的包」
+#    和「本地 dev」跑起来观感一致，不会出现"换个环境某个功能就变样"的排查成本。
+#
+#    与 jeecg 原版 prod 模板的差异（都是「照模板就会坏」的点，每处都有注释）：
+#      ① 端口/上下文路径、上传目录 → 改成 ${TJ_*}，换机器不用重打包
+#      ② uploadType: alioss → local（仓库里没有可用的 OSS 密钥）
+#      ③ 上传上限 10MB → 200MB（档案扫描件）
+#      ④ Druid maxActive 1000 → 50（库是共享实例）
+#      ⑤ 错误信息不再回显异常与堆栈
+#      ⑥ knife4j Basic 认证默认关闭、ES 默认不检查
+#      ⑦ 补上 prod 模板整节缺失的 ck.*（中台同步）与 land.*（SHP 入库/提级回写）
+# =============================================================================
 server:
-  port: 8080
+  # 端口 / 上下文路径**只由 .env 决定**（这里不写默认值，缺了就直接起不来，
+  # 比"悄悄跑在 8080 上、nginx 反代全 502"好排查）。
+  # 本项目部署口径：9802 + /api，正好对上 nginx 的 /api/ 反代
+  # （见 code/new/docs/deploy/nginx-admin.web.conf、nginx-gis.web.conf）。
+  port: ${TJ_SERVER_PORT}
   tomcat:
     max-swallow-size: -1
   error:
-    include-exception: true
-    include-stacktrace: ALWAYS
-    include-message: ALWAYS
+    # 模板原来是 include-exception: true + include-stacktrace: ALWAYS，
+    # 等于把异常类名、包路径、SQL 片段原样回显给前端 —— 生产环境不这么做。
+    # include-message 必须保留：前端提示框读的就是 message 字段。
+    # 需要在测试机上排查时，在 .env 里加：
+    #   TJ_ERROR_INCLUDE_EXCEPTION=true
+    #   TJ_ERROR_STACKTRACE=always
+    include-exception: ${TJ_ERROR_INCLUDE_EXCEPTION:false}
+    include-stacktrace: ${TJ_ERROR_STACKTRACE:never}
+    include-message: always
   servlet:
-    context-path: /jeecg-boot
+    context-path: ${TJ_CONTEXT_PATH}
   compression:
     enabled: true
     min-response-size: 1024
@@ -22,12 +59,15 @@ management:
 spring:
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # 与 dev 对齐：档案扫描件常见几百页 PDF / 图纸（dwg、shp 压缩包），
+      # 旧 tj-sfw 白名单上限 200MB，jeecg 默认 10MB 会把大部分档案文件挡在门外。
+      max-file-size: 200MB
+      max-request-size: 200MB
   mail:
     host: smtp.163.com
-    username: ${TJ_MAIL_USERNAME:}
-    password: ${TJ_MAIL_PASSWORD:}
+    # 当前未启用邮件功能：口令占位即可，缺失时按空值处理（不会因此起不来）
+    username: ${TJ_MAIL_USERNAME}
+    password: ${TJ_MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -80,7 +120,8 @@ spring:
     # 设置页面编码格式
     charset: UTF-8
     # 设置页面缓存
-    cache: false
+    # dev 里是 false（改完 .ftl 刷新即生效）；生产打开缓存，模板只在首次加载时解析
+    cache: ${TJ_FREEMARKER_CACHE:true}
     prefer-file-system-access: false
     # 设置ftl文件路径
     template-loader-path:
@@ -98,9 +139,11 @@ spring:
   datasource:
     druid:
       stat-view-servlet:
+        # ★ 该 servlet 是 enabled: true，口令不是可选项：.env 里没配就是空口令。
+        #   旧模板把 admin/123456 写死在仓库里，部署到内网也等于不设防。
         enabled: true
-        loginUsername: ${TJ_DRUID_LOGIN_USERNAME:}
-        loginPassword: ${TJ_DRUID_LOGIN_PASSWORD:}
+        loginUsername: ${TJ_DRUID_LOGIN_USERNAME}
+        loginPassword: ${TJ_DRUID_LOGIN_PASSWORD}
         allow:
       web-stat-filter:
         enabled: true
@@ -110,7 +153,10 @@ spring:
         # 初始化大小，最小，最大
         initial-size: 5
         min-idle: 5
-        maxActive: 1000
+        # 模板原值 1000：本库是「共享远程实例」（tj-jyxyd），MySQL 默认 max_connections=151，
+        # 单机测试包开到 1000 只会把库端连接打满，反而让别的环境连不上。
+        # 需要压测时在 .env 里调 TJ_DB_MAX_ACTIVE。
+        maxActive: ${TJ_DB_MAX_ACTIVE:50}
         # 配置获取连接等待超时的时间
         maxWait: 60000
         # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
@@ -130,7 +176,9 @@ spring:
         connectionProperties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
       datasource:
         master:
-          url: jdbc:mysql://127.0.0.1:3306/jeecg-boot?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+          # ★ 库名必须来自 .env 的 TJ_DB_NAME：模板原来写死「jeecg-boot」，
+          #   而本项目的业务库叫 tj-jyxyd，写死的结果是启动即「表不存在」。
+          url: jdbc:mysql://${TJ_DB_HOST}:${TJ_DB_PORT}/${TJ_DB_NAME}?characterEncoding=UTF-8&useUnicode=true&useSSL=false&tinyInt1isBit=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
           username: ${TJ_DB_USER}
           password: ${TJ_DB_PASSWORD}
           driver-class-name: com.mysql.cj.jdbc.Driver
@@ -141,10 +189,14 @@ spring:
           #password: root
           #driver-class-name: com.mysql.cj.jdbc.Driver
   #redis 配置
+  # ★ 登录令牌、字典缓存、shiro 会话都在 Redis 里 —— 这台机器上**必须**有 Redis，
+  #   否则连登录都进不去；地址在 .env 的 TJ_REDIS_HOST/TJ_REDIS_PORT 里改。
   redis:
     database: 0
-    host: ${TJ_REDIS_HOST:127.0.0.1}
-    port: ${TJ_REDIS_PORT:6379}
+    host: ${TJ_REDIS_HOST}
+    port: ${TJ_REDIS_PORT}
+    # ★ 用 ${VAR:} 而不是裸 ${VAR}：本机 Redis 无口令时要落成**空值**。
+    #   写成 ${VAR:''} 在 YAML 里会变成字面量两个单引号，Redis 拿它当口令去认证会失败。
     password: '${TJ_REDIS_PASSWORD:}'
 #mybatis plus 设置
 mybatis-plus:
@@ -169,43 +221,50 @@ jeecg:
   # 是否启用安全模式
   safeMode: false
   # 签名密钥串(前后端要一致，正式发布请自行修改)
-  signatureSecret: ${TJ_SIGNATURE_SECRET:}
+  # ★ 必须与两个前端 .env / 代码里的一致，否则字典类接口（signUrls）全部验签失败
+  signatureSecret: ${TJ_SIGNATURE_SECRET}
   # 签名拦截接口
   signUrls: /sys/dict/getDictItems/*,/sys/dict/loadDict/*,/sys/dict/loadDictOrderByValue/*,/sys/dict/loadDictItem/*,/sys/dict/loadTreeData,/sys/api/queryTableDictItemsByCode,/sys/api/queryFilterTableDictInfo,/sys/api/queryTableDictByKeys,/sys/api/translateDictFromTable,/sys/api/translateDictFromTableByKeys
-  #local\minio\alioss
-  uploadType: alioss
-  # 前端访问地址
+  # local（本地上传，本项目用这个）/ minio / alioss
+  # 模板原来是 alioss，但仓库里没有可用的 OSS 密钥，只会让附件上传全部失败
+  uploadType: ${TJ_UPLOAD_TYPE:local}
+  # 前端访问地址（拼邮件/大屏里的绝对链接用）
   domainUrl:
-    pc: http://localhost:3100
-    app: http://localhost:8051
+    pc: ${TJ_DOMAIN_URL_PC:http://127.0.0.1:3100}
+    app: ${TJ_DOMAIN_URL_APP:http://127.0.0.1:8051}
   path:
-    #文件上传根目录 设置
-    upload: /opt/jeecg-boot/upload
-    #webapp文件路径
-    webapp: /opt/jeecg-boot/webapp
+    # 文件上传根目录（档案扫描件、收发文附件、提级论证材料都落在这里）
+    # ★ 默认值是**相对路径**：按启动时的当前工作目录解析（`java -jar` 就在 jar 所在目录执行即可）。
+    #   换台机器不用改这个文件；要固定到某个盘就在 .env 里写绝对路径，例如
+    #   TJ_UPLOAD_PATH=D:/tj-land-use-info/upFiles
+    upload: ${TJ_UPLOAD_PATH:./upFiles}
+    #webapp文件路径（配置里会把它也挂成静态资源根，可放前端 dist 做一体化部署）
+    webapp: ${TJ_WEBAPP_PATH:./upFiles/webapp}
   shiro:
     excludeUrls: /test/jeecgDemo/demo3,/test/jeecgDemo/redisDemo/**,/category/**,/visual/**,/map/**,/jmreport/bigscreen2/**,/api/getUserInfo
-  #阿里云oss存储和大鱼短信秘钥配置
+  #阿里云oss存储和大鱼短信秘钥配置（当前未启用，保持占位）
   oss:
-    accessKey: ${TJ_OSS_ACCESS_KEY:}
-    secretKey: ${TJ_OSS_SECRET_KEY:}
+    accessKey: ${TJ_OSS_ACCESS_KEY}
+    secretKey: ${TJ_OSS_SECRET_KEY}
     endpoint: oss-cn-beijing.aliyuncs.com
     bucketName: jeecgdev
     staticDomain: https://static.jeecg.com
   # ElasticSearch 设置
+  # ★ 模板是 check-enabled: true，本环境没有 ES：启动时会去连 127.0.0.1:9200。
+  #   没有 ES 就保持 false；确实部署了 ES 再在 .env 里设 TJ_ES_CHECK_ENABLED=true。
   elasticsearch:
     cluster-name: jeecg-ES
-    cluster-nodes: 127.0.0.1:9200
-    check-enabled: true
+    cluster-nodes: ${TJ_ES_CLUSTER_NODES:127.0.0.1:9200}
+    check-enabled: ${TJ_ES_CHECK_ENABLED:false}
   # 在线预览文件服务器地址配置（kkFileView，必须带 http:// 或 https://）
-  # ★ 生产环境务必通过 TJ_FILE_VIEW_DOMAIN 指向内网 kkFileView；
-  #   不要再使用公网演示地址 fileview.jeecg.com（会把档案文件发到外网）
+  # ★ 必须与前端 VUE_APP_ONLINE_BASE_URL 指向同一个服务；
+  #   部署说明见 code/new/docs/文件预览-kkFileView接入说明.md
   file-view-domain: ${TJ_FILE_VIEW_DOMAIN:http://127.0.0.1:8012}
-  # minio文件上传
+  # minio文件上传（当前未启用，保持占位）
   minio:
     minio_url: http://minio.jeecg.com
-    minio_name: ${TJ_MINIO_NAME:}
-    minio_pass: ${TJ_MINIO_PASSWORD:}
+    minio_name: ${TJ_MINIO_NAME}
+    minio_pass: ${TJ_MINIO_PASSWORD}
     bucketName: otatest
   #大屏报表参数设置
   jmreport:
@@ -227,13 +286,13 @@ jeecg:
     port: 30007
     logPath: logs/jeecg/job/jobhandler/
     logRetentionDays: 30
-  #分布式锁配置
+  #分布式锁配置（jeecg-boot-starter-lock；本项目未用到分布式锁，保留模板值）
   redisson:
-    address: 127.0.0.1:6379
-    password:
+    address: ${TJ_REDIS_HOST:127.0.0.1}:${TJ_REDIS_PORT:6379}
+    password: '${TJ_REDIS_PASSWORD:}'
     type: STANDALONE
     enabled: true
-#cas单点登录
+#cas单点登录（未启用）
 cas:
   prefixUrl: http://cas.example.org:8443/cas
 #Mybatis输出sql日志
@@ -244,13 +303,20 @@ logging:
 knife4j:
   #开启增强配置
   enable: true
-  #开启生产环境屏蔽
-  production: false
+  #开启生产环境屏蔽（true = 生产不暴露接口文档页）
+  # 测试包要能打开 doc.html 排查就保持默认 false；正式上线改 true
+  production: ${TJ_KNIFE4J_PRODUCTION:false}
   basic:
-    enable: true
+    # 模板原本是 enable: true + 仓库里写死的账号口令；
+    # 现在口令来自 .env，若 Basic 开着而账号口令为空，文档页会被锁死（登不进去）。
+    # 需要 Basic 认证时：TJ_KNIFE4J_BASIC_ENABLED=true，并配好 TJ_KNIFE4J_USERNAME/PASSWORD。
+    enable: ${TJ_KNIFE4J_BASIC_ENABLED:false}
     username: ${TJ_KNIFE4J_USERNAME:}
     password: ${TJ_KNIFE4J_PASSWORD:}
 #第三方登录
+# ★ 不要因为「用不到」就把 enabled 改成 false：
+#   ThirdLoginController 里是 @Autowired AuthRequestFactory（required），
+#   starter 关掉后容器里没有这个 Bean，应用会**直接起不来**。
 justauth:
   enabled: true
   type:
@@ -275,7 +341,7 @@ justauth:
     type: default
     prefix: 'demo::'
     timeout: 1h
-#第三方APP对接
+#第三方APP对接（未启用）
 third-app:
   enabled: false
   type:
@@ -298,3 +364,91 @@ third-app:
       # appSecret
       client-secret: ??
       agent-id: ??
+
+# =============================================================================
+#  ★ 下面两节是 dev 里有、prod 模板里**整节缺失**的，缺了不是"少个开关"而是功能不对：
+#    · ck.crydis / ck.stargis.zk → 中台（ZK-SERVER）同步与令牌存储
+#    · land.*                   → 空间数据（SHP 入库）与提级论证回写
+# =============================================================================
+ck:
+  crydis:
+    # 必须为 true 才会初始化；中台令牌（token-store=auto 时）就存在这个 Redis 里，
+    # 多实例部署时不配它，每个实例会各自登录中台
+    enable: true
+    host: ${TJ_REDIS_HOST}
+    port: ${TJ_REDIS_PORT}
+    # ★ 这一行**故意不写 ${TJ_REDIS_PASSWORD:}**：crydis 内部用的是 Jedis，
+    #   Jedis 判口令用的是「password != null」而不是 hasText —— 传空串也会真的发一次
+    #   AUTH，对着无口令的 Redis 会返回 "ERR Client sent AUTH, but no password is set"，
+    #   而 min-idle=5 会在启动时就建连，于是表现成「起不来」。
+    #   Redis 真有口令时，把下面这行改成   password: 你的口令  （或用占位符，但那时值非空，安全）
+    password:
+    database: 0
+    timeout: 3000
+    max-active: 50
+    max-idle: 10
+    min-idle: 5
+    max-wait: 3000
+  stargis:
+    zk:
+      # 中台（ZK-SERVER 2.0.0）对接开关。
+      # ★ 为什么必须显式配置这一节：SDK 的自动装配是
+      #   @ConditionalOnProperty(name="enabled", havingValue="true", matchIfMissing=true)，
+      #   也就是说「不写这一段」等于 enabled=true 但 baseUrl/账号全是 null：
+      #   ZkUserApi/ZkDepartApi Bean 照样装配出来，同步开关也照样是 true，
+      #   于是**每次新增/修改 用户·机构·角色 都会去调一个空地址**，严格模式下抛异常、
+      #   本地事务回滚 —— 表现就是「保存用户直接失败」，而且日志里看不出配置问题。
+      #   中台没起来时：把 .env 里的 TJ_ZK_ENABLED 改成 false（整套只落本地库）。
+      enabled: ${TJ_ZK_ENABLED:true}
+      baseUrl: ${TJ_ZK_BASE_URL:http://127.0.0.1:4548/app}
+      # 中台专用对接账号（供业务侧调中台接口，不是登录用户）
+      username: ${TJ_ZK_USERNAME}
+      password: ${TJ_ZK_PASSWORD}
+      captcha: ${TJ_ZK_CAPTCHA:cikian}
+      # 机构/角色/用户增删改是否同步到中台
+      depart-sync-enabled: true
+      role-sync-enabled: true
+      user-sync-enabled: true
+      # true=中台调用失败即抛异常、本地事务回滚（生产口径，保证两边不会半同步）
+      # false=中台失败只记日志并把 zk_sync_status 置为 failed，本地操作照常成功
+      #       中台正在装/临时不可用的过渡期，把 .env 里 TJ_ZK_SYNC_STRICT 改成 false
+      depart-sync-strict: ${TJ_ZK_SYNC_STRICT:true}
+      role-sync-strict: ${TJ_ZK_SYNC_STRICT:true}
+      user-sync-strict: ${TJ_ZK_SYNC_STRICT:true}
+      # 删除角色时，这些权限字符对应的中台角色不会被删除（中台内置角色，误删会导致中台登录/鉴权异常）
+      role-delete-protected-keys: superAdmin,admin,normal,developer
+      # 删除用户时对中台的处理：disable=停用（默认，中台用户ID被图层共享/日志引用，物理删除会断链）
+      #                            physical=物理删除（deleteBetch，会级联清掉中台的机构/角色关系）
+      # dev 里是 physical；这里默认也用 physical 以保持两边行为一致，
+      # 想更保守就在 .env 里把 TJ_ZK_USER_DELETE_MODE 改成 disable。
+      user-delete-mode: ${TJ_ZK_USER_DELETE_MODE:physical}
+      # 中台数据库信息：中台 API 改不了用户所属机构（中台自身缺陷），需要直连关系表兜底。
+      # 不配置本节时直连通道不装配，保存涉及"改机构"的用户会被明确拦截并提示。
+      db-info:
+        host: ${TJ_DB_HOST}
+        port: ${TJ_DB_PORT}
+        username: ${TJ_DB_USER}
+        password: ${TJ_DB_PASSWORD}
+        database: ${TJ_ZK_DB_NAME:tj_jyxyd_zk}
+        # 可选（省略即用默认值）：
+        # url: jdbc:mysql://127.0.0.1:3306/stargis_zk?useSSL=false
+        # connect-timeout: 5000
+        # dep2user-table: estar_dep2user_system
+        # enabled: true
+
+land:
+  # SHP 上传入库（MVT 空间表服务的数据入口）
+  spatial:
+    # shp2pgsql（快，平台相关）/ geotools（纯 Java，麒麟·鲲鹏等信创环境零适配）
+    import-engine: ${TJ_SHP_IMPORT_ENGINE:shp2pgsql}
+    # 留空＝自动探测（SHOW data_directory 反推 → 常见安装目录 → PATH）
+    shp2pgsql-path: ${TJ_SHP2PGSQL_PATH:}
+    # .dbf 属性文件字符集（国内数据多为 GBK）
+    dbf-charset: ${TJ_SHP_DBF_CHARSET:GBK}
+    # shp2pgsql 输出 SQL 的读取字符集：跟随运行环境 locale。
+    # Windows 中文环境是 GBK；迁到 Linux（UTF-8 locale）时必须改成 UTF-8，否则报
+    # "malformed input off : 0"
+    sql-charset: ${TJ_SHP_SQL_CHARSET:GBK}
+  escalation:
+    # 提级论证结论是否回写地块/配套主表
+    writeback-enabled: ${TJ_ESCALATION_WRITEBACK:true}
