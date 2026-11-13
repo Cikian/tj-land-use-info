@@ -97,6 +97,14 @@ public class GeotoolsEngine implements IShpImportEngine {
                 }
                 if (batch > 0) ps.executeBatch();
             }
+            // 3) 空间索引随导入事务一起建（PG 的 DDL 可回滚，失败整体回退）：本表是 MVT
+            //    瓦片出图的直接来源，无空间索引时大表低层级瓦片全表扫描会撞 10 秒查询
+            //    超时。几何列固定是 SHAPE（建表时命名），索引名按表名派生。
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE INDEX IF NOT EXISTS \"" + ctx.tableName
+                        + "_geom_idx\" ON \"" + ctx.tableName + "\" USING GIST (\"SHAPE\")");
+                st.execute("ANALYZE \"" + ctx.tableName + "\"");
+            }
             conn.commit();
             log.info("[geotools] 导入完成，表 {}.{} 共 {} 行", ctx.dbName, ctx.tableName, rows);
             return rows;

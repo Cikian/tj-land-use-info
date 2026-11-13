@@ -46,6 +46,10 @@ public class Shp2pgsqlEngine implements IShpImportEngine {
         // 不加 -D（COPY 格式）；-c 新建表
         cmd.add("-s");
         cmd.add(String.valueOf(ctx.srid));
+        // -I 让 shp2pgsql 在生成的 SQL 里带上 CREATE INDEX ... gist：导入的表是 MVT
+        // 瓦片出图的直接来源，无空间索引时大表低层级瓦片全表扫描会撞 10 秒查询超时。
+        // 生成的建索引语句和建表/插数一起走本引擎的逐句执行，同事务提交，失败整体回退
+        cmd.add("-I");
         // 编码：shp 同目录有 .cpg 声明时交给 shp2pgsql 自动读取（声明什么用什么）；
         // 没有 .cpg 才传 -W 按配置解码。强制 GBK 解码 UTF-8 的 dbf 会报
         // "Illegal byte sequence"（iconv 严格校验）。

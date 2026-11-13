@@ -18,6 +18,17 @@ window._CONFIG = {
    */
   VUE_APP_API_BASE_URL: window.location.origin + '/api',
 
+  /**
+   * MVT 瓦片对外服务基座（MVT 空间表服务页"复制地址"的前缀）。
+   * ★ 必须填外机可达地址，不能跟 VUE_APP_API_BASE_URL 一样用 origin：
+   *   复制出去的 TileJSON/XYZ 地址要贴进中台/地图客户端，
+   *   得保证那台机器访问得到——用 origin 形态时，操作者若以
+   *   http://admin.web（hosts 别名）打开页面，复制出的链接别的机器解析不了。
+   * 例：http://192.168.1.20/api（走 nginx 同源反代）或 http://192.168.1.20:9802/api（直连）
+   * 留空 = 跟随 VUE_APP_API_BASE_URL。
+   */
+  MVT_PUBLIC_BASE_URL: 'http://192.168.1.20/api',
+
   /** 单点登录地址（本项目未启用，留空） */
   VUE_APP_CAS_BASE_URL: '',
 
