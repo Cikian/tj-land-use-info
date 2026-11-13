@@ -16,6 +16,11 @@
         activeTool 统一决定（插件引擎可能被其它工具经总线间接取消），
         点击统一 emit('toggle-tool', key) 交给父组件分发；
       · 其余（如高清出图）——本地高亮，点击 emit('toggle-hd') 由父组件提示。
+
+    ★ 2026-11 起卡片不再按设计稿逐张绝对定位（原来由 cardStyle() 算
+      left/top），改成面板内 flex 换行：左面板现在可以拖宽（400 → 340~560），
+      写死 x=20/145/270 会在变宽后右边空一大片、变窄时直接溢出。
+      400 宽时内容区 360 = 110×3 + 15×2，与设计稿三列完全一致。
   -->
   <div class="map-tools">
     <!-- 面板标题 -->
@@ -30,7 +35,6 @@
         type="button"
         class="map-tools__card"
         :class="{ 'is-active': isCardActive(index, tool) }"
-        :style="cardStyle(index)"
         :aria-pressed="String(isCardActive(index, tool))"
         @click="handleCardClick(index, tool)"
       >
@@ -45,12 +49,6 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 import ScreenIcon from '@/components/screen/ScreenIcon.vue'
-
-/** 三列卡片的左边缘（设计稿 x=50/175/300，卡片 110 宽、列间隙 15） */
-const CARD_LEFT = [20, 145, 270]
-/** 卡片纵向：设计稿 y=179 起步进 139，换算成面板内坐标（面板顶 149） */
-const CARD_TOP = 30
-const CARD_PITCH = 139
 
 /** 已接入插件/面板的工具 key：卡片选中态跟随父容器的 activeTool */
 const WIRED_KEYS = [
@@ -110,11 +108,6 @@ export default {
         return
       }
       this.activeIndex = index
-    },
-    cardStyle (index) {
-      const row = Math.floor(index / 3)
-      const col = index % 3
-      return { left: `${CARD_LEFT[col]}px`, top: `${CARD_TOP + row * CARD_PITCH}px` }
     }
   }
 }
@@ -124,11 +117,23 @@ export default {
 @import '~@/components/screen/styles/screen-mixins.less';
 
 .map-tools {
+  /*
+   * 铺满画布的定位根：子元素仍是设计稿的绝对坐标（面板 left:30 / top:149），
+   * 而本组件现在被页面的 .map-screen__left 包着（折叠时整块滑出屏幕），
+   * 定位基准必须与改前一致（都是整块画布），所以根节点自己撑满画布。
+   * ★ 铺满画布的容器层必须 pointer-events: none（AGENTS §3.6 第 4 条），
+   *   交互由面板的 .stage-hit 打开。
+   */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
   &__title-deco {
     position: absolute;
     left: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-left-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -151,15 +156,48 @@ export default {
     // 上贴 149、下贴 50：与首页左面板同一套画布坐标
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-left-w 下发（可拖动 340~560），不再写死 400
+    width: var(--panel-left-w, 400px);
+    // padding 不吃宽度：内容区 = 400 - 20×2 = 360 = 110×3 + 15×2（与设计稿三列一致）
+    box-sizing: border-box;
+    padding: 30px 20px 20px;
+    // 卡片改 flex 换行（原来是逐张绝对定位）：面板拖宽 / 拖窄都自动重排。
+    // 18 张卡片在 400 宽时正好 3 列 × 6 行；多出来的高度走纵向滚动。
+    // ★ 行距取 11（= 设计稿卡片步进 139 − 卡片高 128），不是 15：
+    //   6 行 × 128 + 5 × 11 = 823，加 padding 50 = 873 < 面板 881，默认零滚动；
+    //   列距仍是 15（110×3 + 15×2 = 360 内容宽，与设计稿三列一致）。
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 15px;
+    row-gap: 11px;
+    align-content: flex-start;
+    // 拖宽后面板宽度不一定正好是 110×n+15×(n-1)：居中排，右侧不留一条空边
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /*
+     * 隐藏滚动条本体（滚轮照常可滚）：
+     * 拖窄到 340 时卡片掉成两列（9 行）、高度必然超出面板，需要滚动；
+     * 而 Windows Chrome 的经典滚动条占 15px 宽，会把内容区从 360 挤到 345，
+     * 三列（110×3 + 15×2 = 360）当场掉成两列 —— 与设计稿不符。
+     * 大屏上隐藏滚动条本来也是常规做法，拖窄后仍可用滚轮纵向浏览。
+     */
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
     background-image: url('~@/assets/screen-blue/panel-left-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
   }
 
   &__card {
-    position: absolute;
-    width: 110px;
+    // 相对定位：卡片底图 / 图标 / 文字仍是卡片内的绝对坐标（设计稿 110×128）
+    position: relative;
+    flex: 0 0 110px;
     height: 128px;
     padding: 0;
     background: transparent;

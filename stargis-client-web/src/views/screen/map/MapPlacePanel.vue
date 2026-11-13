@@ -103,8 +103,6 @@ import DynamicDivLabel from '@/utils/wyw/index'
 
 /** 实体分组 id（老工作台用的是 placeLocate123，这里换一个避免互相清理） */
 const ENTITY_GROUP_ID = 'placeLocateMap123'
-/** 属性区高度：表头 36 + 表体 284（面板内坐标），结果列表给属性区让位 */
-const ATTR_ZONE_HEIGHT = 320
 /** 气泡标签上限：原实现不限量，这里封顶防止一次搜索画几百个 DOM 标签 */
 const LABEL_LIMIT = 50
 
@@ -139,7 +137,7 @@ export default {
       selectedIndex: -1,
       /** 动态气泡标签（DynamicDivLabel 实例），离开页面 / 重新搜索时统一关闭 */
       labels: [],
-      locateSymbol: 0,
+      locateSymbol: 0
     }
   },
   computed: {
@@ -152,7 +150,7 @@ export default {
     selectedRows () {
       const selected = this.results[this.selectedIndex]
       return selected ? selected.rows : []
-    },
+    }
   },
   created () {
     this.loadConfig()
@@ -228,7 +226,7 @@ export default {
               returnGeometry: true,
               layerOption: 'all',
               Featurcclassid: result.Featurcclassid,
-              fieldName: this.allFields[index],
+              fieldName: this.allFields[index]
             })
           } else if (result.DBConectionString) {
             // 数据库型
@@ -322,7 +320,7 @@ export default {
           id: 'placeLocate' + this.locateSymbol++,
           name: String(name),
           rows: toRows(feature.properties || {}),
-          geometry: { GeoJson: feature.geometry || null },
+          geometry: { GeoJson: feature.geometry || null }
         })
       })
     },
@@ -348,7 +346,7 @@ export default {
           id: 'placeLocate' + this.locateSymbol++,
           name: String(value),
           rows: toRows(item.attributes || {}),
-          geometry: { GeoJson: geometry },
+          geometry: { GeoJson: geometry }
         })
       })
     },
@@ -375,7 +373,7 @@ export default {
           host: conn.Server,
           port: parseInt(conn.Port),
           user: conn.User,
-          pwd: conn.Pwd,
+          pwd: conn.Pwd
         },
         dataset: result.DatasetName || '',
         featureclass: result.TableName || '',
@@ -384,7 +382,7 @@ export default {
         resultRecordCount: 20,
         returnGeometry: true,
         inSR: { EPSG: 4326 },
-        outSR: { EPSG: 4326 },
+        outSR: { EPSG: 4326 }
       }
     },
     getTaskParamsWYW (params) {
@@ -429,10 +427,10 @@ export default {
                 hierarchy: entity.polygon.hierarchy,
                 material: Cesium.Color.AQUA,
                 clampToGround: true,
-                perPositionHeight: false,
+                perPositionHeight: false
               },
               depthTestEnabled: false,
-              clampToS3M: true,
+              clampToS3M: true
             })
           } else if (entity.polyline) {
             viewer.entities.add({
@@ -441,15 +439,15 @@ export default {
                 positions: entity.polyline.positions,
                 material: Cesium.Color.AQUA,
                 clampToGround: true,
-                width: 5,
+                width: 5
               },
               depthTestEnabled: false,
-              clampToS3M: true,
+              clampToS3M: true
             })
           } else if (this.labels.length < LABEL_LIMIT) {
             // 点要素：DynamicDivLabel 气泡（原版每点一个，这里封顶防刷屏）
             this.labels.push({
-              obj: new DynamicDivLabel(viewer, entity.position.getValue(), { id: item.id, mode: 3 }, item.name),
+              obj: new DynamicDivLabel(viewer, entity.position.getValue(), { id: item.id, mode: 3 }, item.name)
             })
           }
         })
@@ -463,14 +461,14 @@ export default {
               showBackground: true,
               horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
               verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              disableDepthTestDistance: 700000.0,
-            },
+              disableDepthTestDistance: 700000.0
+            }
           })
         }
         if (Aid !== undefined && bbox) {
           // 选中定位：相机落到要素包围盒（与原版一致外扩 0.005°）
           viewer.camera.setView({
-            destination: Cesium.Rectangle.fromDegrees(bbox[0] - 0.005, bbox[1] - 0.005, bbox[2] + 0.005, bbox[3] + 0.005),
+            destination: Cesium.Rectangle.fromDegrees(bbox[0] - 0.005, bbox[1] - 0.005, bbox[2] + 0.005, bbox[3] + 0.005)
           })
         }
       })
@@ -490,8 +488,8 @@ export default {
           viewer.entities.remove(group)
         }
       }
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -499,11 +497,18 @@ export default {
 @import '~@/components/screen/styles/screen-mixins.less';
 
 .map-place {
+  /*
+   * 表头 / 单元格的横向偏移与列宽改用**百分比**（以设计稿内容宽 360 换算）：
+   *   30 → 8.3333%、161 → 44.7222%、120 → 33.3333%、190 → 52.7778%。
+   * 右面板可拖宽（400 → 340~720）后固定 px 会让字段值列贴在左边。
+   */
+
   &__title-deco {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -527,7 +532,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -555,8 +561,9 @@ export default {
   &__search-input {
     position: absolute;
     left: 20px;
+    // 左锚 20 + 右锚 50（给搜索图标留 36px）：输入区随面板变宽 / 变窄
+    right: 50px;
     top: 0;
-    width: 290px;
     height: 28px;
     padding: 0;
     font-family: inherit;
@@ -574,7 +581,8 @@ export default {
 
   &__search-icon {
     position: absolute;
-    left: 326px;
+    // 图标贴搜索框右缘（设计稿 360 框里 x=326，即距右 20）
+    right: 20px;
     top: 7px;
     width: 14px;
     height: 14px;
@@ -640,6 +648,7 @@ export default {
   }
 
   /* ---------------- 选中要素属性表（同拾取查询面板） ---------------- */
+  // 属性区 320 高（表头 36 + 表体 284）；宽度随外层 __attr 的左右锚定走
   &__attr {
     position: absolute;
     left: 20px;
@@ -648,11 +657,12 @@ export default {
     height: 320px;
   }
 
+  // 表头 / 表体左右双向锚定（原来是 left:0 + width:360）
   &__head {
     position: absolute;
     left: 0;
+    right: 0;
     top: 0;
-    width: 360px;
     height: 36px;
   }
 
@@ -660,7 +670,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 36px;
     display: block;
     pointer-events: none;
@@ -674,15 +684,16 @@ export default {
     color: #ffffff;
     white-space: nowrap;
 
-    &.is-name { left: 30px; }
-    &.is-value { left: 161px; }
+    // 30/360、161/360（设计稿 px → 内容宽百分比）
+    &.is-name { left: 8.3333%; }
+    &.is-value { left: 44.7222%; }
   }
 
   &__body {
     position: absolute;
     left: 0;
+    right: 0;
     top: 36px;
-    width: 360px;
     bottom: 0;
     overflow-y: auto;
     overflow-x: hidden;
@@ -692,7 +703,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 360px;
+    width: 100%;
     height: 100%;
     display: block;
     pointer-events: none;
@@ -725,14 +736,15 @@ export default {
     text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
 
+    // 与表头同一套百分比（列位置 + 列宽都随面板宽度变化）
     &.is-name {
-      left: 30px;
-      width: 120px;
+      left: 8.3333%;
+      width: 33.3333%;
     }
 
     &.is-value {
-      left: 161px;
-      width: 190px;
+      left: 44.7222%;
+      width: 52.7778%;
     }
   }
 }

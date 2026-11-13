@@ -630,6 +630,150 @@ node perf/verify-modal.js http://localhost:3001
 
 ---
 
+## 6.4 三块面板：拖宽 / 拖高 + 折叠（2026-11 新增，2026-11-13 补数据管理与蒙版联动）
+
+需求：大屏上「左 / 右 / 下」三块面板都要能拖动改变宽度（左右）或高度（下方），
+并且都能像首页左右面板那样折叠隐藏；**左右与下方的氛围蒙版要跟面板一起伸缩 / 折叠**
+（原先面板收起了、黑色遮罩还留在原处）。覆盖四个页面：
+首页（`home/`）、地图管理（`map/`）、配套分析管理（`analysis/`）——
+这三页的面板各自是独立组件；**数据管理**（`data/`）的左二级导航 / 右检索列 /
+底部列表是页面内部的三块，也接同一套状态（左/右可拖宽、可折叠，列表沿用原有的拖高）。
+尺寸与折叠状态**永久记住**（localStorage），切页 / 刷新后保持。
+
+### 共用四件套
+
+| 文件 | 职责 |
+| --- | --- |
+| `panelLayout.js` | 四个页面共用的状态：`left/right/bottom` 的 `size`（画布像素）、`min/max`、`collapsed`；localStorage 持久化 + 夹紧校验 |
+| `ScreenResizeBar.vue` | 拖动条本体：`orientation="vertical"` 改宽、默认横向改高；`reverse` 给右面板（往左拖 = 变宽）；负责除以画布缩放 k |
+| `ScreenSideRail.vue` | 屏边轨道：折叠把手（+ 可选竖排小页签）。**必须挂在屏幕边缘、不能挂进面板**，否则面板滑走后把手一起滑走 |
+| `ScreenBottomDock.vue` | 底部属性表面板（可拖高 + 可折叠 + 空态占位），给地图管理 / 配套分析管理用；首页沿用 `HomeAttrPanel` |
+
+### panelLayout 用法（三页一致）
+
+```js
+import { usePanelLayout, panelInset, panelSlideDistance } from '@/components/screen'
+
+export default {
+  data () {
+    return { layout: usePanelLayout('map') } // 'home' | 'map' | 'analysis' | 'data'
+  },
+  computed: {
+    // 下方面板左右内缩：该侧展开 = 面板宽 + 60，折叠 = 30（与首页 460→30 同口径）
+    bottomInsets () {
+      return {
+        left: panelInset(this.layout, 'left'),
+        right: panelInset(this.layout, 'right')
+      }
+    }
+  }
+}
+```
+
+- `layout.left.size` / `.min` / `.max` / `.collapsed` 直接绑模板；
+- `layout.setSize(side, value)` 接收 `ScreenResizeBar` 的 `@input`（自动夹紧 + 去抖落盘）；
+- `layout.setCollapsed(side, value)` / `layout.toggle(side)` 给折叠把手用；
+- `panelSlideDistance(layout, side)` = 面板宽 + 30，折叠位移用；
+- **模板只能读实例上的东西**：`size/min/max` 都挂在 `layout` 上（不要用模块级常量，
+  那会取到 `undefined` 并静默退回组件默认值 —— 数据管理列表面板踩过）。
+- 存储 key 带版本（`screen-panel-layout-v1`）；改结构时换 key 让旧值自然失效。
+  读取时逐项夹到 `[min, max]`，手改 localStorage 也不会把面板撑爆/缩没。
+
+### 四个页面的接线约定
+
+**左右面板宽度用 CSS 变量下发，不逐层传 prop**：页面根节点把宽度写成
+`--panel-left-w` / `--panel-right-w`，面板的 CSS 用 `width: var(--panel-left-w, 400px)`。
+CSS 自定义属性会自然继承进子组件（scoped 也拦不住），所以 `MapToolPanel` /
+`MapPickPanel` / `HomeStatPanel` 里的宽高不用改签名。标题装饰同理：
+`width: calc(var(--panel-right-w, 400px) + 20px)`（左 400 → 420，与设计稿一致）。
+
+**折叠 = 整块滑出屏幕**：左右面板各自包一层 `position:absolute; inset:0; pointer-events:none`
+的定位根（内部保持设计稿绝对坐标不变），根节点 `transform: translateX(±(宽+30))`；
+`ScreenSideRail` 作为它的兄弟节点放在最外层（不参与位移）。
+
+**数据管理页**（与上面三页不同，三块都在页面内部）：
+- 页面根下发三个变量：`--data-nav-w` / `--data-search-w` / `--data-nav-offset`
+  （`offset = 折叠 ? 30 : 导航宽 + 50`）；左导航与内容区、entry 面板的列表都读它们；
+- 左二级导航加 `ScreenResizeBar`（竖）+ `ScreenSideRail`；右检索列只在
+  「经营性用地信息 / 配套项目信息」两个分栏页签出现（`v-if="isSplitPanel"`），
+  同样一组拖动条 + 把手；
+- `LandEntryPanel` / `FacilityEntryPanel` 通过同一份 `usePanelLayout('data')` 拿
+  `right.size / right.collapsed`（检索列宽度、折叠）与 `bottom.size`（列表高度，取代
+  原先各自持有的 `listHeight`）；检索列折叠用根节点 `.is-search-collapsed` 类，
+  列表右偏移随之从「检索列宽 + 50」收到 30；
+- 数据管理的下方面板**只拖高、不折叠**（没有设计收起条），`bottom.collapsed` 恒为 false。
+
+**氛围蒙版要跟着面板走**（2026-11-13 用户反馈）：`views/screen/index.vue` 里的
+左右/下方三张 `.land-screen__vignette` 由父组件按 `vignetteLayout`（home / map /
+analysis / data 的单例）内联下发尺寸：
+- 左右宽 = 面板宽 + 160（设计稿 400 → 560）、折叠 → 0；
+- 下方高 = 下方面板高 − 35（321 → 286）、折叠 → 0；
+- 没有面板的页面（档案 / 提级论证 / 查询统计）不传 style，保持设计稿 560 / 286；
+- 过渡 320ms，拖动期间由 `body.is-resizing-panel` 关掉（否则蒙版追不上指针）。
+
+**下方面板**：首页 `HomeAttrPanel` 增加 `height` / `collapsed` 入参与拖高条；
+地图管理 / 配套分析管理直接用 `ScreenBottomDock`：
+
+```html
+<screen-bottom-dock
+  :height="layout.bottom.size"
+  :collapsed="layout.bottom.collapsed"
+  :min="layout.bottom.min"
+  :max="layout.bottom.max"
+  :left-inset="bottomInsets.left"
+  :right-inset="bottomInsets.right"
+  @update:height="layout.setSize('bottom', $event)"
+  @update:collapsed="layout.setCollapsed('bottom', $event)"
+/>
+```
+
+默认 `collapsed: true` 的两页（map / analysis）进入时仍是 47px 收起条，与改造前一致；
+展开后是空态占位（这两页目前没有属性数据）。
+
+### 必须遵守的几条
+
+1. **左右面板的拖动条贴在面板内侧竖边**：左面板 `left: calc(30px + 宽 - 6px)`，
+   右面板 `right: calc(30px + 宽 - 6px)` + `reverse`；`top:149px; bottom:50px`。
+   面板折叠时用 `v-show="!collapsed"` 藏掉拖动条（滑出屏幕的条没有意义）。
+2. **铺满画布的定位根必须 `pointer-events: none`**，交互由面板的 `.stage-hit`
+   与拖动条的 `.stage-hit` 打开 —— 见第 6 节踩坑 3 / 4。
+3. **拖动换算按轴向**：纵向改宽量宽度比值，横向改高量高度比值（`ScreenResizeBar`
+   内部已处理）。不要再用固定 `k=1`。
+4. **宽度变化时内部内容要能跟着走**：优先用 `left/right` 双向锚定，别写死 360/400；
+   表格列位置用百分比（360 设计宽换算），工具卡片改用 flex 换行（见两页 ToolPanel）。
+5. **不要持久化“折叠时的高度”**：折叠态固定 47px，展开时回到 `layout.bottom.size`。
+6. 地图管理 / 配套分析管理里由插件挂到 `<body>` 的浮层（`.pop.bottom-table` 等）
+   不随面板折叠位移 —— 这是已知取舍，面板折叠后浮层仍可单独看/关。
+7. **蒙版尺寸也从 panelLayout 算**（面板宽 + 160 / 下方面板高 − 35 / 折叠 → 0），
+   不要在页面里另写一套阈值：三张蒙版与三块面板必须永远同一份状态，
+   否则又会出现「面板收起了、遮罩还留着」。
+8. 数据管理分栏页签的 `.data-screen__body` 是 `inset: 0`（内容区把整块画布交给
+   entry 面板），所以「内容区左偏移」这条只在非分栏页签上量；分栏页签看
+   entry 面板里列表的 `left`（= 导航宽 + 50 / 折叠 30）。
+
+### 验证
+
+```powershell
+node perf/verify-panel-layout.js http://localhost:3001
+```
+
+65 条断言，真的用 CDP 发鼠标事件拖：四个页面「左右面板宽度 = 起点 + 位移 / k」
+（k 是 ScreenStage 缩放比，未换算会差 9%）、屏边把手折叠后整块滑出屏幕、
+**左右 / 下方蒙版随面板伸缩与折叠、偏移量逐像素核对**、下方面板可收起成 47px 条、
+属性表随侧栏折叠变宽、数据管理左导航 / 右检索列拖宽与折叠（含非分栏页签的内容区
+左偏移）、列表拖高、`localStorage` 刷新后仍在、页面 0 条未捕获异常。
+同时留四张截图（`perf/shots/panel-layout-*.png`）供人工复核版式。
+
+回归：`node perf/verify-data-layout.js http://localhost:3001` 仍覆盖数据管理
+「可拖高列表」（同一个 `ScreenResizeBar` 的横向用法，2026-11 复跑拖高 360 → 469 通过）。
+
+> 该脚本顺带修了两处**测试自身**的过期断言（与功能无关）：
+> 大屏标题从「星际GIS…」改成了「天津市经营性用地…工作站」，原来按旧名判端口，
+> 现在改成「不是 JeecgBoot（管理端）即可」；数据管理页签文案已改为「经营性用地信息 /
+> 配套项目信息」，脚本里的旧标签点不到页签。这两处会让测试报假失败，值得留意。
+
+---
+
 ## 7. 目录结构
 
 ```
@@ -637,6 +781,7 @@ src/components/screen/
 ├─ index.js                    # 统一出口 + Vue 插件（新增组件务必在这里登记，否则导入到 undefined）
 ├─ utils.js                    # 纯函数工具（格式化 / 动效 / 唯一 id）
 ├─ toast.js                    # 命令式消息提示服务（$screenToast / toast）
+├─ panelLayout.js              # 三块面板的尺寸/折叠状态（首页/地图管理/配套分析管理共用，localStorage 持久化）
 │
 ├─ ScreenStage.vue             # 自适应舞台（定尺设计画布 + 真实像素地图层 + 铺满不留黑边）
 ├─ ScreenPanel.vue             # 面板容器
@@ -646,7 +791,9 @@ src/components/screen/
 ├─ ScreenPickStage.vue         # 「选取地块」模式（不再隐藏页面 + 取消选择/选择完成）
 ├─ ScreenPopover.vue           # 浮层容器（挂 body，下拉 / 气泡的公共基座）
 ├─ ScreenPopconfirm.vue        # 危险操作二次确认
-├─ ScreenResizeBar.vue         # 横向拖动条（拖动/键盘改上一个兄弟容器的高度，自动换算画布缩放）
+├─ ScreenResizeBar.vue         # 尺寸拖动条（默认横向改高；orientation="vertical" 改宽；自动换算画布缩放）
+├─ ScreenSideRail.vue          # 屏边轨道（折叠把手 + 可选竖排小页签；原 home/HomeSideRail 已并入）
+├─ ScreenBottomDock.vue        # 底部属性表面板（可拖高 + 可折叠 + 空态；地图管理/配套分析管理用）
 ├─ ScreenStatValue.vue         # 大号统计数值
 ├─ ScreenCountUp.vue           # 数字滚动
 ├─ ScreenSplitStat.vue         # 分级占比条

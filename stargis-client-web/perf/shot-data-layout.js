@@ -117,7 +117,8 @@ class CDP {
     await cdp.send('Page.navigate', { url: BASE + '/#/user/login' })
     await sleep(4000)
     const title = await cdp.evalJs('document.title')
-    if (!/星际GIS/.test(String(title))) {
+    // 按「不是 JeecgBoot（管理端）」判，不钉死产品名（改名后旧守卫会假报错）
+    if (/JeecgBoot/i.test(String(title))) {
       throw new Error(`打开的不是大屏端（title="${title}"）。大屏端通常是 http://localhost:3001，3000 是管理端。`)
     }
     for (let i = 0; i < 150; i++) {

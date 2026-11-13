@@ -320,6 +320,9 @@ node perf/verify-data-layout.js http://localhost:3001
 # 新增/编辑弹窗：2 列 + 高度减半 + 可拖动 + 背景不压暗 + 添加地块不再隐藏页面 → 64 条断言
 node perf/verify-modal.js http://localhost:3001
 
+# 三块面板：左右拖宽 / 下方拖高 / 折叠 / 蒙版跟随 / 刷新后仍在 → 65 条断言（2026-11 新增）
+node perf/verify-panel-layout.js http://localhost:3001
+
 # 出效果图（写到 perf/shots/，该目录已 gitignore）
 node perf/shot-data-layout.js http://localhost:3001
 node perf/shot-modal.js http://localhost:3001
@@ -329,6 +332,7 @@ node perf/shot-modal.js http://localhost:3001
 | --- | --- |
 | `verify-data-layout.js` | 逐页签量几何：列表贴底只露 3~4 行、检索列与左导航**逐项对称**、条件单列竖排、拖动 100px 后高度 = 100/k、上下限夹紧、键盘可调；另外 4 个页签回归旧版式 |
 | `verify-modal.js` | 两个表单各跑一遍：列数/高度/宽度、遮罩透明**且 `pointer-events: none`**、**开弹窗前后背景像素逐字节相同**、弹窗外的点命中 `canvas`、拖动位移与鼠标一致、方向键、越界夹紧、选取模式不隐藏页面且弹窗仍可见；末尾回归「其它弹窗仍是模态」 |
+| `verify-panel-layout.js` | 首页 / 地图管理 / 配套分析管理 / 数据管理：左右面板内侧拖动条拖宽（宽度 = 起点 + 位移/k）、屏边把手折叠整块滑出、下方面板拖高与收起、**左右/下方氛围蒙版随面板伸缩与折叠（偏移量逐像素核对）**、数据管理左导航 / 右检索列拖宽折叠（含非分栏页签内容区左偏移）、`localStorage` 刷新后仍在、页面 0 条未捕获异常；并留 4 张版式截图 |
 | `shot-data-layout.js` / `shot-modal.js` | 出效果图。`shot-modal.js` 会打印每次截图时的视口尺寸 —— headless Edge 偶发少一条 34px 窗口装饰，尺寸不一致的图放一起对比会误导人 |
 | `debug-layout.js` | 版式探针：逐页签 dump「内容区 + 第一个子元素」的真实几何与计算样式，用来判断是**脚本换算错了**还是**版式真坏了**（先看 `--stage-w` / `--stage-h` / 缩放 k） |
 | `debug-probe.js` | 登录后 dump 页面状态，用来区分「应用编译/运行出错」与「脚本自身问题」 |
@@ -336,8 +340,9 @@ node perf/shot-modal.js http://localhost:3001
 **两个反复踩到的坑，写脚本时注意**：
 
 - **端口**：`3000` = 管理端 `admin-client`，`3001` = 大屏端 `stargis-client-web`。
-  这些脚本都带 `document.title` 含「星际GIS」的守卫，连错端口会**直接报错退出**，
-  而不是在一堆「找不到元素」里浪费时间。
+  这些脚本都带 `document.title` **不能是 JeecgBoot（管理端）** 的守卫，连错端口会
+  **直接报错退出**，而不是在一堆「找不到元素」里浪费时间。
+  （2026-11 之前守卫钉的是旧产品名「星际GIS」，产品改名后会假报错，已统一改成现在这条。）
 - **headless Edge 偶发把视口高度缩 34px**（一条窗口装饰）。
   弹窗是 flex 居中的，视口一变「居中基准」就跟着变，位移断言会**假失败**。
   `verify-modal.js` 的做法是**按居中基准补偿**，并把「高度只随视口 50vh 联动」

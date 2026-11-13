@@ -3,9 +3,17 @@
     地图管理页（高保真 地图管理.html 还原 + 接入原拾取查询功能）
     ==================================================================
     与首页同一版式：真实地图保持可见、可交互，画布上叠三块 UI：
-      ├─ 左面板  MapToolPanel（工具箱：18 个工具卡片，3 列 × 6 行）
+      ├─ 左面板  MapToolPanel（工具箱：18 个工具卡片，按宽度 flex 换行）
       ├─ 右面板  MapPickPanel（拾取查询：当前图层 + 字段名/字段值表）
-      └─ 底部    「属性表」收起态横条（与首页属性表同一条底 bar）
+      └─ 底部    ScreenBottomDock（属性表：可拖高 + 可折叠，默认 47px 收起条）
+
+    ★ 2026-11 三块面板都支持「拖宽 / 拖高 + 折叠」（状态见 panelLayout.js）：
+      · 左 / 右面板：整块包一层铺满画布的定位根（.map-screen__left / __right），
+        折叠时整体 translateX 滑出屏幕；宽度拖动条贴在面板内侧竖边，
+        宽度以 CSS 变量 --panel-left-w / --panel-right-w 下发给子面板；
+      · 折叠把手由屏边 ScreenSideRail 提供（★ 挂在屏幕上、不挂进面板，
+        否则面板滑走后把手一起滑走，折叠就再也点不回来）；
+      · 底部属性表宽度随左右面板的展开 / 折叠自动内缩（bottomInsets）。
 
     拾取查询接的是 stargis-function 插件里原有的一套（老三维工作台
     HomeHeader 用的同一个组件，全局注册见 main.js 的 Vue.use(StargisFunction)）：
@@ -36,12 +44,32 @@
     注意：容器本身不开启 pointer-events（不加 stage-hit），
     地图的缩放 / 拖动不能被整页模块挡住，由各面板自行 stage-hit。
   -->
-  <div class="map-screen">
-    <map-tool-panel
-      :active-tool="activeTool"
-      @toggle-tool="toggleToolByKey"
-      @toggle-hd="handleHdExport"
-    />
+  <div class="map-screen" :style="panelStyle">
+    <!--
+      左面板整块包一层「铺满画布的定位根」：内部保持设计稿绝对坐标不变，
+      折叠时整块 translateX 滑出屏幕（位移 = 面板宽 + 屏边 30，见 leftWrapStyle）。
+      ★ 定位根铺满画布，必须 pointer-events: none（AGENTS §3.6 第 4 条），
+        交互由面板与拖动条自己的 .stage-hit 打开。
+    -->
+    <div class="map-screen__left" :style="leftWrapStyle">
+      <map-tool-panel
+        :active-tool="activeTool"
+        @toggle-tool="toggleToolByKey"
+        @toggle-hd="handleHdExport"
+      />
+
+      <!-- 左面板宽度拖动条：贴面板内侧竖边；折叠时藏掉（滑出屏幕的条没有意义） -->
+      <screen-resize-bar
+        v-show="!layout.left.collapsed"
+        class="map-screen__left-resizer stage-hit"
+        orientation="vertical"
+        :value="layout.left.size"
+        :min="layout.left.min"
+        :max="layout.left.max"
+        aria-label="拖动调整左侧工具面板宽度"
+        @input="layout.setSize('left', $event)"
+      />
+    </div>
 
     <!--
       右面板多模式：地名定位 / 道路定位（插件弹窗）/ 空间查询（插件弹窗）/
@@ -49,57 +77,78 @@
       拾取查询。其余状态（含默认空态）都是拾取查询面板——空态下按设计稿
       展示演示数据。v-if / v-else-if 让面板互斥挂载：切换时地名面板的
       beforeDestroy 会自动清掉它画的图形和气泡标签。
+
+      ⚠ 分支顺序与插件宿主类名一律保持原样，只整体多包了这一层定位根
+        （折叠时整块滑出屏幕）；hidden 的插件引擎留在包装外。
     -->
-    <template v-if="activeTool === 'place'">
-      <map-place-panel />
-    </template>
-    <template v-else-if="activeTool === 'road' && roadConfig">
-      <!-- 面板标题（画布坐标层，与其它右面板同位） -->
-      <img class="map-screen__road-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__road-title">道路定位</h2>
-      <!-- 插件弹窗容器：铺满右面板框，内部样式深度覆盖见样式区 -->
-      <div class="map-screen__road-host stage-hit">
-        <query-road-pop :config-min="roadConfig" />
-      </div>
-    </template>
-    <template v-else-if="activeTool === 'spatial' && spatialConfig">
-      <img class="map-screen__spatial-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__spatial-title">空间查询</h2>
-      <div class="map-screen__spatial-host stage-hit">
-        <query-spatial-pop :config-min="spatialConfig" />
-      </div>
-    </template>
-    <template v-else-if="activeTool === 'attr' && attrConfig">
-      <img class="map-screen__attrpanel-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__attrpanel-title">属性查询</h2>
-      <div class="map-screen__attr-host stage-hit">
-        <query-attribute-pop :config-min="attrConfig" />
-      </div>
-    </template>
-    <template v-else-if="activeTool === 'comp' && compConfig">
-      <img class="map-screen__comp-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__comp-title">综合查询</h2>
-      <div class="map-screen__comp-host stage-hit">
-        <query-comprehensive-pop :config-min="compConfig" />
-      </div>
-    </template>
-    <template v-else-if="activeTool === 'stat' && statConfig">
-      <img class="map-screen__stat-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__stat-title">综合统计</h2>
-      <div class="map-screen__stat-host stage-hit">
-        <query-statistic-pop :config-min="statConfig" />
-      </div>
-    </template>
-    <!-- 其余插件弹窗工具（书签/动画导航/图层管理/高程/地下/地形透明）：
-         通用宿主容器 + 数据驱动渲染，标题取自注册表 -->
-    <template v-else-if="activePopTool">
-      <img class="map-screen__plugin-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 class="map-screen__plugin-title">{{ activePopTool.title }}</h2>
-      <div class="map-screen__plugin-host stage-hit">
-        <component :is="activePopTool.popTag" ref="activePopRef" v-mvt-layer-tree :config-min="activePopTool.config" />
-      </div>
-    </template>
-    <map-pick-panel v-else :result="pickRows" :layer-name="pickLayer" />
+    <div class="map-screen__right" :style="rightWrapStyle">
+      <template v-if="activeTool === 'place'">
+        <map-place-panel />
+      </template>
+      <template v-else-if="activeTool === 'road' && roadConfig">
+        <!-- 面板标题（画布坐标层，与其它右面板同位） -->
+        <img class="map-screen__road-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__road-title">道路定位</h2>
+        <!-- 插件弹窗容器：铺满右面板框，内部样式深度覆盖见样式区 -->
+        <div class="map-screen__road-host stage-hit">
+          <query-road-pop :config-min="roadConfig" />
+        </div>
+      </template>
+      <template v-else-if="activeTool === 'spatial' && spatialConfig">
+        <img class="map-screen__spatial-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__spatial-title">空间查询</h2>
+        <div class="map-screen__spatial-host stage-hit">
+          <query-spatial-pop :config-min="spatialConfig" />
+        </div>
+      </template>
+      <template v-else-if="activeTool === 'attr' && attrConfig">
+        <img class="map-screen__attrpanel-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__attrpanel-title">属性查询</h2>
+        <div class="map-screen__attr-host stage-hit">
+          <query-attribute-pop :config-min="attrConfig" />
+        </div>
+      </template>
+      <template v-else-if="activeTool === 'comp' && compConfig">
+        <img class="map-screen__comp-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__comp-title">综合查询</h2>
+        <div class="map-screen__comp-host stage-hit">
+          <query-comprehensive-pop :config-min="compConfig" />
+        </div>
+      </template>
+      <template v-else-if="activeTool === 'stat' && statConfig">
+        <img class="map-screen__stat-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__stat-title">综合统计</h2>
+        <div class="map-screen__stat-host stage-hit">
+          <query-statistic-pop :config-min="statConfig" />
+        </div>
+      </template>
+      <!-- 其余插件弹窗工具（书签/动画导航/图层管理/高程/地下/地形透明）：
+           通用宿主容器 + 数据驱动渲染，标题取自注册表 -->
+      <template v-else-if="activePopTool">
+        <img class="map-screen__plugin-title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 class="map-screen__plugin-title">{{ activePopTool.title }}</h2>
+        <div class="map-screen__plugin-host stage-hit">
+          <component :is="activePopTool.popTag" ref="activePopRef" v-mvt-layer-tree :config-min="activePopTool.config" />
+        </div>
+      </template>
+      <map-pick-panel v-else :result="pickRows" :layer-name="pickLayer" />
+
+      <!--
+        右面板宽度拖动条：贴面板内侧竖边。
+        右面板贴的是画布右边缘、内容往左长，所以往**左**拖才是变宽 → reverse。
+      -->
+      <screen-resize-bar
+        v-show="!layout.right.collapsed"
+        class="map-screen__right-resizer stage-hit"
+        orientation="vertical"
+        reverse
+        :value="layout.right.size"
+        :min="layout.right.min"
+        :max="layout.right.max"
+        aria-label="拖动调整右侧面板宽度"
+        @input="layout.setSize('right', $event)"
+      />
+    </div>
 
     <!--
       stargis-function 量测/地形类开关引擎（原「直线量测」「地形透明」等按钮
@@ -192,12 +241,42 @@
       aria-hidden="true"
     />
 
-    <!-- 底部「属性表」收起条（设计稿 (460,983) 1000×47，下贴 50） -->
-    <section class="map-screen__attr stage-hit">
-      <img class="map-screen__attr-bar" :src="hf.attrBar" alt="" aria-hidden="true" />
-      <h3 class="map-screen__attr-title">属性表</h3>
-      <img class="map-screen__attr-toggle" :src="hf.attrExpand" alt="" aria-hidden="true" />
-    </section>
+    <!--
+      屏边轨道（折叠把手）：★ 必须挂在屏幕上、不能挂进左右面板
+      （面板滑走后把手一起滑走，折叠就再也点不回来 —— 首页首版的坑）。
+      两条轨道都在 30px 屏边留白里，不覆盖 400 宽的面板，也不挡地图。
+    -->
+    <screen-side-rail
+      side="left"
+      :collapsed="layout.left.collapsed"
+      collapse-text="收起左侧工具面板"
+      expand-text="展开左侧工具面板"
+      @toggle="layout.toggle('left')"
+    />
+
+    <screen-side-rail
+      side="right"
+      :collapsed="layout.right.collapsed"
+      collapse-text="收起右侧面板"
+      expand-text="展开右侧面板"
+      @toggle="layout.toggle('right')"
+    />
+
+    <!--
+      底部「属性表」：可拖高 + 可折叠（ScreenBottomDock）。
+      默认 collapsed = true（见 panelLayout 的 map 默认值），进入页面仍是
+      47px 收起条，与改造前逐像素一致；宽度随左右面板的展开 / 折叠自动内缩。
+    -->
+    <screen-bottom-dock
+      :height="layout.bottom.size"
+      :collapsed="layout.bottom.collapsed"
+      :min="layout.bottom.min"
+      :max="layout.bottom.max"
+      :left-inset="bottomInsets.left"
+      :right-inset="bottomInsets.right"
+      @update:height="layout.setSize('bottom', $event)"
+      @update:collapsed="layout.setCollapsed('bottom', $event)"
+    />
   </div>
 </template>
 
@@ -205,6 +284,14 @@
 import MapToolPanel from './MapToolPanel.vue'
 import MapPickPanel from './MapPickPanel.vue'
 import MapPlacePanel from './MapPlacePanel.vue'
+import {
+  ScreenResizeBar,
+  ScreenSideRail,
+  ScreenBottomDock,
+  usePanelLayout,
+  panelInset,
+  panelSlideDistance
+} from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
 
@@ -236,7 +323,7 @@ const PLUGIN_TOOLS = [
   { key: 'tour', title: '动画导航', engine: 'AnimationNavigation', pop: 'AnimationNavigationPop', event: 'showAnimationNavigationPop', icon: 'map-btns/AnimationNavigation' },
   { key: 'layers', title: '图层管理', engine: 'LayerTree', pop: 'LayerTreePop', event: null, icon: 'map-btns/QueryPick' },
   { key: 'terrainAlpha', title: '地形透明', engine: 'TransparentTerrain', pop: 'TransparentTerrainPop', event: 'showTerrainPop', icon: 'map-btns/TransparentTerrain' },
-  { key: 'hdExport', title: '高清出图', engine: null, pop: 'ScenePlottingPop', event: 'showScenePlottingPop', icon: null },
+  { key: 'hdExport', title: '高清出图', engine: null, pop: 'ScenePlottingPop', event: 'showScenePlottingPop', icon: null }
 ]
 
 /** PascalCase → kebab-case（组件名 → 全局注册的标签名） */
@@ -247,10 +334,24 @@ function toKebab (name) {
 export default {
   name: 'MapScreen',
   directives: { mvtLayerTree },
-  components: { MapToolPanel, MapPickPanel, MapPlacePanel },
+  components: {
+    MapToolPanel,
+    MapPickPanel,
+    MapPlacePanel,
+    ScreenResizeBar,
+    ScreenSideRail,
+    ScreenBottomDock
+  },
   data () {
     return {
       hf,
+      /**
+       * 三块面板的尺寸 / 折叠状态（模块级单例，localStorage 持久化）：
+       * 左工具箱可拖宽、右面板可拖宽、底部属性表可拖高，三者都能折叠。
+       * 状态放在 panelLayout 而不是本组件 data 里，是为了切页 / 刷新后
+       * 尺寸还在（页面组件是 v-if 切换的，换页即销毁）。
+       */
+      layout: usePanelLayout('map'),
       /**
        * 当前激活的左侧工具：'' 无 / 'pick' 拾取查询 / 'place' 地名定位 /
        * 'road' 道路定位。右面板跟随它切换；无激活工具时展示拾取查询的
@@ -300,10 +401,46 @@ export default {
       /** 综合统计弹窗开关状态（= 综合统计引擎 checked，随总线事件同步） */
       statActive: false,
       /** 开启高程的开关状态（驱动数据源图层 setDemAvailable） */
-      heightOn: false,
+      heightOn: false
     }
   },
   computed: {
+    /**
+     * 左右面板宽度以 CSS 变量下发（--panel-left-w / --panel-right-w）。
+     *
+     * 为什么不逐层传 prop：宽度要同时影响页面里的插件宿主（__road-host 等）
+     * 和三个子面板组件（MapToolPanel / MapPickPanel / MapPlacePanel）的一堆
+     * 绝对定位元素，逐层传 prop 会把模板写得很啰嗦。CSS 自定义属性会自然
+     * 继承进子组件（scoped 也拦不住），子组件里写 `width: var(--panel-left-w, 400px)`
+     * 即可，组件签名一个都不用改。
+     */
+    panelStyle () {
+      return {
+        '--panel-left-w': `${this.layout.left.size}px`,
+        '--panel-right-w': `${this.layout.right.size}px`
+      }
+    },
+    /**
+     * 底部属性表的左右内缩（设计画布像素）：
+     * 该侧展开 = 面板宽 + 两侧各 30，折叠 = 只剩屏边 30 —— 与首页属性表
+     * 460 → 30 的口径完全一致（改前这里是写死的 left/right: 460px）。
+     */
+    bottomInsets () {
+      return {
+        left: panelInset(this.layout, 'left'),
+        right: panelInset(this.layout, 'right')
+      }
+    },
+    /** 左面板折叠位移：整块滑出屏幕（= 面板宽 + 屏边 30），展开时不加 transform */
+    leftWrapStyle () {
+      if (!this.layout.left.collapsed) return null
+      return { transform: `translateX(-${panelSlideDistance(this.layout, 'left')}px)` }
+    },
+    /** 右面板从右侧滑出（正方向，与左侧镜像） */
+    rightWrapStyle () {
+      if (!this.layout.right.collapsed) return null
+      return { transform: `translateX(${panelSlideDistance(this.layout, 'right')}px)` }
+    },
     /**
      * 当前激活的弹窗型插件工具（书签/动画导航/图层管理/高程/地下/地形透明）。
      * 供通用宿主容器渲染对应弹窗。
@@ -314,7 +451,7 @@ export default {
       return {
         ...def,
         popTag: toKebab(def.pop),
-        config: { icon: def.icon },
+        config: { icon: def.icon }
       }
     },
     /** 需要挂载的隐藏引擎清单（无引擎的工具如高清出图跳过；configMin 只需 icon） */
@@ -324,9 +461,9 @@ export default {
         .map((tool) => ({
           ...tool,
           engineTag: toKebab(tool.engine),
-          config: { icon: tool.icon },
+          config: { icon: tool.icon }
         }))
-    },
+    }
   },
   created () {
     // 拾取结果：payload 是 {name,value} 行数组；false = 取消拾取 / 未拾中
@@ -746,7 +883,7 @@ export default {
         querySpatial: 'spatial',
         queryAttr: 'attr',
         queryCombined: 'comp',
-        statistics: 'stat',
+        statistics: 'stat'
       }
       if (MODE_KEY_MAP[key]) key = MODE_KEY_MAP[key]
       if (key === 'pick') return this.togglePick()
@@ -985,8 +1122,8 @@ export default {
         try { this._layerProbeHandler.destroy() } catch (error) { /* 已销毁则忽略 */ }
         this._layerProbeHandler = null
       }
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -997,47 +1134,35 @@ export default {
   // 整页容器不拦截鼠标：地图必须保持可交互，各面板自己 stage-hit
   pointer-events: none;
 
-  &__attr {
+  /* ---------------- 左右面板的定位根（折叠 = 整块滑出屏幕） ----------------
+   * 包装铺满画布，内部保持设计稿绝对坐标不变（改前面板直接挂在 .map-screen 上，
+   * 两者的定位基准都是整块画布，所以坐标一个都不用改）。
+   * ★ 铺满画布的容器层必须 pointer-events: none（AGENTS §3.6 第 4 条）：
+   *   开了 auto 就是「看得见地图却点不到、拖不动」；交互由面板自身与拖动条的
+   *   .stage-hit 重新打开。位移过渡与面板折叠共用同一个 320ms 缓动。
+   */
+  &__left,
+  &__right {
     position: absolute;
-    // 设计稿 x=460..1460、下贴 50（与首页属性表收起态同位）
-    left: 460px;
-    right: 460px;
+    inset: 0;
+    pointer-events: none;
+    transition: transform var(--screen-duration-slow) var(--screen-ease);
+  }
+
+  /* 左面板拖动条：贴面板内侧竖边（条宽 12，故 -6 居中在边界上） */
+  &__left-resizer {
+    position: absolute;
+    top: 149px;
     bottom: 50px;
-    height: 47px;
+    left: calc(30px + var(--panel-left-w, 400px) - 6px);
   }
 
-  &__attr-bar {
+  /* 右面板拖动条：贴面板内侧竖边（右面板在右侧，条贴它的左边缘） */
+  &__right-resizer {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 47px;
-    display: block;
-    pointer-events: none;
-  }
-
-  &__attr-title {
-    position: absolute;
-    left: 48px;
-    // 条高 47、字 22 行高：与首页收起态一致微微下沉
-    top: 14px;
-    margin: 0;
-    font-size: var(--screen-font-lg);
-    font-weight: 500;
-    line-height: 22px;
-    color: #ffffff;
-    white-space: nowrap;
-  }
-
-  &__attr-toggle {
-    position: absolute;
-    // 设计稿图标 17×14 @ (963, 17)，即距右边界 20px
-    right: 20px;
-    top: 17px;
-    width: 17px;
-    height: 14px;
-    display: block;
-    pointer-events: none;
+    top: 149px;
+    bottom: 50px;
+    right: calc(30px + var(--panel-right-w, 400px) - 6px);
   }
 
   /* ---------------- 插件弹窗外壳统一适配（道路 + 空间共用 .pop 外壳） ----------------
@@ -1150,7 +1275,8 @@ export default {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1174,7 +1300,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1202,7 +1329,8 @@ export default {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1226,7 +1354,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1267,12 +1396,14 @@ export default {
   }
 
   /* ---------------- 属性查询（插件弹窗容器） ---------------- */
-  // ⚠ 类名不能与底部属性表条的 __attr-title 撞车（后者是「属性表」标题）
+  // ⚠ 类名沿用 __attrpanel-*：直译「attr-host」会和「属性查询弹窗」混淆，
+  //   也避免与已删除的旧底部属性表条（__attr-*，现由 ScreenBottomDock 接管）撞车
   &__attrpanel-title-deco {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1296,7 +1427,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1383,7 +1515,8 @@ export default {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1407,7 +1540,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1477,7 +1611,8 @@ export default {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1501,7 +1636,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1591,7 +1727,8 @@ export default {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 标题装饰比面板宽 20（设计稿 400 → 420）；面板可拖宽，跟着走
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1615,7 +1752,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由页面根的 --panel-right-w 下发（可拖动 340~720），不再写死 400
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;

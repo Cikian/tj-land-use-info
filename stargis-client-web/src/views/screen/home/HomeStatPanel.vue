@@ -21,13 +21,33 @@
     保留的两处「按高保真 + 保留现有内容」扩展（已与需求方确认）：
       1. 明细区右上角「明细 / 排行」切换：默认「明细」与设计稿完全一致，
          「排行」展示原有「各区出让排行 / 各区配套落实」，不丢失既有内容。
+         ★ 2026-11-12：排行改为按项目分类**分开展示** —— 复用上方「市级 / 区级」
+           双卡作为切换器，同一时刻只看一份榜单（两组量级不同，混排没有可比性）。
       2. 数字全部来自接口（不再是设计稿里的 909 / 245 / 664 占位值）。
          圆环的弧长也改成按数据现画（内联 SVG），不再用设计稿里 28% / 72% 的定值切图。
   -->
-  <div class="home-stat" :class="`is-${side}`" :style="slideStyle">
+  <div class="home-stat" :class="`is-${side}`" :style="rootStyle">
     <!-- 面板标题 -->
     <img class="home-stat__title-deco" :src="side === 'left' ? hf.panelTitleLeft : hf.panelTitleRight" alt="" aria-hidden="true" />
     <h2 class="home-stat__title">{{ title }}</h2>
+
+    <!--
+      面板宽度调节条（2026-11）：贴在面板**内侧竖边**。
+      左面板贴右边缘、往右拖变宽；右面板贴左边缘、往左拖变宽（reverse）。
+      折叠时藏起来 —— 面板已经滑出屏幕，留在原地的拖动条没有意义，
+      而且会和屏边把手抢点击区域。
+    -->
+    <screen-resize-bar
+      v-show="!collapsed"
+      class="home-stat__resizer stage-hit"
+      orientation="vertical"
+      :reverse="side === 'right'"
+      :value="width"
+      :min="widthMin"
+      :max="widthMax"
+      :aria-label="side === 'left' ? '拖动调整左侧统计面板宽度' : '拖动调整右侧面板宽度'"
+      @input="handleResize"
+    />
 
     <!-- 面板主体 -->
     <section class="home-stat__panel stage-hit">
@@ -75,7 +95,7 @@
             type="button"
             class="home-stat__split-card"
             :class="{ 'is-active': item.key === activeSplit }"
-            :style="{ left: `${index * 185}px` }"
+            :style="{ left: splitLeft(index), width: SPLIT_WIDTH }"
             @click="activeSplit = item.key"
           >
             <img
@@ -141,7 +161,7 @@
                 v-for="col in columns"
                 :key="col.key"
                 class="home-stat__th"
-                :style="{ left: `${TH_OFFSET[col.key]}px` }"
+                :style="{ left: TH_OFFSET[col.key] }"
               >{{ col.title }}</span>
             </template>
             <span v-else class="home-stat__th home-stat__th--rank">
@@ -174,7 +194,7 @@
                 v-for="col in columns"
                 :key="col.key"
                 class="home-stat__td"
-                :style="{ left: `${TH_OFFSET[col.key]}px` }"
+                :style="{ left: TH_OFFSET[col.key] }"
               >{{ row[col.key] }}</span>
             </div>
 
@@ -184,11 +204,17 @@
             </p>
           </div>
 
-          <!-- 排行（保留原有内容） -->
+          <!--
+            排行（保留原有内容）。
+            ★ 2026-11-12 起按「市级 / 区级」分开统计：榜单跟着上方双卡的选中项走，
+              序号与条形都按该组内部归一。后端返回的 ranks 是把两级混在一张表里
+              按 value 全局倒序的，直接渲染会出现「河西区（市级）36」排在
+              「津南区（区级）66」下面 —— 两个量级不同的集合互相比较，榜单没有意义。
+          -->
           <div v-else class="home-stat__rank">
             <img class="home-stat__table-bg" :src="hf.tableBody" alt="" aria-hidden="true" />
             <div
-              v-for="(item, index) in rank"
+              v-for="(item, index) in rankRows"
               :key="item.name"
               class="home-stat__rank-row"
             >
@@ -206,6 +232,14 @@
               </span>
               <span class="home-stat__rank-value">{{ item.value }}</span>
             </div>
+
+            <!--
+              拆成两级之后，某一级没有分组数据（例如库里的区级项目全都落在
+              已删除 / 没有 xzqh2 的宗地上）是可能的，明确留白，不复用另一级的榜单。
+            -->
+            <p v-if="!rankRows.length" class="home-stat__empty">
+              {{ loading ? '加载中…' : '暂无数据' }}
+            </p>
           </div>
         </div>
       </div>
@@ -215,24 +249,37 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
+import ScreenResizeBar from '@/components/screen/ScreenResizeBar.vue'
 
 /**
- * 表头 / 单元格的横向偏移（取自高保真 CSS 的 left 值）。
- * ★ facilities / completed 沿用 plots / roads 的 186 / 283：
- *   两块面板只是换列名与取值字段，设计稿的横向定尺不变，
- *   所以不新增一套坐标，避免两块面板的列宽视觉漂移。
+ * 表头 / 单元格的横向偏移。
+ *
+ * ★ 2026-11 起改成**百分比**（以设计稿内容宽 360 换算），不再写死 px：
+ *   左右面板宽度现在可以拖动（400 → 340~560），写死 186/283 会让列永远贴在
+ *   左边、右边空一大片。设计稿比例下换算结果与原来的 px 完全一致
+ *   （14/360 = 3.8889% → 400 宽时仍是 14px）。
+ *
+ * facilities / completed 沿用 plots / roads 的偏移：两块面板只是换列名与取值字段，
+ * 设计稿的横向定尺不变，所以不新增一套坐标，避免两块面板的列宽视觉漂移。
  */
+const CONTENT_WIDTH = 360
+const pct = (value) => `${((value / CONTENT_WIDTH) * 100).toFixed(4)}%`
+
 const TH_OFFSET = {
-  index: 14,
-  name: 52,
-  plots: 186,
-  roads: 283,
-  facilities: 186,
-  completed: 283
+  index: pct(14),
+  name: pct(52),
+  plots: pct(186),
+  roads: pct(283),
+  facilities: pct(186),
+  completed: pct(283)
 }
 
-/** 面板滑出距离 = 面板宽 400 + 距屏边 30（与 .home-stat__panel 的 left/right 对齐） */
-const SLIDE_DISTANCE = 430
+/** 双卡横向位置 / 宽度：设计稿两张 175 宽，左卡 x=0、右卡 x=185（间距 10） */
+const SPLIT_LEFT = [pct(0), pct(185)]
+const SPLIT_WIDTH = pct(175)
+
+/** 面板滑出距离的屏边留白：折叠位移 = 面板宽 + 30（与 rail / 面板 right/left 对齐） */
+const PANEL_EDGE = 30
 
 const padIndex = (n) => (n < 10 ? `0${n}` : `${n}`)
 
@@ -245,8 +292,15 @@ const EMPTY_SECTION = {
   tables: { city: { rows: [], total: null }, district: { rows: [], total: null } }
 }
 
+/** 空排行：市级 / 区级各一份，缺一份就只渲染另一份（不互相顶替） */
+const EMPTY_RANK = { city: [], district: [] }
+
+/** 双卡 key → 排行表头里的分组后缀 */
+const SPLIT_LABEL = { city: '市级', district: '区级' }
+
 export default {
   name: 'HomeStatPanel',
+  components: { ScreenResizeBar },
   props: {
     /** 面板朝向：left = 出让地块情况统计 / right = 落实配套情况统计（决定镜像位置与底图） */
     side: {
@@ -258,19 +312,32 @@ export default {
     title: { type: String, default: '' },
     /** 本面板要展示的那一份统计（出让情况 / 落实配套情况），结构见 index.vue 的 emptyPanelSection */
     section: { type: Object, default: () => EMPTY_SECTION },
-    /** 各区排行（「排行」视图用）：左 = 各区出让排行，右 = 各区配套落实 */
-    rank: { type: Array, default: () => [] },
-    /** 排行视图的表头文案；不传时按 side 兜底 */
+    /**
+     * 各区排行（「排行」视图用），★ 按项目分类分成两份：{ city: [], district: [] }。
+     * 左 = 各区出让排行、右 = 各区配套落实，两级各排各的（不混排）。
+     * 结构由 views/screen/index.vue 的 rankGroups 生成。
+     */
+    rank: { type: Object, default: () => EMPTY_RANK },
+    /** 排行视图的表头文案；不传时按 side 兜底。实际渲染时会在后面补「（市级）/（区级）」 */
     rankTitle: { type: String, default: '' },
     /** 接口加载态（只影响留白文案） */
     loading: { type: Boolean, default: false },
-    /** 面板是否已折叠（整体滑出屏幕；把手由 HomeSideRail 提供） */
-    collapsed: { type: Boolean, default: false }
+    /** 面板是否已折叠（整体滑出屏幕；把手由屏边 ScreenSideRail 提供） */
+    collapsed: { type: Boolean, default: false },
+    /**
+     * 面板宽度（设计画布像素）。由 views/screen/index.vue 的 panelLayout 下发，
+     * 拖动内侧的 ScreenResizeBar 时通过 width-change 事件回传。
+     */
+    width: { type: Number, default: 400 },
+    /** 宽度下限 / 上限（同样来自 panelLayout，避免组件里再写一套口径） */
+    widthMin: { type: Number, default: 340 },
+    widthMax: { type: Number, default: 560 }
   },
   data () {
     return {
       hf,
       TH_OFFSET,
+      SPLIT_WIDTH,
       /** 与 split 双卡一一对应：city = 市级，district = 区级 */
       activeSplit: 'city',
       viewMode: 'table'
@@ -296,18 +363,39 @@ export default {
       if (this.table.total) rows.push({ ...this.table.total, index: '', isTotal: true })
       return rows
     },
+    /**
+     * 当前选中（市级 / 区级）那一份排行。
+     * ★ 双卡本来就是「市级 / 区级」切明细表的控件，排行跟着同一个选中项走：
+     *   同一时刻只展示一份榜单，序号与条形都按该组内部归一。
+     *   某一份为空时**不**退回另一份 —— 拿区级榜单冒充市级会让人误读。
+     */
+    rankRows () {
+      const groups = this.rank || EMPTY_RANK
+      return groups[this.activeSplit] || []
+    },
     rankTitleText () {
-      if (this.rankTitle) return this.rankTitle
-      return this.side === 'left' ? '各区出让排行' : '各区配套落实'
+      const base = this.rankTitle || (this.side === 'left' ? '各区出让排行' : '各区配套落实')
+      // 分组后缀优先取双卡自身的文案（保证与卡片标签一字不差），没配双卡时按 key 兜底
+      const card = this.split.find((item) => item.key === this.activeSplit)
+      const label = (card && card.label) || SPLIT_LABEL[this.activeSplit]
+      return label ? `${base}（${label}）` : base
     },
+    /** 条形长度按当前这一组的最大值归一（两组量级不同，不能共用一把尺子） */
     rankMax () {
-      return this.rank.reduce((max, item) => Math.max(max, item.value), 1)
+      return this.rankRows.reduce((max, item) => Math.max(max, Number(item.value) || 0), 1)
     },
-    /** 滑出方向：左侧面板往左滑、右侧面板往右滑（CSS 里另有过渡） */
-    slideStyle () {
-      if (!this.collapsed) return null
-      const distance = this.side === 'right' ? SLIDE_DISTANCE : -SLIDE_DISTANCE
-      return { transform: `translateX(${distance}px)` }
+    /**
+     * 根节点内联样式：宽度变量 + 折叠位移。
+     * ★ 宽度用 CSS 变量（--home-panel-w）下发而不是逐个改子元素：
+     *   面板底图、标题装饰、拖动条位置都靠 var() 联动，宽度只维护一处。
+     * ★ 折叠位移随宽度变（面板宽 + 30），写死 430 在拖宽后就滑不干净。
+     */
+    rootStyle () {
+      const style = { '--home-panel-w': `${this.width}px` }
+      if (!this.collapsed) return style
+      const distance = this.width + PANEL_EDGE
+      style.transform = `translateX(${this.side === 'right' ? distance : -distance}px)`
+      return style
     }
   },
   watch: {
@@ -320,6 +408,14 @@ export default {
   },
   methods: {
     pad: padIndex,
+    /** 双卡横向位置（百分比）：0 / 51.3889%，随面板变宽按比例摊开 */
+    splitLeft (index) {
+      return SPLIT_LEFT[index] || SPLIT_LEFT[0]
+    },
+    /** 拖动面板内侧的调节条：把新宽度抛给页面（页面写进 panelLayout 并持久化） */
+    handleResize (value) {
+      this.$emit('width-change', value)
+    },
     /**
      * 环形图进度色：出让情况绿/青，落实配套红/金。
      * 四个色值都取自高保真切图（#43e972 / #54c9c3 / #e95b43 / #c99e54）——
@@ -364,8 +460,9 @@ export default {
       坐标相对画布写死（left:30 / right:9 …），根节点一旦不是 inset:0，
       它们就会相对一个 0 尺寸的盒子定位，位置全飞。
     根节点不开 pointer-events（画布整体穿透），只有面板与控件带 .stage-hit。
-    ★ 折叠位移用 slideStyle（内联 transform，左右方向不同）下发，这里只负责
-      给出过渡时长 —— 位移写在 CSS 类里会让左右两套规则各自维护一份距离。
+    ★ 折叠位移用 rootStyle（内联 transform，左右方向不同；距离 = 面板宽 + 30）
+      下发，这里只负责给出过渡时长 —— 位移写在 CSS 类里会让左右两套规则
+      各自维护一份距离。
   */
   position: absolute;
   left: 0;
@@ -377,7 +474,9 @@ export default {
   &__title-deco {
     position: absolute;
     top: 95px;
-    width: 420px;
+    // 设计稿 420 = 面板 400 + 21（面板 left 30、装饰 left 9）；
+    // 面板宽度可拖动，装饰跟着一起伸缩，否则变宽后内侧会空一条。
+    width: calc(var(--home-panel-w, 400px) + 21px);
     height: 46px;
     pointer-events: none;
   }
@@ -400,9 +499,26 @@ export default {
     // 比 16:9 窄的窗口画布会更高，面板跟着长高，底部不会空出一片。
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由 panelLayout 下发（拖动内侧调节条改变），底图随宽度拉伸
+    width: var(--home-panel-w, 400px);
     background-repeat: no-repeat;
     background-size: 100% 100%;
+  }
+
+  /* 宽度调节条：贴在面板内侧竖边（左面板贴右缘、右面板贴左缘），上下与面板对齐 */
+  &__resizer {
+    position: absolute;
+    top: 149px;
+    bottom: 50px;
+    z-index: 5;
+  }
+
+  &.is-left &__resizer {
+    left: calc(30px + var(--home-panel-w, 400px) - 6px);
+  }
+
+  &.is-right &__resizer {
+    right: calc(30px + var(--home-panel-w, 400px) - 6px);
   }
 
   /* ---------------- 左侧（出让地块情况统计）：设计稿原样 ---------------- */
@@ -474,7 +590,8 @@ export default {
 
   &__stat-label {
     position: absolute;
-    left: 156px;
+    // 设计稿 156 / 360 = 43.3333%：面板变宽时文字与数值区一起内缩比例
+    left: 43.3333%;
     top: 29px;
     font-size: 16px;
     font-weight: 500;
@@ -492,7 +609,7 @@ export default {
    */
   &__stat-figure {
     position: absolute;
-    left: 156px;
+    left: 43.3333%;
     right: 16px;
     top: 59px;
     display: flex;
@@ -528,7 +645,8 @@ export default {
   &__split-card {
     position: absolute;
     top: 0;
-    width: 175px;
+    // 设计稿 175 / 360 = 48.6111%（另一半留给 10px 间距），宽度随面板伸缩
+    width: 48.6111%;
     height: 80px;
     padding: 0;
     background: transparent;
@@ -541,7 +659,7 @@ export default {
     position: absolute;
     left: 0;
     top: 0;
-    width: 175px;
+    width: 100%;
     height: 80px;
     display: block;
   }
@@ -801,9 +919,10 @@ export default {
 
   &__rank-bar {
     position: absolute;
-    left: 148px;
+    // 设计稿 148 / 360、130 / 360：面板变宽时条形按比例拉长，不挤在左边
+    left: 41.1111%;
     top: 18px;
-    width: 130px;
+    width: 36.1111%;
     height: 9px;
     border-radius: var(--screen-radius-pill);
     background: var(--screen-bar-track);

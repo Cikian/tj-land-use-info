@@ -240,7 +240,10 @@ const r1 = (n) => Math.round(n * 10) / 10
     await cdp.send('Page.navigate', { url: BASE + '/#/user/login' })
     await sleep(4000)
     const title = await cdp.evalJs('document.title')
-    if (!/星际GIS/.test(String(title))) {
+    // ★ 标题会随产品改名（旧版是「星际GIS…」，现在是「天津市经营性用地…工作站」）：
+    //   这里只用来排除「指错端口打开了 admin-client（JeecgBoot 低代码平台）」，
+    //   所以按「不是 JeecgBoot」判，不要再钉死某个产品名 —— 钉死会在改名后误报。
+    if (/JeecgBoot/i.test(String(title))) {
       throw new Error(
         `打开的不是大屏端（title="${title}"）。` +
         '大屏端 stargis-client-web 通常是 http://localhost:3001，3000 是管理端 admin-client。'
@@ -548,8 +551,8 @@ const r1 = (n) => Math.round(n * 10) / 10
       }
     }
 
-    await verifyPanel('经营性用地信息录入', '.land-entry', '.land-search', '经营性用地')
-    await verifyPanel('配套地块数据录入', '.facility-entry', '.facility-search', '配套项目')
+    await verifyPanel('经营性用地信息', '.land-entry', '.land-search', '经营性用地')
+    await verifyPanel('配套项目信息', '.facility-entry', '.facility-search', '配套项目')
 
     /* ---------------- 其它四个面板没被改坏 ---------------- */
     console.log('\n================ 回归：其它四个页签仍是旧版式 ================')

@@ -1,28 +1,37 @@
 <template>
   <!--
-    HomeSideRail 首页侧栏「边缘轨道」：屏幕边缘的竖排小页签 + 折叠把手
+    ScreenSideRail 大屏页面屏边「边缘轨道」：竖排小页签 + 折叠把手
     ==================================================================
-    为什么单独一个组件：两侧面板折叠时是**整体滑出屏幕**（位移在面板自己身上），
+    为什么单独一个组件：三块面板的折叠都是**整体滑出屏幕**（位移在面板自己身上），
     而把手必须留在屏幕边缘不动 —— 把手若挂在面板里，会跟着一起滑走，
-    折叠后就再也点不回来。
+    折叠后就再也点不回来（首页首版踩过的坑）。
 
     组成（都在 30px 的屏边留白里，不与 400 宽的面板重叠）：
-      · 竖排小页签  右面板「统计 / 图层树」切换用（只有右侧传 tabs 才渲染）；
-                    面板滑走后仍可点，点一下顺便把面板拉回来（见父组件 handleRightTab）
+      · 竖排小页签  同一块面板有多个内容时用（例如首页右面板「统计 / 图层树」）；
+                    面板滑走后仍可点，点一下顺便把面板拉回来
       · 折叠把手    始终贴在边缘、竖向居中：展开时朝屏幕外（收起方向），
                     折叠时朝屏幕内（展开方向）
 
-    坐标全部相对设计画布的左右边缘（left:0 / right:0），不用 1920 定值。
+    坐标全部相对设计画布的左右边缘（left:0 / right:0），不写 1920 定值。
+
+    用法：
+      <screen-side-rail
+        side="left"
+        :collapsed="layout.left.collapsed"
+        collapse-text="收起左侧面板"
+        expand-text="展开左侧面板"
+        @toggle="layout.toggle('left')"
+      />
   -->
-  <div class="home-rail" :class="`is-${side}`">
+  <div class="screen-side-rail" :class="`is-${side}`">
     <!-- 竖排小页签（可选） -->
-    <div v-if="tabs && tabs.length" class="home-rail__tabs" role="tablist" :aria-label="tabsLabel">
+    <div v-if="tabs && tabs.length" class="screen-side-rail__tabs" role="tablist" :aria-label="tabsLabel">
       <button
         v-for="(tab, index) in tabs"
         :key="tab.key"
         type="button"
         role="tab"
-        class="home-rail__tab stage-hit"
+        class="screen-side-rail__tab stage-hit"
         :class="{ 'is-active': tab.key === activeTab }"
         :style="{ top: `${tabsTop + index * tabStep}px` }"
         :aria-selected="String(tab.key === activeTab)"
@@ -35,13 +44,13 @@
     <!-- 折叠 / 展开把手 -->
     <button
       type="button"
-      class="home-rail__handle stage-hit"
+      class="screen-side-rail__handle stage-hit"
       :aria-expanded="String(!collapsed)"
       :aria-label="collapsed ? expandText : collapseText"
       :title="collapsed ? expandText : collapseText"
       @click="$emit('toggle')"
     >
-      <svg class="home-rail__chevron" viewBox="0 0 10 16" aria-hidden="true">
+      <svg class="screen-side-rail__chevron" viewBox="0 0 10 16" aria-hidden="true">
         <path
           :d="chevronPath"
           fill="none"
@@ -68,7 +77,7 @@ const CHEVRON_LEFT = 'M8 1 L2 8 L8 15'
 const CHEVRON_RIGHT = 'M2 1 L8 8 L2 15'
 
 export default {
-  name: 'HomeSideRail',
+  name: 'ScreenSideRail',
   props: {
     /** 哪一侧：left / right（决定贴哪条边、把手圆角方向、箭头朝向） */
     side: {
@@ -102,9 +111,9 @@ export default {
 </script>
 
 <style scoped lang="less">
-@import '~@/components/screen/styles/screen-mixins.less';
+@import './styles/screen-mixins.less';
 
-.home-rail {
+.screen-side-rail {
   /*
     只占屏边这一条：宽 30（= 面板 left/right 的 30px 留白）。
     本身不开 pointer-events，子元素（页签 / 把手）各自带 .stage-hit，
@@ -114,6 +123,7 @@ export default {
   top: 0;
   bottom: 0;
   width: 30px;
+  z-index: 6;
   pointer-events: none;
 
   &.is-left {

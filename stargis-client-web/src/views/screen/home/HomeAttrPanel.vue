@@ -25,8 +25,22 @@
   <section
     class="home-attr stage-hit"
     :class="{ 'is-collapsed': collapsed }"
-    :style="insetStyle"
+    :style="rootStyle"
   >
+    <!--
+      高度调节条（2026-11）：贴在面板上沿外侧，往上拖 = 变高。
+      折叠态只有 47px 的底部条，不需要拖高，所以 v-if 掉。
+    -->
+    <screen-resize-bar
+      v-if="!collapsed"
+      class="home-attr__resizer"
+      :value="height"
+      :min="minHeight"
+      :max="maxHeight"
+      aria-label="拖动调整属性表高度"
+      @input="handleResize"
+    />
+
     <!-- 展开态 -->
     <template v-if="!collapsed">
       <img class="home-attr__bg" :src="hf.attrBg" alt="" aria-hidden="true" />
@@ -128,7 +142,7 @@
       <span v-if="loading && rows.length" class="home-attr__loading">加载中…</span>
 
       <!-- 收起 -->
-      <button type="button" class="home-attr__toggle" aria-label="收起属性表" @click="collapsed = true">
+      <button type="button" class="home-attr__toggle" aria-label="收起属性表" @click="toggle">
         <img :src="hf.attrCollapse" alt="" aria-hidden="true" />
       </button>
     </template>
@@ -137,7 +151,7 @@
     <template v-else>
       <img class="home-attr__bar" :src="hf.attrBar" alt="" aria-hidden="true" />
       <h3 class="home-attr__title is-collapsed">属性表</h3>
-      <button type="button" class="home-attr__toggle is-collapsed" aria-label="展开属性表" @click="collapsed = false">
+      <button type="button" class="home-attr__toggle is-collapsed" aria-label="展开属性表" @click="toggle">
         <img :src="hf.attrExpand" alt="" aria-hidden="true" />
       </button>
     </template>
@@ -146,7 +160,11 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
+import ScreenResizeBar from '@/components/screen/ScreenResizeBar.vue'
 import { warningTabs, warningTierKey, warningTiers, warningTone } from '../config'
+
+/** 收起态高度（设计稿底部条 47px） */
+const ATTR_BAR_HEIGHT = 47
 
 /**
  * 列横向位置。
@@ -205,6 +223,7 @@ const INDICATOR_KEYS = COLUMNS
 
 export default {
   name: 'HomeAttrPanel',
+  components: { ScreenResizeBar },
   props: {
     /** 页签（默认取 config.js，与接口无关） */
     tabs: { type: Array, default: () => warningTabs },
@@ -220,19 +239,39 @@ export default {
      * ⚠ 必须由页面下发：折叠状态属于页面，面板自己不知道对面那侧的状态。
      */
     leftInset: { type: Number, default: 460 },
-    rightInset: { type: Number, default: 460 }
+    rightInset: { type: Number, default: 460 },
+    /**
+     * 展开态高度（设计画布像素）与上下限：由 views/screen/index.vue 的
+     * panelLayout 下发并持久化；拖动上沿调节条时通过 update:height 回传。
+     */
+    height: { type: Number, default: 321 },
+    minHeight: { type: Number, default: 160 },
+    maxHeight: { type: Number, default: 700 },
+    /**
+     * 是否已折叠（只剩 47px 底部条）。
+     * ★ 2026-11 起由页面持有（不再在本组件内部 data 里），否则切页 / 刷新
+     *   就回到展开态，与「折叠状态永久记住」的需求冲突。
+     */
+    collapsed: { type: Boolean, default: false }
   },
   data () {
     return {
       hf,
-      activeTab: (this.tabs[0] && this.tabs[0].key) || 'city',
-      collapsed: false
+      activeTab: (this.tabs[0] && this.tabs[0].key) || 'city'
     }
   },
   computed: {
-    /** 左右内缩（侧栏折叠时页面会给 30，宽度随之生长；过渡在 CSS 里） */
-    insetStyle () {
-      return { left: `${this.leftInset}px`, right: `${this.rightInset}px` }
+    /**
+     * 根节点样式：左右内缩 + 高度。
+     * 折叠时固定 47（底部条），展开时用页面下发的高度；
+     * 过渡（height / left / right）写在 CSS 里，与两侧面板滑出同一个 320ms。
+     */
+    rootStyle () {
+      return {
+        left: `${this.leftInset}px`,
+        right: `${this.rightInset}px`,
+        height: `${this.collapsed ? ATTR_BAR_HEIGHT : this.height}px`
+      }
     },
     columns () {
       return COLUMNS.map((col) => ({
@@ -270,6 +309,14 @@ export default {
     }
   },
   methods: {
+    /** 拖动上沿调节条：新高度抛给页面（写进 panelLayout 并持久化） */
+    handleResize (value) {
+      this.$emit('update:height', value)
+    },
+    /** 收起 / 展开：状态由页面持有（持久化），这里只抛事件 */
+    toggle () {
+      this.$emit('update:collapsed', !this.collapsed)
+    },
     /** 单元格定位：与表头同一套列位置 */
     cellStyle (key) {
       return { left: COL_PCT[key], width: COL_WIDTH[key] }
@@ -324,16 +371,28 @@ export default {
 .home-attr {
   position: absolute;
   // 设计稿 x=460..1460（左右各留 460，即与两侧面板保持 30px 间距）。
-  // 纵向下贴 50、定尺高 321：设计比例下顶边正好落在 709，与设计稿一致；
-  // 下贴边保证画布变高时它始终和左右面板的底边对齐。
-  // ★ 左右内缩改为由页面下发（insetStyle，侧栏折叠时从 460 收到 30），
-  //   这里的 460 只是模板默认值；transition 让宽度变化跟着侧栏一起动。
+  // 纵向下贴 50：设计比例下顶边落在 709，与设计稿一致。
+  // ★ 2026-11 起左右内缩与高度都由页面 rootStyle 下发：
+  //   两侧面板拖宽 / 折叠 → 左右内缩跟着变（460 或 30 / 宽+60）；
+  //   上沿拖动条 → 高度变。三者过渡时长一致，不会出现「面板滑走了、
+  //   属性表卡着不动」的错帧。
   left: 460px;
   right: 460px;
   bottom: 50px;
   height: 321px;
-  transition: left var(--screen-duration-slow) var(--screen-ease),
+  // ⚠ 拖动改高时会关掉这条过渡（见文件末尾的 body.is-resizing-panel 规则），
+  //   否则面板高度用 320ms 追指针，手感发黏；折叠 / 侧栏拖宽仍需要它。
+  transition: height var(--screen-duration-slow) var(--screen-ease),
+    left var(--screen-duration-slow) var(--screen-ease),
     right var(--screen-duration-slow) var(--screen-ease);
+
+  /* 上沿拖高条：放在面板外侧（top:-12），不挤压内容 */
+  &__resizer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -12px;
+  }
 
   &__bg,
   &__bar {
@@ -346,12 +405,12 @@ export default {
     left: 0;
     top: 0;
     width: 100%;
-    height: 321px;
+    height: 100%;
   }
 
   &__bar {
     left: 0;
-    top: 274px;
+    top: 0;
     width: 100%;
     height: 47px;
   }
@@ -368,7 +427,7 @@ export default {
     white-space: nowrap;
 
     &.is-collapsed {
-      top: 288px;
+      top: 13px;
     }
   }
 
@@ -425,7 +484,8 @@ export default {
     left: 20px;
     right: 20px;
     top: 63px;
-    height: 232px;
+    // 高度由 rootStyle 决定（可拖高）：表头 48 固定，表体吃掉剩下的
+    bottom: 20px;
     overflow: hidden;
   }
 
@@ -466,7 +526,7 @@ export default {
     top: 0;
     // ⚠ <img> 必须显式给宽度，只写 left/right 不会拉伸
     width: 100%;
-    height: 183px;
+    height: 100%;
     display: block;
     pointer-events: none;
   }
@@ -610,8 +670,17 @@ export default {
     }
 
     &.is-collapsed {
-      top: 291px;
+      top: 17px;
     }
   }
+}
+
+/*
+ * 拖动尺寸期间关掉高度过渡（body 上的 .is-resizing-panel 由 ScreenResizeBar
+ * 在 pointerdown 时挂、pointerup 时摘）。不关的话拖动改高会被 320ms 过渡拖住，
+ * 面板跟不上指针 —— 与 ScreenBottomDock 的同名规则是同一套做法。
+ */
+body.is-resizing-panel .home-attr {
+  transition: none;
 }
 </style>

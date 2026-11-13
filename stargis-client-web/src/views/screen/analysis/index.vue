@@ -10,6 +10,16 @@
     右面板：激活任一工具时显示与地图管理同位的面板壳（标题装饰 + 工具名），
     .analysis-screen__host 是各功能面板的统一接入点。
 
+    三块面板都可调尺寸 + 可折叠（2026-11，与首页 / 地图管理同一套共用件）：
+      · 左工具箱 拖动内侧竖条改宽（ScreenResizeBar vertical），屏边把手折叠；
+      · 右面板   同上（reverse：往左拖变宽），折叠 = 整块向右滑出屏幕；
+      · 底部属性表 ScreenBottomDock：上沿拖动条改高、标题右侧按钮折叠，
+                 左右内缩随两侧面板宽度 / 折叠状态联动。
+      尺寸与折叠状态存在 src/components/screen/panelLayout.js（localStorage
+      持久化，切页 / 刷新后保持），面板宽度以 CSS 变量 --panel-left-w /
+      --panel-right-w 下发给整棵子树（含 AnalysisToolPanel 与插件宿主），
+      所以这里改宽度只需动根节点的一处 :style。
+
     已接入功能（模式与地图管理页一致：右面板宿主渲染功能面板）：
       · 管线统计 pipeline —— 引擎 <pipe-statistics> 页面级挂载（查询表单
         在引擎组件内部，用 __engine-host 包裹：闲置藏 / 激活显）；
@@ -45,26 +55,28 @@
     同样全局注册自 stargis-function，按同款模式逐个补，写法参照本页
     pipeline / label 分支与 map/index.vue 的 PLUGIN_TOOLS 注册表。
   -->
-  <div class="analysis-screen">
-    <analysis-tool-panel :active-tool="activeTool" @toggle-tool="toggleToolByKey" />
-
+  <div class="analysis-screen" :style="panelStyle">
     <!--
-      管线统计引擎（stargis-function 全局组件，老工作台工具栏同款）：
-      与 road 类引擎不同，管线统计的查询表单在引擎组件内部（插件清单里
-      只有 4 个结果弹窗、没有表单弹窗），因此不能整体 v-show="false"——
-      用 __engine-host 包一层：未激活时藏（闲置态只剩按钮壳），激活后
-      显示，让引擎自己画的表单/面板落在右面板框里。btnClick() 进 / 退
-      统计模式，checked / cancelChecked() 是状态契约；激活前引擎会调
-      $parent.cancelAll() 做互斥（见本页 cancelAll）。没配数据源不挂载。
+      左面板包装：铺满画布、自身不接事件的定位根（内部保持设计稿绝对坐标）。
+      折叠 = 整块向左滑出屏幕（位移 = 面板宽 + 屏边 30，随拖宽变化）。
+      ★ 铺满画布的容器层必须 pointer-events:none（AGENTS §3.6 第 4 条）：
+        透明不等于不接事件，开 auto 会让地图点不到、拖不动；交互由面板
+        自身的 .stage-hit 与拖动条的 .stage-hit 重新打开。
     -->
-    <div
-      v-if="pipeConfig || sectionConfig"
-      ref="engineHost"
-      class="analysis-screen__engine-host stage-hit"
-      :class="{ 'is-idle': !pipeActive }"
-    >
-      <pipe-statistics v-if="pipeConfig" ref="pipeStatisticsEngine" :config-min="pipeConfig" />
-      <sectional-analysis v-if="sectionConfig" ref="sectionalEngine" :config-min="sectionConfig" />
+    <div class="analysis-screen__left" :style="leftWrapStyle">
+      <analysis-tool-panel :active-tool="activeTool" @toggle-tool="toggleToolByKey" />
+
+      <!-- 左面板拖宽条：贴在面板内侧竖边（折叠时隐藏——滑出屏幕的条没有意义） -->
+      <screen-resize-bar
+        v-show="!layout.left.collapsed"
+        class="analysis-screen__left-resizer stage-hit"
+        orientation="vertical"
+        :value="layout.left.size"
+        :min="layout.left.min"
+        :max="layout.left.max"
+        aria-label="拖动调整左侧分析工具箱宽度"
+        @input="layout.setSize('left', $event)"
+      />
     </div>
 
     <!--
@@ -169,153 +181,235 @@
       aria-hidden="true"
     />
 
-    <!-- 右面板壳：只负责标题与容器，功能面板由各工具分支填充 -->
-    <template v-if="activeToolDef">
-      <!-- 管线统计的引擎面板自带标题栏与关闭钮，画布层标题不再重复渲染 -->
-      <img v-if="activeTool !== 'pipeline'" class="analysis-screen__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-      <h2 v-if="activeTool !== 'pipeline'" class="analysis-screen__title">{{ activeToolDef.label }}</h2>
-      <div
-        class="analysis-screen__host stage-hit"
-        :class="{ 'has-typestrip': (activeTool === 'pipeline' && pipeConfig) || activeTool === 'label' }"
-      >
-        <!-- ★ 管线统计：五个统计结果弹窗（自含，自行监听总线显隐）。
-             弹窗无自己的配置就不挂载（v-if 守卫，同引擎口径）。 -->
-        <template v-if="activeTool === 'pipeline'">
-          <property-pop v-if="pipePopConfig.xzanalyse" :config-min="pipePopConfig.xzanalyse" />
-          <diameter-pop v-if="pipePopConfig.gjanalyse" :config-min="pipePopConfig.gjanalyse" />
-          <material-pop v-if="pipePopConfig.czanalyse" :config-min="pipePopConfig.czanalyse" />
-          <diameterSect-pop v-if="pipePopConfig.gjfdanalyse" :config-min="pipePopConfig.gjfdanalyse" />
-          <depthSect-pop v-if="pipePopConfig.msfdanalyse" :config-min="pipePopConfig.msfdanalyse" />
-        </template>
-        <!-- ★ 净距分析：DistanceAnalysisPop 结果弹窗（引擎拾取后经
-             showDistancePop 拉起） -->
-        <template v-else-if="activeTool === 'clearance'">
-          <distance-analysis-pop v-if="pipePopConfig.DistanceAnalysis" :config-min="pipePopConfig.DistanceAnalysis" />
-        </template>
-        <!-- ★ 覆土分析：CoverageAnalysisPop 结果弹窗（引擎拾取后经
-             showCoveragePop 拉起） -->
-        <template v-else-if="activeTool === 'cover'">
-          <coverage-analysis-pop v-if="pipePopConfig.CoverageAnalysis" :config-min="pipePopConfig.CoverageAnalysis" />
-        </template>
-        <!-- ★ 流向分析：FlowDirectionAnalysisPop 结果弹窗（引擎拾取后经
-             showFlowDirectionAnalysisPop 拉起） -->
-        <template v-else-if="activeTool === 'flow'">
-          <flow-direction-analysis-pop v-if="pipePopConfig.FlowDirectionAnalysis" :config-min="pipePopConfig.FlowDirectionAnalysis" />
-        </template>
-        <!-- ★ 爆管分析：BurstAnalysisPop 结果弹窗（引擎拾取爆管点后经
-             showBurstPop 拉起） -->
-        <template v-else-if="activeTool === 'burst'">
-          <burst-analysis-pop v-if="pipePopConfig.BurstAnalysis" :config-min="pipePopConfig.BurstAnalysis" />
-        </template>
-        <!-- ★ 开挖分析：ExcavationAnalysisPop 结果弹窗（引擎拾取后经
-             showExcavatePop / showExcatatePop 拉起） -->
-        <template v-else-if="activeTool === 'excavation'">
-          <excavation-analysis-pop v-if="pipePopConfig.ExcavationAnalysis" :config-min="pipePopConfig.ExcavationAnalysis" />
-        </template>
-        <!-- ★ 标注管理：管线标注 / 坐标标注的表单弹窗（引擎 btnClick 经
-             总线拉起）；清除标注无弹窗，直接在地图上点选删除。 -->
-        <template v-else-if="activeTool === 'label'">
-          <pipe-mark-pop v-if="pipePopConfig.PipeMark" :config-min="pipePopConfig.PipeMark" />
-          <coordinate-label-pop v-if="pipePopConfig.CoordinateLabel" :config-min="pipePopConfig.CoordinateLabel" />
-        </template>
-        <!-- ★ 成熟度分析（预留面板）：图层开关列表来自 MATURITY_LAYERS
-             配置点，图层显隐调用在 toggleMaturityLayer（TODO 接入点）；
-             无图层时显示空态提示。 -->
-        <template v-else-if="activeTool === 'maturity'">
-          <div v-if="maturityLayers.length" class="analysis-screen__maturity-list">
-            <div
-              v-for="item in maturityLayers"
-              :key="item.label"
-              class="analysis-screen__maturity-row"
-            >
-              <span class="analysis-screen__maturity-label">{{ item.label }}</span>
-              <button
-                type="button"
-                class="analysis-screen__type-btn"
-                :class="{ 'is-active': activeMaturityLabel === item.label }"
-                @click="toggleMaturityLayer(item)"
-              >{{ activeMaturityLabel === item.label ? '隐藏图层' : '显示图层' }}</button>
-            </div>
-          </div>
-          <div v-else class="analysis-screen__maturity-empty">暂无成熟度图层，待图层服务接入后在此配置</div>
-        </template>
-        <!-- ★ 配套估算（页面自实现，前端复刻旧系统 ptgsManager 区间公式）：
-             拾取地块 → 读出让金 → 出配套费估算区间（出让金折半的
-             35% ~ 65%），结果显示在本面板。 -->
-        <template v-else-if="activeTool === 'estimate'">
-          <div class="analysis-screen__estimate">
-            <template v-if="estimateResult">
-              <div class="analysis-screen__estimate-row">
-                <span>出让宗地编号</span>
-                <b>{{ estimateResult.crzdbh || '—' }}</b>
-              </div>
-              <div class="analysis-screen__estimate-row">
-                <span>地块名称</span>
-                <b>{{ estimateResult.dkmc || '—' }}</b>
-              </div>
-              <div class="analysis-screen__estimate-interval">
-                <span>市政配套费估算区间</span>
-                <b>{{ estimateResult.low }} ~ {{ estimateResult.high }}</b>
-                <i>万元</i>
-              </div>
-              <p class="analysis-screen__estimate-note">按出让金折半的 35% ~ 65% 区间估算（旧系统同款公式）</p>
-            </template>
-            <div v-else class="analysis-screen__estimate-empty">请在地图上点击一个出让地块</div>
-          </div>
-        </template>
-      </div>
-    </template>
-
     <!--
-      管线统计的五个类型入口 + 标注管理的四个功能入口（自绘按钮）。
-      ★ 标注子模式进行中（activeLabelTool 非空）时容器隐藏：插件会弹出
-        自己的编辑工具条（选管线/管点/管井 → 确定/重置/清扫），占据面板
-        顶部同一区域，两套按钮会互相遮挡（真机已复现）；插件流程结束
-        （引擎 checked 退 false，轮询感知）后按钮排布自动还原。
-      ★ 容器必须 v-show 不能用 v-if：停靠区里的插件节点属于这个容器，
-        v-if 切走时会把它们连同插件的事件监听一起销毁。
+      右面板包装：标题装饰 / 面板壳 / 类型按钮条 / 引擎宿主全在它里面，
+      折叠 = 整块向右滑出屏幕（位移 = 面板宽 + 屏边 30）。
+      ★ 不加 overflow:hidden —— 断面出图浮层（.pop.bottom-table，1024×720）
+        要伸出面板框，裁剪掉就看不到出图；
+      ★ 不改任何 v-if / v-show 语义：__type-buttons 里是插件 appendChild
+        搬进来的节点（collectTypeButtons），重新挂载会把插件的事件监听一起丢掉。
+      ★ __engine-host 是第一个子节点（与改造前的绘制顺序一致）：管线统计
+        激活时引擎自己的表单面板在壳下面、五个统计弹窗在壳上面，顺序反了
+        弹窗会被表单盖住。
     -->
-    <div
-      v-show="(activeTool === 'pipeline' && pipeConfig) || activeTool === 'label'"
-      class="analysis-screen__type-buttons stage-hit"
-    >
-      <!-- 管线统计：五个统计类型（直发总线事件开弹窗） -->
-      <template v-if="activeTool === 'pipeline'">
-        <button
-          v-for="item in pipelineTypeLabels"
-          :key="item.label"
-          type="button"
-          class="analysis-screen__type-btn"
-          @click="openTypePop(item)"
-        >{{ item.label }}</button>
+    <div class="analysis-screen__right" :style="rightWrapStyle">
+      <!--
+        管线统计引擎（stargis-function 全局组件，老工作台工具栏同款）：
+        与 road 类引擎不同，管线统计的查询表单在引擎组件内部（插件清单里
+        只有 4 个结果弹窗、没有表单弹窗），因此不能整体 v-show="false"——
+        用 __engine-host 包一层：未激活时藏（闲置态只剩按钮壳），激活后
+        显示，让引擎自己画的表单/面板落在右面板框里。btnClick() 进 / 退
+        统计模式，checked / cancelChecked() 是状态契约；激活前引擎会调
+        $parent.cancelAll() 做互斥（见本页 cancelAll）。没配数据源不挂载。
+      -->
+      <div
+        v-if="pipeConfig || sectionConfig"
+        ref="engineHost"
+        class="analysis-screen__engine-host stage-hit"
+        :class="{ 'is-idle': !pipeActive }"
+      >
+        <pipe-statistics v-if="pipeConfig" ref="pipeStatisticsEngine" :config-min="pipeConfig" />
+        <sectional-analysis v-if="sectionConfig" ref="sectionalEngine" :config-min="sectionConfig" />
+      </div>
+
+      <!-- 右面板壳：只负责标题与容器，功能面板由各工具分支填充 -->
+      <template v-if="activeToolDef">
+        <!-- 管线统计的引擎面板自带标题栏与关闭钮，画布层标题不再重复渲染 -->
+        <img v-if="activeTool !== 'pipeline'" class="analysis-screen__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
+        <h2 v-if="activeTool !== 'pipeline'" class="analysis-screen__title">{{ activeToolDef.label }}</h2>
+        <div
+          class="analysis-screen__host stage-hit"
+          :class="{ 'has-typestrip': (activeTool === 'pipeline' && pipeConfig) || activeTool === 'label' }"
+        >
+          <!-- ★ 管线统计：五个统计结果弹窗（自含，自行监听总线显隐）。
+               弹窗无自己的配置就不挂载（v-if 守卫，同引擎口径）。 -->
+          <template v-if="activeTool === 'pipeline'">
+            <property-pop v-if="pipePopConfig.xzanalyse" :config-min="pipePopConfig.xzanalyse" />
+            <diameter-pop v-if="pipePopConfig.gjanalyse" :config-min="pipePopConfig.gjanalyse" />
+            <material-pop v-if="pipePopConfig.czanalyse" :config-min="pipePopConfig.czanalyse" />
+            <diameterSect-pop v-if="pipePopConfig.gjfdanalyse" :config-min="pipePopConfig.gjfdanalyse" />
+            <depthSect-pop v-if="pipePopConfig.msfdanalyse" :config-min="pipePopConfig.msfdanalyse" />
+          </template>
+          <!-- ★ 净距分析：DistanceAnalysisPop 结果弹窗（引擎拾取后经
+               showDistancePop 拉起） -->
+          <template v-else-if="activeTool === 'clearance'">
+            <distance-analysis-pop v-if="pipePopConfig.DistanceAnalysis" :config-min="pipePopConfig.DistanceAnalysis" />
+          </template>
+          <!-- ★ 覆土分析：CoverageAnalysisPop 结果弹窗（引擎拾取后经
+               showCoveragePop 拉起） -->
+          <template v-else-if="activeTool === 'cover'">
+            <coverage-analysis-pop v-if="pipePopConfig.CoverageAnalysis" :config-min="pipePopConfig.CoverageAnalysis" />
+          </template>
+          <!-- ★ 流向分析：FlowDirectionAnalysisPop 结果弹窗（引擎拾取后经
+               showFlowDirectionAnalysisPop 拉起） -->
+          <template v-else-if="activeTool === 'flow'">
+            <flow-direction-analysis-pop v-if="pipePopConfig.FlowDirectionAnalysis" :config-min="pipePopConfig.FlowDirectionAnalysis" />
+          </template>
+          <!-- ★ 爆管分析：BurstAnalysisPop 结果弹窗（引擎拾取爆管点后经
+               showBurstPop 拉起） -->
+          <template v-else-if="activeTool === 'burst'">
+            <burst-analysis-pop v-if="pipePopConfig.BurstAnalysis" :config-min="pipePopConfig.BurstAnalysis" />
+          </template>
+          <!-- ★ 开挖分析：ExcavationAnalysisPop 结果弹窗（引擎拾取后经
+               showExcavatePop / showExcatatePop 拉起） -->
+          <template v-else-if="activeTool === 'excavation'">
+            <excavation-analysis-pop v-if="pipePopConfig.ExcavationAnalysis" :config-min="pipePopConfig.ExcavationAnalysis" />
+          </template>
+          <!-- ★ 标注管理：管线标注 / 坐标标注的表单弹窗（引擎 btnClick 经
+               总线拉起）；清除标注无弹窗，直接在地图上点选删除。 -->
+          <template v-else-if="activeTool === 'label'">
+            <pipe-mark-pop v-if="pipePopConfig.PipeMark" :config-min="pipePopConfig.PipeMark" />
+            <coordinate-label-pop v-if="pipePopConfig.CoordinateLabel" :config-min="pipePopConfig.CoordinateLabel" />
+          </template>
+          <!-- ★ 成熟度分析（预留面板）：图层开关列表来自 MATURITY_LAYERS
+               配置点，图层显隐调用在 toggleMaturityLayer（TODO 接入点）；
+               无图层时显示空态提示。 -->
+          <template v-else-if="activeTool === 'maturity'">
+            <div v-if="maturityLayers.length" class="analysis-screen__maturity-list">
+              <div
+                v-for="item in maturityLayers"
+                :key="item.label"
+                class="analysis-screen__maturity-row"
+              >
+                <span class="analysis-screen__maturity-label">{{ item.label }}</span>
+                <button
+                  type="button"
+                  class="analysis-screen__type-btn"
+                  :class="{ 'is-active': activeMaturityLabel === item.label }"
+                  @click="toggleMaturityLayer(item)"
+                >{{ activeMaturityLabel === item.label ? '隐藏图层' : '显示图层' }}</button>
+              </div>
+            </div>
+            <div v-else class="analysis-screen__maturity-empty">暂无成熟度图层，待图层服务接入后在此配置</div>
+          </template>
+          <!-- ★ 配套估算（页面自实现，前端复刻旧系统 ptgsManager 区间公式）：
+               拾取地块 → 读出让金 → 出配套费估算区间（出让金折半的
+               35% ~ 65%），结果显示在本面板。 -->
+          <template v-else-if="activeTool === 'estimate'">
+            <div class="analysis-screen__estimate">
+              <template v-if="estimateResult">
+                <div class="analysis-screen__estimate-row">
+                  <span>出让宗地编号</span>
+                  <b>{{ estimateResult.crzdbh || '—' }}</b>
+                </div>
+                <div class="analysis-screen__estimate-row">
+                  <span>地块名称</span>
+                  <b>{{ estimateResult.dkmc || '—' }}</b>
+                </div>
+                <div class="analysis-screen__estimate-interval">
+                  <span>市政配套费估算区间</span>
+                  <b>{{ estimateResult.low }} ~ {{ estimateResult.high }}</b>
+                  <i>万元</i>
+                </div>
+                <p class="analysis-screen__estimate-note">按出让金折半的 35% ~ 65% 区间估算（旧系统同款公式）</p>
+              </template>
+              <div v-else class="analysis-screen__estimate-empty">请在地图上点击一个出让地块</div>
+            </div>
+          </template>
+        </div>
       </template>
-      <!-- 标注管理：四个标注功能（埋深标注组件缺失时点击 toast 说明）；
-           激活中的功能高亮（activeLabelTool 跟随），清除标注是即时动作不高亮 -->
-      <template v-else-if="activeTool === 'label'">
-        <button
-          v-for="item in labelToolButtons"
-          :key="item.label"
-          type="button"
-          class="analysis-screen__type-btn"
-          :class="{ 'is-active': activeLabelTool === item.key }"
-          @click="toggleLabelTool(item)"
-        >{{ item.label }}</button>
-      </template>
-      <div ref="pluginParking" class="analysis-screen__plugin-parking" aria-hidden="true"></div>
+
+      <!--
+        管线统计的五个类型入口 + 标注管理的四个功能入口（自绘按钮）。
+        ★ 标注子模式进行中（activeLabelTool 非空）时容器隐藏：插件会弹出
+          自己的编辑工具条（选管线/管点/管井 → 确定/重置/清扫），占据面板
+          顶部同一区域，两套按钮会互相遮挡（真机已复现）；插件流程结束
+          （引擎 checked 退 false，轮询感知）后按钮排布自动还原。
+        ★ 容器必须 v-show 不能用 v-if：停靠区里的插件节点属于这个容器，
+          v-if 切走时会把它们连同插件的事件监听一起销毁。
+      -->
+      <div
+        v-show="(activeTool === 'pipeline' && pipeConfig) || activeTool === 'label'"
+        class="analysis-screen__type-buttons stage-hit"
+      >
+        <!-- 管线统计：五个统计类型（直发总线事件开弹窗） -->
+        <template v-if="activeTool === 'pipeline'">
+          <button
+            v-for="item in pipelineTypeLabels"
+            :key="item.label"
+            type="button"
+            class="analysis-screen__type-btn"
+            @click="openTypePop(item)"
+          >{{ item.label }}</button>
+        </template>
+        <!-- 标注管理：四个标注功能（埋深标注组件缺失时点击 toast 说明）；
+             激活中的功能高亮（activeLabelTool 跟随），清除标注是即时动作不高亮 -->
+        <template v-else-if="activeTool === 'label'">
+          <button
+            v-for="item in labelToolButtons"
+            :key="item.label"
+            type="button"
+            class="analysis-screen__type-btn"
+            :class="{ 'is-active': activeLabelTool === item.key }"
+            @click="toggleLabelTool(item)"
+          >{{ item.label }}</button>
+        </template>
+        <div ref="pluginParking" class="analysis-screen__plugin-parking" aria-hidden="true"></div>
+      </div>
+
+      <!-- 右面板拖宽条：贴在面板内侧竖边（左缘）；reverse = 往左拖才是变宽 -->
+      <screen-resize-bar
+        v-show="!layout.right.collapsed"
+        class="analysis-screen__right-resizer stage-hit"
+        orientation="vertical"
+        reverse
+        :value="layout.right.size"
+        :min="layout.right.min"
+        :max="layout.right.max"
+        aria-label="拖动调整右侧面板宽度"
+        @input="layout.setSize('right', $event)"
+      />
     </div>
 
-    <!-- 底部「属性表」收起条（设计稿 (460,983) 1000×47，下贴 50；与地图管理同位） -->
-    <section class="analysis-screen__attr stage-hit">
-      <img class="analysis-screen__attr-bar" :src="hf.attrBar" alt="" aria-hidden="true" />
-      <h3 class="analysis-screen__attr-title">属性表</h3>
-      <img class="analysis-screen__attr-toggle" :src="hf.attrExpand" alt="" aria-hidden="true" />
-    </section>
+    <!--
+      屏边折叠把手：★ 必须挂在包装外（页面最外层）—— 左右面板折叠时是整块
+      滑出屏幕，把手要留在屏幕边缘；挂进面板会一起滑走，折叠后就再也点不
+      回来（首页首版踩过的坑）。
+    -->
+    <screen-side-rail
+      side="left"
+      :collapsed="layout.left.collapsed"
+      collapse-text="收起左侧分析工具箱"
+      expand-text="展开左侧分析工具箱"
+      @toggle="layout.toggle('left')"
+    />
+    <screen-side-rail
+      side="right"
+      :collapsed="layout.right.collapsed"
+      collapse-text="收起右侧面板"
+      expand-text="展开右侧面板"
+      @toggle="layout.toggle('right')"
+    />
+
+    <!--
+      底部「属性表」：可拖高 + 可折叠（与地图管理共用 ScreenBottomDock）。
+      左右内缩随两侧面板拖宽 / 折叠联动（展开 = 面板宽 + 60、折叠 = 30，
+      与首页属性表 460 → 30 同口径）；默认收起成 47px 底条，与改造前逐像素一致。
+    -->
+    <screen-bottom-dock
+      :height="layout.bottom.size"
+      :collapsed="layout.bottom.collapsed"
+      :min="layout.bottom.min"
+      :max="layout.bottom.max"
+      :left-inset="bottomInsets.left"
+      :right-inset="bottomInsets.right"
+      @update:height="layout.setSize('bottom', $event)"
+      @update:collapsed="layout.setCollapsed('bottom', $event)"
+    />
   </div>
 </template>
 
 <script>
 import AnalysisToolPanel, { ANALYSIS_TOOLS } from './AnalysisToolPanel.vue'
 import { hf } from '@/assets/screen-blue'
+import {
+  ScreenResizeBar,
+  ScreenSideRail,
+  ScreenBottomDock,
+  usePanelLayout,
+  panelInset,
+  panelSlideDistance
+} from '@/components/screen'
 
 /**
  * ★ 成熟度分析预留配置点（插件无此组件，面板为页面自实现）：
@@ -331,10 +425,18 @@ const MATURITY_LAYERS = [
 
 export default {
   name: 'AnalysisScreen',
-  components: { AnalysisToolPanel },
+  components: { AnalysisToolPanel, ScreenResizeBar, ScreenSideRail, ScreenBottomDock },
   data () {
     return {
       hf,
+      /**
+       * 三块面板的尺寸与折叠状态（左工具箱 / 右面板 / 底部属性表）。
+       * ★ 状态放在 panelLayout 的模块级单例里、不是本组件的 data：页面由
+       *   views/screen/index.vue 用 v-if 切换，切走就销毁，状态放这里会
+       *   丢；同时它自带 localStorage 持久化（key 带版本号）与 [min,max]
+       *   夹紧，用户拖过的宽度刷新后还在。
+       */
+      layout: usePanelLayout('analysis'),
       /**
        * 当前激活的分析工具 key（'' = 无）。
        * 右面板壳跟随它切换；再次点击同一卡片 = 退出（与地图管理一致）。
@@ -426,6 +528,48 @@ export default {
     /** 激活工具的定义（右面板标题用）；未激活时为 null */
     activeToolDef () {
       return ANALYSIS_TOOLS.find((tool) => tool.key === this.activeTool) || null
+    },
+
+    /**
+     * 根节点内联样式：把左右面板宽度写成 CSS 变量下发给整棵子树。
+     *
+     * ★ 为什么用 CSS 变量而不是逐层传 props：宽度要同时驱动面板底图、
+     *   标题装饰、拖动条位置、卡片换行、以及插件弹窗宿主（__host /
+     *   __engine-host）。CSS 自定义属性**会自然继承进子组件**（scoped
+     *   也拦不住），所以 AnalysisToolPanel 不用改签名就能跟着变宽。
+     */
+    panelStyle () {
+      return {
+        '--panel-left-w': `${this.layout.left.size}px`,
+        '--panel-right-w': `${this.layout.right.size}px`
+      }
+    },
+
+    /**
+     * 左工具箱折叠位移：整块向左滑出屏幕（面板宽 + 屏边 30）。
+     * 折叠时才下发 transform —— 常驻 transform 会让铺满画布的包装层变成
+     * 新的包含块，面板内那些 position:fixed 的插件浮层定位会跟着跑偏。
+     */
+    leftWrapStyle () {
+      if (!this.layout.left.collapsed) return null
+      return { transform: `translateX(-${panelSlideDistance(this.layout, 'left')}px)` }
+    },
+
+    /** 右面板折叠位移：整块向右滑出屏幕（同口径，方向相反） */
+    rightWrapStyle () {
+      if (!this.layout.right.collapsed) return null
+      return { transform: `translateX(${panelSlideDistance(this.layout, 'right')}px)` }
+    },
+
+    /**
+     * 底部属性表的左右内缩（设计画布像素）：该侧展开 = 面板宽 + 60，
+     * 折叠 = 30（与首页属性表 460 → 30 同口径）。
+     */
+    bottomInsets () {
+      return {
+        left: panelInset(this.layout, 'left'),
+        right: panelInset(this.layout, 'right')
+      }
     }
   },
   created () {
@@ -1412,12 +1556,52 @@ export default {
   // 整页容器不拦截鼠标：地图必须保持可交互，各面板自己 stage-hit
   pointer-events: none;
 
+  /* ---------------- 左右面板的定位包装（折叠 = 整块滑出屏幕） ----------------
+   * 包装层铺满画布、内部保持设计稿绝对坐标不变；折叠时只位移这一层，
+   * 里面几十条 absolute 规则一条都不用改。
+   * ★ 必须 pointer-events:none（铺满画布的容器开 auto 会让地图点不到，
+   *   AGENTS §3.6 第 4 条）；交互由面板与拖动条的 .stage-hit 重新打开。
+   * ★ 位移是内联 transform（距离随面板宽度变），过渡写在这里。
+   */
+  &__left,
+  &__right {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: transform var(--screen-duration-slow) var(--screen-ease);
+  }
+
+  /* 左右面板的拖宽条：贴在面板内侧竖边（上下与面板对齐）
+   * ★ 选择器带上 .stage-hit 提高优先级：ScreenResizeBar 自己的 scoped 规则
+   *   写着 position: relative，两条同权重规则谁后生效取决于样式注入顺序，
+   *   定位会被打回 relative（条会跑到包装层左上角）。多带一个类避免赌顺序。
+   */
+  &__left-resizer.stage-hit,
+  &__right-resizer.stage-hit {
+    position: absolute;
+    top: 149px;
+    bottom: 50px;
+    z-index: 3;
+  }
+
+  &__left-resizer.stage-hit {
+    // 30（面板左留白）+ 面板宽 − 6：条的 12px 中线正落在面板右边缘
+    left: calc(30px + var(--panel-left-w, 400px) - 6px);
+  }
+
+  &__right-resizer.stage-hit {
+    // 同理贴在面板左边缘（右面板贴的是屏幕右缘）
+    right: calc(30px + var(--panel-right-w, 400px) - 6px);
+  }
+
   /* ---------------- 右面板壳（与地图管理插件弹窗外壳同位） ---------------- */
   &__title-deco {
     position: absolute;
     right: 9px;
     top: 95px;
-    width: 420px;
+    // 设计稿 420 = 面板 400 + 20（面板 right 30、装饰 right 9）：
+    // 面板可拖宽，装饰跟着伸缩，否则变宽后外侧会空一条
+    width: calc(var(--panel-right-w, 400px) + 20px);
     height: 46px;
     pointer-events: none;
   }
@@ -1444,7 +1628,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 宽度由 panelLayout 下发（拖动内侧拖动条改变），底图随宽度拉伸
+    width: var(--panel-right-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -1464,7 +1649,8 @@ export default {
     right: 30px;
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    // 与 __host 同一个宽度变量：引擎表单与结果弹窗要一起跟着变宽
+    width: var(--panel-right-w, 400px);
     pointer-events: none;
 
     &.is-idle {
@@ -1596,7 +1782,9 @@ export default {
     position: absolute;
     top: 198px;
     right: 44px;
-    width: 372px;
+    // 面板内缩进 14×2 → 宽度 = 面板宽 − 28（400 → 372，与设计稿一致）；
+    // right:44 保持不变，面板拖宽时按钮条跟着一起变宽
+    width: calc(var(--panel-right-w, 400px) - 28px);
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
@@ -1726,50 +1914,6 @@ export default {
   // 防止浮层入口再次出现在页头上）
   &__plugin-parking {
     display: none !important;
-  }
-
-  /* ---------------- 底部「属性表」收起条（与地图管理逐像素同位） ---------------- */
-  &__attr {
-    position: absolute;
-    // 设计稿 x=460..1460、下贴 50（与首页属性表收起态同位）
-    left: 460px;
-    right: 460px;
-    bottom: 50px;
-    height: 47px;
-  }
-
-  &__attr-bar {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 47px;
-    display: block;
-    pointer-events: none;
-  }
-
-  &__attr-title {
-    position: absolute;
-    left: 48px;
-    // 条高 47、字 22 行高：与首页收起态一致微微下沉
-    top: 14px;
-    margin: 0;
-    font-size: var(--screen-font-lg);
-    font-weight: 500;
-    line-height: 22px;
-    color: #ffffff;
-    white-space: nowrap;
-  }
-
-  &__attr-toggle {
-    position: absolute;
-    // 设计稿图标 17×14 @ (963, 17)，即距右边界 20px
-    right: 20px;
-    top: 17px;
-    width: 17px;
-    height: 14px;
-    display: block;
-    pointer-events: none;
   }
 }
 </style>

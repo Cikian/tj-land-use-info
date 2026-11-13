@@ -13,7 +13,7 @@
         ├─ 左面板   HomeStatPanel side=left（出让地块情况统计）
         ├─ 右面板   HomeStatPanel side=right（落实配套情况统计，默认）
         │           └ 右边缘竖排小页签可切到 HomeLayerTree（地图管理 · 图层树插件，懒挂载）
-        ├─ 边缘     HomeSideRail ×2（折叠把手；右侧另带「统计 / 图层树」小页签）
+        ├─ 边缘     ScreenSideRail ×2（折叠把手；右侧另带「统计 / 图层树」小页签）
         ├─ 底部     HomeAttrPanel（属性表，市级 / 区级 / 地块预警信息；两侧折叠时左右内缩跟着收）
         └─ 浮层     HomePlotModal（地块预警信息弹窗）
       档案管理 / 收发文 作为整页模块覆盖在画布正文区
@@ -56,10 +56,13 @@
 
     <!-- ===== 全屏蒙版（设计稿的四张氛围切图） ===== -->
     <!--
-      ★ 左右两张同时也是两侧面板的「暗底」：面板折叠（整体滑出屏幕）后如果让它们
-        留在原处，屏幕两侧会剩两条与面板等量的暗带，看着像面板还挂着 ——
-        所以左右两张跟着各自那一侧的面板一起淡出（同 320ms 过渡）。
-        上下两张与面板无关（顶栏 / 底部属性表仍在），不参与。
+      ★ 左右两张同时也是两侧面板的「暗底」，下面那张是底部面板的暗底：
+        2026-11 用户反馈「面板折叠 / 拖宽后蒙版还留在原处」——现在三张都跟着
+        当前页面的 panelLayout 一起伸缩：宽度 = 面板宽 + 160（设计稿 400 → 560），
+        高度 = 下方面板高 - 35（设计稿 321 → 286），折叠时收到 0。
+        顶栏那张与面板无关（顶栏永远在），不参与。
+        ★ 页面对不上面板的页面（档案 / 提级论证 / 查询统计）不传 style，
+          仍用设计稿定尺 560 / 286。
     -->
     <img
       class="land-screen__vignette is-top"
@@ -70,20 +73,21 @@
     <img
       class="land-screen__vignette is-bottom"
       :src="hf.vignetteBottom"
+      :style="bottomVignetteStyle"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-left"
-      :class="{ 'is-folded': leftVignetteFolded }"
       :src="hf.vignetteLeft"
+      :style="leftVignetteStyle"
       alt=""
       aria-hidden="true"
     />
     <img
       class="land-screen__vignette is-right"
-      :class="{ 'is-folded': rightVignetteFolded }"
       :src="hf.vignetteRight"
+      :style="rightVignetteStyle"
       alt=""
       aria-hidden="true"
     />
@@ -170,6 +174,8 @@
     -->
     <template v-else>
       <!-- ===== 左面板：出让地块情况统计（折叠 = 整体滑出屏幕，把手在屏边） ===== -->
+      <!-- :rank 是 { city, district } 两份榜单：面板双卡切换时跟着换，两级不混排 -->
+      <!-- :width / :collapsed 来自 panelLayout（可拖动改宽、可折叠，状态永久记住） -->
       <home-stat-panel
         side="left"
         title="出让地块情况统计"
@@ -177,14 +183,18 @@
         :rank="transferRank"
         rank-title="各区出让排行"
         :loading="dashboardLoading"
-        :collapsed="leftCollapsed"
+        :collapsed="layout.left.collapsed"
+        :width="layout.left.size"
+        :width-min="layout.left.min"
+        :width-max="layout.left.max"
+        @width-change="layout.setSize('left', $event)"
       />
-      <home-side-rail
+      <screen-side-rail
         side="left"
-        :collapsed="leftCollapsed"
+        :collapsed="layout.left.collapsed"
         collapse-text="收起出让统计"
         expand-text="展开出让统计"
-        @toggle="leftCollapsed = !leftCollapsed"
+        @toggle="layout.toggle('left')"
       />
 
       <!-- ===== 右面板：默认统计（落实配套情况统计），小页签可切到图层树 ===== -->
@@ -196,7 +206,11 @@
         :rank="supportingRank"
         rank-title="各区配套落实"
         :loading="dashboardLoading"
-        :collapsed="rightCollapsed"
+        :collapsed="layout.right.collapsed"
+        :width="layout.right.size"
+        :width-min="layout.right.min"
+        :width-max="layout.right.max"
+        @width-change="layout.setSize('right', $event)"
       />
       <!--
         图层树懒挂载：只有第一次切到「图层树」页签才挂载（那时才拉起
@@ -206,27 +220,37 @@
       <home-layer-tree
         v-if="treeMounted"
         v-show="rightTab === 'tree'"
-        :collapsed="rightCollapsed"
+        :collapsed="layout.right.collapsed"
+        :width="layout.right.size"
+        :width-min="layout.right.min"
+        :width-max="layout.right.max"
+        @width-change="layout.setSize('right', $event)"
       />
-      <home-side-rail
+      <screen-side-rail
         side="right"
         :tabs="rightTabs"
         :active-tab="rightTab"
-        :collapsed="rightCollapsed"
+        :collapsed="layout.right.collapsed"
         tabs-label="右侧面板切换"
         collapse-text="收起右侧面板"
         expand-text="展开右侧面板"
         @select="handleRightTab"
-        @toggle="rightCollapsed = !rightCollapsed"
+        @toggle="layout.toggle('right')"
       />
 
-      <!-- ===== 底部属性表：左右内缩随两侧折叠过渡（宽度跟着长出来） ===== -->
+      <!-- ===== 底部属性表：左右内缩随两侧折叠/拖宽过渡；上沿可拖动改高 ===== -->
       <home-attr-panel
         :tabs="warningTabs"
         :data="warningData"
         :loading="dashboardLoading"
         :left-inset="attrInsets.left"
         :right-inset="attrInsets.right"
+        :height="layout.bottom.size"
+        :min-height="layout.bottom.min"
+        :max-height="layout.bottom.max"
+        :collapsed="layout.bottom.collapsed"
+        @update:height="layout.setSize('bottom', $event)"
+        @update:collapsed="layout.setCollapsed('bottom', $event)"
         @row-action="handleAttrAction"
         @open-plot-warning="plotVisible = true"
       />
@@ -255,12 +279,18 @@ import EscalationScreen from './escalation/index.vue'
 import MapScreen from './map/index.vue'
 import AnalysisScreen from './analysis/index.vue'
 import HomeStatPanel from './home/HomeStatPanel.vue'
-import HomeSideRail from './home/HomeSideRail.vue'
 import HomeLayerTree from './home/HomeLayerTree.vue'
 import HomeAttrPanel from './home/HomeAttrPanel.vue'
 import HomePlotModal from './home/HomePlotModal.vue'
 import QueryScreen from './query/index.vue'
-import { ScreenHeader, ScreenPickStage, ScreenStage } from '@/components/screen'
+import {
+  ScreenHeader,
+  ScreenPickStage,
+  ScreenSideRail,
+  ScreenStage,
+  panelInset,
+  usePanelLayout
+} from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import { queryFacilityDashboard, queryLandDashboard, queryWarningDetail } from '@/api/land/landData'
 import { logoutAndGoToLogin } from '@/utils/session'
@@ -360,7 +390,16 @@ const DATA_TABS = ['landImport', 'land', 'facility', 'facilityImport', 'attachme
 const QUERY_TABS = ['land', 'facility', 'advanced', 'warning']
 
 /**
- * 右面板的两个页签（由 HomeSideRail 的竖排小页签切换）：
+ * 氛围蒙版与面板的尺寸关系（取自设计稿）：
+ *   左右 560 = 面板 400 + 160（蒙版比面板多留一圈渐变）
+ *   下方 286 = 下方面板 321 - 35（顶部让出 35 的过渡带）
+ * 面板拖宽 / 拖高 / 折叠时按同一关系算，蒙版才不会与面板脱节。
+ */
+const VIGNETTE_SIDE_EXTRA = 160
+const VIGNETTE_BOTTOM_INSET = 35
+
+/**
+ * 右面板的两个页签（由 ScreenSideRail 的竖排小页签切换）：
  *   stat 统计（落实配套情况统计，默认）
  *   tree 图层树（地图管理 · stargis-function 图层树，首次切过去才挂载）
  */
@@ -438,6 +477,48 @@ function rankTable (ranks, valueKeys, totals) {
 }
 
 /**
+ * 后端 ranks → 市级 / 区级两份榜单（「排行」视图用）。
+ *
+ * ★ 为什么必须拆（2026-11-12 需求）：后端 ranks 是「市级项目 + 区级项目」
+ *   一张表、按 value 全局倒序（SQL 是 `ORDER BY value DESC, name`），
+ *   实测市级 10 行、区级 25 行会交替出现 —— 同一份榜单里既有「河西区（市级）36」
+ *   也有「津南区（区级）66」，榜首永远被区级项目占住，
+ *   既看不出「市级里哪个区最多」，条形长度也在拿两个量级不同的集合互相比较。
+ *   现在按 projectType 拆成两份，面板的「市级 / 区级」双卡（本来就是明细表的
+ *   切换器）同时切排行：同一时刻只展示一份，序号与条形都按该组内部归一。
+ *
+ * @param {Array} cityRanks 已过滤 + 已排序的市级 ranks
+ * @param {Array} districtRanks 已过滤 + 已排序的区级 ranks
+ * @returns {{city: Array, district: Array}} 每项 { name, value }
+ */
+function rankGroups (cityRanks, districtRanks) {
+  return {
+    city: rankRows(cityRanks),
+    district: rankRows(districtRanks)
+  }
+}
+
+/**
+ * 组内按 value 倒序排列（sort 稳定，同值行保持后端给的顺序）。
+ * ★ 明细表与排行都读这份排好序的数组：两处顺序永远一致，
+ *   不会出现「明细第 3 行」和「排行第 3 名」不是同一个区的情况。
+ *   显式排序是为了不再依赖后端 ORDER BY —— 那边一改，榜单会悄悄乱掉。
+ */
+function sortRankRows (ranks) {
+  return (ranks || []).slice().sort((a, b) => toNumber(b.value) - toNumber(a.value))
+}
+
+/** 单组 ranks → 排行行（只保留榜单要用的两个字段） */
+function rankRows (ranks) {
+  return (ranks || []).map((item) => ({ name: item.name, value: toNumber(item.value) }))
+}
+
+/** 空排行：市级 / 区级各一份，与 HomeStatPanel 的 EMPTY_RANK 结构一致 */
+function emptyRankGroups () {
+  return { city: [], district: [] }
+}
+
+/**
  * 后端地块预警 → 「地块预警信息」弹窗（第三个页签）。
  *
  * ★ 7 个指标**保持数字**，不在这一层拼成「12.34%」：
@@ -479,7 +560,7 @@ export default {
     QueryScreen,
     ScreenPickStage,
     HomeStatPanel,
-    HomeSideRail,
+    ScreenSideRail,
     HomeLayerTree,
     HomeAttrPanel,
     HomePlotModal,
@@ -555,16 +636,30 @@ export default {
       dataTab: initialDataTab,
 
       homeStats: emptyHomeStats(),
-      transferRank: [],
-      supportingRank: [],
+      /**
+       * 两块面板的「排行」数据：按项目分类分成市级 / 区级两份，
+       * 面板的双卡切换时跟着换榜单（见 rankGroups 的说明）。
+       */
+      transferRank: emptyRankGroups(),
+      supportingRank: emptyRankGroups(),
       /** 右面板当前页签：stat 统计（默认）/ tree 图层树 */
       rightTab: 'stat',
       rightTabs: RIGHT_TABS,
       /** 图层树是否已挂载过：首次切到「图层树」才置真（懒挂载，之后 v-show 保活） */
       treeMounted: false,
-      /** 左右面板是否折叠（折叠 = 整体滑出屏幕，屏边只留把手） */
-      leftCollapsed: false,
-      rightCollapsed: false,
+      /**
+       * 三块面板的尺寸与折叠状态（左 / 右 / 下）。
+       * ★ 2026-11 需求：左右面板可拖动改宽、下方面板可拖动改高、
+       *   三块都能折叠；状态按页面持久化（localStorage），切页/刷新后保持。
+       *   共用件见 components/screen/panelLayout.js 与 README 6.4。
+       * ★ mapLayout / analysisLayout / dataLayout 取的是**同一份模块级单例**：
+       *   页面组件内部也用 usePanelLayout('map') 等，父组件拿同一对象只为
+       *   渲染氛围蒙版（蒙版要跟着面板宽高 / 折叠一起变，见下面的 computed）。
+       */
+      layout: usePanelLayout('home'),
+      mapLayout: usePanelLayout('map'),
+      analysisLayout: usePanelLayout('analysis'),
+      dataLayout: usePanelLayout('data'),
       warningData: { city: [], district: [], plot: [] },
       warningTabs,
       plotWarning: emptyPlotWarning(),
@@ -661,29 +756,64 @@ export default {
     },
 
     /**
-     * 两侧氛围蒙版是否随面板一起收起。
-     * ★ 只认「首页版式 + 该侧已折叠」：地图管理 / 配套分析管理 / 整页模块也有
-     *   同样的蒙版，但它们没有折叠状态，不该被首页的折叠状态带偏。
+     * 当前页面用于氛围蒙版的 panelLayout（没有面板的页面返回 null）。
+     *
+     * ★ 为什么蒙版要放在父组件：四张切图是跨页共用的背景层（在页面模块之前渲染），
+     *   而各页面板状态在各自组件里。好在 usePanelLayout 是模块级单例 ——
+     *   父组件拿到的 mapLayout / analysisLayout / dataLayout 与子页面是同一个
+     *   响应式对象，子页面一拖动，这里就跟着重算。
+     *
+     * ★ 没有三块面板的页面（档案 / 提级论证 / 查询统计）返回 null：
+     *   模板不传 style，蒙版保持设计稿定尺（560 / 286），行为与改造前一致。
      */
-    leftVignetteFolded () {
-      return this.isHomeLayout && this.leftCollapsed
+    vignetteLayout () {
+      if (this.isHomeLayout) return this.layout
+      if (this.activeMenu === 'map') return this.mapLayout
+      if (this.activeMenu === 'analysis') return this.analysisLayout
+      if (this.activeMenu === 'data') return this.dataLayout
+      return null
     },
 
-    rightVignetteFolded () {
-      return this.isHomeLayout && this.rightCollapsed
+    /**
+     * 左右氛围蒙版的宽度：设计稿 560 = 面板 400 + 160（面板占 30..430，
+     * 蒙版铺到 560 多留 130 的渐变）。面板拖宽时按同一关系增长；
+     * 折叠时收到 0（与面板滑出同一个 320ms）。
+     */
+    leftVignetteStyle () {
+      const layout = this.vignetteLayout
+      if (!layout) return null
+      return { width: layout.left.collapsed ? '0px' : `${layout.left.size + VIGNETTE_SIDE_EXTRA}px` }
+    },
+
+    rightVignetteStyle () {
+      const layout = this.vignetteLayout
+      if (!layout) return null
+      return { width: layout.right.collapsed ? '0px' : `${layout.right.size + VIGNETTE_SIDE_EXTRA}px` }
+    },
+
+    /**
+     * 底部氛围蒙版的高度：设计稿 286 = 下方面板 321 - 35。面板拖高 / 折叠时
+     * 按同一关系变（折叠态 47px 的收起条不带蒙版，直接收到 0）。
+     */
+    bottomVignetteStyle () {
+      const layout = this.vignetteLayout
+      if (!layout) return null
+      const height = layout.bottom.collapsed ? 0 : Math.max(0, layout.bottom.size - VIGNETTE_BOTTOM_INSET)
+      return { height: `${height}px` }
     },
 
     /**
      * 底部属性表的左右内缩。
-     * 设计稿是 460（= 两侧面板宽 400 + 30 间距）；对应侧栏折叠后只剩 30 的
-     * 屏边留白，属性表因此变宽。过渡写在 HomeAttrPanel 的 CSS 里
-     * （left / right 各 320ms），与面板滑出的时长一致 —— 两者一起动，
-     * 不会出现「面板滑走了、属性表卡着不动」的错帧。
+     * 展开时 = 面板宽 + 两侧各 30（设计稿 400 + 60 = 460）；
+     * 对应侧栏折叠后只剩 30 的屏边留白，属性表因此变宽；面板被拖宽时
+     * 内缩也跟着变大（否则属性表会压到面板底下）。口径统一在 panelInset。
+     * 过渡写在 HomeAttrPanel 的 CSS 里（height / left / right 各 320ms），
+     * 与面板滑出 / 拖动条的时长一致 —— 两者一起动，不会出现错帧。
      */
     attrInsets () {
       return {
-        left: this.leftCollapsed ? 30 : 460,
-        right: this.rightCollapsed ? 30 : 460
+        left: panelInset(this.layout, 'left'),
+        right: panelInset(this.layout, 'right')
       }
     }
   },
@@ -729,14 +859,14 @@ export default {
             this.applyLandDashboard(landResponse.result || {})
           } else {
             this.homeStats = Object.assign({}, this.homeStats, { transfer: emptyPanelSection('a', '已出让土地总数', TRANSFER_COLUMNS) })
-            this.transferRank = []
+            this.transferRank = emptyRankGroups()
             this.$screenToast.error((landResponse && landResponse.message) || '宗地统计加载失败')
           }
           if (facilityResponse && facilityResponse.success) {
             this.applyFacilityDashboard(facilityResponse.result || {})
           } else {
             this.homeStats = Object.assign({}, this.homeStats, { support: emptyPanelSection('b', '需要落实配套', SUPPORT_COLUMNS) })
-            this.supportingRank = []
+            this.supportingRank = emptyRankGroups()
             this.warningData = { city: [], district: [], plot: [] }
             this.plotWarning = emptyPlotWarning()
             this.$screenToast.error((facilityResponse && facilityResponse.message) || '配套统计加载失败')
@@ -744,8 +874,8 @@ export default {
         })
         .catch((error) => {
           this.homeStats = emptyHomeStats()
-          this.transferRank = []
-          this.supportingRank = []
+          this.transferRank = emptyRankGroups()
+          this.supportingRank = emptyRankGroups()
           this.warningData = { city: [], district: [], plot: [] }
           this.plotWarning = emptyPlotWarning()
           this.$screenToast.error((error && error.message) || '首页数据加载失败')
@@ -757,7 +887,8 @@ export default {
 
     /**
      * 宗地总览 → 左面板「出让情况」。
-     * ranks 带 projectType：市级项目进市级子表，区级项目进区级子表。
+     * ranks 带 projectType：市级项目进市级子表、区级项目进区级子表；
+     * 「排行」视图也按同样的切分各排各的（见 rankGroups）。
      * 每行 value = 出让地块数、roadCount = 涉及道路数（字段名以后端契约为准）。
      */
     applyLandDashboard (data) {
@@ -765,8 +896,9 @@ export default {
       const city = toNumber(data.cityCount)
       const district = toNumber(data.districtCount)
       const ranks = data.ranks || []
-      const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
-      const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
+      // 先按项目分类过滤、再按 value 倒序：明细表与排行共用这一份顺序
+      const cityRanks = sortRankRows(ranks.filter((item) => item.projectType === '市级项目'))
+      const districtRanks = sortRankRows(ranks.filter((item) => item.projectType === '区级项目'))
 
       this.homeStats = Object.assign({}, this.homeStats, {
         transfer: {
@@ -792,7 +924,7 @@ export default {
         }
       })
 
-      this.transferRank = ranks.map((item) => ({ name: item.name, value: toNumber(item.value) }))
+      this.transferRank = rankGroups(cityRanks, districtRanks)
     },
 
     /**
@@ -808,8 +940,9 @@ export default {
       const city = toNumber(data.cityLandCount)
       const district = toNumber(data.districtLandCount)
       const ranks = data.ranks || []
-      const cityRanks = ranks.filter((item) => item.projectType === '市级项目')
-      const districtRanks = ranks.filter((item) => item.projectType === '区级项目')
+      // 同出让面板：先按项目分类过滤、再按 value 倒序，明细表与排行共用一份顺序
+      const cityRanks = sortRankRows(ranks.filter((item) => item.projectType === '市级项目'))
+      const districtRanks = sortRankRows(ranks.filter((item) => item.projectType === '区级项目'))
 
       this.homeStats = Object.assign({}, this.homeStats, {
         support: {
@@ -835,7 +968,7 @@ export default {
         }
       })
 
-      this.supportingRank = ranks.map((item) => ({ name: item.name, value: toNumber(item.value) }))
+      this.supportingRank = rankGroups(cityRanks, districtRanks)
       this.warningData = Object.assign({ city: [], district: [], plot: [] }, data.warnings || {})
       this.plotWarning = toPlotWarning(data.warnings && data.warnings.plot)
     },
@@ -855,7 +988,7 @@ export default {
     handleRightTab (key) {
       this.rightTab = key
       if (key === 'tree') this.treeMounted = true
-      this.rightCollapsed = false
+      this.layout.setCollapsed('right', false)
     },
 
     /* ---------------- 「添加地块」绘制模式 ---------------- */
@@ -1021,13 +1154,15 @@ export default {
     position: absolute;
     display: block;
     pointer-events: none;
-    // 折叠时淡出：与面板滑出用同一套时长，两块一起动
-    transition: opacity var(--screen-duration-slow) var(--screen-ease);
-
-    /* 两侧面板折叠 → 对应那一侧的暗底一起收起（见模板里的说明） */
-    &.is-folded {
-      opacity: 0;
-    }
+    /*
+     * ★ 2026-11：左右 / 下方蒙版要跟面板一起伸缩与折叠（用户反馈「面板收起了、
+     *   黑色遮罩还留在原处」）。宽高由模板内联下发（当前页面的 panelLayout），
+     *   过渡时长与面板滑出 / 属性表收起一致；拖动面板时由全局规则关掉过渡，
+     *   否则蒙版会用 320ms 追指针。
+     */
+    transition: width var(--screen-duration-slow) var(--screen-ease),
+      height var(--screen-duration-slow) var(--screen-ease),
+      opacity var(--screen-duration-slow) var(--screen-ease);
 
     &.is-top {
       left: 0;
@@ -1081,5 +1216,14 @@ export default {
 */
 body.is-screen-dark {
   background: var(--screen-bg-deep);
+}
+
+/*
+ * 拖动面板尺寸期间关掉氛围蒙版的宽高过渡：
+ * 蒙版要跟着面板实时伸缩，320ms 的缓动会让它明显落后于指针
+ * （body 上的 .is-resizing-panel 由 ScreenResizeBar 在 pointerdown 时挂、pointerup 时摘）。
+ */
+body.is-resizing-panel .land-screen__vignette {
+  transition: none;
 }
 </style>

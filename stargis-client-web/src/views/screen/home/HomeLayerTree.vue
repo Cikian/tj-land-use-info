@@ -4,7 +4,7 @@
     ==================================================================
     ★ 2026-10-27 起：右面板默认展示「落实配套情况统计」（HomeStatPanel），
       本组件是右面板的**第二个页签内容**，由屏幕右边缘的竖排小页签切换过来
-      （HomeSideRail 的 tabs），父组件用 v-if 控制懒挂载 —— 没切过来就不拉起
+      （ScreenSideRail 的 tabs），父组件用 v-if 控制懒挂载 —— 没切过来就不拉起
       插件引擎、也不发图层树请求。
     与地图管理页（../map/index.vue）的「图层管理」同款：stargis-function
     的 LayerTreePop 弹层 + LayerTree 隐藏引擎，图层树数据 / 服务懒加载 /
@@ -15,9 +15,22 @@
       标题文字 地图管理（右对齐）    (1763, 104)  18px #FFFFFF
       面板底   panel-right-bg.png  (1490, 149)  400×881
   -->
-  <div class="home-tree" :style="slideStyle">
+  <div class="home-tree" :style="rootStyle">
     <img class="home-tree__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
     <h2 class="home-tree__title">地图管理</h2>
+
+    <!-- 面板宽度调节条（与右面板统计同一条位置：贴面板内侧左边缘，往左拖变宽） -->
+    <screen-resize-bar
+      v-show="!collapsed"
+      class="home-tree__resizer stage-hit"
+      orientation="vertical"
+      reverse
+      :value="width"
+      :min="widthMin"
+      :max="widthMax"
+      aria-label="拖动调整右侧图层面板宽度"
+      @input="handleResize"
+    />
 
     <!-- 插件弹层宿主：铺满右面板框（同 map 页 __plugin-host 定位与底图） -->
     <div class="home-tree__panel stage-hit">
@@ -41,31 +54,43 @@
 <script>
 import { hf } from '@/assets/screen-blue'
 import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
+import ScreenResizeBar from '@/components/screen/ScreenResizeBar.vue'
 
-/** 面板滑出距离 = 面板宽 400 + 距屏边 30（与 .home-tree__panel 的 right 对齐） */
-const SLIDE_DISTANCE = 430
+/** 面板滑出距离的屏边留白：折叠位移 = 面板宽 + 30（与面板 right 对齐） */
+const PANEL_EDGE = 30
 
 export default {
   name: 'HomeLayerTree',
   directives: { mvtLayerTree },
+  components: { ScreenResizeBar },
   props: {
     /**
-     * 右面板是否已折叠（整体滑出屏幕）。把手在 HomeSideRail 上，
-     * 这里只负责位移 —— 与 HomeStatPanel 的右面板折叠距离一致（400 + 30）。
+     * 右面板是否已折叠（整体滑出屏幕）。把手在屏边 ScreenSideRail 上，
+     * 这里只负责位移 —— 与右面板统计（HomeStatPanel）共用同一份宽度与折叠状态。
      */
-    collapsed: { type: Boolean, default: false }
+    collapsed: { type: Boolean, default: false },
+    /** 面板宽度（设计画布像素），与右面板统计共用 panelLayout 的 right 槽位 */
+    width: { type: Number, default: 400 },
+    widthMin: { type: Number, default: 340 },
+    widthMax: { type: Number, default: 560 }
   },
   data () {
     return {
       hf,
       // 同 map 页注册表 layers 工具传给插件的 config-min
-      pluginConfig: { icon: 'map-btns/QueryPick' },
+      pluginConfig: { icon: 'map-btns/QueryPick' }
     }
   },
   computed: {
-    /** 折叠 = 向右滑出（面板 right:30、宽 400，滑 430 刚好整块离屏） */
-    slideStyle () {
-      return this.collapsed ? { transform: `translateX(${SLIDE_DISTANCE}px)` } : null
+    /**
+     * 折叠 = 向右滑出（面板 right:30、宽由宽度变量决定，滑「宽 + 30」刚好整块离屏）。
+     * ★ 宽度用 CSS 变量下发，面板底图 / 插件宿主 / 标题装饰都靠 var() 联动。
+     */
+    rootStyle () {
+      const style = { '--home-panel-w': `${this.width}px` }
+      if (!this.collapsed) return style
+      style.transform = `translateX(${this.width + PANEL_EDGE}px)`
+      return style
     }
   },
   mounted () {
@@ -75,6 +100,11 @@ export default {
     this.stopReadyPolling()
   },
   methods: {
+    /** 拖动面板内侧调节条：新宽度抛给页面（与右面板统计共用同一份 panelLayout 状态） */
+    handleResize (value) {
+      this.$emit('width-change', value)
+    },
+
     /**
      * 插件引擎激活契约（同 map/index.vue）：btnClick() 激活前会调
      * $parent.cancelAll() 复位兄弟工具。首页只有图层树一个插件工具，
@@ -130,8 +160,8 @@ export default {
       if (popVm && popVm.isShow === false && typeof popVm.showPop === 'function') {
         popVm.showPop()
       }
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -153,11 +183,12 @@ export default {
 
   &__title-deco {
     position: absolute;
-    // 设计稿 x=1491..1911（420 宽），即**距右边界 9px**；
-    // 之前误写成 right:429px（那是左边缘到右边界的距离），导致整条装饰条跑到中间
+    // 设计稿 x=1491..1911（420 宽 = 面板 400 + 21），即**距右边界 9px**；
+    // 之前误写成 right:429px（那是左边缘到右边界的距离），导致整条装饰条跑到中间。
+    // 面板宽度可拖动，装饰宽度跟着伸缩（见 HomeStatPanel 的同款注释）。
     right: 9px;
     top: 95px;
-    width: 420px;
+    width: calc(var(--home-panel-w, 400px) + 21px);
     height: 46px;
     pointer-events: none;
   }
@@ -177,13 +208,22 @@ export default {
     white-space: nowrap;
   }
 
+  /* 宽度调节条：贴面板内侧左边缘（与 HomeStatPanel 右面板同一条位置） */
+  &__resizer {
+    position: absolute;
+    top: 149px;
+    bottom: 50px;
+    right: calc(30px + var(--home-panel-w, 400px) - 6px);
+    z-index: 5;
+  }
+
   &__panel {
     position: absolute;
     right: 30px;
     // 上贴 149、下贴 50：正文区随设计画布高度伸展（同左面板 / map 页插件宿主）
     top: 149px;
     bottom: 50px;
-    width: 400px;
+    width: var(--home-panel-w, 400px);
     background-image: url('~@/assets/screen-blue/panel-right-bg.png');
     background-repeat: no-repeat;
     background-size: 100% 100%;

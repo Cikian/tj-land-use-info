@@ -28,9 +28,9 @@
       facility 配套地块数据录入 / facilityImport 配套信息批量导入 /
       attachment 配套附件管理 / recycle 数据更新与移除
   -->
-  <div class="data-screen">
+  <div class="data-screen" :style="panelStyle">
     <!-- ========== 左侧二级导航 ========== -->
-    <nav class="data-screen__nav stage-hit" aria-label="数据管理二级导航">
+    <nav class="data-screen__nav stage-hit" :style="navStyle" aria-label="数据管理二级导航">
       <button
         v-for="tab in tabs"
         :key="tab.key"
@@ -44,6 +44,54 @@
         <span class="data-screen__nav-text">{{ tab.label }}</span>
       </button>
     </nav>
+
+    <!--
+      左导航拖宽条 / 折叠把手（2026-11）：
+      ★ 把手挂在屏幕上、不能挂进导航 —— 导航折叠时整体滑出屏幕，
+        把手跟着滑走就再也点不回来（首页侧栏的同一个坑）。
+    -->
+    <screen-resize-bar
+      v-show="!layout.left.collapsed"
+      class="data-screen__nav-resizer stage-hit"
+      orientation="vertical"
+      :value="layout.left.size"
+      :min="layout.left.min"
+      :max="layout.left.max"
+      aria-label="拖动调整左侧导航宽度"
+      @input="layout.setSize('left', $event)"
+    />
+    <screen-side-rail
+      side="left"
+      :collapsed="layout.left.collapsed"
+      collapse-text="收起左侧导航"
+      expand-text="展开左侧导航"
+      @toggle="layout.toggle('left')"
+    />
+
+    <!--
+      右检索列拖宽条 / 折叠把手：只有「经营性用地信息 / 配套项目信息」这两个
+      分栏页签才有右侧检索列（其它四个页签是整块内容区，没有右面板）。
+    -->
+    <template v-if="isSplitPanel">
+      <screen-resize-bar
+        v-show="!layout.right.collapsed"
+        class="data-screen__search-resizer stage-hit"
+        orientation="vertical"
+        reverse
+        :value="layout.right.size"
+        :min="layout.right.min"
+        :max="layout.right.max"
+        aria-label="拖动调整右侧检索列宽度"
+        @input="layout.setSize('right', $event)"
+      />
+      <screen-side-rail
+        side="right"
+        :collapsed="layout.right.collapsed"
+        collapse-text="收起右侧检索列"
+        expand-text="展开右侧检索列"
+        @toggle="layout.toggle('right')"
+      />
+    </template>
 
     <!-- ========== 内容区 ========== -->
     <div class="data-screen__body" :class="{ 'is-split': isSplitPanel }">
@@ -62,7 +110,13 @@
 </template>
 
 <script>
-import { ScreenIcon } from '@/components/screen'
+import {
+  ScreenIcon,
+  ScreenResizeBar,
+  ScreenSideRail,
+  panelSlideDistance,
+  usePanelLayout
+} from '@/components/screen'
 import LandImportPanel from './modules/LandImportPanel.vue'
 import LandEntryPanel from './modules/LandEntryPanel.vue'
 import FacilityEntryPanel from './modules/FacilityEntryPanel.vue'
@@ -118,7 +172,7 @@ function readRouteQuery (query) {
 
 export default {
   name: 'DataScreen',
-  components: { ScreenIcon },
+  components: { ScreenIcon, ScreenResizeBar, ScreenSideRail },
   props: {
     /**
      * 初始页签，支持通过路由 ?tab=facility 直接落到某个页签
@@ -129,6 +183,13 @@ export default {
   },
   data () {
     return {
+      /**
+       * 三块面板的尺寸 / 折叠状态（左二级导航、右检索列、底部列表）。
+       * ★ 与首页 / 地图管理 / 配套分析管理共用 panelLayout：
+       *   左/右宽度与折叠状态在这里持有，entry 面板通过同一份单例读右列宽度
+       *   与列表高度（模块级单例，父页面与子面板拿到的都是同一对象）。
+       */
+      layout: usePanelLayout('data'),
       activeTab: PANELS[this.defaultTab] ? this.defaultTab : 'land',
       tabs: [
         { key: 'land', label: '经营性用地信息' },
@@ -143,6 +204,27 @@ export default {
     }
   },
   computed: {
+    /**
+     * 宽度 / 折叠状态经 CSS 变量下发（2026-11）：
+     *   --data-nav-w       左导航宽度（entry 面板的列表左偏移也用它）
+     *   --data-search-w    右检索列宽度（entry 面板的检索列宽 + 列表右偏移）
+     *   --data-nav-offset  内容区左偏移：展开 = 30 + 导航宽 + 20，折叠 = 30
+     * CSS 自定义属性会自然继承进 entry 子组件（scoped 也拦不住），
+     * 所以 LandEntryPanel / FacilityEntryPanel 一个 prop 都不用加。
+     */
+    panelStyle () {
+      const nav = this.layout.left
+      return {
+        '--data-nav-w': `${nav.size}px`,
+        '--data-search-w': `${this.layout.right.size}px`,
+        '--data-nav-offset': `${nav.collapsed ? 30 : nav.size + 50}px`
+      }
+    },
+    /** 左导航折叠位移：整体滑出屏幕（导航宽 + 屏边 30），与首页侧栏同一套口径 */
+    navStyle () {
+      if (!this.layout.left.collapsed) return null
+      return { transform: `translateX(-${panelSlideDistance(this.layout, 'left')}px)` }
+    },
     /**
      * 只给「需要」的面板传下钻条件（见 DRILLABLE_PANELS 的说明）。
      * 批量导入面板没有这个 prop，传了会把它渲染成 HTML 属性。
@@ -245,13 +327,16 @@ export default {
     left: 30px;
     top: 104px;
     bottom: 40px;
-    width: 200px;
+    // 宽度可拖（160~340），由页面根的 --data-nav-w 下发
+    width: var(--data-nav-w, 200px);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 4px;
     padding: 10px;
     pointer-events: auto;
+    // 折叠 = 整体向左滑出屏幕（位移在 navStyle 里，= 导航宽 + 30）
+    transition: transform var(--screen-duration-slow) var(--screen-ease);
     // 与首页面板同一套玻璃质感
     // ⚠ 不加 backdrop-filter：侧栏是 104px 到屏幕底部的一大片，
     //   没有硬件加速时背景模糊会让鼠标划过/滚动都掉到 100ms 以上（见 screen-mixins.less）
@@ -259,6 +344,24 @@ export default {
     border: 1px solid var(--screen-border);
     border-radius: var(--screen-radius);
     box-shadow: var(--screen-shadow), var(--screen-shadow-inset);
+  }
+
+  /* 左导航拖宽条：贴导航内侧竖边；折叠时藏掉（滑出屏幕的条没有意义） */
+  &__nav-resizer {
+    position: absolute;
+    top: 104px;
+    bottom: 40px;
+    left: calc(30px + var(--data-nav-w, 200px) - 6px);
+    z-index: 4;
+  }
+
+  /* 右检索列拖宽条：右列贴的是画布右缘、内容往左长，所以 reverse（往左拖变宽） */
+  &__search-resizer {
+    position: absolute;
+    top: 104px;
+    bottom: 40px;
+    right: calc(30px + var(--data-search-w, 200px) - 6px);
+    z-index: 4;
   }
 
   &__nav-item {
@@ -332,8 +435,9 @@ export default {
   /* ---------------- 内容区 ---------------- */
   &__body {
     position: absolute;
-    // 30(左边距) + 200(侧栏) + 20(间距)
-    left: 250px;
+    // 左偏移随导航宽度 / 折叠变化：展开 = 30 + 导航宽 + 20，折叠 = 30
+    // （--data-nav-offset 由 panelStyle 下发，默认 250 与设计稿一致）
+    left: var(--data-nav-offset, 250px);
     right: 30px;
     top: 104px;
     bottom: 40px;
@@ -341,6 +445,8 @@ export default {
     flex-direction: column;
     min-height: 0;
     pointer-events: auto;
+    // 导航折叠 / 拖宽时内容区跟着让位，与导航滑出同一个 320ms
+    transition: left var(--screen-duration-slow) var(--screen-ease);
 
     > * {
       flex: 1 1 0;

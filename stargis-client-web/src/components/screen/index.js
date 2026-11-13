@@ -21,7 +21,10 @@
  * ------------------------------------------------------------------
  * 容器 / 布局
  *   ScreenPanel      面板容器（标题栏 / 内容插槽 / 底栏 / 折叠 / 四角装饰）
- *   ScreenResizeBar  面板高度调节条（上沿拖动改高，含键盘操作与画布缩放换算）
+ *   ScreenResizeBar  面板尺寸调节条（横向改高 / 纵向改宽，含键盘与画布缩放换算）
+ *   ScreenSideRail   屏边轨道（折叠把手 + 可选竖排小页签）
+ *   ScreenBottomDock 底部属性表面板（可拖高 + 可折叠，地图管理 / 配套分析管理用）
+ *   panelLayout      三块面板的尺寸与折叠状态（按页面持久化，见 panelLayout.js）
  *   ScreenHeader     大屏顶栏（标题 / 导航 / 实时时钟 / 用户 / 在线状态）
  *   ScreenStage      高保真等比缩放舞台（1920×1080 定尺画布 + 真实像素地图层）
  *   ScreenMapStage   地图舞台（地图插槽 + 兜底底图 + 取景框 + 暗角）
@@ -65,6 +68,8 @@
 import ScreenStage from './ScreenStage.vue'
 import ScreenPanel from './ScreenPanel.vue'
 import ScreenResizeBar from './ScreenResizeBar.vue'
+import ScreenSideRail from './ScreenSideRail.vue'
+import ScreenBottomDock from './ScreenBottomDock.vue'
 import ScreenHeader from './ScreenHeader.vue'
 import ScreenMapStage from './ScreenMapStage.vue'
 import ScreenModal from './ScreenModal.vue'
@@ -106,6 +111,8 @@ const components = {
   ScreenStage,
   ScreenPanel,
   ScreenResizeBar,
+  ScreenSideRail,
+  ScreenBottomDock,
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
@@ -159,6 +166,8 @@ export {
   ScreenStage,
   ScreenPanel,
   ScreenResizeBar,
+  ScreenSideRail,
+  ScreenBottomDock,
   ScreenHeader,
   ScreenMapStage,
   ScreenModal,
@@ -192,5 +201,17 @@ export {
   ScreenIcon,
   ScreenToast
 }
+
+/**
+ * 面板布局状态（不是组件，是三个页面共用的尺寸/折叠存储）：
+ *   import { usePanelLayout, panelInset, panelSlideDistance } from '@/components/screen'
+ */
+export {
+  usePanelLayout,
+  panelInset,
+  panelSlideDistance,
+  PANEL_GAP,
+  PANEL_COLLAPSED_INSET
+} from './panelLayout'
 
 export default ScreenUI

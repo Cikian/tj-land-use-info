@@ -25,7 +25,7 @@
     事件：
       drill (payload)  跳到别的面板（如 { tab: 'attachment', bizType, bizKey }）
   -->
-  <div class="facility-entry">
+  <div class="facility-entry" :class="{ 'is-search-collapsed': layout.right.collapsed }">
     <div class="facility-entry__search">
       <screen-panel class="facility-entry__search-panel" title="配套检索" collapsible scrollable>
         <facility-search-form
@@ -207,7 +207,8 @@ import {
   ScreenInput,
   ScreenTag,
   ScreenModal,
-  ScreenIcon
+  ScreenIcon,
+  usePanelLayout
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import FacilitySearchForm from './FacilitySearchForm.vue'
@@ -230,19 +231,9 @@ import FacilityGeoImportModal from './FacilityGeoImportModal'
 import { defaultPagination, compactQuery } from '../constants'
 
 /*
- * 列表高度（**设计画布像素**）—— 与 LandEntryPanel 同一套口径，
- * 改一处要同步改另一处（两个面板版式必须一致）。
- *
- * ★ 画布尺寸是自适应的（ScreenStage：高度贴合 1080、宽度 = 视口宽/scale），
- *   所以这里只写纵向值：底部留白 40、顶栏下沿 104 —— 都与画布宽度无关。
- * 默认 360：**实测**（1894×987 视口，Edge 无头，k=0.9139）可见 3 整行
- * （表格行高实测 56.5px，不是 --screen-row-height 的 48 —— 行内有进度条/标签会撑高）。
- *   · 下限 200：再矮放不下表头 + 1 行；
- *   · 上限 936：1080 - 104 - 40，即最多长到顶栏下面。
+ * 列表高度（**设计画布像素**）现在与 LandEntryPanel 共用 panelLayout 的
+ * data.bottom：默认 360、下限 200、上限 936（口径见 panelLayout.js 的注释）。
  */
-const LIST_DEFAULT_HEIGHT = 360
-const LIST_MIN_HEIGHT = 200
-const LIST_MAX_HEIGHT = 936
 
 /**
  * 概览数据本地缓存（模块级）——与 LandEntryPanel 同一套「两级加载 + 版本化增量」：
@@ -279,6 +270,11 @@ export default {
   },
   data () {
     return {
+      /**
+       * 数据管理页的三块面板状态（与 data/index.vue 同一份模块级单例）。
+       * 本组件只用 right（检索列宽度 / 折叠）与 bottom（列表高度）。
+       */
+      layout: usePanelLayout('data'),
       loading: false,
       query: Object.assign({}, this.initialQuery || {}),
       dataSource: [],
@@ -288,8 +284,6 @@ export default {
       /** 宗地模式下不分页，这里记一下「当前是不是宗地模式」由 computed 判定 */
       landOptions: [],
       landSearchTimer: null,
-      /** 列表高度（画布像素）：初始值即「默认只露 3~4 行」，之后由拖动/键盘改变 */
-      listHeight: LIST_DEFAULT_HEIGHT,
       // ---------- 移除原因弹窗 ----------
       removeVisible: false,
       removing: false,
@@ -317,17 +311,19 @@ export default {
       }
       return '配套项目列表'
     },
-    /** 上限直接取常量；做成 computed 是为了将来若要按画布实测高度自适应时只改一处 */
-    listMaxHeight () {
-      return LIST_MAX_HEIGHT
-    },
     /*
-     * ★ 上下限必须用 computed 暴露给模板：模板只能访问**实例上**的东西，
-     *   直接写 :min="LIST_MIN_HEIGHT" 会取到 undefined（模块级常量不在实例上），
-     *   组件退回自己的默认值 —— 不报错，但设置静默失效。
+     * 列表高度 / 上下限都从 panelLayout 取。
+     * ★ 模板只能访问**实例上**的东西，必须用 computed 暴露；
+     *   直接写 :min="LIST_MIN_HEIGHT" 会取到 undefined，设置静默失效。
      */
+    listHeight () {
+      return this.layout.bottom.size
+    },
+    listMaxHeight () {
+      return this.layout.bottom.max
+    },
     listMinHeight () {
-      return LIST_MIN_HEIGHT
+      return this.layout.bottom.min
     }
   },
   created () {
@@ -341,8 +337,9 @@ export default {
      * keep-alive 的激活钩子（首次挂载也会触发一次）：
      * 每次进「配套地块数据录入」菜单都重铺配套几何图层，
      * 切走页签时由 deactivated 清掉（与宗地图层互不残留）。
+     * 普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
      */
-    this.loadGeoLayer()
+    this.loadGeoLayer(false)
   },
   deactivated () {
     this.geoLayer.clearAll()
@@ -489,7 +486,8 @@ export default {
      * 每次拖动都发请求会让大屏在拖动过程中疯狂打后端。
      */
     handleResize (height) {
-      this.listHeight = height
+      // 高度写进 panelLayout（持久化）；与宗地面板共用同一份值，切页签不跳
+      this.layout.setSize('bottom', height)
     },
 
     /* ---------------- 行操作 ---------------- */
@@ -514,7 +512,7 @@ export default {
     handleSaved () {
       this.loadData()
       // 新增/编辑可能刚画了图形（或改了编号），几何图层同步重铺
-      this.loadGeoLayer()
+      this.loadGeoLayer(true)
     },
 
     /**
@@ -522,10 +520,15 @@ export default {
      * 只取轻量列（id/编号/名称/GeoJSON），失败静默 —— 图层是辅助视图，
      * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
      */
-    loadGeoLayer () {
+    loadGeoLayer (forceRefresh) {
+      // 与宗地图层一致：写操作后的刷新不依赖同秒时间戳是否变化。
+      if (forceRefresh) {
+        facilityGeoCache.version = ''
+        facilityGeoCache.lands = null
+      }
       // 版本化增量：图形没变（unchanged）时直接用本地缓存铺图（零数据传输）；
       // 变了才拉全量概览并更新缓存。概览档后端预计算（40 点/环）。
-      queryFacilityGeoList(facilityGeoCache.version)
+      queryFacilityGeoList(facilityGeoCache.version, forceRefresh === true)
         .then((res) => {
           if (!res || !res.success) return
           const data = res.result || {}
@@ -579,7 +582,7 @@ export default {
     /** GeoJSON 图形导入完成：刷新列表，并重铺几何图层（新图形立即可见、可定位） */
     handleGeoImported () {
       this.loadData()
-      this.loadGeoLayer()
+      this.loadGeoLayer(true)
     },
 
     handleDetail (record) {
@@ -685,7 +688,7 @@ export default {
             )
             // 有失败时**不关弹窗**：用户的重试动作就在眼前，关掉会让他重新找入口
             this.loadData()
-            this.loadGeoLayer()
+            this.loadGeoLayer(true)
             return
           }
           toast.success(res.message || '已移除，可在「数据更新与移除」中恢复')
@@ -695,7 +698,7 @@ export default {
           this.closeRemove()
           this.loadData()
           // 被移除的配套要从地图图层上撤下来，重铺即同步
-          this.loadGeoLayer()
+          this.loadGeoLayer(true)
         })
         .catch(() => {
           // 请求层已提示
@@ -745,11 +748,19 @@ export default {
     right: 30px;
     top: 104px;
     bottom: 40px;
-    width: 200px;
+    // 宽度可拖（160~340），由 data/index.vue 的 --data-search-w 下发
+    width: var(--data-search-w, 200px);
     display: flex;
     flex-direction: column;
     min-height: 0;
     pointer-events: auto;
+    // 折叠 = 整列向右滑出屏幕（位移 = 列宽 + 30）
+    transition: transform var(--screen-duration-slow) var(--screen-ease);
+  }
+
+  /* 右侧检索列折叠（由 data/index.vue 的右屏边把手切换） */
+  &.is-search-collapsed &__search {
+    transform: translateX(calc(var(--data-search-w, 200px) + 30px));
   }
 
   /* scrollable：竖排条件展开后超出列高时必须能滚，否则会被裁掉 */
@@ -761,15 +772,24 @@ export default {
   /* ---------------- 底部列表（贴底 + 可拖高） ---------------- */
   &__list {
     position: absolute;
-    left: 250px;
-    // 与右侧检索列留出与左侧同样的 20px 间距
-    right: 250px;
+    // 左偏移跟着左导航宽度 / 折叠走（--data-nav-offset）
+    left: var(--data-nav-offset, 250px);
+    // 与右侧检索列留出与左侧同样的 20px 间距（检索列宽 + 30 + 20）
+    right: calc(var(--data-search-w, 200px) + 50px);
     bottom: 40px;
     // 高度由 listHeight 内联控制（拖动改变）
     display: flex;
     flex-direction: column;
     min-height: 0;
     pointer-events: auto;
+    // 侧栏 / 检索列拖宽或折叠时，列表左右跟着让位
+    transition: left var(--screen-duration-slow) var(--screen-ease),
+      right var(--screen-duration-slow) var(--screen-ease);
+  }
+
+  /* 右侧检索列折叠后，列表铺到屏边 30 */
+  &.is-search-collapsed &__list {
+    right: 30px;
   }
 
   &__list-panel {

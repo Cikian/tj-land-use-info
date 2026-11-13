@@ -155,6 +155,22 @@ const FILES = [
   'src/views/screen/query/modules/warning/WarningSummaryCards.vue',
   'src/views/screen/query/modules/warning/WarningResultPanel.vue',
   'src/views/screen/query/modules/warning/WarningDetailModal.vue',
+
+  // ===== 三块面板：可拖宽/拖高 + 可折叠（2026-11 新增）=====
+  // ★ 必须登记：panelLayout.js 是被三个页面 import 的新模块（路径写错只能等
+  //   webpack 打包才发现）；四个新/改组件里大量使用 CSS 变量与绝对定位，
+  //   样式块写坏时也只有编译过才报出来。
+  //   另外 HomeSideRail.vue 已并入 components/screen/ScreenSideRail.vue（已删除）。
+  'src/components/screen/panelLayout.js',
+  'src/components/screen/ScreenSideRail.vue',
+  'src/components/screen/ScreenBottomDock.vue',
+  'src/views/screen/home/HomeStatPanel.vue',
+  'src/views/screen/home/HomeAttrPanel.vue',
+  'src/views/screen/map/MapToolPanel.vue',
+  'src/views/screen/map/MapPickPanel.vue',
+  'src/views/screen/map/MapPlacePanel.vue',
+  'src/views/screen/analysis/index.vue',
+  'src/views/screen/analysis/AnalysisToolPanel.vue',
 ]
 
 const problems = []
