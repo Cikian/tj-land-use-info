@@ -63,7 +63,7 @@ public class EscalationRecord implements Serializable {
     /** ★意见正文（前端限 1000 字，后端按 2000 字符的列容量再兜一层） */
     private String opinion;
 
-    /** 附件ID列表（逗号分隔 → t_escalation_material.id） */
+    /** 意见附件存储路径（逗号分隔；与既有数据口径一致，不是材料表 ID） */
     private String attachmentIds;
 
     /** 记录人账号 */

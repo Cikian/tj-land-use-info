@@ -73,9 +73,14 @@ public class EscalationRecordController {
             EscalationRecord record = recordService.addRecord(dto);
             return Result.OK("登记成功！", record);
         } catch (JeecgBootException e) {
+            log.warn("登记提级论证意见被业务校验拒绝：projectId={}，原因={}",
+                    dto == null ? null : dto.getProjectId(), e.getMessage());
             return Result.error(e.getMessage());
         } catch (Exception e) {
-            log.error("登记提级论证意见失败", e);
+            log.error("登记提级论证意见失败：projectId={}，意见长度={}，附件路径长度={}",
+                    dto == null ? null : dto.getProjectId(),
+                    dto == null || dto.getOpinion() == null ? 0 : dto.getOpinion().length(),
+                    dto == null || dto.getAttachmentIds() == null ? 0 : dto.getAttachmentIds().length(), e);
             return Result.error("登记失败：" + e.getMessage());
         }
     }

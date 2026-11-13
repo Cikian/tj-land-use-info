@@ -506,6 +506,32 @@ public class CompletionArchiveDataTest extends LandIntegrationTestBase {
         assertNull(completionService.queryDetail(id).getArchiveId(), "取消关联后 archive_id 必须为 NULL");
     }
 
+    @Test
+    public void linkedArchiveOutsideProjectStillAppearsWithoutChangingProjectCount() {
+        List<RelatedArchiveVO> candidates = completionService.queryArchivesForPick(null, null, null, 5);
+        if (candidates == null || candidates.isEmpty()) {
+            System.out.println("[跳过] 库里没有档案数据，无法验证跨项目关联回显");
+            return;
+        }
+        RelatedArchiveVO archive = candidates.get(0);
+        CompletionSaveDTO dto = new CompletionSaveDTO();
+        dto.setArchiveNo(TEST_ARCHIVE_NO_PREFIX + "2002");
+        dto.setProjectName("集成测试历史项目-跨项目关联（可删）");
+        // 故意不设置 facilityId / crzdbh：archive_id 是扫描件指针，不能被误当成项目归属。
+        String id = completionService.createArchive(dto);
+
+        completionService.linkArchive(id, archive.getId());
+        CompletionArchive linked = completionService.queryDetail(id);
+        assertEquals(archive.getId(), linked.getArchiveId());
+        assertEquals(Integer.valueOf(0), linked.getArchiveCount(),
+                "没有项目归属键时，项目口径的 archive_count 必须保持 0");
+        assertTrue(linked.getRelatedArchives().stream().anyMatch(item -> archive.getId().equals(item.getId())),
+                "跨项目指定的当前扫描件也必须出现在详情中并标记「本档案关联」");
+
+        completionService.unlinkArchive(id);
+        assertNull(completionService.queryDetail(id).getArchiveId());
+    }
+
     // ==================================================================
     // 五、导出（需求原文：可快速导出档案信息）
     // ==================================================================
@@ -614,7 +640,7 @@ public class CompletionArchiveDataTest extends LandIntegrationTestBase {
         // ★ 本模块**不做数据迁移**，表初始为空 → 空表上 MAX() 必然返回 NULL，这里只要求「语句可执行」。
         //   台账/移交模块有迁移数据，所以那边可以断言非空；照抄过来会变成一条假红（实测踩到）。
         completionMapper.selectMaxSeqOfYear("JG-2026-");
-        assertNotNull(completionMapper.selectRelatedArchives(null, null, 5));
+        assertNotNull(completionMapper.selectRelatedArchives(null, null, null, 5));
         assertEquals(0, completionMapper.countRelatedArchives(null, null));
         assertNotNull(completionMapper.selectArchivesForPick(null, null, null, 5));
         assertEquals(0, completionMapper.countArchiveById("not-exist"));

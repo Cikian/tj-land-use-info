@@ -64,6 +64,9 @@ import javax.sql.DataSource;
         "org.jeecg.modules.land.archive.completion.controller",
         "org.jeecg.modules.land.archive.completion.service.impl",
         "org.jeecg.modules.land.archive.completion.support",
+        // 提级论证：项目、材料与审核意见登记共用同一套真实事务与数据库字段
+        "org.jeecg.modules.land.escalation.service.impl",
+        "org.jeecg.modules.land.escalation.support",
         // ★ 数据管理 · 经营性用地批量导入（方案 2.3.1（三）第 3 项）
         //   这里同时扫 imports 下的 service.impl（导入服务）与 support（当前用户/模板支撑），
         //   并复用 data.service.impl（ILandService）与 data.mapper（LandMapper）——

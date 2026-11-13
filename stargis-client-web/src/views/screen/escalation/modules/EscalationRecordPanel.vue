@@ -148,7 +148,7 @@ import {
   ScreenRadioGroup,
   ScreenButton,
   ScreenUpload,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
@@ -164,7 +164,7 @@ import {
   MATERIAL_MAX_SIZE_MB,
   toOptions,
   formatSize,
-  buildBizPath,
+  buildBizPath
 } from '../constants'
 
 export default {
@@ -176,13 +176,13 @@ export default {
     ScreenRadioGroup,
     ScreenButton,
     ScreenUpload,
-    ScreenIcon,
+    ScreenIcon
   },
   props: {
     /** 当前登记的目标项目（为空时不允许提交） */
     projectId: { type: String, default: '' },
     /** 项目当前办理状态（仅展示用；勾选同步后才作为目标状态提交） */
-    currentStatus: { type: String, default: '' },
+    currentStatus: { type: String, default: '' }
   },
   data () {
     return {
@@ -201,7 +201,7 @@ export default {
       attachments: [],
       syncOptions: [
         { value: '0', label: '仅登记意见' },
-        { value: '1', label: '同时更新办理状态' },
+        { value: '1', label: '同时更新办理状态' }
       ],
       recordTypeOptions: toOptions(RECORD_TYPES),
       statusOptions: toOptions(STATUS_OPTIONS),
@@ -211,7 +211,7 @@ export default {
        */
       uploadAction: javaUploadUrl(),
       uploadHeaders: { 'X-Access-Token': Vue.ls.get(JEECG_ACCESS_TOKEN) },
-      form: this.buildEmptyForm(),
+      form: this.buildEmptyForm()
     }
   },
   computed: {
@@ -224,13 +224,13 @@ export default {
     /** 附件子目录：/escalation/opinion/{yyyy}/{MM} */
     bizPath () {
       return buildBizPath(new Date(), 'opinion')
-    },
+    }
   },
   watch: {
     /** 切换项目时清空草稿：否则会把 A 项目的意见顺手登记到 B 项目上 */
     projectId () {
       this.reset()
-    },
+    }
   },
   methods: {
     formatSize,
@@ -238,7 +238,7 @@ export default {
       return {
         recordType: '审核意见',
         action: '',
-        opinion: '',
+        opinion: ''
       }
     },
 
@@ -270,7 +270,7 @@ export default {
         return
       }
       this.attachments = this.attachments.concat([
-        { fileName: name, fileSize: (file && file.size) || 0, storePath },
+        { fileName: name, fileSize: (file && file.size) || 0, storePath }
       ])
       toast.success(`附件「${name}」上传成功`)
     },
@@ -332,7 +332,7 @@ export default {
         opinion,
         attachmentIds: this.attachments.length
           ? this.attachments.map((item) => item.storePath).join(',')
-          : undefined,
+          : undefined
       }
       // ★ 只有选了「同时更新办理状态」才传 status：否则 = 不改办理状态
       if (this.syncStatus === '1' && this.targetStatus) {
@@ -350,6 +350,11 @@ export default {
           this.reset()
           this.$emit('ok', payload)
         })
+        .catch((error) => {
+          // 失败时保留 form 与 attachments，用户可修正后重试，不重传已上传附件。
+          const response = error && error.response
+          toast.error((response && response.data && response.data.message) || (error && error.message) || '登记失败')
+        })
         .finally(() => {
           this.saving = false
         })
@@ -358,8 +363,8 @@ export default {
     /** 供父组件在切换项目时清空草稿 */
     clearDraft () {
       this.reset()
-    },
-  },
+    }
+  }
 }
 </script>
 

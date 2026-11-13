@@ -43,7 +43,7 @@ public class EscalationRecordDTO implements Serializable {
     /** ★意见正文（前端限 1000 字；后端再按列容量兜一层） */
     private String opinion;
 
-    /** 附件ID列表（逗号分隔 → t_escalation_material.id，可空） */
+    /** 意见附件存储路径（逗号分隔；通用上传返回的 store_path，不是材料表 ID，可空） */
     private String attachmentIds;
 
     /**

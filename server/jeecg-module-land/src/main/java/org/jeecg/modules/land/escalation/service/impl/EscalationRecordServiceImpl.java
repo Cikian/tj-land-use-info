@@ -49,6 +49,9 @@ public class EscalationRecordServiceImpl extends ServiceImpl<EscalationRecordMap
     /** {@code opinion} 列宽 VARCHAR(2000)：前端限 1000 字，后端按列容量兜一层 */
     private static final int OPINION_MAX = 2000;
 
+    /** {@code attachment_ids} 当前列宽 VARCHAR(1000)：提前给出可读错误，避免整事务被数据库异常回滚 */
+    private static final int ATTACHMENT_IDS_MAX = 1000;
+
     @Autowired
     private EscalationAuditSupport auditSupport;
 
@@ -109,6 +112,12 @@ public class EscalationRecordServiceImpl extends ServiceImpl<EscalationRecordMap
                     + String.join("/", EscalationStatus.allValues()));
         }
 
+        String attachmentIds = trimToNull(dto.getAttachmentIds());
+        if (attachmentIds != null && attachmentIds.length() > ATTACHMENT_IDS_MAX) {
+            throw new JeecgBootException("附件存储路径合计 " + attachmentIds.length() + " 字，超过当前字段上限 "
+                    + ATTACHMENT_IDS_MAX + " 字，请减少本次附件数量后分批登记");
+        }
+
         // ---- 2) INSERT 意见记录（append-only） ----
         Date now = new Date();
         String recorderName = auditSupport.currentRealname();
@@ -118,18 +127,25 @@ public class EscalationRecordServiceImpl extends ServiceImpl<EscalationRecordMap
                 .setRecordType(recordType)
                 .setAction(action)
                 .setOpinion(opinion)
-                .setAttachmentIds(trimToNull(dto.getAttachmentIds()))
+                .setAttachmentIds(attachmentIds)
                 .setRecorderId(defaultIfNull(auditSupport.currentUsername(), dto.getRecorderId()))
                 .setRecorderName(defaultIfNull(recorderName, dto.getRecorderName()))
                 .setRecorderDept(defaultIfNull(auditSupport.currentDept(), dto.getRecorderDept()))
                 .setRecordTime(now);
-        save(record);
+        if (!save(record)) {
+            throw new JeecgBootException("审核意见记录写入失败，请查看后端数据库异常日志");
+        }
 
         // ---- 3) 同一事务内回写主表摘要 + 记录数（重算，不累加） ----
         int recordCount = baseMapper.countByProjectId(projectId);
         String latestOpinion = truncate(opinion, LATEST_OPINION_MAX);
-        baseMapper.updateLatestOpinion(projectId, latestOpinion, now, record.getRecorderName(),
+        int updated = baseMapper.updateLatestOpinion(projectId, latestOpinion, now, record.getRecorderName(),
                 recordCount, syncStatus, auditSupport.currentUsername(), now);
+        if (updated != 1) {
+            // 必须抛出以回滚刚才的 INSERT，避免“记录已保存、主表摘要与状态却没更新”的半成功。
+            throw new JeecgBootException("审核意见已写入但项目主表回写失败（影响行数 " + updated
+                    + "），本次事务已回滚，请刷新项目后重试");
+        }
 
         log.info(String.format("登记审核意见成功：projectId=%s, recordId=%s, recordType=%s, action=%s, 同步状态=%s, 记录数=%s, 记录人=%s",
                 projectId, record.getId(), recordType, action, syncStatus, recordCount, record.getRecorderName()));

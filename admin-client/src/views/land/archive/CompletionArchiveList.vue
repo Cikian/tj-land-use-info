@@ -110,7 +110,7 @@
 
     <!-- ============ 弹窗 ============ -->
     <completion-modal ref="modal" @ok="handleSaved" />
-    <completion-detail-modal ref="detail" @edit="handleEditFromDetail" />
+    <completion-detail-modal ref="detail" @edit="handleEditFromDetail" @changed="refresh" />
 
     <!-- ============ 打印区（屏幕上隐藏，打印时只显示这一块） ============ -->
     <div class="completion-print">

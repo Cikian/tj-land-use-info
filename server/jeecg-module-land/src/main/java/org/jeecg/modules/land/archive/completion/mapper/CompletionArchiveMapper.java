@@ -147,6 +147,7 @@ public interface CompletionArchiveMapper extends BaseMapper<CompletionArchive> {
      */
     List<RelatedArchiveVO> selectRelatedArchives(@Param("facilityId") String facilityId,
                                                  @Param("crzdbh") String crzdbh,
+                                                 @Param("archiveId") String archiveId,
                                                  @Param("limit") Integer limit);
 
     /** 关联扫描件计数（服务端维护 {@code archive_count} 冗余列） */

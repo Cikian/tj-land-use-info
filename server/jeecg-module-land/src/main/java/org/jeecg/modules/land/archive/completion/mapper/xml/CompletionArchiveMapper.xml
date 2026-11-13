@@ -332,18 +332,28 @@
             a.`create_time`      AS createTime
         FROM `t_archive` a
         WHERE a.`del_flag` = 0
-          AND (
-            <choose>
-                <when test="facilityId != null and facilityId != ''">
-                    a.`facility_id` = #{facilityId}
-                </when>
-                <when test="crzdbh != null and crzdbh != ''">
-                    a.`crzdbh` = #{crzdbh}
-                </when>
-                <otherwise>1 = 0</otherwise>
-            </choose>
-          )
-        ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+          <trim prefix="AND (" suffix=")" prefixOverrides="OR">
+            <if test="archiveId != null and archiveId != ''">
+                a.`id` = #{archiveId}
+            </if>
+            <if test="facilityId != null and facilityId != ''">
+                OR a.`facility_id` = #{facilityId}
+            </if>
+            <if test="crzdbh != null and crzdbh != ''">
+                OR a.`crzdbh` = #{crzdbh}
+            </if>
+            <if test="(archiveId == null or archiveId == '') and (facilityId == null or facilityId == '') and (crzdbh == null or crzdbh == '')">
+                1 = 0
+            </if>
+          </trim>
+        <if test="archiveId != null and archiveId != ''">
+            <!-- 当前指针优先，避免项目候选超过 limit 时刚关联的档案仍被截掉 -->
+            ORDER BY CASE WHEN a.`id` = #{archiveId} THEN 0 ELSE 1 END,
+                     a.`archive_year` DESC, a.`archive_no` DESC
+        </if>
+        <if test="archiveId == null or archiveId == ''">
+            ORDER BY a.`archive_year` DESC, a.`archive_no` DESC
+        </if>
         <if test="limit != null">
             LIMIT #{limit}
         </if>

@@ -357,7 +357,7 @@ export default {
       const targetId = id || (this.detail && this.detail.id)
       if (!targetId) return
       this.loading = true
-      queryCompletionById(targetId)
+      return queryCompletionById(targetId)
         .then((res) => {
           if (!res || !res.success) {
             toast.error((res && res.message) || '档案详情加载失败')
@@ -417,7 +417,8 @@ export default {
 
     handleLink (row) {
       if (!this.detail || !row || !row.id) return
-      linkCompletionArchive(this.detail.id, row.id)
+      const id = this.detail.id
+      linkCompletionArchive(id, row.id)
         .then((res) => {
           if (!res || !res.success) {
             toast.error((res && res.message) || '关联失败')
@@ -425,25 +426,31 @@ export default {
           }
           toast.success('已关联扫描件')
           this.pickerVisible = false
-          this.loadDetail(this.detail.id)
-          this.$emit('changed')
+          // 先拿到权威详情再刷新列表，避免成功提示与页面状态短暂相反。
+          this.loadDetail(id).then(() => this.$emit('changed'))
         })
-        .catch(() => {})
+        .catch((error) => {
+          const response = error && error.response
+          toast.error((response && response.data && response.data.message) || (error && error.message) || '关联失败')
+        })
     },
 
     handleUnlink () {
       if (!this.detail) return
-      unlinkCompletionArchive(this.detail.id)
+      const id = this.detail.id
+      unlinkCompletionArchive(id)
         .then((res) => {
           if (!res || !res.success) {
             toast.error((res && res.message) || '取消关联失败')
             return
           }
           toast.success('已取消关联')
-          this.loadDetail(this.detail.id)
-          this.$emit('changed')
+          this.loadDetail(id).then(() => this.$emit('changed'))
         })
-        .catch(() => {})
+        .catch((error) => {
+          const response = error && error.response
+          toast.error((response && response.data && response.data.message) || (error && error.message) || '取消关联失败')
+        })
     },
 
     /* ---------------- 其它 ---------------- */

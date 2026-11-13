@@ -298,6 +298,10 @@
           } else {
             this.$message.warning(res.message)
           }
+        }).catch(error => {
+          // 网络或鉴权失败也保留意见与附件，避免用户重填。
+          const response = error && error.response
+          this.$message.error((response && response.data && response.data.message) || error.message || '登记失败')
         }).finally(() => {
           this.saving = false
         })

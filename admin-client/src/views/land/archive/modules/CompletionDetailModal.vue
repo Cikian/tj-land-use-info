@@ -364,6 +364,7 @@
             this.$message.success('关联成功！')
             this.pickerVisible = false
             this.loadDetail(this.archive.id)
+            this.$emit('changed')
           } else {
             this.$message.warning(res.message)
           }
@@ -379,6 +380,7 @@
           if (res.success) {
             this.$message.success('已取消关联！')
             this.loadDetail(this.archive.id)
+            this.$emit('changed')
           } else {
             this.$message.warning(res.message)
           }

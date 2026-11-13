@@ -460,10 +460,12 @@ public class CompletionArchiveServiceImpl
         }
         String facilityId = trimToNull(archive.getFacilityId());
         String crzdbh = trimToNull(archive.getCrzdbh());
-        if (facilityId == null && crzdbh == null) {
+        String archiveId = trimToNull(archive.getArchiveId());
+        if (facilityId == null && crzdbh == null && archiveId == null) {
             return new ArrayList<>();
         }
-        List<RelatedArchiveVO> archives = baseMapper.selectRelatedArchives(facilityId, crzdbh, limit);
+        // 跨项目指定的扫描件也必须回显；archive_count 仍只按项目关联口径另算，不在这里加一。
+        List<RelatedArchiveVO> archives = baseMapper.selectRelatedArchives(facilityId, crzdbh, archiveId, limit);
         return archives == null ? new ArrayList<>() : archives;
     }
 
