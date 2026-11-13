@@ -111,6 +111,11 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
      */
     @Override
     public LandGeoOverviewVO queryGeoOverview(String clientVersion) {
+        return queryGeoOverview(clientVersion, false);
+    }
+
+    @Override
+    public LandGeoOverviewVO queryGeoOverview(String clientVersion, boolean forceRefresh) {
         Date currentVersion = baseMapper.selectMaxUpdateTime();
         String version = currentVersion == null ? "" : String.valueOf(currentVersion.getTime());
 
@@ -118,16 +123,18 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         vo.setVersion(version);
         // 版本一致 → 客户端手里的数据就是当前状态，直接回「无变化」。
         // ★ 不要求服务端内存缓存存在：后端重启后客户端缓存依然有效
-        if (clientVersion != null && clientVersion.equals(version)) {
+        if (!forceRefresh && clientVersion != null && clientVersion.equals(version)) {
             vo.setUnchanged(true);
             return vo;
         }
 
         List<Land> lands;
-        if (cachedVersionEquals(version)) {
+        if (!forceRefresh && cachedVersionEquals(version)) {
             // 内存缓存正好是当前版本（别的请求刚建过 / 多标签页）：不查 MySQL
             lands = cachedOverviewList;
         } else {
+            // 写操作完成后前端会强制刷新：即使同一秒内版本号没来得及变化，
+            // 也必须绕过两侧缓存重查数据库，不能继续铺删除前或新增前的旧图。
             lands = buildGeoOverview();
             cachedOverviewVersion = version;
             cachedOverviewList = lands;
@@ -346,8 +353,12 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         land.setCrzdbh(crzdbh);
         land.setDelFlag(0);
         land.setSourceId(null);
+        Date now = new Date();
         land.setCreateBy(dataSupport.currentUsername());
-        land.setCreateTime(new Date());
+        land.setCreateTime(now);
+        // 新增带图宗地也必须推高图形版本，否则首次保存后仍可能命中旧概览缓存。
+        land.setUpdateBy(dataSupport.currentUsername());
+        land.setUpdateTime(now);
         save(land);
 
         // 新增留痕：把这条记录「建起来时是什么样」记全，便于日后对比
@@ -430,8 +441,12 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         if (land == null) {
             throw new JeecgBootException("未找到对应的出让宗地（可能已被移除）");
         }
-        // 软删：只把 del_flag 置 1，不物理删除 —— 该 crzdbh 被配套/档案/收发文引用
-        removeById(id);
+        // 显式 SQL 软删：MyBatis-Plus 的 updateById 会忽略 @TableLogic 字段，
+        // 只 new 一个 delFlag=1 的补丁并不能真正移除，且 update_time 也必须同步刷新。
+        int removed = landMapper.softDeleteById(land.getId(), dataSupport.currentUsername(), new Date());
+        if (removed != 1) {
+            throw new JeecgBootException("移除失败：宗地状态已变化，请刷新后重试");
+        }
 
         String summary = "移除经营性用地「" + land.getCrzdbh() + "」"
                 + (StringUtils.isNotBlank(reason) ? "，原因：" + reason.trim() : "");

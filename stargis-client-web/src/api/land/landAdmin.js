@@ -109,10 +109,13 @@ export function queryLandAdminPage (params) {
  * @param {string} [version] 上次返回的数据版本（首次不传）
  * @returns {Promise} result 为 { version, unchanged, lands }
  */
-export function queryLandGeoList (version) {
+export function queryLandGeoList (version, forceRefresh) {
   const params = {}
   if (version) {
     params.version = version
+  }
+  if (forceRefresh) {
+    params.refresh = 1
   }
   return javaGetAction(landAdminUrl.geoList, params)
 }

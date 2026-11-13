@@ -53,6 +53,14 @@ public interface ILandAdminService {
     LandGeoOverviewVO queryGeoOverview(String clientVersion);
 
     /**
+     * 写操作后的强制刷新：绕过客户端版本比对与服务端内存缓存，直接按当前数据库重建概览。
+     *
+     * @param clientVersion 前端持有的版本
+     * @param forceRefresh 是否强制重建
+     */
+    LandGeoOverviewVO queryGeoOverview(String clientVersion, boolean forceRefresh);
+
+    /**
      * 单宗地的地块图形（定位档：每环 ≤800 点，视觉与精确边界无差别）。
      *
      * <p>配合 {@link #queryGeoOverview(String)} 的两级加载：首屏铺概览档（40 点）秒开，

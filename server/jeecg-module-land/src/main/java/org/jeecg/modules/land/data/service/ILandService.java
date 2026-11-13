@@ -44,4 +44,7 @@ public interface ILandService extends IService<Land> {
      * 出让宗地编号仍必填，且不能改成其他宗地已占用的编号。
      */
     void updateLand(Land land);
+
+    /** 旧接口软删：与主录入路径共用显式 SQL，同步刷新图形版本。 */
+    void removeLand(String id);
 }

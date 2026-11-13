@@ -95,8 +95,11 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         }
         land.setId(null);
         land.setDelFlag(0);
+        Date now = new Date();
         land.setCreateBy(currentUsername());
-        land.setCreateTime(new Date());
+        land.setCreateTime(now);
+        land.setUpdateBy(currentUsername());
+        land.setUpdateTime(now);
         save(land);
     }
 
@@ -120,6 +123,14 @@ public class LandServiceImpl extends ServiceImpl<LandMapper, Land> implements IL
         land.setUpdateBy(currentUsername());
         land.setUpdateTime(new Date());
         updateById(land);
+    }
+
+    @Override
+    public void removeLand(String id) {
+        int removed = baseMapper.softDeleteById(id, currentUsername(), new Date());
+        if (removed != 1) {
+            throw new JeecgBootException("删除失败：宗地状态已变化，请刷新后重试");
+        }
     }
 
     /**

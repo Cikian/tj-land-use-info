@@ -92,8 +92,9 @@ public class FacilityAdminController {
     @RequiresPermissions(PERM)
     @GetMapping(value = "/geoList")
     public Result<FacilityGeoOverviewVO> geoList(
-            @RequestParam(name = "version", required = false) String version) {
-        return Result.OK(facilityAdminService.queryFacilityGeoOverview(version));
+            @RequestParam(name = "version", required = false) String version,
+            @RequestParam(name = "refresh", required = false, defaultValue = "false") boolean refresh) {
+        return Result.OK(facilityAdminService.queryFacilityGeoOverview(version, refresh));
     }
 
     /**

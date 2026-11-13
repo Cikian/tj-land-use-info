@@ -252,7 +252,7 @@ public class LandDataController {
         if (landService.queryById(id) == null) {
             return Result.error("删除失败不存在");
         }
-        landService.removeById(id);
+        landService.removeLand(id);
         return Result.OK("删除成功");
     }
 

@@ -146,21 +146,27 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
      */
     @Override
     public FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion) {
+        return queryFacilityGeoOverview(clientVersion, false);
+    }
+
+    @Override
+    public FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion, boolean forceRefresh) {
         Date currentVersion = facilityMapper.selectMaxUpdateTime();
         String version = currentVersion == null ? "" : String.valueOf(currentVersion.getTime());
 
         FacilityGeoOverviewVO vo = new FacilityGeoOverviewVO();
         vo.setVersion(version);
         // 版本一致 → 客户端手里的数据就是当前状态（不要求服务端内存缓存存在）
-        if (clientVersion != null && clientVersion.equals(version)) {
+        if (!forceRefresh && clientVersion != null && clientVersion.equals(version)) {
             vo.setUnchanged(true);
             return vo;
         }
 
         List<Facility> lands;
-        if (cachedOverviewList != null && version.equals(cachedOverviewVersion)) {
+        if (!forceRefresh && cachedOverviewList != null && version.equals(cachedOverviewVersion)) {
             lands = cachedOverviewList;
         } else {
+            // 与宗地一致：新增、编辑、移除后的强制刷新必须绕过同秒版本与服务端旧缓存。
             lands = buildGeoOverview();
             cachedOverviewVersion = version;
             cachedOverviewList = lands;
@@ -780,6 +786,8 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
                 row.put("stagePercent", stage.getPercent());
                 row.put("lcId", item.getLcId());
                 row.put("lcName", item.getLcName());
+                // 附件归属必须提交 t_facility_process.id；未登记进度时该值为空，前端应禁选。
+                row.put("progressId", item.getProgressId());
                 row.put("zgbm", item.getZgbm());
                 row.put("processTime", item.getProcessTime());
                 row.put("lcqk", item.getLcqk());

@@ -48,6 +48,14 @@ public interface LandMapper extends BaseMapper<Land> {
      */
     Land selectByCrzdbh(@Param("crzdbh") String crzdbh);
 
+    /** 显式软删并同步图形版本；@TableLogic 的 updateById 不会把 delFlag 当普通更新字段写出。 */
+    @org.apache.ibatis.annotations.Update("UPDATE `t_land` "
+            + "SET `del_flag` = 1, `update_by` = #{updateBy}, `update_time` = #{updateTime} "
+            + "WHERE `id` = #{id} AND `del_flag` = 0")
+    int softDeleteById(@Param("id") String id,
+                       @Param("updateBy") String updateBy,
+                       @Param("updateTime") java.util.Date updateTime);
+
     /**
      * 说明：首页宗地统计的 SQL 已迁到
      * {@code org.jeecg.modules.land.stat.home.mapper.HomeStatMapper}，

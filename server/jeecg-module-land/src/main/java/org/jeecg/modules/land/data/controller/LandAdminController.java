@@ -101,8 +101,9 @@ public class LandAdminController {
     @RequiresPermissions(PERM)
     @GetMapping(value = "/geoList")
     public Result<LandGeoOverviewVO> geoList(
-            @RequestParam(name = "version", required = false) String version) {
-        return Result.OK(landAdminService.queryGeoOverview(version));
+            @RequestParam(name = "version", required = false) String version,
+            @RequestParam(name = "refresh", required = false, defaultValue = "false") boolean refresh) {
+        return Result.OK(landAdminService.queryGeoOverview(version, refresh));
     }
 
     /**

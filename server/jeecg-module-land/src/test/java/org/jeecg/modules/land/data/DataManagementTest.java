@@ -715,6 +715,47 @@ public class DataManagementTest extends LandIntegrationTestBase {
     }
 
     @Test
+    public void landGeoOverviewRefreshesAfterCreateRemoveAndRestore() {
+        String crzdbh = uniqueNo("geo-life");
+        LandSaveDTO dto = buildLand(crzdbh, "图形生命周期地");
+        dto.setDkGeojson("{\"type\":\"Polygon\",\"coordinates\":[[[117.0,39.0],[117.001,39.0],"
+                + "[117.001,39.001],[117.0,39.0]]]}");
+
+        String beforeVersion = landAdminService.queryGeoOverview(null).getVersion();
+        String id = landAdminService.createLand(dto, null);
+        assertNotNull(landAdminService.queryDetail(id).getUpdateTime(), "新增必须写 update_time");
+
+        org.jeecg.modules.land.data.dto.LandGeoOverviewVO created =
+                landAdminService.queryGeoOverview(beforeVersion, true);
+        assertFalse(created.isUnchanged(), "新增后强制刷新不能返回 unchanged");
+        assertTrue(containsLand(created.getLands(), id), "新增带图宗地后应立即出现在概览中");
+
+        landAdminService.removeLand(id, "图形生命周期回归", null);
+        org.jeecg.modules.land.data.dto.LandGeoOverviewVO removed =
+                landAdminService.queryGeoOverview(created.getVersion(), true);
+        assertFalse(containsLand(removed.getLands(), id), "移除后概览不得继续返回该宗地");
+
+        recycleService.restore("land", id, null);
+        org.jeecg.modules.land.data.dto.LandGeoOverviewVO restored =
+                landAdminService.queryGeoOverview(removed.getVersion(), true);
+        assertTrue(containsLand(restored.getLands(), id), "恢复后应按当前数据库重新返回该宗地图形");
+        assertTrue(landAdminService.queryGeoOverview(restored.getVersion()).isUnchanged(),
+                "非强制查询仍保留版本化增量协议");
+    }
+
+    private boolean containsLand(List<Land> lands, String id) {
+        if (lands == null) {
+            return false;
+        }
+        for (Land land : lands) {
+            if (id.equals(land.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Test
     public void restoreBlocksWhenCrzdbhOccupied() {
         String crzdbh = uniqueNo("conflict");
         String removedId = landAdminService.createLand(buildLand(crzdbh, "被移除的"), null);

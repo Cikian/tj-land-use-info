@@ -61,6 +61,9 @@ public interface IFacilityAdminService {
      */
     FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion);
 
+    /** 写操作后的强制刷新：绕过版本比对与服务端缓存，按当前数据库重建概览。 */
+    FacilityGeoOverviewVO queryFacilityGeoOverview(String clientVersion, boolean forceRefresh);
+
     /**
      * 单条配套的<b>定位档</b>地块图形（每环 ≤800 点，视觉与精确边界无差别，消除定位卡顿）。
      * 双击定位时前端按 id 拉取替换概览轮廓。

@@ -83,10 +83,13 @@ export function queryFacilityAdminPage (params) {
  * @param {string} [version] 上次返回的数据版本（首次不传）
  * @returns {Promise} result 为 { version, unchanged, lands }
  */
-export function queryFacilityGeoList (version) {
+export function queryFacilityGeoList (version, forceRefresh) {
   const params = {}
   if (version) {
     params.version = version
+  }
+  if (forceRefresh) {
+    params.refresh = 1
   }
   return javaGetAction(facilityAdminUrl.geoList, params)
 }
