@@ -275,8 +275,9 @@ node scripts/verify-sfc.js
 
 - yml 里全是 `${TJ_XXX}` 占位符，真实值在 **`code/new/server/.env`**（已 gitignore）。
 - 新环境：`Copy-Item .env.example .env` 再填值。
-- **只有 5 个键没有默认值，缺一个就起不来**：
-  `TJ_DB_HOST` `TJ_DB_PORT` `TJ_DB_NAME` `TJ_DB_USER` `TJ_DB_PASSWORD`。
+- **这些键没有默认值，缺一个就起不来**：
+  `TJ_DB_HOST` `TJ_DB_PORT` `TJ_DB_NAME` `TJ_DB_USER` `TJ_DB_PASSWORD`
+  （2026-11 起 `TJ_REDIS_DB`、`TJ_PG_PASSWORD` 也没有默认值，同样必须填）。
 - 加载方式：`DotEnvEnvironmentPostProcessor`（在 `jeecg-boot-base-core`）
   从 JVM 工作目录**向上找 4 级**找 `.env`。IDE / `java -jar` / `mvn` 三种方式都能用。
   所以**放仓库根或 `server/` 都能被找到**，但 `server/` 是约定位置。
@@ -317,6 +318,92 @@ git 直接取远端那一侧 → 冲突为零，坏内容进主干。**冲突为
 **怎么修**：按「远端新增内容 + 共同祖先里被截断掉的那段」补齐（`git show <基点>:<文件>` 取尾），
 **不要**整文件回退到祖先（那会抹掉同事的功能），也**不要**只补冲突标记里看得见的部分。
 补完把新文件登记进 `scripts/verify-sfc.js` 的硬编码清单——不登记就等于「自检绿灯但其实没检查过」。
+
+### 3.11 后端启动即 `ArrayIndexOutOfBoundsException: -1`：snakeyaml 1.29 的 CRLF 解析缺陷
+
+**症状**：`Application run failed`，栈顶是
+
+```
+java.lang.ArrayIndexOutOfBoundsException: Index -1 out of bounds for length N
+    at org.yaml.snakeyaml.reader.StreamReader.peek(StreamReader.java:136)
+    at org.yaml.snakeyaml.scanner.ScannerImpl.scanToNextToken(ScannerImpl.java:1222)
+    at ... ParserImpl$ParseBlockMappingKey.produce ...
+    at ... CommentEventsCollector$1.peek ...
+```
+
+**先排除两条误判**：① 不是 YAML 写错——那会报 `ScannerException` / `ParserException`
+并指出**行列号**；② 不是编码/BOM——`application-dev.yml` 是合法 UTF-8、无 BOM、无控制字符
+（严查一遍：`[Text.UTF8Encoding($false,$true)` 严格解码 + 扫 NUL/控制字符，全是干净的）。
+
+**根因**：Spring Boot 2.6.6 默认带 **snakeyaml 1.29**，该版本的 `StreamReader.peek`
+在读缓冲边界上碰到 **CRLF** 会取到负下标。**与内容位置强相关**，不是内容错：
+同一份 `application-dev.yml` 在最前面加一个空行就解析通过，删几行注释又可能重新踩中。
+实测同一文件：snakeyaml **1.25 通过 / 1.29 报错 / 1.30、2.4、2.6 通过**，
+用 Spring Boot 自己的 `YamlPropertySourceLoader` 也能复现。
+本项目工作副本是 CRLF（`core.autocrlf=true`），所以「加/删几行注释把内容长度顶到边界」
+就可能突然起不来——2026-11-12 就是这么踩的（改了 `TJ_*` 占位符注释之后启动失败）。
+
+**修法**：已在 `server/pom.xml` 的 `<properties>` 覆盖
+`<snakeyaml.version>1.30</snakeyaml.version>`（1.30 是 Spring Boot 2.7 的默认版本，API 兼容）。
+改完**必须在 IDE 里 Reload Maven Project**（或重新 `mvn` 编译），否则仍是旧的 1.29。
+核对一条命令：
+
+```powershell
+cd code/new/server
+mvn -pl jeecg-module-system/jeecg-system-start dependency:tree "-Dincludes=org.yaml:snakeyaml"
+# 期望：org.yaml:snakeyaml:jar:1.30:compile
+```
+
+**不要**用「加个空行 / 删几条注释」把位置挪开当修法：那只是把地雷推到下一次改 YAML，
+且与内容本身无关，排查时极易误导。
+
+**三分钟定性办法**（比反复重启应用快）：写 5 行 Java main，`new Yaml().load(file)`
+逐个试 `application*.yml`，1.29 与 1.30 各跑一次——1.29 挂、1.30 过就是本条；
+顺带说明：`jeecg-server-cloud/**` 里 5 个 `application.yml` 本来就解析不通
+（`@config.server-addr@` 是 Maven 过滤占位符，只在打包后展开），属**另一个原因**，与本条无关。
+
+### 3.12 大屏三块面板「拖宽 / 拖高 + 折叠」的八个硬点
+
+首页 / 地图管理 / 配套分析管理的左右面板可拖动改宽、下方面板可拖动改高、三块都能折叠；
+数据管理的左二级导航 / 右检索列也可拖宽、可折叠（底部列表沿用原有拖高），
+左右与下方的**氛围蒙版也跟着面板一起伸缩 / 折叠**。
+共用件在 `stargis-client-web/src/components/screen/`（`panelLayout.js` / `ScreenResizeBar` /
+`ScreenSideRail` / `ScreenBottomDock`，契约见该目录 README §6.4）。改这块前先看这八条，
+每一条都对应一次实测返工：
+
+1. **拖动位移必须除以画布缩放 k，而且按轴向量**：大屏是 `transform: scale(k)` 的定尺画布，
+   `clientX/Y` 是真实像素、面板尺寸是画布像素。纵向改宽要量**宽度**的比值、横向改高量**高度**的
+   （`ScreenResizeBar.measureScale` 已按 `orientation` 切换）。少除或不换轴，表现是
+   「拖 100px 只长 91px」且误差全程累积。
+2. **铺满画布的包装层必须 `pointer-events: none`**，拖动条 / 面板各自 `.stage-hit`。
+   在 `inset: 0` 的节点上开 `auto` 就是「看得见地图却点不到、拖不动」（§3.6 第 4 条），
+   而折叠包装层正好是这种节点。
+3. **拖动期间必须关掉高度过渡**：`ScreenBottomDock` / `HomeAttrPanel` 平时有 320ms 的
+   height/left/right 过渡（折叠与侧栏联动要用），拖动时靠 `body.is-resizing-panel`
+   （`ScreenResizeBar` 挂/摘）把 transition 置 none。不关就是「手指已经移开，面板还在追」。
+4. **宽度用 CSS 变量下发**（`--panel-left-w` / `--panel-right-w`），不要逐层传 prop：
+   宽度要同时驱动面板底图、标题装饰、拖动条位置、工具卡片换行与插件宿主；
+   CSS 自定义属性会自然继承进子组件，scoped 也拦不住。
+5. **折叠位移 = 面板宽 + 30，不能写死 430**：面板被拖宽后写死的距离会滑不干净（露出半块）。
+   `panelSlideDistance()` 统一算，位移写在根节点的内联 style 里。
+6. **`transform` 只在折叠时下发**：常驻 transform 会让铺满画布的包装层变成 `position: fixed`
+   后代的包含块，插件浮层（`/pipeline/*` 结果面板等）定位会跟着偏。
+   另外状态持久化在 `localStorage['screen-panel-layout-v1']`（结构变更就换 key），
+   读取时逐项夹到 `[min, max]`，别信手改过的值。
+7. **氛围蒙版必须跟面板同一份状态**：左右蒙版宽 = 面板宽 + 160（设计稿 400→560）、
+   下方蒙版高 = 下方面板高 − 35（321→286），折叠 → 0；由 `views/screen/index.vue`
+   按 `vignetteLayout`（四页的 panelLayout 单例）内联下发，拖动期间关过渡。
+   另写一套阈值 = 必然出现「面板收起了、黑色遮罩还留在原处」（2026-11-13 用户反馈）。
+8. **数据管理页三块在页面内部**：左导航 / 右检索列 / 列表用 `--data-nav-w` /
+   `--data-search-w` / `--data-nav-offset` 三个变量联动（`offset = 折叠 ? 30 : 导航宽 + 50`），
+   entry 面板的检索列宽 / 折叠 / 列表高度读同一份 `usePanelLayout('data')`；
+   右检索列只在两个分栏页签存在（`v-if="isSplitPanel"`），下方面板只拖高、不折叠。
+   另注意分栏页签的 `.data-screen__body` 是 `inset: 0`，量「内容区左偏移」只能
+   在非分栏页签上量，分栏页签看列表 `left`。
+
+**验证**：`node perf/verify-panel-layout.js http://localhost:3001`（65 条，真实拖拽 +
+蒙版偏移逐像素核对 + 数据管理左右拖宽折叠 + 刷新持久化 + 0 条未捕获异常）；
+横向可拖高的回归仍看 `perf/verify-data-layout.js`。
 
 ---
 
@@ -467,3 +554,7 @@ git status --porcelain
 | 2026-11-02 | **补 §2.1 已实现域 + 登记 D-603 收口** | `stat.warning` 落地（分级预警：逾期天数 → 蓝/黄/橙/红等级 + 预警值 + 决策意见 + 预警记录；环节/阶段/总体三种口径；接口 `/land/stat/warning/*`）。入口两处：大屏端「查询统计 → 预警信息查询」（**只加页签、不占菜单**）、管理端「统计预警 → 预警等级维护 / 决策意见维护」（菜单与 4 个按钮权限由 `sql/stat/04_stat_warning_menu.sql` 建）。改这块前先读 `docs/分级预警-实现说明.md`：**阶段/总体预警没有决策意见**（没有「问题类型」可套）、**`byLevel` 必须四档齐全并含 0**（缺一档前端四色卡跳色）、**`yjPercent` 已由后端乘过 100**（前端再乘会显示 11000%）。另有 6 处**刻意不照抄旧系统**的实现（工作日递归、并行判定、过期预警删除、决策意见兜底、问题类型存文本、唯一键去重），已登记为差异清单 D-616~D-621 —— 改回去就是制造 bug。测试：`mvn -pl jeecg-module-land -am test -Pit -Dtest="Warning*"` |
 | 2026-11-05 | **合并远端 `f6c3b6e`（MVT 服务 / 空间导入 / 配套图形导入）＋ 补回 5 个被截断的文件** | 远端新增 MVT 瓦片服务（`map/mvt/*`）、SHP 空间导入（`spatial/*`，依赖 GeoTools 28.2 + osgeo 仓库）、地块/配套图形 GeoJSON 导入（`data/imports/facilitygeo/*`）；本地新增 `stat.warning` 分级预警，并把界面「变更履历 / 六阶段」统一为「操作记录 / 配套流程」（仅文案，不动逻辑）。**文本冲突 0 处**：两侧都改过的 7 个文件（`admin-client/scripts/verify-sfc.js`、`stargis-client-web/scripts/verify-sfc.js`、`FacilityAdminServiceImpl.java`、`FacilityEntry.vue`、`FacilityEntryPanel.vue`、`LandEntryPanel.vue`、`LandTable.vue`）都是自动合并，逐个人工核对过两侧改动都在。**但远端有 5 个文件被截断**（提交时没写完，尾部是半个标识符）：`admin-client/scripts/verify-sfc.js`（丢收尾 `Promise.all`，脚本本身语法错误）、`admin-client/…/FacilityEntry.vue` 与 `stargis-client-web/…/S3dmViewer.vue`（丢 `<style>` 尾部与 `</style>`）、`ScreenPopover.vue`（`</style>` 变成 `<`）、`admin-client/src/api/land/facilityAdmin.js`（默认导出少 3 个名字 + 配套图形导入两个函数整节丢失 → 管理端「导入地块图形」一点就 `TypeError`）。按「远端新增 + 共同祖先补齐」修复（`f265d82` → `0ab9605` → `75dd6a4`），并把本次新增的 10 个文件登记进两个 `verify-sfc.js` 清单。判据与三分钟排查法见 §3.10 |
 | 2026-11-09 | **prod 配置全量占位符化 + 合并远端 `5fbad9f`（MVT 空间库参数）** | 本轮两件事。① 打包部署口径：`application-prod.yml` 里端口/上下文路径、库地址与库名、上传目录、中台 `ck.*`、`land.*` 全改成 `${TJ_XXX}` 占位符，真实值留 `server/.env`；业务行为对齐 dev（local 上传、200MB 上限、Druid maxActive 50、ES 不检查、knife4j Basic 关闭）；**补上模板整节缺失的 `ck.stargis.zk`** —— 不写这一节时 SDK 的 `matchIfMissing = true` 会让同步开关照样为 true 却去调空地址，表现是「保存用户直接失败」且日志看不出是配置问题。新增 `docs/deploy/`（nginx admin.web / gis.web 反代样例、static/config.js 样例），放仓库内才 push 得上去。② 合并冲突只有一个文件：`application-prod.yml` 的**顶层 `land:`** —— 两边都新增了同名顶层键，直接拼会变成重复键（YAML 后键覆盖前键，`land.escalation` 会静默消失）。按「同事的键全留 + 口令走占位符」收口：`pg-host/pg-port/pg-user/pg-password/temp-dir` 全部保留，`pg-password` 改成 `${TJ_PG_PASSWORD}`（原值明文已随 `5fbad9f` 进了公开仓库，**建议换掉口令**），`TJ_PG_*` 四个键同步补进 `.env.example` 与本文件键清单，否则新环境照模板复制会缺键、启动即占位符解析失败。合并后已用 js-yaml 校验（13 个顶层键、`land`/`ck` 各只出现一次），并按 §3.10 跑两个前端 `verify-sfc` |
+| 2026-11-12 | **首页「排行」按市级 / 区级分开统计** | 用户反馈：大屏首页「出让地块情况」「落实配套情况」的排行把市级与区级混在一张榜单里。根因是后端 `ranks`（`/land/stat/home/landOverview`、`pendingFacility`）把两级放在同一结果集、`ORDER BY value DESC, name` 全局倒序（实测市级 10 行、区级 25 行交替），前端原样整表渲染 —— 榜首永远是区级项目，条形在拿两个量级不同的集合互相比较。改为**只动前端**：`index.vue` 新增 `rankGroups()` / `sortRankRows()`，`transferRank` / `supportingRank` 由 `Array` 变 `{ city, district }`（声明处用 `emptyRankGroups()` 兜底）；`HomeStatPanel.vue` 的排行视图跟随「市级 / 区级」双卡（双卡同时仍是明细表切换器），序号与条形按组内归一，表头补「（市级）/（区级）」，某级无数据显示「暂无数据」而**不**借用另一级榜单。接口、SQL、数据库均未改动（分组列仍是市级 `xzqh` / 区级 `xzqh2`，见 `docs/首页看板-实现说明.md` §5/§7） |
+| 2026-11-12 | **修后端启动失败：把 snakeyaml 覆盖到 1.30（§3.11）** | 用户报「后端启动报错 `ArrayIndexOutOfBoundsException: Index -1 out of bounds for length 830` @ `snakeyaml StreamReader.peek`」。定性过程：`application-dev.yml` 是合法 UTF-8（无 BOM、无控制字符、严格解码通过），逐块拆开解析每个顶层块都正常；用 5 行 Java main 逐个试 yml 并对比版本，发现**同一份文件** snakeyaml 1.25 通过 / **1.29 报错** / 1.30、2.4、2.6 通过，Spring Boot 自己的 `YamlPropertySourceLoader`（2.6.6 + 1.29）同样复现 —— 是 **1.29 在 CRLF + 读缓冲边界上的解析缺陷**，与内容位置强相关（文件最前面加一个空行就能解析）。触发经过：14:27 给 `application-dev.yml` 的 `TJ_*` 占位符补注释、行数变了，正好把 CRLF 顶到边界。修法：`server/pom.xml` `<properties>` 加 `<snakeyaml.version>1.30</snakeyaml.version>`（1.30 = Spring Boot 2.7 默认版本，API 兼容），已用 `mvn -pl jeecg-module-system/jeecg-system-start dependency:tree "-Dincludes=org.yaml:snakeyaml"` 核对解析到 `1.30:compile`。**不要**用「加空行/删注释」绕：那只是把地雷推到下一次改 YAML。陷阱与三分钟定性办法见新增的 §3.11 |
+| 2026-11-12 | **大屏三块面板：左右可拖宽 / 下方可拖高 + 三块都能折叠（§3.12）** | 用户要求：大屏所有「左/右/下」面板都能像数据管理列表面板那样拖动改尺寸，并像首页左右面板那样折叠。范围按用户确认收敛为**有三块面板的三个页面**：首页、地图管理、配套分析管理（数据管理已有下方面板拖高，档案/提级论证/查询统计只有左导航，不动）。新增共用件 `components/screen/panelLayout.js`（三页共用的尺寸/折叠状态，localStorage `screen-panel-layout-v1` 持久化 + `[min,max]` 夹紧 + 去抖落盘）、`ScreenSideRail`（由 `home/HomeSideRail` 泛化而来，原文件删除）、`ScreenBottomDock`（地图管理/配套分析管理底部「属性表」：默认 47px 收起条，点开是空态面板，可上沿拖高）；`ScreenResizeBar` 增加 `orientation="vertical"`（改宽，量**宽度**比值）与 `reverse`（右面板往左拖变宽），横向改高行为不变。首页 `HomeStatPanel` 增加 `width` 入参 + 内侧拖动条，内部列位/双卡/统计卡由固定 px 改百分比（面板变宽后列按比例摊开）；`HomeAttrPanel` 增加 `height` / `collapsed` 入参与上沿拖动条，折叠状态改由页面持有（原来在组件 data 里，切页即丢）；`HomeLayerTree` 与右面板统计共用同一份宽度/折叠状态。地图管理 / 配套分析管理两页的左右面板用「铺满画布的定位根 + 折叠时 translateX(面板宽+30)」整体滑出，宽度经 CSS 变量 `--panel-left-w` / `--panel-right-w` 下发（底图、标题装饰、拖动条、插件宿主、工具卡片一起跟随）；两个工具箱的卡片从 JS 绝对定位改 flex 换行（400 宽仍是设计稿三列，行距 11 = 设计稿步进 139 − 128），地图管理的卡片在 400 宽下默认零滚动。拖动期间 `body.is-resizing-panel` 关掉 320ms 高度过渡（否则面板追不上指针），折叠位移只在 collapsed 时下发 transform（避免给插件 fixed 浮层引入新包含块）。坑与排查见新增 §3.12。验证：`node perf/verify-panel-layout.js http://localhost:3001` **26/26**（真实拖拽 + 刷新持久化 + 0 条未捕获异常），截图 `perf/shots/panel-layout-{home,map,analysis}.png`；`perf/verify-data-layout.js` 复跑确认横向拖高未回归（同时修了该脚本两处过期断言：大屏标题「星际GIS」守卫、数据管理页签旧文案） |
+| 2026-11-13 | **补两处用户反馈：蒙版随面板伸缩/折叠 + 数据管理左右面板可拖宽可折叠** | ① 用户截图反馈「面板收起了、左右和下面的黑色遮罩还留在原处」：三张 `.land-screen__vignette` 原来宽度/高度是设计稿定尺（560 / 286），只有首页左右两张在折叠时淡出。改为父组件 `views/screen/index.vue` 按当前页的 `vignetteLayout`（home / map / analysis / data 四份 panelLayout 单例，父组件取到的与子页面是同一个响应式对象）内联下发尺寸：左右宽 = 面板宽 + 160（设计稿 400→560）、下方高 = 下方面板高 − 35（321→286）、折叠 → 0，过渡 320ms，拖动期间用 `body.is-resizing-panel` 关掉；没有面板的档案 / 提级论证 / 查询统计不传 style，保持设计稿定尺。② 数据管理的左二级导航 / 右检索列补拖宽 + 折叠：`panelLayout` 新增 `data` 默认值（左/右 200、下限 160、上限 340；bottom 360 = 原列表默认高度，200~936），`data/index.vue` 输出 `--data-nav-w` / `--data-search-w` / `--data-nav-offset` 三个 CSS 变量并挂左/右拖动条与屏边把手；`LandEntryPanel` / `FacilityEntryPanel` 改读同一份 `usePanelLayout('data')`（检索列宽 / 折叠、列表高度取代各自持有的 `listHeight`），列表左右偏移跟着导航 / 检索列变，检索列只在两个分栏页签存在；数据管理下方面板仍只拖高、不折叠（没有设计收起条）。验证脚本扩到 **65/65**（新增蒙版逐像素核对、数据管理左右拖宽折叠、非分栏页签内容区左偏移、列表拖高与下蒙版联动），截图新增 `panel-layout-data.png`；`node scripts/verify-sfc.js` 109 文件与改动文件 eslint 均通过 |
