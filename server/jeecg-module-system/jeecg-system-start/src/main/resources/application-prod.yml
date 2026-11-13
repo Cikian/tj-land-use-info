@@ -461,7 +461,7 @@ land:
     # shp2pgsql 输出 SQL 的读取字符集：跟随运行环境 locale。
     # Windows 中文环境是 GBK；迁到 Linux（UTF-8 locale）时必须改成 UTF-8，否则报
     # "malformed input off : 0"
-    sql-charset: ${TJ_SHP_SQL_CHARSET:GBK}
+    sql-charset: ${TJ_SHP_SQL_CHARSET:UTF-8}
   escalation:
     # 提级论证结论是否回写地块/配套主表
     writeback-enabled: ${TJ_ESCALATION_WRITEBACK:true}

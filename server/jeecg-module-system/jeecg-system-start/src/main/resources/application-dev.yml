@@ -150,7 +150,7 @@ spring:
           #driver-class-name: com.mysql.cj.jdbc.Driver
   #redis 配置
   redis:
-    database: 0
+    database: ${TJ_REDIS_DB}
     host: ${TJ_REDIS_HOST:127.0.0.1}
     port: ${TJ_REDIS_PORT:6379}
     # ★ 用 ${VAR:} 而不是 ${VAR:''}：本机 Redis 无口令时要落成**空值**，
@@ -316,7 +316,7 @@ ck:
     host: 127.0.0.1                 # Redis 服务器地址
     port: 6379                      # Redis 端口，默认 6379
     password:                       # Redis 密码，没有则留空
-    database: 0                     # 数据库索引，默认 0
+    database: ${TJ_REDIS_DB}        # 数据库索引，默认 0
     timeout: 3000                   # 连接超时时间（毫秒）
     max-active: 50                  # 最大连接数
     max-idle: 10                    # 最大空闲连接
@@ -366,24 +366,31 @@ ck:
 # ★ MVT 空间表服务 · SHP 上传入库配置（land.spatial.*）
 # 对应 SpatialProperties.java（jeecg-module-land/spatial/config/）
 land:
+  # SHP 上传入库（MVT 空间表服务的数据入口）与 MVT 出图共用的空间库配置
+  # 对应 SpatialProperties.java（jeecg-module-land/spatial/config/）
   spatial:
-    # ★ 目标 PG 数据库默认连接信息
-    # SHP 上传入库时用（前端不填则用这里的默认值）
-    # MVT 出图的 DynamicDBUtil 也按此信息取连接
-    pg-host: 49.232.252.56
-    pg-port: 5432
-    pg-user: postgres
-    pg-password: Chen0809@pgsql
-    # shp2pgsql 可执行文件路径。留空则自动探测：
-    #   配置路径 → SHOW data_directory 反推 bin 目录 → 常见安装目录 → PATH
-    # 例：D:/Program Files/PostgreSQL/16/bin/shp2pgsql.exe
-    shp2pgsql-path: ""
-    # 默认导入引擎：shp2pgsql（默认）/ geotools（信创，纯 Java）
-    import-engine: shp2pgsql
+    # ★ 目标 PG 数据库默认连接信息（SHP 入库前端不填时用它；MVT 出图的
+    #   DynamicDBUtil 也按这份信息取连接）
+    pg-host: ${TJ_PG_HOST:49.232.252.56}
+    pg-port: ${TJ_PG_PORT:5432}
+    pg-user: ${TJ_PG_USER:postgres}
+    # 口径同其它口令：真实值放 .env，仓库里不留明文（这个口令此前已在提交
+    # 5fbad9f 里明文出现过，建议一并换掉）。缺这个键会启动即报占位符解析失败，
+    # 比「连不上 PG」晚一步暴露要好。
+    pg-password: ${TJ_PG_PASSWORD}
     # SHP zip 解压临时目录
     temp-dir: ${java.io.tmpdir}/land-spatial
-    # SHP 属性文件(.dbf)读取字符集（国内数据多为此编码）
-    dbf-charset: GBK
-    # shp2pgsql 输出 SQL 的读取字符集（跟随运行环境 locale）
-    # Windows 中文环境 = GBK；Linux UTF-8 环境需改为 UTF-8
-    sql-charset: GBK
+    # shp2pgsql（快，平台相关）/ geotools（纯 Java，麒麟·鲲鹏等信创环境零适配）
+    import-engine: ${TJ_SHP_IMPORT_ENGINE}
+    # 留空＝自动探测（配置路径 → SHOW data_directory 反推 → 常见安装目录 → PATH）
+    # 例：D:/Program Files/PostgreSQL/16/bin/shp2pgsql.exe
+    shp2pgsql-path: ${TJ_SHP2PGSQL_PATH}
+    # .dbf 属性文件字符集（国内数据多为 GBK）
+    dbf-charset: ${TJ_SHP_DBF_CHARSET}
+    # shp2pgsql 输出 SQL 的读取字符集：跟随运行环境 locale。
+    # Windows 中文环境是 GBK；迁到 Linux（UTF-8 locale）时必须改成 UTF-8，否则报
+    # "malformed input off : 0"
+    sql-charset: ${TJ_SHP_SQL_CHARSET}
+  escalation:
+    # 提级论证结论是否回写地块/配套主表
+    writeback-enabled: ${TJ_ESCALATION_WRITEBACK:true}
