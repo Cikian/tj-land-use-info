@@ -55,14 +55,40 @@
             />
           </screen-field>
 
-          <screen-field label="所属对象" required :error="errors.bizId" label-width="88px">
+          <screen-field v-if="form.bizType === 'process'" label="所属宗地" required label-width="88px">
+            <screen-select
+              v-model="processLandId"
+              :options="landOptions"
+              :searchable="true"
+              :filter-local="false"
+              placeholder="输入宗地编号或地块名称"
+              :empty-text="objectSearching ? '查询中…' : '没有匹配的宗地'"
+              aria-label="环节所属宗地"
+              @search="handleProcessLandSearch"
+              @change="handleProcessLandChange"
+            />
+          </screen-field>
+
+          <screen-field v-if="form.bizType === 'process'" label="所属配套" required label-width="88px">
+            <screen-select
+              v-model="processFacilityId"
+              :options="facilityOptions"
+              :disabled="!processLandId && !processFacilityId"
+              :searchable="true"
+              placeholder="请选择配套项目"
+              aria-label="环节所属配套"
+              @change="handleProcessFacilityChange"
+            />
+          </screen-field>
+
+          <screen-field :label="form.bizType === 'process' ? '所属环节' : '所属对象'" required :error="errors.bizId" label-width="88px">
             <screen-select
               v-model="form.bizId"
               :options="objectOptions"
               :invalid="!!errors.bizId"
-              :disabled="!form.bizType"
+              :disabled="!form.bizType || (form.bizType === 'process' && !processFacilityId)"
               :searchable="true"
-              :filter-local="false"
+              :filter-local="form.bizType === 'process'"
               :placeholder="objectPlaceholder"
               :empty-text="objectSearching ? '查询中…' : '没有匹配的记录'"
               aria-label="所属对象"
@@ -271,6 +297,7 @@
         @error="handleUploadError"
         @progress="handleProgress"
         @uploading-change="handleUploadingChange"
+        @picker-cancel="handlePickerCancel"
       >
         <template #trigger="{ trigger }">
           <button ref="fileTrigger" type="button" class="attachment-upload__hidden-trigger" @click="trigger">选择文件</button>
@@ -292,6 +319,7 @@
         @error="handleUploadError"
         @progress="handleProgress"
         @uploading-change="handleUploadingChange"
+        @picker-cancel="handlePickerCancel"
       >
         <template #trigger="{ trigger }">
           <button ref="folderTrigger" type="button" class="attachment-upload__hidden-trigger" @click="trigger">选择文件夹</button>
@@ -319,6 +347,7 @@ import {
   ATTACHMENT_BIZ_TYPES
 } from '@/api/land/attachment'
 import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
+import { queryFacilityByLand, queryProcessList } from '@/api/land/facilityAdmin'
 import { buildBizPath, formatSize, dictToOptions, resolveExt } from '../constants'
 
 /**
@@ -399,6 +428,11 @@ export default {
       /** 「所属对象」下拉的候选（值=真实 id，label=用户看得懂的名称） */
       objectOptions: [],
       objectSearching: false,
+      /** 环节归属的级联状态：最终 bizId 只接受 t_facility_process.id */
+      processLandId: '',
+      processFacilityId: '',
+      landOptions: [],
+      facilityOptions: [],
       /** 当前归属对象的显示名称 */
       pickedName: '',
       /** 材料类型目录树：{ groups:[...], totalFiles, totalSize, typeCount } */
@@ -410,6 +444,8 @@ export default {
       typeOptions: fallbackTypesOf('facility'),
       /** 当前正在上传的材料类型码（'' = 没有在上传） */
       uploadingType: '',
+      /** 已点开选择器但尚未开始上传的目标类型；取消选择时只清它，不进入 busy */
+      pendingType: '',
       /** 整批进度 0-100（由 ScreenUpload 的 progress 事件给出） */
       percent: 0,
       /** 是否有一批正在跑 */
@@ -485,13 +521,16 @@ export default {
     },
     objectPlaceholder () {
       if (!this.form.bizType) return '请先选择归属类型'
-      if (this.form.bizType === 'process') return '请输入或选择环节'
+      if (this.form.bizType === 'process') return '请选择已登记进度的环节'
       return this.form.bizType === 'land' ? '输入编号或地块名称搜索' : '输入名称搜索'
     },
     objectOptionShowsPicked () {
       if (!this.form.bizId) return false
       return this.objectOptions.some(item => item.value === this.form.bizId)
     }
+  },
+  beforeDestroy () {
+    this.clearCancelWatch()
   },
   methods: {
     formatSize,
@@ -500,9 +539,10 @@ export default {
 
     open (preset) {
       const record = preset || {}
+      this.clearCancelWatch()
       this.form = Object.assign(emptyForm(), {
         bizType: record.bizType || 'facility',
-        bizId: record.bizId || ''
+        bizId: record.bizId || record.processId || record.progressId || ''
       })
       this.errors = {}
       this.tree = { groups: [] }
@@ -513,10 +553,15 @@ export default {
       this.errorMessage = ''
       this.collapsed = []
       this.uploadingType = ''
+      this.pendingType = ''
       this.percent = 0
       this.batchRunning = false
       this.rejected = []
-      this.pickedName = record.bizName || record.bizKey || ''
+      this.processLandId = record.landId || ''
+      this.processFacilityId = record.ptId || record.facilityId || ''
+      this.landOptions = []
+      this.facilityOptions = []
+      this.pickedName = record.bizName || record.lcName || record.bizKey || ''
       this.objectOptions = []
       this.visible = true
       // 两个上传控件复位：清队列、清进度、清校验清单
@@ -526,7 +571,11 @@ export default {
       })
       this.loadTypes()
       if (this.form.bizType) {
-        this.loadObjectOptions('')
+        this.loadObjectOptions(record.crzdbh || '')
+      }
+      if (this.form.bizType === 'process') {
+        if (record.crzdbh) this.loadProcessFacilities(record.crzdbh)
+        if (this.processFacilityId) this.loadProcessOptions()
       }
       // 已带出归属对象：直接展示该对象的材料目录（这是本次改动的核心）
       if (this.form.bizId) {
@@ -572,6 +621,12 @@ export default {
       this.recentIds = {}
       this.errors = {}
       this.uploadingType = ''
+      this.pendingType = ''
+      this.batchRunning = false
+      this.processLandId = ''
+      this.processFacilityId = ''
+      this.landOptions = []
+      this.facilityOptions = []
       this.rejected = []
       this.loadTypes()
       this.loadObjectOptions('')
@@ -583,8 +638,12 @@ export default {
      */
     loadObjectOptions (keyword) {
       const type = this.form.bizType
-      if (!type || type === 'process') {
+      if (!type) {
         this.objectOptions = []
+        return
+      }
+      if (type === 'process') {
+        this.loadProcessLandOptions(keyword)
         return
       }
       this.objectSearching = true
@@ -611,8 +670,104 @@ export default {
       })
     },
 
+    handleProcessLandSearch (keyword) {
+      this.loadProcessLandOptions(String(keyword || '').trim())
+    },
+
+    loadProcessLandOptions (keyword) {
+      this.objectSearching = true
+      return queryLandOptions({ keyword, limit: 50 }).then((res) => {
+        const rows = (res && res.success && res.result) ? res.result : []
+        const options = rows.map((row) => ({
+          value: row.id,
+          label: `${row.crzdbh || ''}${row.dkmc ? '　' + row.dkmc : ''}`,
+          raw: row
+        }))
+        if (this.processLandId && !options.some(item => item.value === this.processLandId)) {
+          options.unshift({ value: this.processLandId, label: keyword || this.processLandId, raw: null })
+        }
+        this.landOptions = options
+      }).catch(() => {
+        this.landOptions = []
+      }).finally(() => {
+        this.objectSearching = false
+      })
+    },
+
+    handleProcessLandChange (value, raw) {
+      this.processLandId = value || ''
+      this.processFacilityId = ''
+      this.form.bizId = ''
+      this.pickedName = ''
+      this.facilityOptions = []
+      this.objectOptions = []
+      this.tree = { groups: [] }
+      this.treeReady = false
+      if (raw && raw.crzdbh) {
+        this.loadProcessFacilities(raw.crzdbh)
+      }
+    },
+
+    loadProcessFacilities (crzdbh) {
+      if (!crzdbh) {
+        this.facilityOptions = []
+        return Promise.resolve()
+      }
+      return queryFacilityByLand(crzdbh).then((res) => {
+        const rows = (res && res.success && res.result) ? res.result : []
+        const options = rows.map((row) => ({
+          value: row.id,
+          label: `${row.ptxmmc || ''}${row.crzdbh ? '（' + row.crzdbh + '）' : ''}`,
+          raw: row
+        }))
+        if (this.processFacilityId && !options.some(item => item.value === this.processFacilityId)) {
+          options.unshift({ value: this.processFacilityId, label: this.processFacilityId, raw: null })
+        }
+        this.facilityOptions = options
+      }).catch(() => {
+        this.facilityOptions = []
+      })
+    },
+
+    handleProcessFacilityChange () {
+      this.form.bizId = ''
+      this.pickedName = ''
+      this.objectOptions = []
+      this.tree = { groups: [] }
+      this.treeReady = false
+      this.loadProcessOptions()
+    },
+
+    loadProcessOptions () {
+      if (!this.processFacilityId) {
+        this.objectOptions = []
+        return Promise.resolve()
+      }
+      this.objectSearching = true
+      return queryProcessList(this.processFacilityId).then((res) => {
+        const rows = (res && res.success && res.result) ? res.result : []
+        const options = rows.map((row) => ({
+          // 配置项 lcId 不是附件外键；只有真实进度表主键 progressId 才允许提交。
+          value: row.progressId || `unregistered:${row.lcId}`,
+          label: `${row.stageName || ''} / ${row.lcName || ''}${row.progressId ? '' : '（未登记进度，请先保存）'}`,
+          disabled: !row.progressId,
+          raw: row
+        }))
+        if (this.form.bizId && !options.some(item => item.value === this.form.bizId)) {
+          options.unshift({ value: this.form.bizId, label: this.pickedName || this.form.bizId, raw: null })
+        }
+        this.objectOptions = options
+      }).catch(() => {
+        this.objectOptions = []
+      }).finally(() => {
+        this.objectSearching = false
+      })
+    },
+
     handleObjectSearch (keyword) {
-      this.loadObjectOptions(String(keyword || '').trim())
+      if (this.form.bizType !== 'process') {
+        this.loadObjectOptions(String(keyword || '').trim())
+      }
     },
 
     /** 选中归属对象：记下名称，并**立刻加载该对象的材料目录树** */
@@ -624,7 +779,9 @@ export default {
         this.treeReady = false
         return
       }
-      if (raw && this.form.bizType === 'land') {
+      if (raw && this.form.bizType === 'process') {
+        this.pickedName = `${raw.stageName || ''} / ${raw.lcName || ''}`
+      } else if (raw && this.form.bizType === 'land') {
         const name = String(raw.dkmc || '').trim()
         const code = String(raw.crzdbh || '').trim()
         this.pickedName = name ? (code ? `${name}（${code}）` : name) : code
@@ -705,52 +862,102 @@ export default {
      *   中途不许换类型（busy 时按钮禁用），避免记错。
      */
     triggerPick (mode, group) {
-      this.uploadingType = group.fileType
+      if (this.busy) return
+      // 打开系统选择器不等于开始上传：先只记 pending，实际选中并起传后才置 uploadingType。
+      this.pendingType = group.fileType
       this.rejected = []
       this.errorMessage = ''
       const uploader = mode === 'folder' ? this.$refs.folderUploader : this.$refs.fileUploader
       if (!uploader) {
+        this.pendingType = ''
         return
       }
+      this.armPickerCancel(group.fileType)
       // ScreenUpload 的公开触发方法：清空 value 后 click，保证再选同一文件仍触发 change
       uploader.handleTriggerClick()
+    },
+
+    armPickerCancel (typeCode) {
+      this.clearCancelWatch()
+      // Chromium 部分版本不对原生 input 派发 cancel，窗口重新聚焦再延时核对作为兜底。
+      this._cancelFocusHandler = () => {
+        this._cancelTimer = window.setTimeout(() => {
+          if (!this.batchRunning && this.pendingType === typeCode) {
+            this.resetPickState()
+          }
+        }, 400)
+      }
+      window.addEventListener('focus', this._cancelFocusHandler)
+    },
+
+    clearCancelWatch () {
+      if (this._cancelFocusHandler) {
+        window.removeEventListener('focus', this._cancelFocusHandler)
+        this._cancelFocusHandler = null
+      }
+      if (this._cancelTimer) {
+        window.clearTimeout(this._cancelTimer)
+        this._cancelTimer = null
+      }
+    },
+
+    resetPickState () {
+      this.clearCancelWatch()
+      this.pendingType = ''
+      this.uploadingType = ''
+      this.batchRunning = false
+      this.percent = 0
+    },
+
+    handlePickerCancel () {
+      if (!this.batchRunning) {
+        this.resetPickState()
+      }
     },
 
     /** 校验未通过（ScreenUpload 已把清单显示在自己内部，这里汇总到弹窗级别） */
     handleRejected (reason) {
       this.errorMessage = reason || '有文件未通过校验'
+      // reject 事件逐个抛出，下一拍才能知道是否还有合法文件进入上传；全部拒绝时立即解锁。
+      this.$nextTick(() => {
+        const fileUploading = this.$refs.fileUploader && this.$refs.fileUploader.uploading
+        const folderUploading = this.$refs.folderUploader && this.$refs.folderUploader.uploading
+        if (!this.batchRunning && !fileUploading && !folderUploading) {
+          this.resetPickState()
+        }
+      })
     },
 
     /** 网络层/服务端失败：ScreenUpload 会终止整批 */
     handleUploadError (message) {
-      this.batchRunning = false
-      this.uploadingType = ''
+      this.resetPickState()
       this.errorMessage = message || '上传失败'
     },
 
     /** 整批进度（0-100）：由当前在传的那个 ScreenUpload 抛出 */
     handleProgress (percent) {
+      if (this.pendingType) {
+        this.uploadingType = this.pendingType
+      }
       this.percent = Number(percent) || 0
       this.batchRunning = true
+      this.clearCancelWatch()
     },
 
     /**
      * ScreenUpload 的上传态变化。
-     *
-     * ★ 必须有这个处理：整批结束后要把 uploadingType 清掉，
-     *   否则 busy 会一直是 true，树上所有节点的两个按钮全被禁用 ——
-     *   表现就是「传完一次以后再也传不了」。
-     * ★ 用 ScreenUpload 自己的 uploading-change 而不是在 success 里清：
-     *   传多个文件时 success 是逐个抛的，中途清掉会让后续文件归错类型。
+     * 起传时把 pendingType 固化为 uploadingType；完成、失败或中止后统一解锁。
      */
     handleUploadingChange (uploading) {
       if (uploading) {
+        if (this.pendingType) {
+          this.uploadingType = this.pendingType
+        }
         this.batchRunning = true
+        this.clearCancelWatch()
         return
       }
-      this.batchRunning = false
-      this.uploadingType = ''
-      this.percent = 0
+      this.resetPickState()
       // 整批结束后静默刷新一次树（不摆 loading，避免最后再闪一下）
       this.loadTree(true)
     },

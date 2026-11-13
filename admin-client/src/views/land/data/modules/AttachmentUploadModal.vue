@@ -43,21 +43,50 @@
           :options="bizTypeOptions"
           @change="handleBizTypeChange" />
       </div>
+      <div v-if="bizType === 'process'" class="attach-upload__field">
+        <span class="attach-upload__label">所属宗地<i>*</i></span>
+        <a-select
+          v-model="processLandId"
+          show-search
+          placeholder="输入宗地编号 / 地块名称"
+          style="width: 100%"
+          :filter-option="false"
+          :default-active-first-option="false"
+          @search="loadProcessLandOptions"
+          @change="handleProcessLandChange">
+          <a-select-option v-for="item in processLandOptions" :key="item.id" :value="item.id">
+            {{ optionLabel(item) }}
+          </a-select-option>
+        </a-select>
+      </div>
+      <div v-if="bizType === 'process'" class="attach-upload__field">
+        <span class="attach-upload__label">所属配套<i>*</i></span>
+        <a-select
+          v-model="processFacilityId"
+          placeholder="请选择配套项目"
+          style="width: 100%"
+          :disabled="!processLandId && !processFacilityId"
+          @change="handleProcessFacilityChange">
+          <a-select-option v-for="item in processFacilityOptions" :key="item.id" :value="item.id">
+            {{ optionLabel(item) }}
+          </a-select-option>
+        </a-select>
+      </div>
       <div class="attach-upload__field">
-        <span class="attach-upload__label">所属对象<i>*</i></span>
+        <span class="attach-upload__label">{{ bizType === 'process' ? '所属环节' : '所属对象' }}<i>*</i></span>
         <a-select
           v-model="bizId"
           show-search
           allow-clear
-          :disabled="!bizType || bizType === 'process'"
+          :disabled="!bizType || (bizType === 'process' && !processFacilityId)"
           :placeholder="bizPlaceholder"
           style="width: 100%"
-          :filter-option="false"
+          :filter-option="bizType !== 'process'"
           :default-active-first-option="false"
           :not-found-content="bizLoading ? '搜索中…' : '输入编号 / 名称后搜索'"
           @search="handleBizSearch"
           @change="handleBizChange">
-          <a-select-option v-for="item in bizOptions" :key="item.id" :value="item.id">
+          <a-select-option v-for="item in bizOptions" :key="processOptionValue(item)" :value="processOptionValue(item)" :disabled="bizType === 'process' && !item.progressId">
             {{ optionLabel(item) }}
           </a-select-option>
         </a-select>
@@ -220,6 +249,7 @@
   } from '@/api/land/attachment'
   import { BIZ_TYPE_REQUIRED_OPTIONS } from '@/api/land/dataRecycle'
   import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
+  import { queryFacilityByLand, queryProcessList } from '@/api/land/facilityAdmin'
 
   /** 允许的扩展名（与后端白名单同源口径；这里只用于文件框的 accept 提示与前端预校验） */
   const ALLOWED_EXT = [
@@ -285,6 +315,10 @@
         bizKey: '',
         bizOptions: [],
         bizLoading: false,
+        processLandId: undefined,
+        processFacilityId: undefined,
+        processLandOptions: [],
+        processFacilityOptions: [],
         bizTypeOptions: BIZ_TYPE_REQUIRED_OPTIONS,
         // ---- 材料类型目录 ----
         /** 材料类型清单（决定树上列哪些类型，含还没有文件的） */
@@ -383,13 +417,23 @@
         if (record.bizType) {
           this.bizType = record.bizType
         }
-        if (record.bizId) {
-          this.bizId = record.bizId
-          this.bizKey = record.bizKey || ''
+        const presetId = record.bizId || record.processId || record.progressId
+        if (presetId) {
+          this.bizId = presetId
+          this.bizKey = record.bizKey || record.lcName || ''
           // 预置的业务对象不在远程搜索结果里，补一个选项让下拉能显示出来
-          if (record.bizKey) {
-            this.bizOptions = [{ id: record.bizId, crzdbh: record.bizKey, dkmc: '', ptxmmc: record.bizKey }]
+          if (this.bizKey) {
+            this.bizOptions = this.bizType === 'process'
+              ? [{ progressId: presetId, lcName: this.bizKey, stageName: '' }]
+              : [{ id: presetId, crzdbh: this.bizKey, dkmc: '', ptxmmc: this.bizKey }]
           }
+        }
+        if (this.bizType === 'process') {
+          this.processLandId = record.landId
+          this.processFacilityId = record.ptId || record.facilityId
+          this.loadProcessLandOptions(record.crzdbh || '')
+          if (record.crzdbh) this.loadProcessFacilities(record.crzdbh)
+          if (this.processFacilityId) this.loadProcessOptions()
         }
         this.visible = true
         this.loadTypes()
@@ -402,6 +446,10 @@
         this.bizId = undefined
         this.bizKey = ''
         this.bizOptions = []
+        this.processLandId = undefined
+        this.processFacilityId = undefined
+        this.processLandOptions = []
+        this.processFacilityOptions = []
         this.tree = { groups: [] }
         this.treeReady = false
         this.collapsed = []
@@ -450,7 +498,71 @@
         this.justUploaded = {}
         this.recentIds = {}
         this.uploadingType = ''
+        this.processLandId = undefined
+        this.processFacilityId = undefined
+        this.processLandOptions = []
+        this.processFacilityOptions = []
         this.loadTypes()
+        if (this.bizType === 'process') this.loadProcessLandOptions('')
+      },
+
+      loadProcessLandOptions (keyword) {
+        this.bizLoading = true
+        return queryLandOptions({ keyword, limit: 50 }).then(res => {
+          this.processLandOptions = res && res.success ? (res.result || []) : []
+        }).catch(() => {
+          this.processLandOptions = []
+        }).finally(() => {
+          this.bizLoading = false
+        })
+      },
+
+      handleProcessLandChange (value) {
+        const hit = this.processLandOptions.filter(item => item.id === value)[0]
+        this.processFacilityId = undefined
+        this.processFacilityOptions = []
+        this.bizId = undefined
+        this.bizKey = ''
+        this.bizOptions = []
+        this.tree = { groups: [] }
+        this.treeReady = false
+        if (hit && hit.crzdbh) this.loadProcessFacilities(hit.crzdbh)
+      },
+
+      loadProcessFacilities (crzdbh) {
+        return queryFacilityByLand(crzdbh).then(res => {
+          this.processFacilityOptions = res && res.success ? (res.result || []) : []
+        }).catch(() => {
+          this.processFacilityOptions = []
+        })
+      },
+
+      handleProcessFacilityChange () {
+        this.bizId = undefined
+        this.bizKey = ''
+        this.bizOptions = []
+        this.tree = { groups: [] }
+        this.treeReady = false
+        this.loadProcessOptions()
+      },
+
+      loadProcessOptions () {
+        if (!this.processFacilityId) {
+          this.bizOptions = []
+          return Promise.resolve()
+        }
+        this.bizLoading = true
+        return queryProcessList(this.processFacilityId).then(res => {
+          this.bizOptions = res && res.success ? (res.result || []) : []
+        }).catch(() => {
+          this.bizOptions = []
+        }).finally(() => {
+          this.bizLoading = false
+        })
+      },
+
+      processOptionValue (item) {
+        return this.bizType === 'process' ? (item.progressId || `unregistered:${item.lcId}`) : item.id
       },
 
       handleBizSearch (keyword) {
@@ -479,10 +591,12 @@
           this.treeReady = false
           return
         }
-        const hit = this.bizOptions.filter(item => item.id === value)[0]
+        const hit = this.bizOptions.filter(item => this.processOptionValue(item) === value)[0]
         this.bizId = value
-        // 业务可读键：宗地用编号、配套用名称 —— 列表里直接展示，避免每次联表
-        this.bizKey = hit ? (this.bizType === 'facility' ? hit.ptxmmc : hit.crzdbh) : ''
+        // 环节也必须保存真实进度表 id，lcId 仅作未登记行的禁用占位。
+        this.bizKey = hit
+          ? (this.bizType === 'process' ? hit.lcName : (this.bizType === 'facility' ? hit.ptxmmc : hit.crzdbh))
+          : ''
         this.tree = { groups: [] }
         this.treeReady = false
         this.justUploaded = {}
@@ -491,7 +605,10 @@
       },
 
       optionLabel (item) {
-        if (this.bizType === 'facility') {
+        if (this.bizType === 'process' && (item.lcId || item.progressId)) {
+          return `${item.stageName || ''} / ${item.lcName || ''}${item.progressId ? '' : '（未登记进度，请先保存）'}`
+        }
+        if (item.ptxmmc) {
           return item.ptxmmc + (item.crzdbh ? `（${item.crzdbh}）` : '')
         }
         return (item.crzdbh || '') + (item.dkmc ? `（${item.dkmc}）` : '')

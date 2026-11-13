@@ -58,6 +58,7 @@
       aria-hidden="true"
       tabindex="-1"
       @change="handleFileChange"
+      @cancel="handlePickerCancel"
     />
 
     <div class="screen-upload__bar">
@@ -321,6 +322,11 @@ export default {
       if (!raw) return ''
       return raw.replace(/\\/g, '/').replace(/^\/+/, '')
     },
+    /** 原生选择器取消：通知父组件清理“等待选文件”状态，不伪造成一次上传失败。 */
+    handlePickerCancel () {
+      this.resetInput()
+      this.$emit('picker-cancel')
+    },
     /**
      * 原生 change 的处理顺序：校验、入队、顺序上传。
      * @param {Event} event 原生 change 事件
@@ -328,7 +334,10 @@ export default {
     handleFileChange (event) {
       const input = event && event.target ? event.target : this.$refs.fileInput
       const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
-      if (!selected.length) return
+      if (!selected.length) {
+        this.handlePickerCancel()
+        return
+      }
 
       // 每次重新选择都清空上一轮的错误清单，避免错误信息与新选择混杂
       this.errors = []
