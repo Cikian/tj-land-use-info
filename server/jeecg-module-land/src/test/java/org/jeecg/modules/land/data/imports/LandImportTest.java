@@ -294,6 +294,79 @@ public class LandImportTest extends LandIntegrationTestBase {
         assertEquals(1, preview.getValidRows());
     }
 
+    @Test
+    public void previewAndConfirmUseSavedFormulaCacheWithoutEvaluatingLinks() throws Exception {
+        String crzdbh = uniqueNo("formula-ok");
+        MockMultipartFile file = buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, crzdbh, "待替换名称");
+
+            // 公式文本故意与缓存值不一致：实现若偷偷求值，这里就会得到 2 而不是 3.75。
+            setFormula(sheet, 2, "crj", "1+1").setCellValue(3.75);
+            setFormula(sheet, 2, "dkmc", "'填表说明'!A1").setCellValue("跨表缓存地块");
+            setFormula(sheet, 2, "nrcbdptf", "[1]Sheet1!A1").setCellValue(1580);
+            setFormula(sheet, 2, "ptsfqq", "FALSE").setCellValue(false);
+
+            org.apache.poi.ss.usermodel.Cell date = setFormula(sheet, 2, "crsj", "DATE(2024,6,18)");
+            date.setCellValue(org.apache.poi.ss.usermodel.DateUtil.getExcelDate(parseDate("2024-06-18")));
+            org.apache.poi.ss.usermodel.CellStyle style = sheet.getWorkbook().createCellStyle();
+            style.setDataFormat((short) 14);
+            date.setCellStyle(style);
+        });
+
+        LandImportResultVO preview = importService.preview(file, LandDuplicateStrategy.REJECT);
+        assertTrue(preview.getErrors().isEmpty(), "已保存的公式缓存应通过校验：" + describe(preview));
+        assertEquals(1, preview.getValidRows());
+
+        LandImportResultVO confirmed = importService.confirm(file, LandDuplicateStrategy.REJECT, false);
+        assertEquals(1, confirmed.getInsertedRows(), "预览与正式入库应走同一公式读取路径：" + describe(confirmed));
+        Land saved = landService.queryByCrzdbh(crzdbh);
+        assertEquals(0, new BigDecimal("3.75").compareTo(saved.getCrj()), "必须采用缓存值而非公式文本或重新求值");
+        assertEquals("跨表缓存地块", saved.getDkmc());
+        assertEquals(0, new BigDecimal("1580.00").compareTo(saved.getNrcbdptf()),
+                "外部工作簿公式只允许读取文件内缓存，不执行外部链接");
+        assertEquals("否", saved.getPtsfqq());
+        assertEquals("2024-06-18", new SimpleDateFormat("yyyy-MM-dd").format(saved.getCrsj()));
+        assertNotNull(saved.getUpdateTime(), "批量新增也必须写 update_time 以失效图形缓存");
+    }
+
+    @Test
+    public void formulaMissingBlankAndErrorCacheBecomeFieldLevelReceiptErrors() throws Exception {
+        MockMultipartFile file = buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, uniqueNo("formula-none"), "无缓存公式");
+            org.apache.poi.ss.usermodel.Cell noCache = setFormula(sheet, 2, "crj", "1+1");
+            // POI 新建公式会补默认 <v>0</v>；真实“未保存计算结果”应显式移除该缓存节点。
+            ((org.apache.poi.xssf.usermodel.XSSFCell) noCache).getCTCell().unsetV();
+
+            fillValidRow(sheet, 3, uniqueNo("formula-blank"), "空缓存公式");
+            setFormula(sheet, 3, "crj", "IF(TRUE,\"\",\"\")").setCellValue("");
+
+            fillValidRow(sheet, 4, uniqueNo("formula-error"), "错误缓存公式");
+            setFormula(sheet, 4, "crj", "1/0").setCellErrorValue(
+                    org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());
+        });
+
+        LandImportResultVO preview = importService.preview(file, LandDuplicateStrategy.REJECT);
+        assertEquals(3, preview.getErrorCount(), "三种不可用公式缓存都应逐行报错：" + describe(preview));
+        for (LandImportResultVO.RowError error : preview.getErrors()) {
+            assertEquals("crj", error.getColumn());
+            assertTrue(error.getMessage().contains("缓存"), "错误应说明公式缓存原因：" + error.getMessage());
+            assertTrue(error.getRowNum() >= 3 && error.getRowNum() <= 5,
+                    "错误必须带真实 Excel 行号：" + error.getRowNum());
+        }
+
+        ParsedFile parsed = importService.parseOnly(file, LandDuplicateStrategy.REJECT);
+        Workbook report = importService.buildErrorReport(parsed.getResult(), parsed.getSource());
+        try {
+            Sheet receipt = report.getSheetAt(0);
+            assertEquals("=1+1", receipt.getRow(1).getCell(indexOf(headers(receipt), "crj")).getStringCellValue(),
+                    "错误回执应保留原始公式供用户排查，而不是把它当数值入库");
+            assertTrue(receipt.getRow(1).getCell(receipt.getRow(0).getLastCellNum() - 1)
+                    .getStringCellValue().contains("缓存"));
+        } finally {
+            report.close();
+        }
+    }
+
     // ==================================================================
     // 三、入库
     // ==================================================================
@@ -601,6 +674,39 @@ public class LandImportTest extends LandIntegrationTestBase {
         workbook.close();
         return new MockMultipartFile("file", fileName,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray());
+    }
+
+    private org.apache.poi.ss.usermodel.Cell setFormula(Sheet sheet, int rowIndex,
+                                                          String header, String formula) {
+        Integer column = headerIndex(sheet, header);
+        assertNotNull(column, "模板里找不到列：" + header);
+        Row row = sheet.getRow(rowIndex);
+        if (row == null) {
+            row = sheet.createRow(rowIndex);
+        }
+        org.apache.poi.ss.usermodel.Cell cell = row.getCell(column);
+        if (cell == null) {
+            cell = row.createCell(column);
+        }
+        cell.setCellFormula(formula);
+        return cell;
+    }
+
+    private java.util.Date parseDate(String value) {
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd").parse(value);
+        } catch (java.text.ParseException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    private List<String> headers(Sheet sheet) {
+        List<String> result = new ArrayList<>();
+        Row row = sheet.getRow(0);
+        for (int c = 0; c < row.getLastCellNum(); c++) {
+            result.add(row.getCell(c).getStringCellValue());
+        }
+        return result;
     }
 
     /** 按表头名写单元格（模板的第 2 行是中文说明，所以 rowIndex 从 2 开始填数据） */

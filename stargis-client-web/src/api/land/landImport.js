@@ -138,14 +138,14 @@ export function downloadLandErrorReport (file, duplicateStrategy) {
     })
     .then((response) => {
       const contentType = response.headers.get('Content-Type') || ''
-      if (contentType.indexOf('application/json') >= 0) {
-        return response.json().then((body) => {
-          throw new Error((body && body.message) || '生成错误回执失败')
+      if (!response.ok || contentType.indexOf('application/json') >= 0 || contentType.indexOf('text/html') >= 0) {
+        return response.text().then((text) => {
+          throw new Error(downloadErrorMessage(response, text))
         })
       }
       const disposition = response.headers.get('Content-Disposition') || ''
       return response.blob().then((blob) => {
-        saveBlob(blob, parseFileName(disposition) || '经营性用地导入错误回执.xlsx')
+        return saveExcelBlob(blob, parseFileName(disposition) || '经营性用地导入错误回执.xlsx')
       })
     })
 }
@@ -187,6 +187,30 @@ function saveBlob (blob, fileName) {
   link.click()
   document.body.removeChild(link)
   window.URL.revokeObjectURL(url)
+}
+
+function downloadErrorMessage (response, text) {
+  try {
+    const body = JSON.parse(text)
+    if (body && body.message) return body.message
+  } catch (e) {
+    // 非 JSON 的网关错误在下面按 HTTP 状态提示
+  }
+  return `生成错误回执失败（HTTP ${response.status}）`
+}
+
+/** 只有非空且带 xlsx ZIP 魔数的字节流才允许进入下载，拒绝把错误页保存成表格。 */
+function saveExcelBlob (blob, fileName) {
+  if (!blob || !blob.size) {
+    return Promise.reject(new Error('后端返回了空文件，请查看后端日志后重试'))
+  }
+  return blob.slice(0, 2).arrayBuffer().then((buffer) => {
+    const bytes = new Uint8Array(buffer)
+    if (bytes.length < 2 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+      throw new Error('后端未返回有效的 xlsx 文件')
+    }
+    saveBlob(blob, fileName)
+  })
 }
 
 /* ==========================================================================

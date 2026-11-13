@@ -378,33 +378,34 @@ public class FacilityImportController {
                 + ".xlsx";
     }
 
-    /** 把工作簿写进响应流（.xlsx） */
+    /** 把工作簿写进响应流（.xlsx）。先序列化再提交响应，生成失败时才能返回完整 JSON 错误。 */
     private void writeWorkbook(HttpServletResponse response, Workbook workbook, String fileName)
             throws Exception {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        workbook.write(buffer);
+
         String encoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20");
         response.reset();
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
                 "attachment; filename=\"" + encoded + "\"; filename*=UTF-8''" + encoded);
+        response.setHeader("Access-Control-Expose-Headers", "Content-Disposition, Content-Type, Content-Length");
+        response.setContentLength(buffer.size());
         try (OutputStream out = response.getOutputStream()) {
-            workbook.write(out);
+            buffer.writeTo(out);
             out.flush();
         }
     }
 
-    /**
-     * 文件流已经写过一半时出错，只能往响应里补一个 JSON 错误体。
-     *
-     * <p>此时换不了 HTTP 状态码（响应已提交），但用户至少能在浏览器下载到的文件里
-     * 看到错误原因，而不是一个坏掉的 xlsx。
-     */
+    /** 未提交响应时统一返回合法 JSON，避免调用方把异常文本下载成损坏的 xlsx。 */
     private void writeJsonError(HttpServletResponse response, String message) {
         try {
             response.reset();
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"success\":false,\"message\":\""
-                    + StringUtils.defaultString(message).replace("\"", "'") + "\"}");
+            response.getWriter().write(com.alibaba.fastjson.JSON.toJSONString(
+                    Result.error(StringUtils.defaultString(message, "生成错误回执失败"))));
             response.getWriter().flush();
         } catch (Exception ignored) {
             log.warn("写响应错误信息也失败了：{}", message);

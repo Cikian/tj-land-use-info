@@ -18,6 +18,7 @@ import org.jeecg.modules.land.data.imports.LandDuplicateStrategy;
 import org.jeecg.modules.land.data.imports.LandImportField;
 import org.jeecg.modules.land.data.imports.LandImportResultVO;
 import org.jeecg.modules.land.data.imports.service.ILandImportService;
+import org.jeecg.modules.land.data.imports.support.ImportCellSupport;
 import org.jeecg.modules.land.data.imports.support.LandImportSupport;
 import org.jeecg.modules.land.data.mapper.LandMapper;
 import org.jeecg.modules.land.data.service.ILandService;
@@ -410,8 +411,14 @@ public class LandImportServiceImpl implements ILandImportService {
         for (Map.Entry<Integer, LandImportField.FieldSpec> entry : columnMap.entrySet()) {
             LandImportField.FieldSpec spec = entry.getValue();
             Cell cell = row.getCell(entry.getKey());
-            String raw = cellText(cell);
+            ImportCellSupport.CellValue cellValue = ImportCellSupport.read(cell, FORMATTER);
+            String raw = cellText(cell, cellValue);
             data.rawValues.add(raw);
+            if (cellValue.hasError()) {
+                // 公式本身只用于回执保留原始内容，绝不能继续进入数值、日期或枚举校验。
+                data.addError(spec, spec.getLabel() + "：" + cellValue.getError());
+                continue;
+            }
             if (raw.isEmpty()) {
                 continue;
             }
@@ -688,6 +695,9 @@ public class LandImportServiceImpl implements ILandImportService {
             land.setSourceId(null);
             land.setCreateBy(username);
             land.setCreateTime(now);
+            // 批量新增与单条新增使用同一图形版本口径，避免导入后仍复用旧概览。
+            land.setUpdateBy(username);
+            land.setUpdateTime(now);
             landMapper.insert(land);
             result.setInsertedRows(result.getInsertedRows() + 1);
         }
@@ -866,11 +876,16 @@ public class LandImportServiceImpl implements ILandImportService {
 
     /** 单元格文本（数字不会变成 1.0；公式取缓存值；剔除 \n \r 等控制字符） */
     private String cellText(Cell cell) {
-        if (cell == null) {
-            return "";
+        return cellText(cell, ImportCellSupport.read(cell, FORMATTER));
+    }
+
+    private String cellText(Cell cell, ImportCellSupport.CellValue value) {
+        if (value.hasError()) {
+            // 仅用于原值回执与空行判断；readRow 会同时记录公式错误并阻止该值参与转换。
+            return cell.getCellFormula() == null ? "" : "=" + cell.getCellFormula();
         }
-        String text = FORMATTER.formatCellValue(cell);
-        return text == null ? "" : LandImportSupport.stripControlChars(text).trim();
+        String text = value.getText();
+        return LandImportSupport.stripControlChars(text).trim();
     }
 
     /** 单元格日期：支持 Excel 日期格式与常见文本写法 */
