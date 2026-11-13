@@ -201,15 +201,13 @@ const user = {
             });
             return
           } else if (res.code == 200 && res.result && res.result.hasOwnProperty('days')) {
+            // 【stargis 改造 2026-11-11】大屏端登录成功时**不再**提示「许可校验 + 加密锁权限距离过期还有 N 天」。
+            // 正常授权下 N 是 9999 这类毫无信息量的大数字，每次登录都在右下角弹一次绿色提示，纯噪音。
+            // 只保留「剩余不足 7 天」的到期预警——那是真的要运维去换锁的场景，不能一起删掉。
             if (res.result.days < 7) {
               notification['success']({
                 message: '许可校验',
                 description: "加密锁权限剩余" + res.result.days + "天即将到期，请联系平台运维人员及时更新",
-              });
-            } else {
-              notification['success']({
-                message: '许可校验',
-                description: "加密锁权限距离过期还有" + res.result.days + "天",
               });
             }
           }
