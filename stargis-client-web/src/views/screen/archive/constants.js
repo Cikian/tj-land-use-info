@@ -35,14 +35,14 @@ export const ARCHIVE_STATUSES = ['未归档', '归档中', '审核中', '已归�
 /** 档案类型（后端 archive_type，默认 electronic） */
 export const ARCHIVE_TYPES = [
   { value: 'electronic', label: '电子档案' },
-  { value: 'paper', label: '纸质档案' },
+  { value: 'paper', label: '纸质档案' }
 ]
 
 /** 档案来源（后端 source_type，默认 manual） */
 export const SOURCE_TYPES = [
   { value: 'manual', label: '手工录入' },
   { value: 'doc_receive', label: '收文归档' },
-  { value: 'doc_send', label: '发文归档' },
+  { value: 'doc_send', label: '发文归档' }
 ]
 
 /**
@@ -57,7 +57,7 @@ export const ALLOWED_EXT = [
   'txt', 'xml', 'md', 'csv',
   'rar', 'zip', '7z',
   'dwg', 'dxf', 'shp', 'dbf', 'shx', 'prj', 'kml', 'kmz',
-  'mp4', 'avi', 'mov', 'wmv',
+  'mp4', 'avi', 'mov', 'wmv'
 ]
 
 /** 卷内文件允许的扩展名的人类可读描述（上传提示文案） */
@@ -81,6 +81,27 @@ export const CORE_QUERY_FIELDS = ['ptxmmc', 'crzdbh', 'categoryId', 'dateRange']
  */
 export const DOC_STATUSES = ['待承办', '承办中', '已退回', '已办结', '已归档']
 
+/**
+ * 「筛选下拉」专用的收文状态（P2-12）。
+ *
+ * 口径（用户已确认）：**只从筛选下拉里去掉「承办中」，状态机与统计卡都保留**。
+ * 为什么不直接改 DOC_STATUSES：它还被 docStatusTone、DocFlowModal 的流转历史、
+ * 台账与统计卡使用——删掉「承办中」会让已经转办过的记录显示成一个非法状态
+ * （标签回落到默认色、流转时间轴上出现未知节点），是从「难看」升级成「错」。
+ * 所以这里派生一个筛选专用数组：库里、列表里、统计里都仍有「承办中」，
+ * 只是不再给用户一个「筛承办中」的入口。
+ *
+ * ★ 已有「承办中」的记录仍能正常显示与流转（静态断言点，改动前请逐个确认）：
+ *   1. 显示：本文件 docStatusTone() 有 case '承办中' → 'info'（列表/详情标签仍有颜色）；
+ *   2. 流转历史：DocFlowModal 用 DOC_STATUSES + docFlowTone 渲染时间轴，
+ *      「承办中」是转办后的合法节点，不会出现未知节点；
+ *   3. 流转动作：后端 DocReceiveServiceImpl 的 transfer/reject/finish 只校验
+ *      「已办结/已归档」不可再操作，从不校验「承办中」不允许操作；
+ *   4. 统计：queryStat 的 countGroupByStatus 仍会返回「承办中」计数，统计卡照旧展示。
+ *   任何一处若把「承办中」从枚举里删掉，上面四条会同时变成非法状态。
+ */
+export const DOC_FILTER_STATUSES = DOC_STATUSES.filter((status) => status !== '承办中')
+
 /** 紧急程度（后端 doc_receive.urgency） */
 export const DOC_URGENCIES = ['普通', '急件', '特急']
 
@@ -95,14 +116,14 @@ export const DOC_TYPES = ['通知', '函', '批复', '报告', '其他']
  */
 export const DOC_ARCHIVED_OPTIONS = [
   { value: 'true', label: '已归档' },
-  { value: 'false', label: '未归档' },
+  { value: 'false', label: '未归档' }
 ]
 
 /** 收文流转动作 */
 export const DOC_FLOW_ACTIONS = [
   { value: 'transfer', label: '转办 / 分办' },
   { value: 'reject', label: '退回' },
-  { value: 'finish', label: '办结' },
+  { value: 'finish', label: '办结' }
 ]
 
 /**
@@ -115,7 +136,7 @@ export const DOC_ALLOWED_EXT = [
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'xml', 'md', 'csv',
   'rar', 'zip', '7z', 'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd', 'dwg', 'dxf',
   'shp', 'dbf', 'shx',
-  'mp4', 'avi', 'mov', 'wmv',
+  'mp4', 'avi', 'mov', 'wmv'
 ]
 
 /** 收发文附件扩展名的人类可读描述 */
@@ -353,6 +374,6 @@ export function defaultPagination (pageSize = 10) {
     current: 1,
     pageSize,
     total: 0,
-    pageSizeOptions: [10, 20, 50, 100],
+    pageSizeOptions: [10, 20, 50, 100]
   }
 }

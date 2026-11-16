@@ -243,7 +243,7 @@ import {
   ScreenLoading,
   ScreenEmpty,
   ScreenButton,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { getJavaFileAccessHttpUrl } from '@/api/manageJava'
@@ -256,8 +256,10 @@ import {
   formatInvestment,
   joinInfo,
   ynText,
+  // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+  projectTypeText,
   parseAttachments,
-  isClosedWithoutResult,
+  isClosedWithoutResult
 } from '../constants'
 
 /** 详情里统一用「—」占位；注意 0 是合法值，不能用 `value || '—'` */
@@ -279,7 +281,7 @@ export default {
     ScreenEmpty,
     ScreenButton,
     ScreenIcon,
-    EscalationMaterialTable,
+    EscalationMaterialTable
   },
   data () {
     return {
@@ -291,8 +293,8 @@ export default {
       tabs: [
         { key: 'base', label: '基本信息' },
         { key: 'materials', label: '提级论证材料' },
-        { key: 'records', label: '审核意见记录' },
-      ],
+        { key: 'records', label: '审核意见记录' }
+      ]
     }
   },
   computed: {
@@ -305,14 +307,14 @@ export default {
       const d = this.detail || {}
       return [
         { key: 'projectNo', label: '项目编号', value: d.projectNo, tone: 'accent' },
-        { key: 'projectType', label: '项目类型', value: d.projectType },
+        { key: 'projectType', label: '项目类型', value: projectTypeText(d.projectType, d.projectType_dictText) },
         { key: 'declareDept', label: '申报单位', value: d.declareDept },
         { key: 'declareDate', label: '申报时间', value: d.declareDate, tone: 'number' },
         { key: 'projectScale', label: '项目规模', value: d.projectScale },
         { key: 'totalInvestment', label: '总投资（亿元）', value: this.investmentText(d.totalInvestment), tone: 'number' },
         { key: 'projectName', label: '项目名称', value: d.projectName, stack: true },
         { key: 'buildLocation', label: '建设地点', value: d.buildLocation, stack: true },
-        { key: 'projectSummary', label: '项目概述', value: d.projectSummary, stack: true },
+        { key: 'projectSummary', label: '项目概述', value: d.projectSummary, stack: true }
       ]
     },
     landItems () {
@@ -325,7 +327,7 @@ export default {
         { key: 'dkArea', label: '地块面积（㎡）', value: d.dkArea, tone: 'number' },
         { key: 'crzdbh', label: '关联出让宗地编号', value: d.crzdbh, tone: 'number' },
         { key: 'dkmc', label: '地块名称', value: d.dkmc, stack: true },
-        { key: 'ptxmmc', label: '关联配套项目', value: d.ptxmmc, stack: true },
+        { key: 'ptxmmc', label: '关联配套项目', value: d.ptxmmc, stack: true }
       ]
     },
     /** 提级论证信息：全部是长文本，统一 stack 整行展示 */
@@ -336,7 +338,7 @@ export default {
         { key: 'argBasis', label: '提级论证依据', value: d.argBasis, stack: true },
         { key: 'argNecessity', label: '必要性说明', value: d.argNecessity, stack: true },
         { key: 'argFeasibility', label: '可行性说明', value: d.argFeasibility, stack: true },
-        { key: 'argContent', label: '论证事项内容', value: d.argContent, stack: true },
+        { key: 'argContent', label: '论证事项内容', value: d.argContent, stack: true }
       ]
     },
     /**
@@ -356,9 +358,9 @@ export default {
           key: 'counts',
           label: '材料数 / 意见记录数',
           value: `${(d.materialCount || 0)} 个 / ${this.records.length} 条`,
-          tone: 'number',
+          tone: 'number'
         },
-        { key: 'createInfo', label: '创建信息', value: joinInfo(d.createBy, d.createTime) },
+        { key: 'createInfo', label: '创建信息', value: joinInfo(d.createBy, d.createTime) }
       ]
 
       if (!isBlank(d.argConclusion)) {
@@ -375,7 +377,7 @@ export default {
     },
     closedWithoutResult () {
       return isClosedWithoutResult(this.detail)
-    },
+    }
   },
   methods: {
     statusTone,
@@ -470,8 +472,8 @@ export default {
       } else {
         toast.warning('该附件还没有可访问的地址')
       }
-    },
-  },
+    }
+  }
 }
 </script>
 

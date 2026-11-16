@@ -16,7 +16,18 @@
       actions,     // type=actions 时的操作数组：[{ key, label, tone, visible }]
                    //   visible 可以是布尔，也可以是 (row) => boolean
       precision,   // number / percent 的小数位
+      fixed,       // 可选：'left' | 'right' —— 横向滚动时该列固定（见下）
     }]
+
+    ★ 左侧/右侧固定列（P2-09，**可选能力，不传就与旧行为完全一致**）
+      columns[i].fixed = 'left'  → 从**第一列开始连续**的若干列固定在左侧
+      columns[i].fixed = 'right' → 从**最后一列开始连续**的若干列固定在右侧
+      约束（与 antd 一致）：左右各只认「从边缘连续」的那一段。
+        理由：sticky 的偏移是按「前面有几个固定列」累加的；
+        若把第 3 列固定、第 2 列不固定，滚动时第 3 列会滑到第 2 列应该在的位置，
+        看起来就是「列错位」。不连续的 fixed 会被忽略（按普通列处理）。
+      行选择列（selectable）会自动跟着左侧固定段一起固定，
+      否则横向滚动后复选框会滑到固定列底下、点不到。
 
     事件：
       action      (row, col, rowIndex, actionKey)  操作列点击；type=action 时 actionKey 为 undefined
@@ -40,7 +51,13 @@
 
         <thead>
           <tr>
-            <th v-if="selectable" class="is-center" scope="col">
+            <th
+              v-if="selectable"
+              class="is-center"
+              :class="{ 'is-fixed-left': selectorFixed }"
+              :style="selectorFixed ? { left: '0px' } : null"
+              scope="col"
+            >
               <label class="screen-data-table__checkbox">
                 <input
                   ref="selectAll"
@@ -60,7 +77,8 @@
               v-for="col in columns"
               :key="`th-${col.key}`"
               scope="col"
-              :class="alignClass(col)"
+              :class="[alignClass(col), fixedClass(col)]"
+              :style="fixedStyle(col)"
               :title="col.title"
             >
               {{ col.title }}
@@ -80,7 +98,13 @@
             @click="handleRowClick(row, rowIndex)"
             @dblclick="handleRowDblclick(row, rowIndex)"
           >
-            <td v-if="selectable" class="is-center" @click.stop>
+            <td
+              v-if="selectable"
+              class="is-center"
+              :class="{ 'is-fixed-left': selectorFixed }"
+              :style="selectorFixed ? { left: '0px' } : null"
+              @click.stop
+            >
               <label class="screen-data-table__checkbox">
                 <input
                   type="checkbox"
@@ -95,7 +119,12 @@
               </label>
             </td>
 
-            <td v-for="col in columns" :key="`td-${col.key}`" :class="alignClass(col)">
+            <td
+              v-for="col in columns"
+              :key="`td-${col.key}`"
+              :class="[alignClass(col), fixedClass(col)]"
+              :style="fixedStyle(col)"
+            >
               <!-- 序号 -->
               <template v-if="col.type === 'index'">
                 <span class="screen-data-table__index">{{ padIndex(rowIndex + 1) }}</span>
@@ -227,11 +256,11 @@ export default {
     /** 加载态 */
     loading: { type: Boolean, default: false },
     /** 加载文案 */
-    loadingText: { type: String, default: '加载中…' },
+    loadingText: { type: String, default: '加载中…' }
   },
   data () {
     return {
-      barReady: false,
+      barReady: false
     }
   },
   computed: {
@@ -262,6 +291,50 @@ export default {
         this.selectableEntries.every((entry) => this.isSelected(entry.row, entry.index))
       )
     },
+    /**
+     * 左右固定列的 left / right 偏移（像素）。
+     *
+     * 只认「从边缘连续」的两段：
+     *   左段 = columns[0..n] 里连续声明 fixed:'left' 的那几列，left 依次累加；
+     *   右段 = 末尾连续声明 fixed:'right' 的那几列，right 依次累加。
+     * 中间某个列没声明 fixed 就终止该段，后续即使又写了 fixed 也按普通列处理
+     * （否则滚动时会出现「列滑到别人的位置上」的错位）。
+     *
+     * 一行 fixed 都没写时返回空对象 —— 所有 fixedClass/fixedStyle 都返回空，
+     * 渲染结果与改动前完全一致（向后兼容）。
+     */
+    fixedMeta () {
+      const left = {}
+      const right = {}
+      let leftOffset = 0
+      let leftOpen = true
+      this.columns.forEach((col) => {
+        if (!leftOpen) return
+        if (col && col.fixed === 'left') {
+          left[col.key] = leftOffset
+          leftOffset += this.numericWidth(col)
+        } else {
+          leftOpen = false
+        }
+      })
+      let rightOffset = 0
+      let rightOpen = true
+      for (let i = this.columns.length - 1; i >= 0; i--) {
+        const col = this.columns[i]
+        if (!rightOpen || !col) break
+        if (col.fixed === 'right') {
+          right[col.key] = rightOffset
+          rightOffset += this.numericWidth(col)
+        } else {
+          rightOpen = false
+        }
+      }
+      return { left, right }
+    },
+    /** 行选择列是否也要固定：只有存在左侧固定段时才固定，否则保持原行为 */
+    selectorFixed () {
+      return this.selectable && Object.keys(this.fixedMeta.left).length > 0
+    }
   },
   watch: {
     allSelected () {
@@ -272,7 +345,7 @@ export default {
     },
     selectedKeys () {
       this.$nextTick(this.syncIndeterminate)
-    },
+    }
   },
   mounted () {
     if (!this.animated || prefersReducedMotion()) {
@@ -354,6 +427,36 @@ export default {
       if (col.width) return typeof col.width === 'number' ? `${col.width}px` : col.width
       return 'auto'
     },
+    /** 列的数值宽度（算固定列偏移用）；没写宽度的列按 120px 估，比 auto 更可预测 */
+    numericWidth (col) {
+      const width = col && col.width
+      if (typeof width === 'number') return width
+      if (typeof width === 'string') {
+        const parsed = parseInt(width, 10)
+        if (!Number.isNaN(parsed)) return parsed
+      }
+      return 120
+    },
+    /** 固定列的类名（不是固定列时返回空串，模板渲染与旧版一致） */
+    fixedClass (col) {
+      if (!col || !col.fixed) return ''
+      if (col.fixed === 'left' && this.fixedMeta.left[col.key] !== undefined) return 'is-fixed-left'
+      if (col.fixed === 'right' && this.fixedMeta.right[col.key] !== undefined) return 'is-fixed-right'
+      return ''
+    },
+    /** 固定列的行内偏移（非固定列返回 null，不下发 style） */
+    fixedStyle (col) {
+      if (!col || !col.fixed) return null
+      const cls = this.fixedClass(col)
+      if (cls === 'is-fixed-left') {
+        const base = this.selectorFixed ? 40 : 0
+        return { left: `${base + this.fixedMeta.left[col.key]}px` }
+      }
+      if (cls === 'is-fixed-right') {
+        return { right: `${this.fixedMeta.right[col.key]}px` }
+      }
+      return null
+    },
     alignClass (col) {
       return col.align ? `is-${col.align}` : ''
     },
@@ -402,8 +505,8 @@ export default {
     /** 整行双击（不设开关：双击是比单击更明确的意图，不会与单击行为冲突） */
     handleRowDblclick (row, index) {
       this.$emit('row-dblclick', row, index)
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -510,6 +613,56 @@ export default {
   th.is-right,
   td.is-right {
     text-align: right;
+  }
+
+  /*
+    ---------- 固定列（P2-09，可选能力） ----------
+    为什么必须给固定单元格**不透明底色**：sticky 只是定位，不作遮挡；
+    底色透明时横向滚动过去的文字会从固定列底下透出来，比不固定更难看。
+    三档底色分别对应「普通行 / 斑马纹 / 悬停 / 选中」——
+    取值是 tokens 里的半透明色叠在 --screen-panel-bg-solid(#08182e) 上的近似实色，
+    这样滚动时固定列与所在行的底色一致，不会出现一条「色块补丁」。
+  */
+  th.is-fixed-left,
+  td.is-fixed-left,
+  th.is-fixed-right,
+  td.is-fixed-right {
+    position: sticky;
+    // 普通单元格在滚动内容之上，但要低于吸顶表头（z-index: 2）
+    z-index: 1;
+    background: var(--screen-panel-bg-solid);
+  }
+
+  thead th.is-fixed-left,
+  thead th.is-fixed-right {
+    // 左上/右上角：既吸顶又固定，必须压过普通表头
+    z-index: 3;
+  }
+
+  // 固定列与滚动内容之间的分界线，让「这一列是钉住的」看得出来
+  td.is-fixed-left,
+  th.is-fixed-left {
+    box-shadow: 1px 0 0 var(--screen-border-soft);
+  }
+
+  td.is-fixed-right,
+  th.is-fixed-right {
+    box-shadow: -1px 0 0 var(--screen-border-soft);
+  }
+
+  tbody tr.is-alt td.is-fixed-left,
+  tbody tr.is-alt td.is-fixed-right {
+    background: #0a1f3a; // 斑马纹（rgba(55,132,215,.08)）叠在 #08182e 上的实色
+  }
+
+  tbody tr:hover td.is-fixed-left,
+  tbody tr:hover td.is-fixed-right {
+    background: #0d2a4b; // 悬停（rgba(55,132,215,.16)）
+  }
+
+  tbody tr.is-selected td.is-fixed-left,
+  tbody tr.is-selected td.is-fixed-right {
+    background: #0d2845; // 选中（rgba(130,198,255,.09)）
   }
 
   &__text {

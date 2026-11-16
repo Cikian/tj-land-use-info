@@ -24,7 +24,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1560"
+    :min-width="1760"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -97,14 +97,17 @@ export default {
     selectedRowKeys: { type: Array, default: () => [] },
     /** 只读模式：隐藏编辑/删除 */
     readonly: { type: Boolean, default: false },
-    emptyText: { type: String, default: '暂无档案' },
+    emptyText: { type: String, default: '暂无档案' }
   },
   data () {
     return {
       columns: [
         { key: 'archiveNo', title: '档案号', width: 180, type: 'link', align: 'left' },
         { key: 'archiveName', title: '档案名称', width: 180, type: 'slot' },
-        // { key: 'categoryNames', title: '档案类别', width: 200, type: 'slot' },
+        // 档案类别：后端 selectArchivePage 用 GROUP_CONCAT(DISTINCT category_name) 拼好
+        // （见 ArchiveMapper.xml 的 categoryAggColumns），多类别以「、」分隔，
+        // 前端只做截断 + title，不自己拼——否则又会变成「前端一套、详情一套」。
+        { key: 'categoryNames', title: '档案类别', width: 200, type: 'slot' },
         { key: 'ptxmmc', title: '配套项目', width: 190, ellipsis: true, align: 'center' },
         { key: 'crzdbh', title: '出让宗地编号', width: 190, ellipsis: true, align: 'center' },
         { key: 'xzqh', title: '行政区划', width: 100, align: 'center' },
@@ -114,8 +117,8 @@ export default {
         { key: 'fileCount', title: '卷内文件', width: 130, type: 'slot', align: 'center' },
         // tone 支持函数：按状态值决定标签语气，颜色 + 文字双重线索
         { key: 'status', title: '状态', width: 90, type: 'tag', tone: statusTone, align: 'center' },
-        { key: 'action', title: '操作', type: 'slot', align: 'center' },
-      ],
+        { key: 'action', title: '操作', type: 'slot', align: 'center' }
+      ]
     }
   },
   methods: {
@@ -123,8 +126,8 @@ export default {
     sourceTypeText,
     handleSelectChange (keys, rows) {
       this.$emit('select-change', keys, rows)
-    },
-  },
+    }
+  }
 }
 </script>
 

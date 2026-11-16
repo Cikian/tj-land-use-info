@@ -150,7 +150,7 @@
         {{ printMode === 'row' && printRow ? '提级论证项目台账（单项）' : '提级论证项目台账' }}
       </h1>
       <p class="escalation-ledger__print-meta">
-        打印时间：{{ printTime }}　｜　记录数：{{ printMode === 'row' ? 1 : dataSource.length }} 条
+        打印时间：{{ printTime }} ｜ 记录数：{{ printMode === 'row' ? 1 : dataSource.length }} 条
       </p>
 
       <table v-if="printMode === 'row' && printRow" class="escalation-ledger__print-table">
@@ -188,7 +188,7 @@ import {
   ScreenTabs,
   ScreenRadioGroup,
   ScreenTag,
-  ScreenEmpty,
+  ScreenEmpty
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import EscalationSearchForm from './EscalationSearchForm.vue'
@@ -205,6 +205,8 @@ import {
   compactQuery,
   defaultPagination,
   nowMinuteText,
+  // 项目类型三值口径：打印件上也不能出现已废弃的旧四类，历史值统一印「待确认」
+  projectTypeText
 } from '../constants'
 
 /** 打印列（12 项 + 序号），与台账列口径一致，去掉操作列 */
@@ -221,7 +223,7 @@ const PRINT_FIELDS = [
   { key: 'status', label: '办理状态' },
   { key: 'argResult', label: '论证结果' },
   { key: 'latestOpinion', label: '最新审核意见' },
-  { key: 'updateTime', label: '更新时间' },
+  { key: 'updateTime', label: '更新时间' }
 ]
 
 export default {
@@ -236,14 +238,14 @@ export default {
     ScreenEmpty,
     EscalationSearchForm,
     EscalationTable,
-    EscalationDetailModal,
+    EscalationDetailModal
   },
   props: {
     /**
      * 从「查询统计」的图表下钻时带的初始条件。
      * 只在 data() 里读一次；组件已被 keep-alive 缓存后改用 applyDrill。
      */
-    initialQuery: { type: Object, default: () => ({}) },
+    initialQuery: { type: Object, default: () => ({}) }
   },
   data () {
     const initial = compactQuery(this.initialQuery || {})
@@ -252,7 +254,7 @@ export default {
       viewMode: 'table',
       viewOptions: [
         { value: 'table', label: '表格视图' },
-        { value: 'card', label: '卡片视图' },
+        { value: 'card', label: '卡片视图' }
       ],
       statusTab: initial.status || 'all',
       statusCounts: {},
@@ -260,12 +262,12 @@ export default {
       dataSource: [],
       total: 0,
       pagination: Object.assign(defaultPagination(12), {
-        pageSizeOptions: [12, 24, 48, 96],
+        pageSizeOptions: [12, 24, 48, 96]
       }),
       printMode: 'all',
       printRow: null,
       printTime: '',
-      printFields: PRINT_FIELDS,
+      printFields: PRINT_FIELDS
     }
   },
   computed: {
@@ -275,7 +277,7 @@ export default {
         STATUS_OPTIONS.map((name) => ({
           key: name,
           label: name,
-          badge: Number(this.statusCounts[name]) || 0,
+          badge: Number(this.statusCounts[name]) || 0
         }))
       )
     },
@@ -292,7 +294,7 @@ export default {
         parts.push(`申报时间 ${query.beginDeclareDate || ''} ~ ${query.endDeclareDate || ''}`)
       }
       return parts.join('，')
-    },
+    }
   },
   created () {
     this.loadData()
@@ -310,7 +312,7 @@ export default {
       this.loading = true
       const params = Object.assign({}, this.query, {
         pageNo: this.pagination.current,
-        pageSize: this.pagination.pageSize,
+        pageSize: this.pagination.pageSize
       })
 
       return queryLedgerList(params)
@@ -392,6 +394,20 @@ export default {
       this.loadCounts()
     },
 
+    /**
+     * P2-01 统一契约：普通离开再进入时清空检索（含状态页签）。
+     * 下钻进来的条件由 applyDrill 注入，不会被这里覆盖 —— 调用方（index.vue）
+     * 只在「没有待消费的下钻条件」时调它。
+     */
+    resetFilters () {
+      if (this.$refs.search) this.$refs.search.setQuery({})
+      this.query = {}
+      this.statusTab = 'all'
+      this.pagination.current = 1
+      this.loadData()
+      this.loadCounts()
+    },
+
     /* ---------------- 行操作 ---------------- */
 
     openDetail (record, tab) {
@@ -449,11 +465,12 @@ export default {
         return record.argResult_dictText || value
       }
       if (field.key === 'projectType') {
-        return record.projectType_dictText || value
+        // 旧四类（产业类/基础设施类/民生类/其他）尚未迁移时，打印件也按「待确认」印
+        return projectTypeText(value, record.projectType_dictText)
       }
       return value
-    },
-  },
+    }
+  }
 }
 </script>
 

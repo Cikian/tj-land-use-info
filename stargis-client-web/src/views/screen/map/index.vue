@@ -22,9 +22,10 @@
       · 结果通过全局总线抛出：$bus.$emit('showPickQueryPop', rows|false)
         （false = 退出拾取 / 未拾中）。原弹窗 <query-pick-pop> 不渲染，
         由右侧 MapPickPanel 代替它展示结果，版式与高保真一致。
-      · 图层名：插件的 payload 里不带图层名，这里在插件处理器之后
-        追加一个自己的 LEFT_CLICK，从 scene.pick 结果里尽力取图层名，
-        取不到就保留原值（高保真演示名）。
+      · 图层名：插件的 payload 里不带图层名，这里追加一个自己的 LEFT_CLICK，
+        从 scene.pick 结果里尽力取图层名；取不到就保持原值，由「未拾中 /
+        退出拾取 / 切走工具」时的统一清空兜底（见 resetPickResult）。
+        ★ 右面板**没有演示数据**（测试问题 P2-02）：未拾取时只有空态。
 
     地名定位接的是 HomeHeader.vue 里那份可读源码（与插件 QueryPlaceName
     同一套实现），提取成 MapPlacePanel：右面板切到搜索界面，搜到结果列表，
@@ -74,8 +75,9 @@
     <!--
       右面板多模式：地名定位 / 道路定位（插件弹窗）/ 空间查询（插件弹窗）/
       属性查询（插件弹窗）/ 综合查询（插件弹窗）/ 综合统计（插件弹窗）/
-      拾取查询。其余状态（含默认空态）都是拾取查询面板——空态下按设计稿
-      展示演示数据。v-if / v-else-if 让面板互斥挂载：切换时地名面板的
+      拾取查询。其余状态（含默认空态）都是拾取查询面板——未拾取时只显示
+      「请在地图上拾取要素」空态，**不再展示演示数据**（P2-02）。
+      v-if / v-else-if 让面板互斥挂载：切换时地名面板的
       beforeDestroy 会自动清掉它画的图形和气泡标签。
 
       ⚠ 分支顺序与插件宿主类名一律保持原样，只整体多包了这一层定位根
@@ -354,15 +356,22 @@ export default {
       layout: usePanelLayout('map'),
       /**
        * 当前激活的左侧工具：'' 无 / 'pick' 拾取查询 / 'place' 地名定位 /
-       * 'road' 道路定位。右面板跟随它切换；无激活工具时展示拾取查询的
-       * 演示数据（设计稿空态）。
+       * 'road' 道路定位。右面板跟随它切换；无激活工具时右面板回落成
+       * 拾取查询的**空态**（面板本身不再有演示数据，见 MapPickPanel）。
        */
       activeTool: '',
       /** 「拾取查询」是否处于拾取模式（= 插件引擎 checked） */
       pickActive: false,
-      /** 最近一次拾取结果的 {name,value} 行数组；null = 无结果（面板回退演示数据） */
+      /**
+       * 最近一次拾取结果的 {name,value} 行数组；null = 无结果。
+       * ★ 不再回退演示数据（P2-02）：null 时面板只显示空态文案。
+       */
       pickRows: null,
-      /** 拾中要素所在图层名（取不到时保持空，面板显示演示名） */
+      /**
+       * 拾中要素所在图层名（取不到时保持空串，面板显示占位符「—」）。
+       * ★ 只在两处赋值：这里（初始化）与图层名探测回调；
+       *   退出拾取 / 切走工具 / 切模块时由 resetPickResult 复位为空。
+       */
       pickLayer: '',
       /**
        * 道路定位插件配置（sysConfig.QueryStatistics → QueryRoad 项）。
@@ -465,6 +474,21 @@ export default {
         }))
     }
   },
+  watch: {
+    /**
+     * 切走拾取工具（退出拾取 / 换别的工具）时清空上一次的拾取结果。
+     *
+     * ★ 为什么放在 activeTool 上而不是每个 toggle 里各写一遍：
+     *   拾取面板是右面板的**默认回退分支**（见模板最后的 v-else），换工具后它
+     *   并不会被销毁，下一次回到默认面板就会把上一次的属性原样端出来，
+     *   展厅里极易被当成「当前地块的真实数据」（测试问题 P2-02）。
+     *   收口在 activeTool 一个 watcher 上，任何退出路径（卡片再点一次、
+     *   切到别的工具、插件自己 cancelAll）都能覆盖到。
+     */
+    activeTool (next) {
+      if (next !== 'pick') this.resetPickResult()
+    }
+  },
   created () {
     // 拾取结果：payload 是 {name,value} 行数组；false = 取消拾取 / 未拾中
     this.$bus.$on('showPickQueryPop', this.handlePickResult)
@@ -502,6 +526,13 @@ export default {
     })
     this.stopLayerProbe()
     this.removeLayerNameHandler()
+    // 切模块 = 本页被销毁：把拾取结果与图层名一并归零，
+    // 免得地图页若被 keep-alive 缓存后回来还挂着上一轮的属性（P2-02）
+    this.resetPickResult()
+  },
+  /** 切模块（若本页被 keep-alive 缓存）：拾取状态不跨模块保留 */
+  deactivated () {
+    this.resetPickResult()
   },
   mounted () {
     // 真实地图（Cesium）由 S3dmViewer 异步创建，等 window.viewer 就绪后再
@@ -530,12 +561,15 @@ export default {
         // 避免「卡片亮着但拾取实际没生效」的卡死状态
         try { if (engine.checked) engine.cancelChecked() } catch (ignored) { /* 引擎复位失败不必再处理 */ }
         this.pickActive = false
-        if (this.activeTool === 'pick') this.activeTool = ''
+        this.activeTool = ''
+        this.resetPickResult()
         this.$screenToast.info('地图未就绪，拾取查询暂不可用')
         return
       }
       this.pickActive = !!engine.checked
       this.activeTool = this.pickActive ? 'pick' : ''
+      // 退出拾取（卡片再点一次）：面板回到默认空态，旧结果与图层名必须清掉
+      if (!this.pickActive) this.resetPickResult()
     },
 
     /** 左面板「地名定位」卡片 → 切换右面板到地名定位搜索；再点一次退出 */
@@ -615,6 +649,8 @@ export default {
       try { this.$refs.pickEngine.btnClick() } catch (error) { /* 引擎内部访问 viewer 失败，状态强制归零 */ }
       this.pickActive = false
       if (this.activeTool === 'pick') this.activeTool = ''
+      // 退出拾取工具 = 旧结果作废（P2-02：不留上一次的属性）
+      this.resetPickResult()
     },
 
     /** 复位道路引擎（三工具互斥用）：btnClick 走 cancelChecked，总线发 false */
@@ -1048,15 +1084,37 @@ export default {
       this.$screenToast.info('高清出图暂未接入，插件中无对应组件')
     },
 
-    /** 总线结果 → 右面板字段表；false / 空数组回退演示数据 */
+    /**
+     * 总线结果 → 右面板字段表。
+     * ★ payload 为 false / 空数组 = 退出拾取或未拾中（点在空白处）：
+     *   此时连图层名一起清空，否则「当前图层」会停留在上一个要素的图层上，
+     *   与空表并列出现时像是「属性没读出来」（P2-02）。
+     *   不再回退任何演示数据。
+     */
     handlePickResult (payload) {
-      this.pickRows = Array.isArray(payload) && payload.length ? payload : null
+      const rows = Array.isArray(payload) ? payload : []
+      this.pickRows = rows.length ? rows : null
+      if (!rows.length) this.pickLayer = ''
+    },
+
+    /**
+     * 清空拾取结果与图层名（P2-02 的统一收口）。
+     * 调用点：退出拾取 / 切走工具（activeTool watcher）/ 切模块（deactivated、
+     * beforeDestroy）。拾取面板是默认回退分支，不清就会把上一次的数据当成当前属性。
+     */
+    resetPickResult () {
+      this.pickRows = null
+      this.pickLayer = ''
     },
 
     /**
      * 图层名探测：在插件自己的 LEFT_CLICK 处理器**之后**再挂一个
      * （子组件 mounted 早于本组件，插件的处理器先注册），从 pick 结果里
-     * 尽力读图层名；失败保持原值，不干扰插件的拾取流程。
+     * 尽力读图层名。
+     * ★ 取不到时**不动** pickLayer：同一次拾取里可能连来好几个事件，
+     *   这里抹掉反而会把已取到的名字冲没；清空统一交给 handlePickResult
+     *   （未拾中）与 resetPickResult（退出工具 / 切模块）。
+     * 命中空白处（含 MVT 影像层没拾到要素）时也不改状态，不干扰插件的拾取流程。
      */
     setupLayerNameProbe () {
       if (!window.Cesium || !window.viewer || this._layerProbeHandler) return !!this._layerProbeHandler
@@ -1094,7 +1152,7 @@ export default {
             const primitive = picked.primitive || picked
             const name = (entity && entity.name) || primitive.name || primitive.path
             if (name) this.pickLayer = String(name)
-          } catch (error) { /* 图层名取不到就保留原值 */ }
+          } catch (error) { /* 图层名取不到就保留上一次的值，清空由 resetPickResult 负责 */ }
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
       } catch (error) {
         this._layerProbeHandler = null

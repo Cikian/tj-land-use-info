@@ -21,6 +21,8 @@
 
     ★ 配套项目回填规则：**只在字段为空时写，不覆盖用户已经改过的值**。
       现实里同一条道路可能被人工纠正过名称/宗地，回填把人工修正冲掉是最难查的那种数据问题。
+      唯一的例外是「道路名称」：它是配套项目的只读联动字段（用户重新选项目时才回填），
+      用户没有第二个入口可以改它，所以不存在「冲掉用户输入」的问题。
   -->
   <screen-modal
     :visible.sync="visible"
@@ -89,34 +91,51 @@
             道路信息
           </h4>
           <p class="handover-form__section-hint">
-            选「关联配套项目」可自动带出出让宗地编号、地块名称与行政区（<strong>只填空字段</strong>，
-            不会覆盖你已经改过的值）。移交事项登记的是真正发生 / 在办的移交，
+            先选「关联配套项目」：道路名称随项目带出，出让宗地编号、地块名称与行政区
+            <strong>只填空字段</strong>（不会覆盖你已经改过的值）。移交事项登记的是真正发生 / 在办的移交，
             没移交的道路不需要在这里建记录。
           </p>
 
           <div class="handover-form__grid">
-            <screen-field label="道路名称" required :error="errors.roadName" html-for="hf-roadName">
-              <screen-input
-                id="hf-roadName"
-                v-model="model.roadName"
-                :maxlength="200"
-                :invalid="!!errors.roadName"
-                placeholder="必填"
-              />
-            </screen-field>
-
-            <screen-field label="关联配套项目" html-for="hf-facility">
+            <!--
+              道路名称与配套项目名称只保留**一个**用户输入入口（清单 P1-10 第 4 条）：
+              先选配套项目，道路名称作为只读联动字段自动带出（后端仍冗余存 roadName）。
+              只读而不是隐藏的原因：历史数据里两者可能不同值（人工改过），
+              必须原样可见、原样保存，不能被联动静默覆盖。
+            -->
+            <screen-field
+              label="关联配套项目"
+              html-for="hf-facility"
+              tip="选项目后自动带出道路名称、宗地编号与地块名称"
+            >
               <screen-select
                 id="hf-facility"
                 v-model="model.facilityId"
                 :options="facilityOptions"
                 searchable
                 :filter-local="false"
-                :empty-text="facilityLoading ? '搜索中…' : '输入道路 / 项目名称搜索'"
-                placeholder="输入项目名称搜索"
+                :empty-text="facilityLoading ? '搜索中…' : '没有匹配的配套项目'"
+                placeholder="按项目名称 / 宗地编号搜索"
                 aria-label="关联配套项目"
                 @search="handleFacilitySearch"
+                @open="handleFacilityOpen"
                 @change="handleFacilityChange"
+              />
+            </screen-field>
+
+            <screen-field
+              label="道路名称"
+              required
+              :error="errors.roadName"
+              html-for="hf-roadName"
+              tip="随「关联配套项目」自动带出，修改请改配套项目名称"
+            >
+              <screen-input
+                id="hf-roadName"
+                :value="model.roadName"
+                readonly
+                :invalid="!!errors.roadName"
+                placeholder="选择「关联配套项目」后自动带出"
               />
             </screen-field>
 
@@ -316,6 +335,9 @@ import {
   handoverTypeOptions
 } from './constants'
 
+/** 下拉一次拉取的最大条数（后端 limit 参数） */
+const OPTION_LIMIT = 50
+
 /** 可编辑字段的初始值（空表单） */
 function buildEmptyModel () {
   return {
@@ -335,6 +357,12 @@ function buildEmptyModel () {
     landId: '',
     dkmc: '',
     facilityId: '',
+    /**
+     * 后端的配套项目名称（只读回显用）。
+     * 为什么要它：编辑时的下拉 label 必须用后端 `ptxmmc`，不能拿可能与后端不同的
+     * `roadName` 顶替（清单 P1-10 第 3 条）；保存时也一并回传，避免后端用道路名称兜底。
+     */
+    ptxmmc: '',
     handoverType: '',
     agreementNo: '',
     agreementName: '',
@@ -411,6 +439,8 @@ export default {
       this.visible = true
       // 预生成编号（失败不阻塞：用户可以手填，保存时后端也会兜底生成）
       this.handleGenerateNo(true)
+      // 新增时就要有候选：原来必须输入关键词才请求，用户会以为没有可选的配套项目
+      this.loadFacilityOptions('')
     },
 
     showEdit (record) {
@@ -454,13 +484,9 @@ export default {
           model.redLineWidth = data.redLineWidth === undefined || data.redLineWidth === null ? '' : data.redLineWidth
           this.model = model
 
-          // 配套项目下拉里没有当前值时会显示空白，这里补一条回显项
-          if (model.facilityId) {
-            this.facilityOptions = [{
-              value: model.facilityId,
-              label: model.roadName || model.facilityId
-            }]
-          }
+          // 候选要跟着回显的宗地走：首发一批，再把当前项目补进候选
+          // （当前项可能不在前 50 条里，不补下拉会显示空白）
+          this.loadFacilityOptions('')
         })
         .finally(() => {
           this.loading = false
@@ -508,41 +534,117 @@ export default {
         })
     },
 
-    /** 配套项目远程搜索 */
+    /* ---------------- 配套项目候选 ---------------- */
+
+    /** 展开下拉时刷新首批（只在还没加载过时发请求，避免每次点开都打接口） */
+    handleFacilityOpen () {
+      if (!this.facilityOptions.length) this.loadFacilityOptions('')
+    },
+
+    /**
+     * 配套项目远程搜索。
+     * 关键词为空时加载**首批**而不是清空候选：清空会让当前已选项一起消失，
+     * 下拉显示空白，看起来像「项目丢了」。
+     * 后端 `/land/data/facility/search` 的关键词同时匹配项目名与宗地编号，
+     * 所以「按项目名 / 宗地编号搜索」是同一个入参。
+     */
     handleFacilitySearch (keyword) {
+      this.loadFacilityOptions(keyword)
+    },
+
+    /**
+     * 拉取配套项目候选（整体替换，失败/为空时清空，不留上一轮结果）。
+     * 道路类项目的排前面：这页登记的都是道路移交，先看到道路更顺手；
+     * 但不丢弃其它类别 —— 这里只是**排序偏好**，不是过滤。
+     *
+     * ★ `roadFirst: true`（P1-10，后端可选参数）把「道路排前面」交给后端做：
+     *   前端只能对已返回的 50 条排序，第 51 条以后的道路根本进不了候选，
+     *   表现为「明明有这条路，搜不到 / 要输全名才出现」。
+     *   后端未上线时该参数会被忽略（GET 多一个查询参数不影响老接口），
+     *   此时下面的 roadRank 本地排序仍然生效，属于双保险。
+     */
+    loadFacilityOptions (keyword) {
       const text = String(keyword || '').trim()
-      if (!text) {
-        this.facilityOptions = []
-        this.facilityRawMap = {}
-        return
-      }
       this.facilityLoading = true
-      searchFacilityOptions({ keyword: text, limit: 50 })
+      searchFacilityOptions({ keyword: text || undefined, limit: OPTION_LIMIT, roadFirst: true })
         .then((res) => {
           const list = res && res.success ? res.result || [] : []
-          const rawMap = {}
-          this.facilityOptions = list.map((item) => {
-            rawMap[item.id] = item
-            return {
-              value: item.id,
-              label: item.crzdbh ? `${item.ptxmmc}（${item.crzdbh}）` : item.ptxmmc
-            }
-          })
-          this.facilityRawMap = rawMap
+          this.applyFacilityList(list)
         })
         .catch(() => {
           this.facilityOptions = []
           this.facilityRawMap = {}
+          this.ensureCurrentFacilityOption()
         })
         .finally(() => {
           this.facilityLoading = false
         })
     },
 
+    /** 后端列表 → 下拉选项 + 原始对象映射（handleFacilityChange 要看原始字段） */
+    applyFacilityList (list) {
+      const sorted = (list || []).slice().sort((a, b) => this.roadRank(a) - this.roadRank(b))
+      const rawMap = {}
+      this.facilityOptions = sorted.map((item) => {
+        rawMap[item.id] = item
+        return {
+          value: item.id,
+          // label 用可读名称：项目名（+宗地编号便于区分同名道路），名称缺失才退到宗地编号
+          label: item.ptxmmc
+            ? (item.crzdbh ? `${item.ptxmmc}（${item.crzdbh}）` : item.ptxmmc)
+            : (item.crzdbh || '未命名配套项目')
+        }
+      })
+      this.facilityRawMap = rawMap
+      this.ensureCurrentFacilityOption()
+    },
+
+    /** 道路类（ptsslb 含「道路」）排前面，其余保持原序 */
+    roadRank (item) {
+      const category = String((item && item.ptsslb) || '')
+      return category.indexOf('道路') > -1 ? 0 : 1
+    },
+
+    /**
+     * 把当前已选的配套项目补进候选。
+     * ★ label 用后端 `ptxmmc`（其次宗地编号，最后占位文案），
+     *   **不用** `roadName`：两者可能不同值，用 roadName 会掩盖真实项目名（清单 P1-10 第 3 条）。
+     */
+    ensureCurrentFacilityOption () {
+      const model = this.model || {}
+      if (!model.facilityId) return
+      if (this.facilityOptions.some((item) => item.value === model.facilityId)) return
+      const name = model.ptxmmc || this.readableModelName()
+      this.facilityOptions = [{ value: model.facilityId, label: name }].concat(this.facilityOptions)
+      // 原始对象也补上，否则用户不动下拉、直接保存时回填字段会拿不到
+      if (!this.facilityRawMap[model.facilityId]) {
+        const raw = {
+          id: model.facilityId,
+          ptxmmc: model.ptxmmc,
+          crzdbh: model.crzdbh,
+          dkmc: model.dkmc,
+          ptsslb: model.ptsslb,
+          landId: model.landId,
+          dldj: model.dldj,
+          xzqh: model.xzqh
+        }
+        this.facilityRawMap = Object.assign({}, this.facilityRawMap, { [model.facilityId]: raw })
+      }
+    },
+
+    /** 回显用的可读项目名：ptxmmc → 宗地编号 → 占位文案（绝不拿 id 当名称） */
+    readableModelName () {
+      const model = this.model || {}
+      return model.ptxmmc || model.crzdbh || '当前已选配套项目（名称待补）'
+    },
+
     /**
      * 选中配套项目后回填道路信息。
      *
-     * ★ 只填空字段：同一条道路的人工修正（名称、宗地编号）不能被回填冲掉。
+     * ★ 道路名称**每次选中都跟随项目名称**：它是只读联动字段，用户唯一的输入入口是
+     *   配套项目。但只在「用户重新选择项目」时回填 —— 编辑打开一条历史记录时不动
+     *   roadName，历史数据里两者不同值（人工改过）的记录因此不会被静默覆盖。
+     * ★ 其余字段只填空字段：同一条道路的人工修正不能被回填冲掉。
      * ★ 区划归位：旧数据里行政区划列混着功能区取值（生态城 / 经开区…），
      *   直接把功能区写进 xzqh 会造出「行政区划=生态城」这种脏数据，
      *   所以这里按取值判断该落到 xzqh 还是 gnq。
@@ -550,13 +652,20 @@ export default {
     handleFacilityChange (facilityId) {
       if (!facilityId) {
         this.model.facilityId = ''
+        this.model.ptxmmc = ''
         return
       }
       this.model.facilityId = facilityId
       const hit = this.facilityRawMap[facilityId]
       if (!hit) return
 
-      if (!this.model.roadName) this.model.roadName = hit.ptxmmc || ''
+      // 项目名称（后端字段）与道路名称同源：都取配套项目名称
+      const projectName = hit.ptxmmc || ''
+      this.model.ptxmmc = projectName
+      if (projectName) {
+        this.model.roadName = projectName
+      }
+
       if (!this.model.crzdbh) this.model.crzdbh = hit.crzdbh || ''
       if (!this.model.dkmc) this.model.dkmc = hit.dkmc || ''
       if (!this.model.ptsslb) this.model.ptsslb = hit.ptsslb || ''
@@ -578,8 +687,11 @@ export default {
     /** @returns {boolean} 是否通过 */
     validateForm () {
       const errors = {}
+      // 道路名称是只读联动字段，为空只可能是「还没选配套项目」
       if (!String(this.model.roadName || '').trim()) {
-        errors.roadName = '请输入道路名称'
+        errors.roadName = this.model.facilityId
+          ? '配套项目名称为空，请重新选择关联配套项目'
+          : '请先选择「关联配套项目」'
       }
       if (!this.model.status) {
         errors.status = '请选择移交状态'
@@ -651,6 +763,10 @@ export default {
         landId: text(model.landId),
         dkmc: text(model.dkmc),
         facilityId: text(model.facilityId),
+        // 后端 RoadHandover.ptxmmc 与 roadName 是两列（历史数据可能不同值）：
+        // 只读联动后两者同源，但这里仍显式回传，避免后端用 roadName 兜底时把
+        // 历史记录的 ptxmmc 覆盖成道路名称
+        ptxmmc: text(model.ptxmmc),
         handoverType: text(model.handoverType),
         agreementNo: text(model.agreementNo),
         agreementName: text(model.agreementName),

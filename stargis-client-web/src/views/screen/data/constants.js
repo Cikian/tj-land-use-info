@@ -15,15 +15,21 @@
  *     land_facility_category 配套设施类别    8 项
  *     land_process_status    环节情况        4 项（★ 与后端 ProcessStatus 枚举必须一致）
  *     land_process_issue     环节问题类型    5 项
- *     land_attach_type       附件类型        13 项（item_value 是编码 01/02/…/99）
+ *     land_attach_type       材料类型（宗地）  4 项（item_value 是编码 01~04，P1-08 报告图 3）
+ *   ★ 材料类型有两套（宗地 4 / 配套 13），配套那套的兜底在
+ *     `@/api/land/attachment` 的 ATTACHMENT_TYPES_FACILITY，两者不可合并：
+ *     两套的 01~04 重号，同一码值在两套里是两种材料。
  *   页面挂载时会用 `queryLandDictItems(dictDefinitions())`（在 api/land/landAdmin.js，
  *   见本文件末尾「字典定义」一节）从字典接口取一次覆盖，取不到的键保留下面的兜底值。
  *   兜底只保证「字典接口不可用时页面仍然能渲染、能选」。
  *
- * ★ 建设性质 / 道路等级 / 资金来源 **不在字典里**：它们的权威定义在
- *   `FacilityImportField`（Java 常量），与批量导入模板的取值提示同源。
- *   这里按那份清单逐字抄，改动时必须两边同改 —— 否则会出现
- *   「页面能选、导入却不认」这种最难查的问题。
+ * ★ 建设性质 / 道路等级 / 功能区 现在**也在字典里**（P1-05，见
+ *   sql/data/17_facility_dict_jsxx_dldj_gnq.sql：land_jsxx 6 项 / land_dldj 4 项 /
+ *   land_gnq 5 项），所以走字典接口取值；下面的 BUILD_NATURES / ROAD_LEVELS /
+ *   FUNCTION_AREAS 只当兜底，取值与字典项逐字一致。
+ *   资金来源 **仍不在字典里**：它的权威定义在 `FacilityImportField`（Java 常量），
+ *   与批量导入模板的取值提示同源；这里按那份清单逐字抄，改动时必须两边同改 ——
+ *   否则会出现「页面能选、导入却不认」这种最难查的问题。
  */
 
 import { previewModeText as sharedPreviewModeText, isPreviewableMode as sharedIsPreviewableMode } from '@/api/land/filePreview'
@@ -36,7 +42,11 @@ export const DICT_CODES = {
   facilityCategory: 'land_facility_category',
   processStatus: 'land_process_status',
   processIssue: 'land_process_issue',
-  attachType: 'land_attach_type'
+  attachType: 'land_attach_type',
+  // 配套的三个枚举（P1-05）：字典已在库里，前端必须读它，否则中心在后台改字典不生效
+  jsxx: 'land_jsxx',
+  dldj: 'land_dldj',
+  gnq: 'land_gnq'
 }
 
 /* ============================ 兜底枚举 ============================ */
@@ -69,33 +79,31 @@ export const PROCESS_STATUSES = ['未开启', '进行中', '已完成', '不涉�
 export const PROCESS_ISSUES = ['审批问题', '资金问题', '权属问题', '管线问题', '地质问题']
 
 /**
- * 附件类型（13 项）。
- * ★ value 是编码（01~13、99）而不是中文：附件类型是文件分类码，
- *   会被拼进存储目录名与导出文件名，必须稳定且与旧系统目录名可对照。
+ * 材料类型目录 —— **宗地 4 类**（唯一基准：P1-08 报告图 3）。
+ *
+ * ★ value 是编码（01~04）而不是中文：材料类型是文件分类码，会被拼进存储目录名与
+ *   导出文件名，必须稳定且与旧系统目录名可对照。
+ * ★ 这里只放宗地那套，因为 `dictDefinitions()` 里的 `attachType` 对应字典
+ *   `land_attach_type`（宗地侧）。配套那 13 类走另一个字典
+ *   `land_facility_attach_type`，兜底常量在 `@/api/land/attachment` 的
+ *   `ATTACHMENT_TYPES_FACILITY`，两份都是同一套口径（P1-08 报告图 3）。
+ * ★ 两套的 01~04 **重号**（宗地 01=土地整理计划、配套 01=核定用地与地籍调查），
+ *   所以任何下拉都必须按归属取对应那一套，不能合并成一份平铺清单。
  */
 export const ATTACH_TYPES = [
   { value: '01', label: '土地整理计划' },
   { value: '02', label: '配套情况函' },
   { value: '03', label: '配套筹备函' },
-  { value: '04', label: '出让宗地图形数据' },
-  { value: '05', label: '项建批复' },
-  { value: '06', label: '可研批复' },
-  { value: '07', label: '初设及概算批复' },
-  { value: '08', label: '道路规划' },
-  { value: '09', label: '管线综合矢量数据' },
-  { value: '10', label: '专业配套方案' },
-  { value: '11', label: '施工许可' },
-  { value: '12', label: '竣工与移交文件' },
-  { value: '99', label: '其他' }
+  { value: '04', label: '出让宗地图形数据（shp）' }
 ]
 
-/** 建设性质（FacilityImportField.JSXX_OPTIONS） */
+/** 建设性质（字典 land_jsxx 的兜底，6 项；取值与 sql/data/17_*.sql 逐字一致） */
 export const BUILD_NATURES = ['新建', '改建', '扩建', '翻建', '现状', '其他']
 
-/** 道路等级（FacilityImportField.DLDJ_OPTIONS）：含业务已确认的快速路。 */
+/** 道路等级（字典 land_dldj 的兜底，4 项）：含业务已确认的快速路。 */
 export const ROAD_LEVELS = ['城市主干路', '城市次干路', '城市支路', '快速路']
 
-/** 功能区（与 xzqh 的 16 区行政区划分列；不把它当第 17 个区）。 */
+/** 功能区（字典 land_gnq 的兜底，5 项；与 xzqh 的 16 区行政区划分列，不把它当第 17 个区）。 */
 export const FUNCTION_AREAS = ['生态城', '土地发展中心', '经开区', '高新区', '保税区']
 
 /** 资金来源（FacilityImportField.ZJLY_OPTIONS） */
@@ -383,7 +391,7 @@ export function defaultPagination (pageSize = 10) {
 /* ============================ 字典定义 ============================ */
 
 /**
- * 六个业务字典的定义清单。
+ * 九个业务字典的定义清单。
  *
  * ★ 这里**只声明「要取哪些字典」与「取不到时用什么兜底」，不发请求**：
  *   本文件被纯展示组件（表格、标签）引用，它们只需要 formatSize / formatTime
@@ -405,9 +413,11 @@ export function defaultPagination (pageSize = 10) {
  *   `dicts` 里只包含**接口成功返回**的键，所以 `if (dicts.xxx)` 这个判断
  *   本身就是「取不到就保留本地兜底」的实现。
  *
- * ★ `fallback` 里的取值与 sql/data/01_data_dict.sql **逐字一致**；
- *   建设性质 / 道路等级 / 资金来源 三个不在字典里（权威定义在
- *   FacilityImportField 的 Java 常量），所以不在这份清单里。
+ * ★ `fallback` 里的取值与 sql/data/01_data_dict.sql（前六项）、
+ *   sql/data/17_facility_dict_jsxx_dldj_gnq.sql（jsxx / dldj / gnq）**逐字一致**。
+ *   建设性质 / 道路等级 / 功能区 这三项**已入 sys_dict**，兜底仅用于
+ *   「字典接口失败 / 字典未初始化（新库还没执行 17_*.sql）」这一种情况；
+ *   资金来源仍不在字典里（权威定义在 FacilityImportField 的 Java 常量），所以不在这份清单里。
  */
 export function dictDefinitions () {
   return [
@@ -416,6 +426,9 @@ export function dictDefinitions () {
     { key: 'facilityCategory', code: DICT_CODES.facilityCategory, fallback: toOptions(FACILITY_CATEGORIES) },
     { key: 'processStatus', code: DICT_CODES.processStatus, fallback: toOptions(PROCESS_STATUSES) },
     { key: 'processIssue', code: DICT_CODES.processIssue, fallback: toOptions(PROCESS_ISSUES) },
-    { key: 'attachType', code: DICT_CODES.attachType, fallback: ATTACH_TYPES }
+    { key: 'attachType', code: DICT_CODES.attachType, fallback: ATTACH_TYPES },
+    { key: 'jsxx', code: DICT_CODES.jsxx, fallback: toOptions(BUILD_NATURES) },
+    { key: 'dldj', code: DICT_CODES.dldj, fallback: toOptions(ROAD_LEVELS) },
+    { key: 'gnq', code: DICT_CODES.gnq, fallback: toOptions(FUNCTION_AREAS) }
   ]
 }

@@ -10,12 +10,18 @@
       旧前端把条件拼成 `字段 like '%值%'` 这样的 SQL 片段（`insertSql123()`），
       交给后端原样执行；这里只提交 { field, operator, value, relation } 四个**数据**，
       后端按白名单字段生成 SQL、值走参数绑定。
-      因此下面那行「条件串预览」只是给人看的（不是发给后端的东西），
+      条件串预览（在 QueryConditionBuilder 里）只是给人看的，不是发给后端的东西，
       即使有人往里塞引号，也不会变成 SQL。
 
     ★ 导出走 GET + `conditionsJson`：
       `window.open` 只能发 GET，所以条件要能塞进查询串；
       后端会把它反序列化成同一套结构再落到同一个 Service。
+
+    ★ 两个导出按钮（清单 P1-13 第 1 条）：
+       「按自定义列导出」= 结果表勾了哪些列就导哪些（两个普通查询页的行为）；
+       「导出全部字段」  = 忽略列选择、保留查询条件，后端按字段注册表顺序输出全部业务列。
+       做成两个按钮而不是一个带状态的开关：开关会留在界面上，下一个人点导出时
+       根本不知道自己正在用哪种模式。
   -->
   <div class="advanced-query">
     <!-- ---------- 条件构造 ---------- -->
@@ -31,77 +37,49 @@
             @input="handleDataTypeChange"
           />
         </screen-field>
-        <screen-button size="sm" icon="plus" @click="addCondition">添加条件</screen-button>
-        <screen-button size="sm" icon="close" @click="resetConditions">清空条件</screen-button>
       </div>
 
-      <div class="advanced-query__rows">
-        <div v-for="(row, index) in conditions" :key="index" class="advanced-query__row">
-          <span class="advanced-query__index">{{ index + 1 }}</span>
-
-          <!-- 关系符：第一条不需要（旧系统的「与或」也是从第二条起生效） -->
-          <screen-select
-            v-if="index > 0"
-            :value="row.relation"
-            :options="relationOptions"
-            :searchable="false"
-            class="advanced-query__relation"
-            :aria-label="`第 ${index + 1} 条与上一条的关系`"
-            @input="updateRow(index, 'relation', $event)"
-          />
-          <span v-else class="advanced-query__relation is-placeholder">—</span>
-
-          <screen-select
-            :value="row.field"
-            :options="fieldOptions"
-            class="advanced-query__field"
-            :aria-label="`第 ${index + 1} 条字段`"
-            @input="handleFieldChange(index, $event)"
-          />
-
-          <screen-select
-            :value="row.operator"
-            :options="operatorOptions(row.field)"
-            :searchable="false"
-            class="advanced-query__operator"
-            :aria-label="`第 ${index + 1} 条运算符`"
-            @input="updateRow(index, 'operator', $event)"
-          />
-
-          <screen-input
-            :value="row.value"
-            class="advanced-query__value"
-            :placeholder="placeholderOf(row.field)"
-            clearable
-            :aria-label="`第 ${index + 1} 条字段值`"
-            @input="updateRow(index, 'value', $event)"
-            @enter="handleSearch"
-          />
-
-          <screen-button
-            size="sm"
-            icon="trash"
-            aria-label="删除这条条件"
-            @click="removeCondition(index)"
-          />
-        </div>
-      </div>
-
-      <div class="advanced-query__preview">
-        <span class="advanced-query__preview-label">条件串（仅供核对，不发给后端）</span>
-        <code class="advanced-query__preview-text">{{ conditionPreview }}</code>
-      </div>
+      <!--
+        条件构造器与「两个普通查询页的自定义条件」是同一个组件（清单 P2-11），
+        这里的规则（类型驱动控件、白名单运算符、空条件不下发）只有一份实现。
+      -->
+      <query-condition-builder
+        ref="builder"
+        :columns="columns"
+        :options="options"
+        :value="conditions"
+        @input="conditions = $event"
+        @search="handleSearch"
+      />
 
       <template #footer>
         <div class="advanced-query__actions">
           <screen-button size="sm" type="primary" icon="search" :loading="loading" @click="handleSearch">
             查询
           </screen-button>
-          <screen-button size="sm" icon="download" :disabled="!pagination.total" @click="handleExport">
-            导出 Excel
+
+          <!-- 两种导出是两条明确路径，不做成一个会记住状态的开关（清单 P1-13 第 1 条） -->
+          <screen-button
+            size="sm"
+            icon="download"
+            :disabled="!pagination.total"
+            @click="handleExport(false)"
+          >
+            按自定义列导出
           </screen-button>
+
+          <screen-button
+            size="sm"
+            icon="download"
+            :disabled="!pagination.total"
+            :loading="exportingAll"
+            @click="handleExport(true)"
+          >
+            导出全部字段
+          </screen-button>
+
           <span class="advanced-query__tip">
-            字段与运算符由后端白名单限定：不会出现「拼错列名」或「把值当 SQL 执行」
+            导出全部字段 = 忽略列选择，仅保留查询条件；表头用中文名 + 单位
           </span>
         </div>
       </template>
@@ -140,7 +118,6 @@
 import {
   ScreenButton,
   ScreenField,
-  ScreenInput,
   ScreenPanel,
   ScreenSelect
 } from '@/components/screen'
@@ -149,30 +126,21 @@ import {
   buildExportUrl,
   queryAdvancedPage,
   queryAdvancedSummary,
-  queryColumns
+  queryColumns,
+  queryOptions
 } from '@/api/land/statQuery'
 import { PAGE_SIZE_OPTIONS, metricsOf } from '../constants'
+import QueryConditionBuilder from './QueryConditionBuilder.vue'
 import QueryResultPanel from './QueryResultPanel.vue'
 import StatSummaryPanel from './StatSummaryPanel.vue'
-
-/** 运算符的中文名（后端只认 like / = / != / > / >= / < / <=） */
-const OPERATOR_LABELS = {
-  like: '类似',
-  '=': '等于',
-  '!=': '不等于',
-  '>': '大于',
-  '>=': '大于等于',
-  '<': '小于',
-  '<=': '小于等于'
-}
 
 export default {
   name: 'AdvancedQueryView',
   components: {
+    QueryConditionBuilder,
     QueryResultPanel,
     ScreenButton,
     ScreenField,
-    ScreenInput,
     ScreenPanel,
     ScreenSelect,
     StatSummaryPanel
@@ -184,17 +152,17 @@ export default {
         { value: 'land', label: '经营性用地' },
         { value: 'facility', label: '用地配套项目' }
       ],
-      relationOptions: [
-        { value: 'AND', label: '并且' },
-        { value: 'OR', label: '或者' }
-      ],
       columns: [],
-      /** 条件行：[{ field, operator, value, relation }] */
+      /** 候选值（字段 key → 候选清单），给构造器里的下拉用；来自后端候选值接口 */
+      options: {},
+      /** 条件行：[{ field, operator, value, relation }]，与构造器是受控关系 */
       conditions: [],
       selectedKeys: [],
       rows: [],
       summary: {},
       loading: false,
+      /** 「导出全部字段」的下载中标记：导出是 window.open，只能给人一个「已经点了」的反馈 */
+      exportingAll: false,
       pagination: { current: 1, pageSize: 20, total: 0 },
       pageSizeOptions: PAGE_SIZE_OPTIONS
     }
@@ -202,65 +170,34 @@ export default {
   computed: {
     metrics () {
       return metricsOf(this.dataType)
-    },
-    fieldOptions () {
-      return this.columns.map((column) => ({ value: column.key, label: column.label }))
-    },
-    /** 条件串预览（人类可读，形如 dkmc LIKE '%浯水道%' 并且 xzqh = '津南区'） */
-    conditionPreview () {
-      const parts = []
-      this.conditions.forEach((row, index) => {
-        if (!row.field || !row.value) {
-          return
-        }
-        const label = this.labelOf(row.field)
-        const operator = OPERATOR_LABELS[row.operator] || row.operator
-        const value = row.operator === 'like' ? `%${row.value}%` : `'${row.value}'`
-        const relation = index > 0 ? (row.relation === 'OR' ? ' 或者 ' : ' 并且 ') : ''
-        parts.push(`${relation}${label} ${operator} ${value}`)
-      })
-      return parts.length ? parts.join('') : '（未设置条件，查询全部数据）'
     }
   },
   created () {
     this.loadColumns()
   },
   methods: {
-    labelOf (key) {
-      const column = this.columns.find((item) => item.key === key)
-      return column ? column.label : key
-    },
-    operatorOptions (key) {
-      const column = this.columns.find((item) => item.key === key)
-      const list = (column && column.operators) || ['like', '=', '!=']
-      return list.map((operator) => ({ value: operator, label: OPERATOR_LABELS[operator] || operator }))
-    },
-    placeholderOf (key) {
-      const column = this.columns.find((item) => item.key === key)
-      if (!column) {
-        return '请先选字段'
-      }
-      if (column.type === 'DATE') {
-        return '如 2025-06-01'
-      }
-      if (column.type === 'NUMBER') {
-        return '输入数值'
-      }
-      return '输入关键词'
-    },
-
+    /**
+     * 字段元数据 + 候选值。
+     * 候选值单独取一次（与 StatQueryView 同一个接口），否则构造器里的
+     * 「行政区划」「配套设施类别」这些字段只能手打，打错一个字符就查不到。
+     */
     async loadColumns () {
-      const res = await queryColumns(this.dataType)
-      if (!res || !res.success) {
-        toast.error((res && res.message) || '字段定义加载失败')
+      const [colRes, optRes] = await Promise.all([
+        queryColumns(this.dataType),
+        queryOptions(this.dataType)
+      ])
+      if (!colRes || !colRes.success) {
+        toast.error((colRes && colRes.message) || '字段定义加载失败')
         return
       }
-      this.columns = res.result || []
+      this.columns = colRes.result || []
+      this.options = (optRes && optRes.success && optRes.result) || {}
       this.selectedKeys = this.columns
         .filter((column) => column.defaultColumn)
         .map((column) => column.key)
       if (!this.conditions.length) {
-        this.addCondition()
+        // 至少给一行空条件，用户不用先点「添加条件」才知道这里能填
+        this.conditions = [{ field: '', operator: 'like', value: '', relation: 'AND' }]
       }
       await this.handleSearch()
     },
@@ -274,49 +211,58 @@ export default {
       this.loadColumns()
     },
 
-    addCondition () {
-      this.conditions.push({ field: '', operator: 'like', value: '', relation: 'AND' })
-    },
-
-    removeCondition (index) {
-      this.conditions.splice(index, 1)
-    },
-
-    resetConditions () {
-      this.conditions = []
-      this.addCondition()
-    },
-
-    updateRow (index, key, value) {
-      this.$set(this.conditions[index], key, value)
-    },
-
-    /** 换字段时把运算符重置成该字段的第一个合法运算符（数值字段不能 like） */
-    handleFieldChange (index, key) {
-      const options = this.operatorOptions(key)
-      this.$set(this.conditions[index], 'field', key)
-      this.$set(this.conditions[index], 'operator', options.length ? options[0].value : 'like')
+    /**
+     * 清单 P2-01：普通离开再进入模块时清空检索条件、页码与结果。
+     * 由父级（query/index.vue）在页签切换 / 页面激活时调用：
+     *   - 条件回到一行空行（界面上能看见「没有条件」，而不是留着旧条件）；
+     *   - 页码回 1 并重查，结果与条件永远一致。
+     */
+    async resetFilters () {
+      this.conditions = [{ field: '', operator: 'like', value: '', relation: 'AND' }]
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      return this.handleSearch(1)
     },
 
     /** 只有「字段 + 值」都填了的条件才下发（顺序保持界面上的顺序，关系符按序拼接） */
     buildPayload (pageNo) {
-      return {
-        dataType: this.dataType,
-        conditions: this.conditions
-          .filter((row) => row.field && row.value !== '' && row.value !== null && row.value !== undefined)
+      const builder = this.$refs.builder
+      // 构造器还没挂载（created 里的首次查询可能早于 ref 就绪）时按父组件持有的行自行过滤，
+      // 规则与构造器一致：字段与值都要有。不能直接给空数组 —— 那会把用户刚填的条件吞掉。
+      const conditions = builder && builder.buildConditions
+        ? builder.buildConditions()
+        : (this.conditions || [])
+          .filter((row) => row && row.field &&
+            row.value !== null && row.value !== undefined && String(row.value).trim() !== '')
           .map((row) => ({
             field: row.field,
-            operator: row.operator,
+            operator: row.operator || 'like',
             value: String(row.value).trim(),
-            relation: row.relation
-          })),
+            relation: row.relation === 'OR' ? 'OR' : 'AND'
+          }))
+      return {
+        dataType: this.dataType,
+        conditions,
         columns: this.selectedKeys,
         pageNo: pageNo || 1,
         pageSize: this.pagination.pageSize
       }
     },
 
+    /** 提交前先校验：非法值（数值字段填了文字、日期格式不对）给一句明确的提示 */
+    checkConditions () {
+      const builder = this.$refs.builder
+      const message = builder && builder.validate ? builder.validate() : ''
+      if (message) {
+        toast.warning(message)
+        return false
+      }
+      return true
+    },
+
     async handleSearch (pageNo) {
+      if (!this.checkConditions()) {
+        return
+      }
       const current = typeof pageNo === 'number' ? pageNo : 1
       const payload = this.buildPayload(current)
       this.loading = true
@@ -370,13 +316,35 @@ export default {
         .map((column) => column.key)
     },
 
-    handleExport () {
+    /**
+     * 导出。
+     *
+     * @param {boolean} allFields true = 「导出全部字段」（忽略列选择、保留查询条件）
+     *
+     * ★ 全部字段模式**不传 columns**：不是省流量，而是让请求本身就表达清楚
+     *   「这次导的是全部字段」—— 后端看到 allColumns=true 会直接按注册表出列，
+     *   但日志/抓包里少一个可能误导人的 columns 参数更省事。
+     * ★ 查询条件照常带上（conditionsJson），否则「全量导出」会变成「忽略筛选的全表导出」，
+     *   那正是清单要求里明确不做的。
+     */
+    handleExport (allFields) {
+      if (!this.checkConditions()) {
+        return
+      }
       const payload = this.buildPayload(1)
-      window.open(buildExportUrl({
+      const params = {
         dataType: payload.dataType,
-        columns: payload.columns.join(','),
         conditionsJson: JSON.stringify(payload.conditions)
-      }), '_blank')
+      }
+      if (allFields) {
+        params.allColumns = true
+        this.exportingAll = true
+        // window.open 拿不到「下载完成」的回调，1.5 秒后放掉 loading 只为避免按钮一直转
+        window.setTimeout(() => { this.exportingAll = false }, 1500)
+      } else {
+        params.columns = payload.columns.join(',')
+      }
+      window.open(buildExportUrl(params), '_blank')
     }
   }
 }
@@ -412,72 +380,16 @@ export default {
     margin-bottom: 10px;
   }
 
-  &__rows {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 190px;
-    overflow-y: auto;
-  }
-
-  &__row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  &__index {
-    flex: 0 0 20px;
-    font-size: var(--screen-font-xs);
-    color: var(--screen-text-mute);
-    text-align: center;
-  }
-
-  &__relation {
-    flex: 0 0 92px;
-  }
-
-  &__field {
-    flex: 0 0 200px;
-  }
-
-  &__operator {
-    flex: 0 0 120px;
-  }
-
-  &__value {
-    flex: 1 1 auto;
-  }
-
-  &__preview {
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-    margin-top: 10px;
-    padding: 8px 10px;
-    background: var(--screen-elevate);
-    border: 1px dashed var(--screen-border);
-    border-radius: var(--screen-radius-sm);
-  }
-
-  &__preview-label {
-    flex: 0 0 auto;
-    font-size: var(--screen-font-xs);
-    color: var(--screen-text-mute);
-  }
-
-  &__preview-text {
-    flex: 1 1 auto;
-    font-family: var(--screen-font-mono, monospace);
-    font-size: var(--screen-font-xs);
-    color: var(--screen-text-sub);
-    word-break: break-all;
-  }
+  /*
+    条件行的版式（关系符/字段/运算符/值/删除）已经搬进 QueryConditionBuilder.vue，
+    这里不再保留同名样式 —— 留着只会让下一个人以为改这里能生效（scoped 也够不到子组件）。
+  */
 
   &__actions {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   &__tip {

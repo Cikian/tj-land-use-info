@@ -25,6 +25,14 @@
     ★ 服务端的状态—时间自洽校验（本弹窗提前镜像，少一次往返）：
       「已完成」必须填实际结束时间；实际结束时间不得早于开始时间。
 
+    ★★ P2-03：三个日期（开始 / 预计结束 / 实际结束）都是**选填**。
+      现场常常只知道「这个环节办完了」，说不清具体哪天办的；强制填日期只会逼人编一个
+      看起来像真的日期，而编出来的日期会直接污染逾期预警与历时统计。
+      所以这里只保留一条业务联动：「环节情况 = 已完成」必须有实际结束时间
+      （其余组合都允许日期为空，后端 ProcessStatus/保存校验也是这个口径）。
+      ★ 状态与备注现在可以在 ProcessTreePanel 的表格里直接改，不必为改一个字打开本弹窗；
+        本弹窗负责日期、问题类型、录入信息这些表格里放不下的明细。
+
     公开方法：
       open(payload)  打开并编辑一个事项
         payload = { ptId, facilityName, lcId, lcName, stageName, processTime,
@@ -89,11 +97,21 @@
           />
         </screen-field>
 
-        <screen-field label="环节开始时间" :error="errors.lckssj" label-width="112px">
+        <!--
+          三个日期都**不设 required、不做必填校验**（P2-03）。
+          唯一联动是「已完成 → 必须有实际结束时间」，由 validateForm 兜住；
+          这里不再挂 errors.lckssj —— 那个键从来没有被赋值过，只是看着像有校验。
+          tip 写清逾期口径：没有日期的环节不会被判逾期（后端拿预计结束时间比今天），
+          否则用户会担心「留空是不是就不预警了」而回去随便编一个日期。
+        -->
+        <screen-field
+          label="环节开始时间"
+          label-width="112px"
+          tip="三个日期都可留空；一个日期都没有的环节不会被判逾期"
+        >
           <screen-date-input
             v-model="model.lckssj"
-            :invalid="!!errors.lckssj"
-            placeholder="请选择开始时间"
+            placeholder="选填"
             @change="handleStartChange"
           />
         </screen-field>
@@ -106,7 +124,7 @@
           <div class="process-item__inline">
             <screen-date-input
               v-model="model.yjjssj"
-              :placeholder="expectLoading ? '正在按工作日推算…' : '可手工修改'"
+              :placeholder="expectLoading ? '正在按工作日推算…' : '选填，可手工修改'"
               @change="handleExpectManualChange"
             />
             <screen-button
@@ -403,6 +421,13 @@ export default {
 
     /* ---------------- 校验与保存 ---------------- */
 
+    /**
+     * 表单校验。
+     * ★ 三个日期**本身不是必填**（P2-03）：只保留两条业务联动，
+     *   与后端 FacilityAdminServiceImpl.saveProcess 的状态—时间校验同口径
+     *   （已完成必须有结束时间；结束不得早于开始）。
+     *   除此之外不再为日期加任何拦截 —— 逼用户编日期比留空更有害。
+     */
     validateForm () {
       const errors = {}
       if (!this.model.lcqk) {

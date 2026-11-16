@@ -238,7 +238,7 @@ import {
   ScreenDescriptions,
   ScreenEmpty,
   ScreenLoading,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { getJavaFileAccessHttpUrl } from '@/api/manageJava'
@@ -252,8 +252,10 @@ import {
   argResultTone,
   actionTone,
   formatInvestment,
+  // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+  projectTypeText,
   parseAttachments,
-  toOptions,
+  toOptions
 } from '../constants'
 
 export default {
@@ -271,7 +273,7 @@ export default {
     ScreenIcon,
     EscalationMaterialTable,
     EscalationRecordPanel,
-    EscalationDetailModal,
+    EscalationDetailModal
   },
   data () {
     return {
@@ -284,7 +286,7 @@ export default {
       current: null,
       records: [],
       statusOptions: toOptions(STATUS_OPTIONS),
-      pagination: { current: 1, pageSize: 10 },
+      pagination: { current: 1, pageSize: 10 }
     }
   },
   computed: {
@@ -296,7 +298,7 @@ export default {
       return [
         { key: 'projectNo', label: '项目编号', value: d.projectNo },
         { key: 'declareDept', label: '申报单位', value: d.declareDept },
-        { key: 'projectType', label: '项目类型', value: d.projectType },
+        { key: 'projectType', label: '项目类型', value: projectTypeText(d.projectType, d.projectType_dictText) },
         { key: 'totalInvestment', label: '总投资（亿元）', value: this.investmentText(d.totalInvestment) },
         { key: 'declareDate', label: '申报时间', value: d.declareDate },
         { key: 'buildLocation', label: '建设地点', value: d.buildLocation },
@@ -305,9 +307,9 @@ export default {
         { key: 'argOrg', label: '论证组织单位', value: d.argOrg },
         { key: 'argMeetingDate', label: '论证会日期', value: d.argMeetingDate },
         { key: 'argDate', label: '论证完成日期', value: d.argDate },
-        { key: 'argConclusion', label: '论证结论', value: d.argConclusion },
+        { key: 'argConclusion', label: '论证结论', value: d.argConclusion }
       ]
-    },
+    }
   },
   created () {
     this.loadProjects()
@@ -324,7 +326,7 @@ export default {
       this.projectLoading = true
       const params = {
         pageNo: this.pagination.current,
-        pageSize: this.pagination.pageSize,
+        pageSize: this.pagination.pageSize
       }
       if (this.keyword) params.projectName = this.keyword
       if (this.filterStatus) params.status = this.filterStatus
@@ -351,6 +353,20 @@ export default {
 
     handleSearchProject () {
       this.pagination.current = 1
+      this.loadProjects()
+    },
+
+    /**
+     * P2-01 统一契约：离开本模块再回来时清空检索与选中。
+     * 审批页的条件随输入即时生效（没有独立「查询」动作），所以清理必须同时复位
+     * keyword / filterStatus 与选中项目，否则会停在上次某个项目上、看着像「还在筛」。
+     */
+    resetFilters () {
+      this.keyword = ''
+      this.filterStatus = ''
+      this.current = null
+      this.records = []
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
       this.loadProjects()
     },
 
@@ -445,8 +461,8 @@ export default {
       } else {
         toast.warning('该附件还没有可访问的地址')
       }
-    },
-  },
+    }
+  }
 }
 </script>
 

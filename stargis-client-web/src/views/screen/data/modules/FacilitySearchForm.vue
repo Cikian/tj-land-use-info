@@ -4,9 +4,10 @@
     --------------------------------
     「配套地块数据录入」面板的检索条件。默认只露出 4 个最常用的
     （出让宗地编号 / 配套项目名称 / 配套设施类别 / 所属行政区），
-    其余 3 个收在「更多条件」后面，避免一进来就被输入框淹没。
+    其余 4 个（地块名称 / 项目分类 / 功能区 / 名称或编号）收在「更多条件」后面，
+    避免一进来就被输入框淹没。
     ★ 「更多条件」里刻意**没有**「是否开工」这类条件：后端配套列表的查询 DTO 只认
-      crzdbh / dkmc / xzqh / xmfl / srr / facilityKeyword 六个字段（其余会被静默忽略），
+      crzdbh / dkmc / xzqh / gnq / xmfl / srr / facilityKeyword 七个字段（其余会被静默忽略），
       放一个筛不出东西的下拉比不放更糟 —— 用户会以为「这批配套都没开工」。
 
     ★ 字段名与后端的对应关系（`LandAdminQueryDTO` 被配套列表复用，字段名相同、
@@ -14,17 +15,23 @@
         crzdbh          → 出让宗地编号（模糊）
         srr             → ★ 实际承载「配套项目名称」模糊条件（后端复用）
         facilityKeyword → ★「配套项目名称或宗地编号」模糊条件（另一个入口）
-        xzqh            → 精确
+        xzqh            → 精确（16 个行政区）
+        gnq             → 精确（功能区：生态城 / 土地发展中心 / 经开区 / 高新区 / 保税区）
         xmfl            → 精确（市级项目 / 区级项目）
         dkmc            → 地块名称模糊
+      ★★ 功能区**不能**塞进 xzqh：xzqh 只认 16 个行政区，功能区是与之并列的另一维
+        （见 sql/data/14_facility_gnq_and_dict.sql 的口径）。混进去会让「按滨海新区筛」
+        漏掉功能区里的配套，反之亦然。
 
     事件：
       search (query)  点击「查询」或按回车时抛出，query 已剔除空值
       reset           点击「重置」时抛出（同时也会抛 search，父组件只需监听 search）
 
     公开方法：
-      getQuery()  取当前条件（已剔除空值）
-      setQuery(q) 用一组新条件覆盖（供下钻 / applyDrill 使用）
+      getQuery()      取当前条件（已剔除空值）
+      setQuery(q)     用一组新条件覆盖（供下钻 / applyDrill 使用）
+      resetFilters()  清空全部条件并收起「更多条件」（**不抛事件**）。面板的
+                      `resetFilters()` 应转调它，再自行重新取数 —— 见方法注释。
   -->
   <div class="facility-search" :class="{ 'is-vertical': vertical }">
     <div class="facility-search__grid">
@@ -88,6 +95,21 @@
           />
         </screen-field>
 
+        <!--
+          功能区：与「所属行政区」是并列的两维，不能合成一个下拉
+          （xzqh 只列 16 个行政区，功能区走后端字段 gnq 精确匹配）。
+          候选值与「所属行政区」同一模式：先取 constants 的 FUNCTION_AREAS 兜底
+          （与录入表单的下拉同源），created 里再用 land_gnq 字典覆盖。
+        -->
+        <screen-field label="功能区" label-width="104px" :stacked="vertical">
+          <screen-select
+            v-model="query.gnq"
+            :options="functionAreaOptions"
+            placeholder="全部功能区"
+            aria-label="功能区"
+          />
+        </screen-field>
+
         <screen-field label="名称或编号" label-width="104px" :stacked="vertical" html-for="fs-keyword">
           <screen-input
             id="fs-keyword"
@@ -131,6 +153,7 @@ import { queryLandDictItems } from '@/api/land/landAdmin'
 import {
   XZQH_LIST,
   FACILITY_CATEGORIES,
+  FUNCTION_AREAS,
   PROJECT_TYPES,
   dictDefinitions,
   compactQuery
@@ -144,11 +167,27 @@ function buildEmptyQuery () {
     srr: '',
     ptsslb: '',
     xzqh: '',
+    /** 功能区（后端 gnq，精确匹配）；与 xzqh 并列，不是第 17 个行政区 */
+    gnq: '',
     dkmc: '',
     xmfl: '',
     facilityKeyword: ''
   }
 }
+
+/**
+ * 「更多条件」里的字段。
+ * ★ 下钻带这些条件进来时要自动展开，否则用户会以为条件没生效；
+ *   gnq 也算 —— 它在收起区里。
+ */
+const HIDDEN_FIELDS = ['dkmc', 'xmfl', 'gnq', 'facilityKeyword']
+
+/**
+ * 功能区的字典（`land_gnq`）已经并入 constants 的 `dictDefinitions()`（P1-05），
+ * 这里不再就地 concat 一份私有定义 —— 两处各写一份迟早会漂移成
+ * 「检索能选 5 项、录入能选 4 项」这种最难解释的问题。
+ * 与 xzqh 同一模式：先给本地兜底常量，字典取到就覆盖。
+ */
 
 export default {
   name: 'FacilitySearchForm',
@@ -185,19 +224,25 @@ export default {
       // 先给兜底，created 里再用字典覆盖（字典接口挂了页面也能筛）
       xzqhOptions: XZQH_LIST.map((item) => ({ value: item, label: item })),
       categoryOptions: FACILITY_CATEGORIES.map((item) => ({ value: item, label: item })),
-      projectTypeOptions: PROJECT_TYPES.map((item) => ({ value: item, label: item }))
+      projectTypeOptions: PROJECT_TYPES.map((item) => ({ value: item, label: item })),
+      /*
+       * 功能区：兜底值取 constants 里与录入表单同源的 FUNCTION_AREAS，
+       * created 里再用 land_gnq 字典覆盖（与 xzqh 同一模式）。
+       */
+      functionAreaOptions: FUNCTION_AREAS.map((item) => ({ value: item, label: item }))
     }
   },
   created () {
     this.loadDicts()
   },
   methods: {
-    /** 用 jeecg 字典覆盖下拉（失败静默，兜底常量已经把六个字典抄全了） */
+    /** 用 jeecg 字典覆盖下拉（失败静默，兜底常量已经把九个字典抄全了） */
     loadDicts () {
       queryLandDictItems(dictDefinitions()).then((dicts) => {
         if (dicts.xzqh) this.xzqhOptions = dicts.xzqh
         if (dicts.facilityCategory) this.categoryOptions = dicts.facilityCategory
         if (dicts.projectType) this.projectTypeOptions = dicts.projectType
+        if (dicts.gnq) this.functionAreaOptions = dicts.gnq
       })
     },
 
@@ -206,10 +251,22 @@ export default {
     },
 
     handleReset () {
-      this.query = buildEmptyQuery()
+      this.resetFilters()
       this.$emit('reset')
       // 重置后立即检索一次，让列表回到全量状态（与档案模块行为一致）
       this.$emit('search', this.getQuery())
+    },
+
+    /**
+     * 清空全部条件并收起「更多条件」（**不抛事件**）。
+     *
+     * ★ 供面板的 `resetFilters()` 转调（P2-01 统一契约）：面板清完条件还要把
+     *   自己的 query / 页码 / 选中行一起归零并重新取数，那些状态在面板里，
+     *   表单无权代劳。所以这里只负责「表单这一半」，事件由用户点「重置」时抛。
+     */
+    resetFilters () {
+      this.query = buildEmptyQuery()
+      this.expanded = this.defaultExpanded
     },
 
     /** 对外暴露当前条件，供「按条件导出 / 批量移除」使用同一份过滤条件 */
@@ -225,8 +282,7 @@ export default {
     setQuery (query) {
       const next = Object.assign(buildEmptyQuery(), query || {})
       this.query = next
-      const hidden = ['dkmc', 'xmfl', 'facilityKeyword']
-      if (hidden.some((key) => next[key] !== '' && next[key] !== undefined && next[key] !== null)) {
+      if (HIDDEN_FIELDS.some((key) => next[key] !== '' && next[key] !== undefined && next[key] !== null)) {
         this.expanded = true
       }
     }

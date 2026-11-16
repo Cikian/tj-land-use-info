@@ -7,6 +7,11 @@
       列选择  展开后在工具条下方铺一排复选框（不弹浮层，见下面说明）
       表格    列由后端返回的 QueryColumnVO[] 生成，行是 { key: value } 的 Map
 
+    操作列（清单 P1-12）：show-locate 打开时，最后一列是「定位 / 详情」。
+    ★ 定位为什么不做成「没有图形的行禁用」：查询接口不返回「有没有图形」，
+      猜一个禁用状态会让真能定位的行也点不动。点下去按 id 拉图形，
+      拉不到就明确 toast —— 要求是「点了必须有反馈」，不是「按钮必须灰」。
+
     ★ 为什么列选择是「就地展开」而不是浮层下拉：
       大屏是一整块定尺画布，浮层会挂到 body 上、脱离画布的缩放换算；
       而这一页的列有 30+ 个，浮层里要能滚动、要能点多选、还不能吃掉画布事件。
@@ -70,6 +75,7 @@
       :loading="loading"
       :min-width="minWidth"
       :empty-text="emptyText"
+      @row-dblclick="handleRowDblclick"
     >
       <!--
         编号列做成可点链接（经营性用地点开是「地块配套详情」）。
@@ -98,6 +104,36 @@
         >
           {{ row.ptxmmc || '（未填名称）' }}
         </button>
+      </template>
+
+      <!--
+        操作列（清单 P1-12）：定位 + 详情。
+        ★ 为什么不用 ScreenDataTable 的 type='actions'：那个只支持「显示/隐藏」，
+          不支持「定位中」这种禁用 + 转圈状态；而「点了没反应」正是本次要修的问题。
+        ★ 定位按钮始终可点：查询接口不返回「有没有图形」这个标志，
+          猜一个「禁用」只会让有图形的行也点不动。点下去按 id 拉图形，
+          拉不到就明确 toast「该地块没有图形数据」——「有反馈」这件事必须成立。
+      -->
+      <template #__ops="{ row }">
+        <span class="query-result__ops">
+          <button
+            type="button"
+            class="query-result__link"
+            :disabled="isLocating(row)"
+            :title="isLocating(row) ? '正在定位…' : '在地图上定位该地块'"
+            @click.stop="$emit('locate', row)"
+          >
+            {{ isLocating(row) ? '定位中…' : '定位' }}
+          </button>
+          <button
+            type="button"
+            class="query-result__link"
+            title="打开详情"
+            @click.stop="$emit('open-detail', row)"
+          >
+            详情
+          </button>
+        </span>
       </template>
     </screen-data-table>
 
@@ -138,6 +174,14 @@ export default {
     pageSizeOptions: { type: Array, default: () => [20, 50, 100] },
     /** 哪些列做成可点链接（触发 open-detail） */
     linkKeys: { type: Array, default: () => [] },
+    /**
+     * 是否显示「操作」列（定位 / 详情）。
+     * ★ 默认关闭：查询导出页的行没有定位能力（它支持两种数据类型在页面内切换），
+     *   给一个点了没反应的按钮比没有按钮更糟。
+     */
+    showLocate: { type: Boolean, default: false },
+    /** 正在定位的行 id（按钮显示「定位中…」并禁用，避免连点堆叠飞行） */
+    locatingId: { type: String, default: '' },
     emptyText: { type: String, default: '没有符合条件的记录，试试放宽查询条件' }
   },
   data () {
@@ -153,7 +197,7 @@ export default {
         .filter(Boolean)
     },
     tableColumns () {
-      return this.visibleColumns.map((column) => {
+      const columns = this.visibleColumns.map((column) => {
         const isLink = this.linkKeys.indexOf(column.key) > -1
         return {
           key: column.key,
@@ -166,6 +210,11 @@ export default {
           ellipsis: column.type === 'TEXT'
         }
       })
+      if (this.showLocate) {
+        // 操作列固定在最后一列：用户横向滚到哪，它都在最右边看得见的位置
+        columns.push({ key: '__ops', title: '操作', width: 130, type: 'slot', align: 'center' })
+      }
+      return columns
     },
     minWidth () {
       return this.tableColumns.reduce((sum, column) => sum + column.width, 0)
@@ -178,6 +227,20 @@ export default {
   methods: {
     togglePicker () {
       this.pickerOpen = !this.pickerOpen
+    },
+    /**
+     * 整行双击 = 定位（与「数据管理」列表的双击定位同一习惯）。
+     * 没开定位能力（查询导出页）时什么都不做，不给假反馈。
+     */
+    handleRowDblclick (row) {
+      if (!this.showLocate || !row) {
+        return
+      }
+      this.$emit('locate', row)
+    },
+    /** 这一行是否正在定位（id 统一按字符串比：库里是 varchar，但别赌后端不转数字） */
+    isLocating (row) {
+      return !!this.locatingId && !!row && String(row.id) === this.locatingId
     },
     /** 列宽：编号/名称/日期/数字各一档，够看又不至于把表格撑到需要横向滚两屏 */
     columnWidth (column) {
@@ -222,6 +285,20 @@ export default {
     &:hover {
       color: var(--screen-text);
     }
+
+    // 定位请求在飞的时候禁用：连点会叠好几次相机飞行，最后一个才落定
+    &:disabled {
+      color: var(--screen-text-mute);
+      cursor: progress;
+      text-decoration: none;
+    }
+  }
+
+  /* 操作列：定位 / 详情并排，列宽 130 刚好放得下 */
+  &__ops {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
   }
 
   &__cell {

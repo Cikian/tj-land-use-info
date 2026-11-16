@@ -351,36 +351,41 @@ import { queryFacilityByLand, queryProcessList } from '@/api/land/facilityAdmin'
 import { buildBizPath, formatSize, dictToOptions, resolveExt } from '../constants'
 
 /**
- * 本地兜底的材料类型清单，**按归属类型给对应那套**。
- * ★ 兜底也要分两套：宗地 5 类与配套 13 类是不同的清单（名称逐字取自旧系统存储目录），
- *   接口一挂就给错清单的话，用户会选到一个根本不存在的类型。
+ * 本地兜底的材料类型清单，**按归属类型给对应那套**（唯一基准：P1-08 报告图 3）。
+ * ★ 兜底也要分两套：宗地 4 类与配套 13 类是不同的清单，而且两套的 01~04 重号
+ *   （宗地 01=土地整理计划、配套 01=核定用地与地籍调查），
+ *   合并成一份平铺下拉会出现两条 value='01'，选中的名字永远错一半。
+ * ★ 与后端 `LandAttachmentServiceImpl` 的白名单逐字一致；环节进度跟随挂靠侧
+ *   （环节挂在配套项目下），所以也用配套那 13 类。
  */
 const LAND_TYPE_FALLBACK = [
   { value: '01', text: '土地整理计划' },
-  { value: '02', text: '配套方案' },
-  { value: '03', text: '配套情况函' },
-  { value: '04', text: '配套筹备函' },
-  { value: '05', text: '出让宗地图形数据（SHP）' }
+  { value: '02', text: '配套情况函' },
+  { value: '03', text: '配套筹备函' },
+  { value: '04', text: '出让宗地图形数据（shp）' }
 ]
 
 const FACILITY_TYPE_FALLBACK = [
-  { value: '01', text: '项建批复文件' },
-  { value: '02', text: '可研批复文件' },
-  { value: '03', text: '初设及概算批复文件' },
-  { value: '04', text: '道路规划' },
-  { value: '05', text: '专业配套方案' },
-  { value: '06', text: '施工许可' },
-  { value: '07', text: '专业管理意见' },
-  { value: '08', text: '配套项目核定用地与地籍调查' },
-  { value: '09', text: '规划工程许可' },
-  { value: '10', text: '规划用地许可与划拨手续办理' },
+  { value: '01', text: '配套项目核定用地与地籍调查' },
+  { value: '02', text: '项建批复' },
+  { value: '03', text: '可研批复' },
+  { value: '04', text: '初设及概算批复' },
+  { value: '05', text: '道路规划' },
+  { value: '06', text: '规划工程许可' },
+  { value: '07', text: '专业配套方案' },
+  { value: '08', text: '专业管理意见' },
+  { value: '09', text: '规划用地许可与划拨手续办理' },
+  { value: '10', text: '施工许可' },
   { value: '11', text: '不动产登记' },
   { value: '12', text: '竣工文件' },
   { value: '13', text: '移交文件' }
 ]
 
 function fallbackTypesOf (bizType) {
-  const list = bizType === 'facility' ? FACILITY_TYPE_FALLBACK : LAND_TYPE_FALLBACK
+  // 与后端 typeNamesOf 同一条规则：facility / process 用配套那套，其余（含未选）用宗地那套
+  const list = (bizType === 'facility' || bizType === 'process')
+    ? FACILITY_TYPE_FALLBACK
+    : LAND_TYPE_FALLBACK
   return list.map(item => ({ value: item.value, label: item.text }))
 }
 
@@ -494,7 +499,7 @@ export default {
       const treeGroups = (this.tree && this.tree.groups) || []
       const byCode = {}
       treeGroups.forEach(group => { byCode[group.fileType] = group })
-      return (this.typeOptions || []).map(option => {
+      const listed = (this.typeOptions || []).map(option => {
         const hit = byCode[option.value]
         if (hit) {
           return hit
@@ -509,6 +514,17 @@ export default {
           totalSize: 0
         }
       })
+      // ★ 清单之外的码值（迁移遗留的 99「其他（历史）」）追加在末尾：
+      //   不追加的话历史附件在这个弹窗里「凭空消失」，用户会以为文件丢了。
+      //   与后端 buildTree 的处置一致，不影响现行目录顺序。
+      const listedCodes = {}
+      listed.forEach(group => { listedCodes[group.fileType] = true })
+      treeGroups.forEach(group => {
+        if (!listedCodes[group.fileType]) {
+          listed.push(group)
+        }
+      })
+      return listed
     },
     treeHint () {
       if (!this.form.bizId) {

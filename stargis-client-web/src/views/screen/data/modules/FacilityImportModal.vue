@@ -6,12 +6,15 @@
     结构照档案模块的 LedgerImportModal，但多出**配套特有的三件事**，
     这三件事才是本弹窗真正要解决的问题：
 
-    ① 重复处理策略（三选一）
+    ① 重复处理策略（四选一）
        判重键是 **(宗地编号, 配套项目名称) 两列一起** —— 不是宗地导入的「编号即唯一」。
        一块地上可以有很多配套，只要名称不重复。
-       reject（默认，重复即报错，最安全）/ skip（跳过重复只导新增，等价旧系统行为）/
+       upsert（默认，已有行按非空单元格更新、新行新增）/
+       reject（重复即报错，最安全）/ skip（跳过重复只导新增，等价旧系统行为）/
        update（覆盖更新，**空单元格不会清空库内原值** —— 否则拿一份只填进度的
        补丁表导进去，会把六方单位、资金来源、录入人全部抹空）。
+       默认取 upsert 是清单 P1-06 的验收口径：中心交来的文件本来就是新增+更新混合，
+       默认报错会逼用户先手工拆表，拆表过程正是丢行的高发环节。
 
     ② ★★ 孤儿清单（本页最核心的新东西）
        「孤儿」= 这一行的出让宗地编号在 `t_land` 里**查不到**，也就是这条配套
@@ -116,7 +119,7 @@
           <screen-icon name="sliders" :size="14" />
           导入设置
           <span class="facility-import__block-sub">
-            这两个开关会改变**校验口径**，改动后请点「按当前设置重新校验」
+            这两个开关会改变<b>校验口径</b>，改动后请点「按当前设置重新校验」
           </span>
         </h4>
 
@@ -163,7 +166,7 @@
         </div>
 
         <p class="facility-import__hint is-block">
-          默认**不允许**挂到未登记宗地：这些行会算作错误、整批不入库。
+          默认<b>不允许</b>挂到未登记宗地：这些行会算作错误、整批不入库。
           如果这批配套对应的宗地确实还没录入（宗地由另一个岗位维护，
           配套台账先到是正常的），勾上上面的开关即可照常导入，但请先看一遍孤儿清单。
         </p>
@@ -246,7 +249,7 @@
           <!-- allowOrphan=false 时给出「怎么继续」的明确出路，而不是只报错 -->
           <p v-if="!allowOrphan" class="facility-import__alert is-warning" role="alert">
             <screen-icon name="alert-triangle" :size="14" />
-            当前设置是「不允许挂到未登记宗地」，因此这 {{ orphanCount }} 行会作为错误**阻断整批导入**
+            当前设置是「不允许挂到未登记宗地」，因此这 {{ orphanCount }} 行会作为错误<b>阻断整批导入</b>
             （除非勾选「跳过错误行」，那样它们会被跳过、其余行照常入库）。
             如果这些宗地确实还没录入，请勾上「允许挂到未登记宗地（记入孤儿清单）」再点「按当前设置重新校验」。
           </p>
@@ -288,7 +291,7 @@
           <div class="facility-import__block-head">
             <h4 class="facility-import__errors-title">
               错误清单：共 {{ errorRows.length }} 行有问题、{{ errorCount }} 条原因
-              <span class="facility-import__block-sub">与孤儿清单分开：这些是**必须改**的问题</span>
+              <span class="facility-import__block-sub">与孤儿清单分开：这些是<b>必须改</b>的问题</span>
             </h4>
             <screen-button size="sm" icon="download" :loading="reporting" @click="handleDownloadReport">
               下载错误回执

@@ -6,7 +6,7 @@
     （页签接线由父级负责，本组件不改那个共享文件）。
 
     版式：上方检索条件；下方左右分栏 ——
-      左：统计概览（6 张指标卡 + 按状态 / 按接收管养单位 Top10 条形列表）
+      左：统计概览（7 张指标卡 + 按状态条形列表；「接收管养单位 Top10」已于 P2-08 移除）
       右：移交事项列表（表 + 分页）
 
     对齐 admin-client 既有实现的功能：检索 / 指标卡 / 列表 / 状态变更 / 新增编辑 /
@@ -68,14 +68,13 @@
             @item-click="handleStatusDrill"
           />
         </section>
-
-        <section class="handover-panel__chart">
-          <h5 class="handover-panel__chart-title">
-            接收管养单位 Top10
-            <span class="handover-panel__chart-kicker">谁接管得最多</span>
-          </h5>
-          <screen-bar-list :items="receiveUnitBars" unit="条" />
-        </section>
+        <!--
+          ★ 「接收管养单位 Top10」已整块移除（P2-08，用户确认：移除而不是加过滤条件）。
+            原因：旧库把「未填写 / 否 / 无」这类占位值也填进了 receive_unit，
+            GROUP BY 之后它们会挤进排行，页面上看起来像真有个叫「未填写」的单位在接管道路。
+            这些行改由上面的「接收管养单位未填写」指标卡统计（数据质量口径），
+            与单位排行彻底分开：排行只给有效单位，缺填只给数量。
+        -->
       </screen-panel>
 
       <!-- ================= 列表 ================= -->
@@ -155,6 +154,8 @@ function buildEmptyStat () {
     maintenanceExpiringCount: 0,
     maintenanceExpiredCount: 0,
     orphanCount: 0,
+    /** 接收管养单位未填写的条数（P2-08 数据质量指标） */
+    receiveUnitBlank: 0,
     byStatus: [],
     byType: [],
     byXzqh: [],
@@ -233,6 +234,16 @@ export default {
           tone: stat.missingAgreementCount ? 'warning' : 'accent'
         },
         {
+          // P2-08：原「接收管养单位 Top10」移除后，这一格回答测试真正关心的问题
+          // ——「有多少条根本没填接收单位」。口径含 NULL / 空串 /「未填写」「否」「无」等占位值。
+          key: 'receiveUnitBlank',
+          label: '接收管养单位未填写',
+          value: stat.receiveUnitBlank || 0,
+          unit: '条',
+          hint: '这些记录不进单位排行，需补录',
+          tone: stat.receiveUnitBlank ? 'warning' : 'accent'
+        },
+        {
           key: 'archived',
           label: '已关联档案',
           value: stat.archivedCount || 0,
@@ -263,15 +274,6 @@ export default {
         name: status,
         value: counts[status] || 0,
         tone: tones[status] || 'muted'
-      }))
-    },
-
-    /** 接收管养单位 Top10（后端已按数量降序取前 10） */
-    receiveUnitBars () {
-      return (this.stat.byReceiveUnit || []).map((item) => ({
-        key: item.name,
-        name: item.name,
-        value: item.count
       }))
     },
 
@@ -448,6 +450,19 @@ export default {
     },
 
     /* ---------------- 对外接口（父级接线用） ---------------- */
+
+    /**
+     * 清空检索条件（P2-01 统一契约：页签壳在没有下钻参数时调用）。
+     * 列表、状态角标与统计都读同一份 query，所以清完只需一次 refresh。
+     */
+    resetFilters () {
+      this.query = {}
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      if (this.$refs.search && typeof this.$refs.search.setQuery === 'function') {
+        this.$refs.search.setQuery({})
+      }
+      this.refresh()
+    },
 
     /**
      * 外部下钻：用一组新条件覆盖当前筛选条件并回到第一页。

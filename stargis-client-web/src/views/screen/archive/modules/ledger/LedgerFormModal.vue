@@ -96,13 +96,28 @@
         </h4>
 
         <div class="ledger-form__grid">
-          <screen-field label="道路名称" required :error="errors.roadName" html-for="lf-roadName">
+          <!--
+            道路名称与配套项目名称只保留**一个**用户输入入口（清单 P1-10，与管理端
+            台账弹窗、移交表单同一口径）：配套项目名称是输入项，道路名称只读联动。
+            ★ 为什么不做成隐藏：历史台账里两者可能不同值（人工改过），
+              必须原样可见、原样保存，不能被联动静默覆盖。
+            ★ 为什么输入项留在「配套项目名称」而不是道路名称：存量道路不一定有
+              对应的配套项目（迁移的 1340 条里有 53 条在系统里找不到宗地），
+              这类记录只能手工填名称，留一个可编辑框才不会把它们堵死。
+          -->
+          <screen-field
+            label="道路名称"
+            required
+            :error="errors.roadName"
+            html-for="lf-roadName"
+            tip="随「配套项目名称」自动带出，需要修改请改配套项目名称"
+          >
             <screen-input
               id="lf-roadName"
-              v-model="model.roadName"
-              :maxlength="200"
+              :value="model.roadName"
+              readonly
               :invalid="!!errors.roadName"
-              placeholder="必填，例如 XX 路（XX 道 - XX 路）"
+              placeholder="填写「配套项目名称」后自动带出"
             />
           </screen-field>
 
@@ -160,7 +175,11 @@
             />
           </screen-field>
 
-          <screen-field label="配套项目名称" html-for="lf-ptxmmc" tip="留空则与道路名称一致">
+          <screen-field
+            label="配套项目名称"
+            html-for="lf-ptxmmc"
+            tip="道路名称跟随本框；存量道路没有配套项目时，直接在这里填道路名称"
+          >
             <screen-input
               id="lf-ptxmmc"
               v-model="model.ptxmmc"
@@ -400,6 +419,24 @@ export default {
       return this.materialList.reduce((sum, item) => sum + (this.isChecked(item.key) ? 1 : 0), 0)
     }
   },
+  watch: {
+    /**
+     * 「配套项目名称 → 道路名称」的只读联动（P1-10，与移交表单同一口径）。
+     *
+     * ★ 只在这两种情况下跟随：
+     *   ① 道路名称还是空的；
+     *   ② 道路名称仍等于**上一版**配套项目名称（说明它没被人为改过）。
+     *   编辑打开一条历史记录时，后端回的是两者各自的原值（历史数据里可能不同值），
+     *   这时 current ≠ prev 且非空 —— 不动它，否则一次「打开再保存」就抹平了历史差异。
+     */
+    'model.ptxmmc' (next, prev) {
+      const name = String(next === undefined || next === null ? '' : next).trim()
+      if (!name) return
+      const current = String(this.model.roadName || '').trim()
+      const followable = !current || current === String(prev === undefined || prev === null ? '' : prev).trim()
+      if (followable) this.model.roadName = name
+    }
+  },
   created () {
     this.loadXzqh()
     if (!this.materials || !this.materials.length) {
@@ -558,6 +595,10 @@ export default {
     /**
      * 选中配套项目后带出宗地与行政区信息。
      * 只覆盖「非空」的值，这样用户在宗地下拉里清空选择时不会把手工填写的宗地信息一起抹掉。
+     *
+     * ★ 道路名称跟随配套项目名称（roadName 是只读联动字段，用户唯一的名称入口是
+     *   「配套项目名称」）：用户**重新选项目**属于明确的改值意图，这里直接覆盖；
+     *   打开历史记录（loadDetail 回显）不走本方法，因此不会把已有的 roadName 冲掉。
      */
     handleAssociationChange (value) {
       const next = value || {}
@@ -566,7 +607,10 @@ export default {
       if (next.crzdbh) this.model.crzdbh = next.crzdbh
       if (next.dkmc) this.model.dkmc = next.dkmc
       if (next.facilityId) this.model.facilityId = next.facilityId
-      if (next.ptxmmc) this.model.ptxmmc = next.ptxmmc
+      if (next.ptxmmc) {
+        this.model.ptxmmc = next.ptxmmc
+        this.model.roadName = next.ptxmmc
+      }
       if (next.ptsslb) this.model.ptsslb = next.ptsslb
       if (next.xzqh) this.model.xzqh = next.xzqh
     },
@@ -626,8 +670,10 @@ export default {
     /** @returns {boolean} 是否通过 */
     validateForm () {
       const errors = {}
+      // 道路名称是只读联动字段：为空只可能是「配套项目名称也没填」（历史记录同理）。
+      // ★ 只改提示语，不新增约束 —— 历史台账里 roadName 为空的记录仍按原来的口径判定。
       if (!this.model.roadName || !String(this.model.roadName).trim()) {
-        errors.roadName = '请输入道路名称'
+        errors.roadName = '请填写「配套项目名称」或选择关联配套项目（道路名称跟随它）'
       }
       if (!this.model.status) {
         errors.status = '请选择台账状态'

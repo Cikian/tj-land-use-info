@@ -263,16 +263,23 @@ export default {
   created () {
     // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
     this.geoLayer = createGeoLayer('land')
-    this.loadData()
+    // 首次进入与「切页签回来」走同一个入口，两处共用同一套同 tick 去重（见 ensureListLoaded）
+    this.ensureListLoaded()
   },
   activated () {
     /*
-     * keep-alive 的激活钩子（首次挂载也会触发一次）：
-     * 每次进「经营性用地信息录入」菜单都重铺宗地几何图层 ——
-     * 这样别处新增/画图的宗地回到本菜单就能看到最新状态。
-     * 切走页签时由 deactivated 清掉（图层别压在别的菜单上面）。
-     * 普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
+     * keep-alive 的激活钩子（首次挂载也会触发一次），要做两件事：
+     *
+     * 1. 重铺宗地几何图层 —— 这样别处新增/画图的宗地回到本菜单就能看到最新状态；
+     *    普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
+     * 2. **重拉列表**（测试清单 P1-02）—— 页签被 keep-alive 缓存后 created 不再跑，
+     *    只重铺地图不动列表就会出现「回收站里已经恢复了这条宗地、切回录入页
+     *    列表里还是没有」。所以激活时必须重新取一次权威列表。
+     *    与 created 那一次由 ensureListLoaded 合并，不会重复请求。
+     *
+     * 切走页签时由 deactivated 清掉图层（图层别压在别的菜单上面）。
      */
+    this.ensureListLoaded()
     this.loadGeoLayer(false)
   },
   deactivated () {
@@ -284,7 +291,33 @@ export default {
   methods: {
     /* ---------------- 数据 ---------------- */
 
+    /**
+     * 首次挂载（created）与 keep-alive 激活（activated）共用的列表拉取入口。
+     *
+     * ★ 为什么必须去重：首次进入时 created 与 activated 在同一 tick 内先后触发，
+     *   不去重就会对同一页发两次请求（列表 + 配套数各两遍）。
+     *   写法照 DataRecyclePanel.ensureLoaded：标记 + $nextTick 把同 tick 的多次调用合成一次。
+     * ★ 为什么还要比 listLoadSeq：激活排队的这次刷新可能还没跑，别处就已经显式加载过
+     *   （父页 drill 进来会立刻 applyDrill → loadData；保存/移除后也是 loadData），
+     *   那时再补一次就是纯重复请求。loadData 每次自增序号，回调里序号变了就放弃。
+     * ★ 页码与查询条件原样保留：激活刷新是「拿最新数据」，不是新查询 ——
+     *   重置页码会把用户正在看的那一页抢走；条目变少让当前页空掉时，
+     *   loadData 里已有「当前页被删空自动回退一页」的兜底，不需要在这里重置。
+     */
+    ensureListLoaded () {
+      if (this.listLoadScheduled) return
+      this.listLoadScheduled = true
+      const seq = this.listLoadSeq || 0
+      this.$nextTick(() => {
+        this.listLoadScheduled = false
+        if ((this.listLoadSeq || 0) !== seq) return
+        this.loadData()
+      })
+    },
+
     loadData () {
+      // 记一次「已发生的加载」，ensureListLoaded 靠它判断排队的刷新是否已被顶掉
+      this.listLoadSeq = (this.listLoadSeq || 0) + 1
       this.loading = true
       const params = Object.assign(compactQuery(this.query), {
         pageNo: this.pagination.current,
@@ -575,6 +608,15 @@ export default {
       this.pagination.current = 1
       this.selectedRowKeys = []
       this.loadData()
+    },
+
+    /**
+     * P2-01 统一契约：父页在「普通离开再进入」时调它清空检索。
+     * 与 applyDrill({}) 等价（`setQuery({})` 会回到 buildEmptyQuery，连 bizId/bizKey
+     * 这类隐藏条件一起清），单列一个方法是为了让四个域的调用点同名、可读。
+     */
+    resetFilters () {
+      this.applyDrill({})
     }
   }
 }

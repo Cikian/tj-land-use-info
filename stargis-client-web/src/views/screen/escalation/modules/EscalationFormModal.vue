@@ -472,7 +472,7 @@ import {
   ScreenRadioGroup,
   ScreenButton,
   ScreenIcon,
-  ScreenLoading,
+  ScreenLoading
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { queryLandOptions, queryLandById, queryXzqhOptions, queryFacilityOptions } from '@/api/land/landData'
@@ -489,7 +489,7 @@ import {
   toOptions,
   today,
   yearOf,
-  ynNumber,
+  ynNumber
 } from '../constants'
 
 /** 第二步的 5 个长文本字段：结构相同，用一份配置渲染，避免 5 段重复模板 */
@@ -498,7 +498,7 @@ const ARG_TEXT_FIELDS = [
   { key: 'argBasis', label: '提级论证依据', maxlength: 2000, placeholder: '政策 / 规划依据，不超过 2000 字' },
   { key: 'argNecessity', label: '必要性说明', maxlength: 2000, placeholder: '不超过 2000 字' },
   { key: 'argFeasibility', label: '可行性说明', maxlength: 2000, placeholder: '不超过 2000 字' },
-  { key: 'argContent', label: '论证事项内容', maxlength: 2000, placeholder: '不超过 2000 字' },
+  { key: 'argContent', label: '论证事项内容', maxlength: 2000, placeholder: '不超过 2000 字' }
 ]
 
 export default {
@@ -513,7 +513,7 @@ export default {
     ScreenButton,
     ScreenIcon,
     ScreenLoading,
-    EscalationMaterialTable,
+    EscalationMaterialTable
   },
   data () {
     return {
@@ -530,7 +530,7 @@ export default {
       steps: [
         { title: '项目基本信息', desc: '项目 / 关联地块（选填）' },
         { title: '论证信息与结果', desc: '论证事由 / 结果登记' },
-        { title: '提级论证材料', desc: '类型必选，至少 1 个' },
+        { title: '提级论证材料', desc: '类型必选，至少 1 个' }
       ],
       argTextFields: ARG_TEXT_FIELDS,
       /** 校验错误集中表达：key -> 文案，空串表示通过 */
@@ -546,6 +546,13 @@ export default {
        * 所以原始字段必须另存一份，不能只依赖 label 反解。
        */
       landRows: [],
+      /**
+       * 配套项目原始行（id → { ptxmmc, crzdbh }）。
+       * 与 landRows 同理：ScreenSelect 的 options 只有 { value, label }，
+       * 而选中配套后要把「配套项目名称」回填主表的 ptxmmc ——
+       * 从 label 反解不可行（label 里拼了类别，还带「·」分隔符）。
+       */
+      facilityRows: [],
       facilityOptions: [],
       xzqhOptions: [],
       landLoading: false,
@@ -554,7 +561,7 @@ export default {
       argResultOptions: toOptions(ARG_RESULT_OPTIONS),
       statusOptions: toOptions(STATUS_OPTIONS),
       gnqOptions: toOptions(GNQ_OPTIONS),
-      ynOptions: YN_OPTIONS,
+      ynOptions: YN_OPTIONS
     }
   },
   created () {
@@ -596,7 +603,7 @@ export default {
         argExpertList: '',
         argDate: '',
         status: '未办理',
-        remark: '',
+        remark: ''
       }
     },
 
@@ -690,7 +697,7 @@ export default {
             argExpertList: data.argExpertList || '',
             argDate: data.argDate || '',
             status: data.status || '未办理',
-            remark: data.remark || '',
+            remark: data.remark || ''
           })
           // 回显宗地下拉：需要把已有选项灌进去，否则选中项显示不出名称
           this.landId = data.landId || ''
@@ -755,7 +762,7 @@ export default {
           this.landRows = res.result || []
           this.landOptions = this.landRows.map((item) => ({
             value: item.id,
-            label: item.dkmc ? `${item.crzdbh} · ${item.dkmc}` : String(item.crzdbh || item.id),
+            label: item.dkmc ? `${item.crzdbh} · ${item.dkmc}` : String(item.crzdbh || item.id)
           }))
         })
         .finally(() => {
@@ -775,6 +782,7 @@ export default {
         this.model.facilityId = ''
         this.model.ptxmmc = ''
         this.facilityOptions = []
+        this.facilityRows = []
         return
       }
       const hit = this.findLandRow(landId)
@@ -783,6 +791,7 @@ export default {
       if (hit && hit.dkmc) this.model.dkmc = this.model.dkmc || hit.dkmc
       if (hit && hit.xzqh) this.model.xzqh = this.model.xzqh || hit.xzqh
       this.facilityOptions = []
+      this.facilityRows = []
       this.model.facilityId = ''
       this.model.ptxmmc = ''
 
@@ -802,18 +811,32 @@ export default {
       })
     },
 
+    /**
+     * 拉该宗地下的配套项目。
+     *
+     * ★ 候选必须带原始 ptxmmc / crzdbh（清单 P2-10 必改点）：
+     *   原来只产出 { value, label }，handleFacilityChange 却去读 hit.ptxmmc ——
+     *   永远 undefined，配套名称静默回填不上（保存后主表 ptxmmc 为空）。
+     *   这里把原始字段随选项一起带上：一是给 ScreenSelect 的 change 事件当 raw 抛回，
+     *   二是同时存进 facilityRows，搜索换词刷掉 options 后仍能按 id 找回名称。
+     */
     loadFacilityOptions (keyword) {
       if (!this.model.crzdbh) {
         this.facilityOptions = []
+        this.facilityRows = []
         return Promise.resolve()
       }
       this.facilityLoading = true
       return queryFacilityOptions({ crzdbh: this.model.crzdbh, keyword: keyword || undefined, limit: 50 })
         .then((res) => {
           if (!res || !res.success) return
-          this.facilityOptions = (res.result || []).map((item) => ({
+          this.facilityRows = res.result || []
+          this.facilityOptions = this.facilityRows.map((item) => ({
             value: item.id,
             label: item.ptsslb ? `${item.ptxmmc} · ${item.ptsslb}` : String(item.ptxmmc || item.id),
+            // 原始字段：选中后要回填主表，label 反解不可靠（拼了类别、可能带「·」）
+            ptxmmc: item.ptxmmc || '',
+            crzdbh: item.crzdbh || ''
           }))
         })
         .finally(() => {
@@ -821,15 +844,27 @@ export default {
         })
     },
 
-    handleFacilityChange (facilityId) {
+    /**
+     * 选中配套项目 → 回填配套名称 ptxmmc。
+     *
+     * @param {string} facilityId 配套项目 id（清空时为空）
+     * @param {object} [raw] ScreenSelect 抛回的原始选项（remote 模式下就是上面那份带 ptxmmc 的对象）
+     */
+    handleFacilityChange (facilityId, raw) {
       if (!facilityId) {
         this.model.facilityId = ''
         this.model.ptxmmc = ''
         return
       }
-      const hit = this.facilityOptions.filter((item) => item.value === facilityId)[0]
+      // 三条兜底：change 的 raw → facilityRows → 当前 options，任一能命中就够
+      const hit = raw ||
+        this.facilityRows.filter((item) => item.id === facilityId)[0] ||
+        this.facilityOptions.filter((item) => item.value === facilityId)[0]
       this.model.facilityId = facilityId
-      this.model.ptxmmc = hit && hit.ptxmmc ? hit.ptxmmc : this.model.ptxmmc
+      // 命中就以配套自己的名称为准（换了配套不能残留上一个的名字）
+      this.model.ptxmmc = (hit && hit.ptxmmc) || ''
+      // 配套自带宗地编号时补齐主表（后端按 crzdbh 关联配套，缺了就挂不上）
+      if (hit && hit.crzdbh && !this.model.crzdbh) this.model.crzdbh = hit.crzdbh
     },
 
     /* ---------------- 步骤控制与校验 ---------------- */
@@ -971,7 +1006,7 @@ export default {
         argDate: model.argDate || null,
         status: model.status || null,
         remark: model.remark || null,
-        materials: table ? table.collect() : [],
+        materials: table ? table.collect() : []
       }
 
       this.saving = true
@@ -993,8 +1028,8 @@ export default {
 
     handleCancel () {
       this.visible = false
-    },
-  },
+    }
+  }
 }
 </script>
 

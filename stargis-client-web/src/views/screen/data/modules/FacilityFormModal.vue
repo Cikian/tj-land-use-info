@@ -18,7 +18,8 @@
       旧表里的 xjpfwj / kypfwj / csjgspfwj / dlgh / ghgcxk / gxzhslsj / zyptfa /
       zygljy / ghydxkyhbsxbl / sgxk / bdcdj 这 11 列是「是/否 标志位」，
       表示「这份要件有没有」。新系统改成了统一附件模块（t_land_attachment 的
-      「12 竣工与移交文件」等 13 类），标志位只为了历史数据可导入而保留。
+      配套材料目录 13 类，P1-08 报告图 3：01 核定用地与地籍调查 → 13 移交文件），
+      标志位只为了历史数据可导入而保留。
       如果在这一组里放可编辑下拉，用户会以为「填个『是』就等于上传了文件」——
       那是错的，而且会让新旧两套口径并存。所以这里只展示、只读，并给出引导。
 
@@ -598,6 +599,7 @@ export default {
       projectTypeOptions: PROJECT_TYPES.map((item) => ({ value: item, label: item })),
       categoryOptions: FACILITY_CATEGORIES.map((item) => ({ value: item, label: item })),
       yesNoOptions: YES_NO.map((item) => ({ value: item, label: item })),
+      // 这三项的兜底先给硬编码，created 里用字典 land_jsxx / land_dldj / land_gnq 覆盖
       natureOptions: BUILD_NATURES.map((item) => ({ value: item, label: item })),
       roadLevelOptions: ROAD_LEVELS.map((item) => ({ value: item, label: item })),
       functionAreaOptions: FUNCTION_AREAS.map((item) => ({ value: item, label: item })),
@@ -688,6 +690,15 @@ export default {
       if (dicts.xzqh) this.xzqhOptions = dicts.xzqh
       if (dicts.projectType) this.projectTypeOptions = dicts.projectType
       if (dicts.facilityCategory) this.categoryOptions = dicts.facilityCategory
+      /*
+       * 建设性质 / 道路等级 / 功能区（P1-05）：字典已入库（sql/data/17_*.sql），
+       * 这里用字典项覆盖硬编码兜底，否则中心在 sys_dict 里改项、页面看不到。
+       * 只接这三项：其余下拉（资金来源 / 批复状态 / 是否…）仍是 Java 常量口径，
+       * 一次全改会扩大回归面。
+       */
+      if (dicts.jsxx) this.natureOptions = dicts.jsxx
+      if (dicts.dldj) this.roadLevelOptions = dicts.dldj
+      if (dicts.gnq) this.functionAreaOptions = dicts.gnq
     })
     /*
      * 订阅「添加地块」绘制会话的结束事件。

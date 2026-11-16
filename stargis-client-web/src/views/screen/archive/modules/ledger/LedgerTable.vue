@@ -115,11 +115,21 @@ import {
   statusTone
 } from './constants'
 
-/** 精简列的固定列定义（资料矩阵列在 computed 里按资料定义动态追加） */
+/**
+ * 精简列的固定列定义（资料矩阵列在 computed 里按资料定义动态追加）。
+ *
+ * ★ P2-09 固定列：横向滚动时钉住两组关键信息 ——
+ *   左段「台账编号 / 道路名称」：滚到多远都知道这一行是哪条道路；
+ *   右段「资料归集 / 状态 / 操作」：不用滚回去就能看齐全不全、改状态或进详情。
+ *   必须连续：ScreenDataTable 只认「从边缘连续」的 fixed 段（横向偏移靠累加算）。
+ *   出让宗地编号没有固定：它前面还有 序号/台账编号/道路名称/行政区划（≈570px），
+ *   要钉它就得把这一整段都钉住，屏宽会被吃掉近一半；它在初始位置就完整可见，
+ *   横向滚动时跟着内容走是可接受的取舍（比「一屏只看得到两列」强）。
+ */
 const BASE_COLUMNS = [
   { key: 'index', title: '序号', width: 64, type: 'index', align: 'center' },
-  { key: 'ledgerNo', title: '台账编号', width: 142, type: 'slot' },
-  { key: 'roadName', title: '道路名称', width: 268, type: 'slot' },
+  { key: 'ledgerNo', title: '台账编号', width: 142, type: 'slot', fixed: 'left' },
+  { key: 'roadName', title: '道路名称', width: 268, type: 'slot', fixed: 'left' },
   { key: 'xzqh', title: '行政区划', width: 96, type: 'slot' },
   { key: 'crzdbh', title: '出让宗地编号', width: 178, ellipsis: true },
   { key: 'dkmc', title: '地块名称', width: 168, ellipsis: true },
@@ -130,9 +140,9 @@ const BASE_COLUMNS = [
   { key: 'completeDate', title: '竣工日期', width: 108 },
   { key: 'handoverDate', title: '移交日期', width: 108 },
   { key: 'receiveUnit', title: '接收管养单位', width: 150, ellipsis: true },
-  { key: 'materialCount', title: '资料归集', width: 150, type: 'slot' },
-  { key: 'status', title: '状态', width: 96, type: 'slot' },
-  { key: 'action', title: '操作', width: 140, type: 'slot', align: 'center' }
+  { key: 'materialCount', title: '资料归集', width: 150, type: 'slot', fixed: 'right' },
+  { key: 'status', title: '状态', width: 96, type: 'slot', fixed: 'right' },
+  { key: 'action', title: '操作', width: 140, type: 'slot', align: 'center', fixed: 'right' }
 ]
 
 /** 资料矩阵单列宽（13 列 × 96 ≈ 1248px） */

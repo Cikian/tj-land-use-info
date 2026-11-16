@@ -32,9 +32,7 @@
         <screen-tag v-if="docType === 'receive'" :tone="docStatusTone(doc.status)" size="sm">
           {{ doc.status || '—' }}
         </screen-tag>
-        <screen-tag :tone="doc.archiveId ? 'success' : 'muted'" size="sm">
-          {{ doc.archiveId ? '已归档' : '未归档' }}
-        </screen-tag>
+        <screen-tag :tone="archiveTone" size="sm">{{ archiveText }}</screen-tag>
         <screen-tag v-if="doc.secretLevel" :tone="secretTone(doc.secretLevel)" size="sm">
           密级：{{ doc.secretLevel }}
         </screen-tag>
@@ -53,7 +51,16 @@
         查看流转痕迹
       </screen-button>
 
-      <screen-button size="sm" icon="edit" :disabled="!doc" @click="handleEdit">编辑</screen-button>
+      <!-- 已归档只读：编辑入口不渲染（后端 update* 也会拒绝，防止绕过页面） -->
+      <screen-button
+        v-if="doc && !doc.archiveId"
+        size="sm"
+        icon="edit"
+        :disabled="!doc"
+        @click="handleEdit"
+      >
+        编辑
+      </screen-button>
 
       <screen-button
         v-if="doc && !doc.archiveId"
@@ -110,7 +117,7 @@ import {
   ScreenModal,
   ScreenDescriptions,
   ScreenTag,
-  ScreenButton,
+  ScreenButton
 } from '@/components/screen'
 import DocAttachmentTable from './DocAttachmentTable.vue'
 import {
@@ -118,7 +125,7 @@ import {
   docUrgencyTone,
   secretTone,
   joinInfo,
-  buildBizPath,
+  buildBizPath
 } from '../../constants'
 
 export default {
@@ -128,12 +135,26 @@ export default {
     return {
       visible: false,
       docType: 'receive',
-      doc: null,
+      doc: null
     }
   },
   computed: {
     title () {
       return this.docType === 'send' ? '发文详情' : '收文详情'
+    },
+    /**
+     * 归档情况文案与语气：以档案真实状态（archiveStatus）为准。
+     * 只有 archiveId、没有 archiveStatus 的历史数据才回落到「已归档」，
+     * 这样「无附件 → 档案归档中」的记录不会被详情页说成已归档。
+     */
+    archiveText () {
+      if (!this.doc || !this.doc.archiveId) return '未归档'
+      return this.doc.archiveStatus || '已归档'
+    },
+    archiveTone () {
+      if (!this.doc || !this.doc.archiveId) return 'muted'
+      if (!this.doc.archiveStatus || this.doc.archiveStatus === '已归档') return 'success'
+      return 'info'
     },
     attachments () {
       return (this.doc && this.doc.attachments) || []
@@ -155,7 +176,7 @@ export default {
           { key: 'issueDate', label: '发文日期', value: d.issueDate, tone: 'number' },
           { key: 'signer', label: '签发人', value: d.signer },
           { key: 'drafter', label: '拟稿人', value: d.drafter },
-          { key: 'copies', label: '份数', value: d.copies, tone: 'number' },
+          { key: 'copies', label: '份数', value: d.copies, tone: 'number' }
         ]
       }
       return [
@@ -168,12 +189,12 @@ export default {
           label: '页数 / 份数',
           // 不能用 `|| '—'`：0 页 / 0 份是合法值，会被误显示成「—」
           value: `${this.displayOrDash(d.pageCount)} / ${this.displayOrDash(d.copies)}`,
-          tone: 'number',
+          tone: 'number'
         },
         { key: 'handleDeadline', label: '办理期限', value: d.handleDeadline, tone: 'number' },
         { key: 'currentHandlerName', label: '当前处理人', value: d.currentHandlerName },
         { key: 'finishTime', label: '办结时间', value: d.finishTime, tone: 'number' },
-        { key: 'finishOpinion', label: '办结说明', value: d.finishOpinion, stack: true },
+        { key: 'finishOpinion', label: '办结说明', value: d.finishOpinion, stack: true }
       ]
     },
     metaItems () {
@@ -183,9 +204,9 @@ export default {
         { key: 'ptxmmc', label: '配套项目', value: d.ptxmmc },
         { key: 'createInfo', label: '登记人 / 时间', value: joinInfo(d.createBy, d.createTime) },
         { key: 'updateInfo', label: '最后更新', value: joinInfo(d.updateBy, d.updateTime) },
-        { key: 'remark', label: '备注', value: d.remark, stack: true },
+        { key: 'remark', label: '备注', value: d.remark, stack: true }
       ]
-    },
+    }
   },
   methods: {
     docStatusTone,
@@ -223,8 +244,8 @@ export default {
     },
     handleArchive () {
       this.$emit('archive', this.doc)
-    },
-  },
+    }
+  }
 }
 </script>
 

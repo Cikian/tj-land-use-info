@@ -3,7 +3,7 @@ import {
   javaPostAction,
   javaPutAction,
   javaDeleteAction,
-  buildJavaDownloadUrl,
+  buildJavaDownloadUrl
 } from '@/api/manageJava'
 
 /**
@@ -47,12 +47,31 @@ export const archiveUrl = {
   filePreviewInfo: '/land/archive/file/previewInfo',
   fileDownload: '/land/archive/file/download',
   fileDelete: '/land/archive/file/delete',
-  relatedDocuments: '/land/archive/relatedDocuments'
+  relatedDocuments: '/land/archive/relatedDocuments',
+  projectPage: '/land/archive/projectPage',
+  projectCaseFiles: '/land/archive/projectCaseFiles'
 }
 
 /** 档案分页列表（维护页与所有下钻场景共用） */
 export function queryArchiveList (params) {
   return javaGetAction(archiveUrl.list, params)
+}
+
+/**
+ * 按「项目」分页聚合（P2-07 树形：项目 → 案卷 → 材料类别 → 文件）。
+ *
+ * ★ 分页口径 = 项目：一页 N 个项目，不是一页 N 个案卷。
+ *   若按案卷分页，同一个项目会被切到相邻两页，反而更难看清「这个项目都有什么」。
+ * @param {object} params 与列表完全相同的筛选条件
+ * @param {{pageNo?: number, pageSize?: number}} page
+ */
+export function queryArchiveProjectPage (params, page) {
+  return javaGetAction(archiveUrl.projectPage, Object.assign({}, params || {}, page || {}))
+}
+
+/** 某个项目下的全部案卷（含各自卷内文件）；projectKey 由 projectPage 原样回传 */
+export function queryArchiveProjectCaseFiles (params, projectKey) {
+  return javaGetAction(archiveUrl.projectCaseFiles, Object.assign({}, params || {}, { projectKey }))
 }
 
 /** 档案详情（含卷内文件） */

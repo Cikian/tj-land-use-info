@@ -54,7 +54,7 @@ export const attachmentUrl = {
  * 附件目录树（按**材料类型**分组，两层）。
  *
  * @param {string} bizType land / facility / process
- *                        ★ 必传：宗地与配套是两套不同的材料清单（5 类 / 13 类）
+ *                        ★ 必传：宗地与配套是两套不同的材料清单（宗地 4 类 / 配套 13 类）
  * @param {string} bizId   业务对象 id
  * @returns {Promise} result 为
  *   { bizType, bizKey,
@@ -125,7 +125,7 @@ export function attachmentUploadHeaders () {
  *   bizType（land / facility / process，空 = 全部）
  *   bizId（精确）
  *   bizKey（模糊：宗地编号 / 配套项目名称）
- *   fileType（精确：01~13、99，见字典 land_attach_type）
+ *   fileType（精确：宗地 01~04；配套 / 环节 01~13；迁移遗留的 99 也可检索）
  *   keyword（★ 文件名模糊，后端字段名是 keyword 不是 fileName）
  *   uploadBy（上传人账号，精确）
  *   beginDate / endDate（yyyy-MM-dd，后端会补成当天 00:00:00 ~ 23:59:59）
@@ -167,12 +167,13 @@ export function queryAttachmentTypeDistribution (bizType) {
  * 可用的附件类型（材料类型）列表 —— **按业务类型取对应那套**。
  *
  * ★ 必须传 bizType：宗地与配套是两套不同的材料清单
- *   （宗地 5 类：土地整理计划 / 配套方案 / 配套情况函 / 配套筹备函 / 出让宗地图形数据（SHP）；
- *    配套 13 类：项建批复文件 / 道路规划 / 竣工文件 … 均取自旧系统存储目录名）。
- *   不区分的话用户会在下拉里看到一半无关选项。
+ *   （宗地 4 类：土地整理计划 / 配套情况函 / 配套筹备函 / 出让宗地图形数据（shp）；
+ *    配套 13 类：01 配套项目核定用地与地籍调查 → 13 移交文件，P1-08 报告图 3 口径）。
+ *   不区分的话用户会在下拉里看到一半无关选项，更糟的是两套 01~04 重号，
+ *   同一个码值在两套里是两种材料 —— 名字必定错一半。
  *
- * @param {string} bizType land / facility / process（process 与 land 同一套）
- * @returns {Promise} result 为 [{ value, text }]，顺序即字典排序
+ * @param {string} bizType land / facility / process（环节挂配套下，与 facility 同一套）
+ * @returns {Promise} result 为 [{ value, text }]，顺序即材料目录顺序
  */
 export function queryAllowedAttachmentTypes (bizType) {
   return javaGetAction(attachmentUrl.allowedTypes, { bizType })
@@ -231,27 +232,49 @@ export function buildPreviewHttpUrl (storePath) {
 }
 
 /**
- * 本地兜底的附件类型（接口不可用时用；与 sql/data/01_data_dict.sql 的
- * land_attach_type 逐字一致）。
+ * 本地兜底的材料类型目录（**唯一基准**：P1-08 报告图 3）。
  *
- * ★ item_value 存的是**编码**（01/02/…/13、99）而不是中文 —— 附件类型是文件分类码，
- *   会被拼进存储目录名与导出文件名，必须稳定且与旧系统目录名可对照。
+ * ★ 为什么分两套常量而不是一份合并清单：宗地 4 类、配套 13 类，
+ *   两套的 01~04 是**重号**（宗地 01=土地整理计划，配套 01=核定用地与地籍调查）。
+ *   合并成一份平铺下拉会出现两条 value='01'，选中后显示的名字永远错一半。
+ * ★ 运行时权威来源是后端 `/land/data/attachment/allowedTypes`（按 bizType 返回）；
+ *   这里只在接口不可用时兜底，两处必须逐字一致（后端改白名单要同步改这里）。
+ * ★ 环节进度（process）跟随挂靠侧 = 配套，所以用配套那 13 类。
+ * ★ 迁移遗留的 99「其他（历史）」不在任何一套里：它只用于历史附件回显，
+ *   新上传落 99 会被后端拒绝。
  */
-export const ATTACHMENT_TYPES_FALLBACK = [
+export const ATTACHMENT_TYPES_LAND = [
   { value: '01', text: '土地整理计划' },
   { value: '02', text: '配套情况函' },
   { value: '03', text: '配套筹备函' },
-  { value: '04', text: '出让宗地图形数据' },
-  { value: '05', text: '项建批复' },
-  { value: '06', text: '可研批复' },
-  { value: '07', text: '初设及概算批复' },
-  { value: '08', text: '道路规划' },
-  { value: '09', text: '管线综合矢量数据' },
-  { value: '10', text: '专业配套方案' },
-  { value: '11', text: '施工许可' },
-  { value: '12', text: '竣工与移交文件' },
-  { value: '99', text: '其他' }
+  { value: '04', text: '出让宗地图形数据（shp）' }
 ]
+
+export const ATTACHMENT_TYPES_FACILITY = [
+  { value: '01', text: '配套项目核定用地与地籍调查' },
+  { value: '02', text: '项建批复' },
+  { value: '03', text: '可研批复' },
+  { value: '04', text: '初设及概算批复' },
+  { value: '05', text: '道路规划' },
+  { value: '06', text: '规划工程许可' },
+  { value: '07', text: '专业配套方案' },
+  { value: '08', text: '专业管理意见' },
+  { value: '09', text: '规划用地许可与划拨手续办理' },
+  { value: '10', text: '施工许可' },
+  { value: '11', text: '不动产登记' },
+  { value: '12', text: '竣工文件' },
+  { value: '13', text: '移交文件' }
+]
+
+/**
+ * 按归属取兜底目录。
+ * @param {string} [bizType] land / facility / process；未选时与后端同规则退回宗地那套
+ */
+export function attachTypeOptionsOf (bizType) {
+  return (bizType === 'facility' || bizType === 'process'
+    ? ATTACHMENT_TYPES_FACILITY
+    : ATTACHMENT_TYPES_LAND).slice()
+}
 
 /**
  * 去掉扩展名（用于「文件题名」这类默认值）。
@@ -273,7 +296,9 @@ export function resolveExt (fileName) {
 export default {
   attachmentUrl,
   ATTACHMENT_BIZ_TYPES,
-  ATTACHMENT_TYPES_FALLBACK,
+  ATTACHMENT_TYPES_LAND,
+  ATTACHMENT_TYPES_FACILITY,
+  attachTypeOptionsOf,
   buildAttachmentDownloadUrl,
   buildPreviewHttpUrl,
   attachmentUploadAction,

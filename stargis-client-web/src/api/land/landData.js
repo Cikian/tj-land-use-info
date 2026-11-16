@@ -73,7 +73,12 @@ export function queryFacilityOptions (params) {
 
 /**
  * 配套项目全局搜索（不限宗地，供档案查询条件使用）
- * @param {{keyword?: string, limit?: number}} params
+ *
+ * 可选参数（P1-10，后端未上线时会被忽略，前端可先传）：
+ *   roadFirst  布尔  道路类项目排前面（移交 / 台账这类「只登记道路」的场景用）
+ *   category   字符串 按配套设施类别过滤（传了就只返回该类）
+ *
+ * @param {{keyword?: string, limit?: number, roadFirst?: boolean, category?: string}} params
  */
 export function searchFacilityOptions (params) {
   return javaGetAction(landDataUrl.facilitySearch, params)

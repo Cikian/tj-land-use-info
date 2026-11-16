@@ -92,7 +92,7 @@
             :options="facilityOptions"
             searchable
             :filter-local="false"
-            :empty-text="facilityLoading ? '搜索中…' : '输入道路/项目名称搜索'"
+            :empty-text="facilityLoading ? '搜索中…' : '没有匹配的配套项目'"
             placeholder="输入项目名称搜索"
             aria-label="关联配套项目"
             @search="handleFacilitySearch"
@@ -220,6 +220,9 @@ import {
   handoverTypeOptions
 } from './constants'
 
+/** 下拉一次拉取的最大条数（后端 limit 参数） */
+const OPTION_LIMIT = 50
+
 /** 所有检索字段的初始空值，重置时回到这份结构 */
 function buildEmptyQuery () {
   return {
@@ -232,8 +235,13 @@ function buildEmptyQuery () {
     crzdbh: '',
     dkmc: '',
     facilityId: '',
-    /** 只为下拉回显用的展示名，不参与检索（getQuery 里会剔除） */
+    /**
+     * 只为下拉回显用的可读名称（下钻时由档案详情带进来），不参与检索
+     * —— getQuery 里会剔除。名称缺失时才退到 crzdbh，绝不拿 id 当 label。
+     */
     facilityLabel: '',
+    /** 兼容另一处契约：`ptxmmc` 与 facilityLabel 同值，同样只用于回显 */
+    ptxmmc: '',
     handoverType: '',
     status: '',
     receiveUnit: '',
@@ -292,6 +300,9 @@ export default {
   },
   created () {
     this.loadXzqh()
+    // 打开即加载首批：原来只在输入关键词后才请求，一进来下拉是空的，
+    // 用户会以为「这页没有配套项目可选」（清单 P1-10 现象）。
+    this.loadFacilityOptions('')
     this.setQuery(this.initialQuery)
   },
   methods: {
@@ -312,28 +323,77 @@ export default {
         })
     },
 
-    /** 配套项目远程搜索（大屏只有一个下拉，输入即查，不限宗地） */
+    /**
+     * 配套项目远程搜索（大屏只有一个下拉，输入即查，不限宗地）。
+     * ★ 关键词为空时**加载首批**而不是清空：清空会让用户以为没有可选项，
+     *   而且清空后当前已选项也会从候选里消失（下拉显示空白）。
+     *   后端 `/land/data/facility/search` 的关键词同时匹配项目名与宗地编号，
+     *   所以「按项目名 / 宗地编号搜索」是同一个入参。
+     */
     handleFacilitySearch (keyword) {
+      this.loadFacilityOptions(keyword)
+    },
+
+    /**
+     * 拉取配套项目候选。
+     *
+     * ★ `roadFirst: true`（P1-10 后端可选参数）让后端把道路类项目排在前面：
+     *   这页筛的就是道路移交，而前端只能对已返回的 50 条排序 ——
+     *   首批候选里全是排水 / 绿化时，用户会以为「我的路不在系统里」。
+     *   后端未上线时该参数被忽略，首批仍是原来的顺序，不会报错
+     *   （javaGetAction 把 params 原样作为 query string 发出，多余的键后端不认即忽略）。
+     * @param {string} [keyword] 关键词；空 = 首批
+     */
+    loadFacilityOptions (keyword) {
       const text = String(keyword || '').trim()
-      if (!text) {
-        this.facilityOptions = []
-        return
-      }
       this.facilityLoading = true
-      searchFacilityOptions({ keyword: text, limit: 50 })
+      searchFacilityOptions({ keyword: text || undefined, limit: OPTION_LIMIT, roadFirst: true })
         .then((res) => {
           const list = res && res.success ? res.result || [] : []
-          this.facilityOptions = list.map((item) => ({
-            value: item.id,
-            label: item.crzdbh ? `${item.ptxmmc}（${item.crzdbh}）` : item.ptxmmc
-          }))
+          this.facilityOptions = this.toFacilityOptions(list)
+          // 当前已选项可能不在前 50 条里，补回去否则下拉显示空白
+          this.ensureCurrentFacilityOption()
         })
         .catch(() => {
+          // 失败就把候选清空（不留上一轮结果），但仍然补回当前已选项用于回显
           this.facilityOptions = []
+          this.ensureCurrentFacilityOption()
         })
         .finally(() => {
           this.facilityLoading = false
         })
+    },
+
+    /** 后端的配套项目 → 下拉选项；label 用可读名称（名称缺失时退到宗地编号） */
+    toFacilityOptions (list) {
+      return (list || []).map((item) => {
+        const name = item.ptxmmc || item.crzdbh || ''
+        return {
+          value: item.id,
+          label: item.crzdbh && item.ptxmmc ? `${item.ptxmmc}（${item.crzdbh}）` : (name || '未命名配套项目')
+        }
+      })
+    },
+
+    /** 把当前条件里的配套项目补进候选（可读名称优先，其次宗地编号，最后占位文案） */
+    ensureCurrentFacilityOption () {
+      const id = this.query.facilityId
+      if (!id) return
+      if (this.facilityOptions.some((item) => item.value === id)) return
+      this.facilityOptions = [{
+        value: id,
+        label: this.facilityLabelOf(this.query)
+      }].concat(this.facilityOptions)
+    },
+
+    /**
+     * 条件里的人读名称。
+     * ★ 顺序：facilityLabel → ptxmmc → crzdbh → 占位文案。
+     *   **绝不**退到 facilityId（长数字 ID 会被当成乱码，清单 P1-09 明令禁止）。
+     */
+    facilityLabelOf (query) {
+      const source = query || {}
+      return source.facilityLabel || source.ptxmmc || source.crzdbh || '当前已选配套项目（名称待补）'
     },
 
     /* ---------------- 三个日期区间 ---------------- */
@@ -367,7 +427,8 @@ export default {
       this.agreementRange = []
       this.handoverRange = []
       this.maintenanceRange = []
-      this.facilityOptions = []
+      // 重置只清条件，候选回到首批（清空会让下拉变成「没有可选项」）
+      this.loadFacilityOptions('')
       this.$emit('reset')
       // 重置后立即检索一次，让列表回到全量状态
       this.$emit('search', this.getQuery())
@@ -378,8 +439,9 @@ export default {
     /** 取当前条件（已剔除空值，并把布尔型条件转回真正的布尔） */
     getQuery () {
       const result = compactQuery(this.query)
-      // facilityLabel 只是下拉回显用的展示名，不是后端条件，不能发出去
+      // facilityLabel / ptxmmc 只是下拉回显用的名称，不是后端条件，不能发出去
       delete result.facilityLabel
+      delete result.ptxmmc
       // ScreenSelect 的 value 只接受 String/Number，界面上用 'true'/'false'，这里转回布尔
       if (result.hasArchive === 'true') {
         result.hasArchive = true
@@ -417,12 +479,14 @@ export default {
         ? [next.beginMaintenanceEnd || '', next.endMaintenanceEnd || '']
         : []
 
-      // 下钻带了配套项目：把它的展示名塞进下拉选项，否则下拉会显示空白
+      // 下钻带了配套项目：用**可读名称**回显（名称缺失才退到宗地编号，绝不用 id），
+      // 同时把首批候选拉回来，用户点开下拉能看到别的项目而不是只有这一条
       if (next.facilityId) {
         this.facilityOptions = [{
           value: next.facilityId,
-          label: next.facilityLabel || next.facilityId
+          label: this.facilityLabelOf(next)
         }]
+        this.loadFacilityOptions('')
       }
 
       // 带的是折叠区里的字段就把「更多条件」展开，否则用户会以为条件没生效

@@ -188,7 +188,9 @@ export function checkCrzdbh (crzdbh, excludeId) {
 }
 
 /**
- * 一次性取本项目数据管理要用的 6 个业务字典选项，供下拉直接使用。
+ * 一次性取本项目数据管理要用的业务字典选项，供下拉直接使用
+ * （默认清单 9 个：项目分类 / 行政区划 / 配套设施类别 / 环节情况 / 环节问题类型 /
+ *  材料类型 + 建设性质 / 道路等级 / 功能区，见 constants.js 的 dictDefinitions()）。
  *
  * ★ 为什么放在 api 层而不是 views/screen/data/constants.js：
  *   constants.js 被「纯展示组件」（表格、标签）引用，那些组件只需要

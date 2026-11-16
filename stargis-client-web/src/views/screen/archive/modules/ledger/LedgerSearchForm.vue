@@ -243,6 +243,12 @@ function buildEmptyQuery () {
     dkmc: '',
     facilityId: '',
     /**
+     * 只为下拉回显用的可读名称（下钻时由档案详情带进来），不参与检索
+     * —— getQuery 里会剔除。名称缺失时才退到 crzdbh，绝不拿 id 当 label。
+     */
+    ptxmmc: '',
+    facilityLabel: '',
+    /**
      * 关联档案ID：没有独立输入控件，只作为**下钻条件**存在
      * （从档案详情点「查看该项台账」时由页签壳带进来）。
      * 放在这里是为了让它参与「重置」与「是否展开更多条件」的判断，
@@ -311,6 +317,9 @@ export default {
     if (!this.materials || !this.materials.length) {
       this.loadMaterials()
     }
+    // 打开即加载首批配套项目：原来只在首次展开下拉时才拉，
+    // 下钻只带 facilityId 时下拉会显示空白（清单 P1-09 / P1-10）
+    this.loadFacilityOptions('')
     // 回显日期区间：条件里是分开的 begin/end，界面上是一个 range 控件
     this.acceptanceRange = this.buildRange('beginAcceptanceDate', 'endAcceptanceDate')
     this.handoverRange = this.buildRange('beginHandoverDate', 'endHandoverDate')
@@ -379,34 +388,53 @@ export default {
       this.loadFacilityOptions(keyword)
     },
 
+    /**
+     * 拉取配套项目候选。
+     * @param {string} [keyword] 关键词；空 = 首批（打开页面 / 重置 / 下钻后都走这里）
+     */
     loadFacilityOptions (keyword) {
       queryFacilityOptions({ keyword: keyword || undefined, limit: OPTION_LIMIT })
         .then((res) => {
           if (!res || !res.success) return
           this.facilityOptions = (res.result || []).map((item) => ({
             value: item.id || item.facilityId,
-            label: item.ptxmmc || item.name || item.id
+            // label 只用可读名称，不拿 id 兜底（长数字看起来像乱码，清单 P1-09）
+            label: this.readableFacilityLabel(item)
           }))
           // 拉回来的候选里可能没有当前已选中的项目（下钻只带了一个 id），
           // 不补进去下拉会显示空白，用户以为条件丢了（与 ProjectPicker 同一处理）
-          this.ensureFacilityOption(this.query.facilityId, this.query.ptxmmc)
+          this.ensureFacilityOption(this.query.facilityId, this.displayNameOf(this.query))
         })
         .catch(() => {
           this.facilityOptions = []
-          this.ensureFacilityOption(this.query.facilityId, this.query.ptxmmc)
+          this.ensureFacilityOption(this.query.facilityId, this.displayNameOf(this.query))
         })
+    },
+
+    /** 后端配套项目 → 可读名称（名称缺失时退到宗地编号，最后给占位文案） */
+    readableFacilityLabel (item) {
+      const source = item || {}
+      return source.ptxmmc || source.name || source.crzdbh || '未命名配套项目'
+    },
+
+    /** 条件里的可读项目名：ptxmmc → facilityLabel → crzdbh → 占位文案（绝不用 id） */
+    displayNameOf (query) {
+      const source = query || {}
+      return source.ptxmmc || source.facilityLabel || source.crzdbh || ''
     },
 
     /**
      * 保证「当前选中的配套项目」一定在下拉选项里。
      * @param {string} id 配套项目 id
-     * @param {string} [label] 可读名称（下钻时若带了 ptxmmc 就用它，否则退化为 id）
+     * @param {string} [label] 可读名称（下钻时若带了 ptxmmc 就用它；
+     *        都没有才退到宗地编号，绝不把 id 当名称）
      */
     ensureFacilityOption (id, label) {
       if (!id) return
       const exists = this.facilityOptions.some((item) => item.value === id)
       if (exists) return
-      this.facilityOptions = [{ value: id, label: label || id }].concat(this.facilityOptions)
+      const text = label || this.query.crzdbh || '当前已选配套项目（名称待补）'
+      this.facilityOptions = [{ value: id, label: text }].concat(this.facilityOptions)
     },
 
     handleAcceptanceChange (range) {
@@ -456,6 +484,9 @@ export default {
         out.endMaterialCount = 0
       }
       delete out.materialCompleteness
+      // ptxmmc / facilityLabel 只是下拉回显用的名称，后端 DTO 里没有这两个字段
+      delete out.ptxmmc
+      delete out.facilityLabel
       return out
     },
 
@@ -487,7 +518,7 @@ export default {
       // 下钻可能只带 facilityId（选项还没拉过），先把当前值补进选项并预取一批，
       // 否则「配套项目」下拉会显示空白，用户以为条件没生效
       if (next.facilityId) {
-        this.ensureFacilityOption(next.facilityId, next.ptxmmc)
+        this.ensureFacilityOption(next.facilityId, this.displayNameOf(next))
         this.loadFacilityOptions('')
       }
       this.syncExpanded()

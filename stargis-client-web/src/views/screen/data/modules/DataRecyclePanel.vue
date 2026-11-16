@@ -236,6 +236,19 @@ import {
 } from '@/api/land/dataRecycle'
 import { defaultPagination, compactQuery } from '../constants'
 
+/**
+ * 两个页签的初始空条件。
+ * ★ 抽成函数而不是各写一份字面量：resetFilters / applyDrill / 页内「重置」
+ *   都用它，三处各写一份就会漂移成「重置后还留着一个旧条件」。
+ */
+function buildEmptyBinQuery () {
+  return { bizType: '', keyword: '' }
+}
+
+function buildEmptyLogQuery () {
+  return { bizType: '', action: '', operator: '', keyword: '' }
+}
+
 export default {
   name: 'DataRecyclePanel',
   components: {
@@ -268,7 +281,7 @@ export default {
 
       // ---------- 回收站 ----------
       binLoading: false,
-      binQuery: { bizType: '', keyword: '' },
+      binQuery: buildEmptyBinQuery(),
       binRows: [],
       summary: { landDeleted: 0, facilityDeleted: 0, total: 0 },
       restoringKey: '',
@@ -277,7 +290,7 @@ export default {
 
       // ---------- 变更留痕 ----------
       logLoading: false,
-      logQuery: { bizType: '', action: '', operator: '', keyword: '' },
+      logQuery: buildEmptyLogQuery(),
       logRows: [],
       logPagination: defaultPagination(10),
       actionOptions: CHANGE_ACTIONS_FALLBACK,
@@ -379,7 +392,7 @@ export default {
     },
 
     handleResetBin () {
-      this.binQuery = { bizType: '', keyword: '' }
+      this.binQuery = buildEmptyBinQuery()
       this.loadBin()
     },
 
@@ -481,7 +494,7 @@ export default {
     },
 
     handleResetLog () {
-      this.logQuery = { bizType: '', action: '', operator: '', keyword: '' }
+      this.logQuery = buildEmptyLogQuery()
       this.logPagination.current = 1
       this.loadLogs()
     },
@@ -520,13 +533,38 @@ export default {
         }
         this.loadBin()
       }
-      if (next.bizType) {
-        this.logQuery = Object.assign({}, this.logQuery, { bizType: next.bizType })
-      }
-      if (next.bizKey) {
-        this.logQuery = Object.assign({}, this.logQuery, { keyword: next.bizKey })
-      }
+      /*
+       * ★ 留痕条件**先重置再赋值**：原来是 Object.assign 叠加，
+       *   于是上一次下钻（或用户手填）的 action / operator / keyword 会粘在这里 ——
+       *   换了业务对象却还按上一个关键字查，表现是「下钻进来列表是空的」。
+       */
+      this.logQuery = Object.assign(buildEmptyLogQuery(), {
+        bizType: next.bizType || '',
+        keyword: next.bizKey || ''
+      })
+      this.logPagination.current = 1
       this.loadLogs()
+    },
+
+    /**
+     * 清空检索条件（页签壳 P2-01 的公开契约）。
+     *
+     * ★ 两个页签一起清：回收站与变更留痕共用「业务类型」这个语义，
+     *   只清当前页签会让另一个页签留着旧条件，切过去立刻变成隐性过滤。
+     * ★ 回收站没有分页（两类一次列全），所以「页码回 1」只对留痕生效。
+     */
+    resetFilters () {
+      this.binQuery = buildEmptyBinQuery()
+      this.logQuery = buildEmptyLogQuery()
+      this.logPagination = Object.assign({}, this.logPagination, { current: 1 })
+      this.restoringKey = ''
+      this.activeDetails = []
+      this.detailVisible = false
+      if (this.activeTab === 'bin') {
+        this.loadBin()
+      } else {
+        this.loadLogs()
+      }
     },
 
     /** 直接落到「变更留痕」页签（供外部入口用） */

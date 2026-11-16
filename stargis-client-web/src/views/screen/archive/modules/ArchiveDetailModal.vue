@@ -37,23 +37,37 @@
   >
     <template #head-extra>
       <div class="archive-detail__tags">
-        <screen-tag v-if="detail" :tone="statusTone(detail.status)" size="sm">
-          {{ detail.status || '—' }}
-        </screen-tag>
+        <!--
+          ★ P1-15：状态既要「看到」也要能「改」，所以这里用下拉代替只读标签，
+            避免同一状态在弹窗里出现两遍（标签 + 下拉）。
+            改状态采用「乐观更新 + 失败回滚」：先本地改成目标值让界面立刻响应，
+            接口失败再退回原值并提示；成功则通知父级刷新列表，并由本组件重新拉详情。
+            这样不会出现「列表已经变了、详情还是旧值」或相反的半成功状态。
+        -->
+        <screen-select
+          v-if="detail"
+          v-model="statusValue"
+          class="archive-detail__status"
+          :options="statusOptions"
+          size="sm"
+          :disabled="statusChanging"
+          aria-label="档案状态"
+          @change="handleStatusChange"
+        />
         <screen-tag v-if="detail" tone="muted" size="sm">{{ archiveTypeText(detail.archiveType) }}</screen-tag>
         <screen-tag v-if="detail" :tone="secretTone(detail.secretLevel)" size="sm">密级：{{ detail.secretLevel || '—' }}</screen-tag>
         <screen-tag v-if="detail && detail.retention" tone="muted" size="sm">保管期限：{{ detail.retention }}</screen-tag>
         <screen-tag v-if="detail" tone="info" size="sm">{{ files.length }} 个卷内文件</screen-tag>
       </div>
 
-<!--      <screen-button-->
-<!--        size="sm"-->
-<!--        icon="edit"-->
-<!--        :disabled="!detail"-->
-<!--        @click="handleEdit"-->
-<!--      >-->
-<!--        编辑-->
-<!--      </screen-button>-->
+      <!--      <screen-button-->
+      <!--        size="sm"-->
+      <!--        icon="edit"-->
+      <!--        :disabled="!detail"-->
+      <!--        @click="handleEdit"-->
+      <!--      >-->
+      <!--        编辑-->
+      <!--      </screen-button>-->
 
       <screen-button
         size="sm"
@@ -291,6 +305,7 @@ import {
   ScreenDescriptions,
   ScreenButton,
   ScreenLoading,
+  ScreenSelect
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import {
@@ -298,8 +313,9 @@ import {
   queryArchiveLogs,
   queryRelatedDocuments,
   queryArchiveFilePreview,
+  changeArchiveStatus,
   buildJavaDownloadUrl,
-  archiveUrl,
+  archiveUrl
 } from '@/api/land/archive'
 import {
   formatSize,
@@ -309,6 +325,8 @@ import {
   docStatusTone,
   archiveTypeText,
   sourceTypeText,
+  ARCHIVE_STATUSES,
+  toOptions
 } from '../constants'
 import { getJavaFileAccessHttpUrl } from '@/api/manageJava'
 import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
@@ -341,6 +359,7 @@ export default {
     ScreenDescriptions,
     ScreenButton,
     ScreenLoading,
+    ScreenSelect,
     FilePreviewModal
   },
   data () {
@@ -353,12 +372,16 @@ export default {
       files: [],
       logs: [],
       related: { receives: [], sends: [] },
+      /** 状态下拉的当前值（与 detail.status 同步，见 handleStatusChange 的回滚说明） */
+      statusValue: '',
+      statusChanging: false,
+      statusOptions: toOptions(ARCHIVE_STATUSES),
 
       tabs: [
         { key: 'base', label: '基本信息' },
         { key: 'files', label: '档案文件' },
         { key: 'docs', label: '收发文情况' },
-        { key: 'logs', label: '操作记录' },
+        { key: 'logs', label: '操作记录' }
       ],
 
       fileColumns: [
@@ -368,7 +391,7 @@ export default {
         { key: 'fileSize', title: '大小', width: 100, type: 'slot', align: 'right' },
         { key: 'status', title: '状态', width: 90, type: 'slot', align: 'center' },
         { key: 'createTime', title: '上传时间', width: 160 },
-        { key: 'action', title: '操作', width: 80, type: 'slot', align: 'center' },
+        { key: 'action', title: '操作', width: 80, type: 'slot', align: 'center' }
       ],
 
       receiveColumns: [
@@ -378,7 +401,7 @@ export default {
         { key: 'receiveDate', title: '来文日期', width: 110 },
         { key: 'currentHandlerName', title: '当前处理人', width: 110 },
         { key: 'docStatus', title: '状态', width: 90, type: 'slot', align: 'center' },
-        { key: 'archiveFlag', title: '归档', width: 80, type: 'slot', align: 'center' },
+        { key: 'archiveFlag', title: '归档', width: 80, type: 'slot', align: 'center' }
       ],
 
       sendColumns: [
@@ -387,7 +410,7 @@ export default {
         { key: 'toDept', title: '主送单位', width: 190, ellipsis: true },
         { key: 'issueDate', title: '发文日期', width: 110 },
         { key: 'signer', title: '签发人', width: 100 },
-        { key: 'archiveFlag', title: '归档', width: 80, type: 'slot', align: 'center' },
+        { key: 'archiveFlag', title: '归档', width: 80, type: 'slot', align: 'center' }
       ],
 
       logColumns: [
@@ -395,8 +418,8 @@ export default {
         { key: 'logAction', title: '动作', width: 90, type: 'slot', align: 'center' },
         { key: 'operateName', title: '操作人', width: 120, formatter: (value, row) => value || row.operateBy || '—' },
         { key: 'detail', title: '明细', width: 340, ellipsis: true },
-        { key: 'ip', title: 'IP', width: 140 },
-      ],
+        { key: 'ip', title: 'IP', width: 140 }
+      ]
     }
   },
   computed: {
@@ -412,7 +435,7 @@ export default {
       return [
         { tab: 'ledger', label: '查看该项台账', icon: 'archive' },
         { tab: 'handover', label: '查看该项移交事项', icon: 'file-text' },
-        { tab: 'completion', label: '查看该项目竣工档案', icon: 'layers' },
+        { tab: 'completion', label: '查看该项目竣工档案', icon: 'layers' }
       ]
     },
 
@@ -427,7 +450,7 @@ export default {
         { key: 'crzdbh', label: '出让宗地编号', value: data.crzdbh, tone: 'number' },
         { key: 'xzqh', label: '所属行政区', value: data.xzqh },
         { key: 'ptsslb', label: '配套设施类别', value: data.ptsslb },
-        { key: 'sourceType', label: '项目来源', value: sourceTypeText(data.sourceType) },
+        { key: 'sourceType', label: '项目来源', value: sourceTypeText(data.sourceType) }
       ]
     },
     attributeItems () {
@@ -450,11 +473,11 @@ export default {
         {
           key: 'fileSummary',
           label: '卷内文件',
-          value: `${this.files.length} 个${sizeText !== '—' ? ` · ${sizeText}` : ''}`,
+          value: `${this.files.length} 个${sizeText !== '—' ? ` · ${sizeText}` : ''}`
         },
         { key: 'dkmc', label: '地块名称', value: data.dkmc, stack: true },
         { key: 'ptxmmc', label: '配套项目', value: data.ptxmmc, stack: true },
-        { key: 'remark', label: '备注', value: data.remark, stack: true },
+        { key: 'remark', label: '备注', value: data.remark, stack: true }
       ]
     },
     /** 「其他信息」：档案的审计/补充信息 */
@@ -462,13 +485,13 @@ export default {
       const data = this.detail || {}
       return [
         { key: 'createTime', label: '创建信息', value: this.joinInfo(data.createTime, data.createBy) },
-        { key: 'updateTime', label: '最后更新', value: this.joinInfo(data.updateTime, data.updateBy) },
+        { key: 'updateTime', label: '最后更新', value: this.joinInfo(data.updateTime, data.updateBy) }
       ]
     },
     totalSizeText () {
       const total = this.files.reduce((sum, item) => sum + (Number(item.fileSize) || 0), 0)
       return formatSize(total)
-    },
+    }
   },
   methods: {
     formatSize,
@@ -505,6 +528,7 @@ export default {
             return
           }
           this.detail = res.result || {}
+          this.statusValue = this.detail.status || ''
           this.files = (this.detail && this.detail.files) || []
           // 收发文与操作记录不阻塞主信息展示，并行拉取
           this.loadRelated()
@@ -516,25 +540,87 @@ export default {
     },
 
     /**
+     * 重新拉一次「当前打开的这一份」详情（P1-15）。
+     *
+     * <p>为什么不重新 open(id)：open 会把页签重置到「基本信息」并把弹窗滚回顶部，
+     * 用户刚在「档案文件」页签里，刷新一下却被弹回第一页——那不是刷新，是打断。
+     * 父组件（列表页）在编辑保存成功后调用本方法，详情与列表才不会一边新一边旧。
+     */
+    refresh () {
+      if (!this.detail || !this.detail.id) return Promise.resolve()
+      const keepTab = this.activeTab
+      return queryArchiveById(this.detail.id).then((res) => {
+        if (!res || !res.success || !res.result) return
+        this.detail = res.result
+        this.statusValue = this.detail.status || ''
+        this.files = this.detail.files || []
+        this.activeTab = keepTab
+        this.loadRelated()
+        this.loadLogs()
+      })
+    },
+
+    /**
+     * 变更档案状态（P1-15 第 1 条：成功即刷新列表与详情，失败必须回滚本地状态）。
+     *
+     * <p>三个动作缺一不可：
+     *   ① 本地先改成目标值（乐观更新，界面立刻响应）；
+     *   ② 失败 → 退回原值并提示（不允许「界面上成功了、库里没变」）；
+     *   ③ 成功 → 通知父级刷新列表 + 自己重拉详情（不允许「列表新、详情旧」）。
+     */
+    handleStatusChange (status) {
+      if (!this.detail || !this.detail.id || !status) return Promise.resolve()
+      const previous = this.detail.status
+      if (status === previous) return Promise.resolve()
+      this.detail.status = status
+      this.statusChanging = true
+      return changeArchiveStatus(this.detail.id, status)
+        .then((res) => {
+          if (!res || !res.success) {
+            this.detail.status = previous
+            this.statusValue = previous
+            toast.error((res && res.message) || '状态变更失败，已恢复原状态')
+            return
+          }
+          toast.success(`档案状态已变更为「${status}」`)
+          this.$emit('status-changed', { id: this.detail.id, status })
+          return this.refresh()
+        })
+        .catch(() => {
+          this.detail.status = previous
+          this.statusValue = previous
+          toast.error('状态变更失败，已恢复原状态')
+        })
+        .finally(() => {
+          this.statusChanging = false
+        })
+    },
+
+    /**
      * 收发文情况。
-     * 优先用 facilityId，其次 landId，最后 crzdbh —— 与后端的 OR 匹配逻辑一致，
-     * 只传一个最精确的标识，避免条件互相放大。
+     * ★ P1-11 第 3 条：优先按 **archiveId** 加载 —— 与「档案文件」页签同一个 ID，
+     *   这样「这份档案是由哪几件收文/发文归档来的」和卷内文件是同一批来源，
+     *   不会出现「档案文件 3 个、收发文情况 5 条」的不一致。
+     *   没有 archiveId（理论上不会发生）时才退回按项目/宗地关联。
      */
     loadRelated () {
       const data = this.detail || {}
       this.relatedLoading = true
-      queryRelatedDocuments({
-        facilityId: data.facilityId || undefined,
-        landId: data.facilityId ? undefined : data.landId || undefined,
-        crzdbh: data.facilityId || data.landId ? undefined : data.crzdbh || undefined,
-        limit: 100,
-      })
+      const params = { limit: 100 }
+      if (data.id) {
+        params.archiveId = data.id
+      } else {
+        params.facilityId = data.facilityId || undefined
+        params.landId = data.facilityId ? undefined : data.landId || undefined
+        params.crzdbh = data.facilityId || data.landId ? undefined : data.crzdbh || undefined
+      }
+      queryRelatedDocuments(params)
         .then((res) => {
           if (!res || !res.success) return
           const result = res.result || {}
           this.related = {
             receives: result.receives || [],
-            sends: result.sends || [],
+            sends: result.sends || []
           }
         })
         .catch(() => {
@@ -616,16 +702,39 @@ export default {
 
     /**
      * 跳到「同一配套项目/宗地」的第 6/7/8 项页面（方案 2.3.2）。
-     * 条件优先用 facilityId（准确），没有时退化成 crzdbh（兜底）——
-     * 与后端「关联档案」的匹配口径一致（facility_id 优先、crzdbh 兜底）。
+     *
+     * ★ 下钻条件必须**同时**带 facilityId + facilityLabel + crzdbh（清单 P1-09 第 1 条）：
+     *   只带 id 时下游检索表单手上没有可读名称，只能把 id 当 label 显示，
+     *   一串长数字看起来就像乱码。名称取详情 VO 里已有的 `ptxmmc`（不另造字段）。
+     *
+     * ★ 竣工档案额外带 archiveId，两条关联链**不得互换**（清单 P1-09 第 4 条）：
+     *   `t_archive.facility_id`          —— 档案属于哪个配套项目（项目归属）；
+     *   `t_completion_archive.archive_id` —— 历史竣工档案指定的扫描件档案（本条档案）。
+     *   所以「查看竣工档案」优先用 archiveId 反查「哪些历史归档记录引用了本条档案」，
+     *   查不到再由竣工页退回 facilityId（项目归属），页面上会显示当前生效的是哪个条件。
      */
     openRelatedTab (tab) {
       const data = this.detail || {}
+      const label = data.ptxmmc || ''
       const query = { tab }
       if (data.facilityId) {
         query.facilityId = data.facilityId
-      } else if (data.crzdbh) {
+      }
+      // 可读名称：下游表单只拿它做回显，不下发给后端（各表单 getQuery 会剔除）
+      if (label) {
+        query.facilityLabel = label
+      }
+      if (data.crzdbh) {
         query.crzdbh = data.crzdbh
+      }
+      if (tab === 'completion') {
+        if (data.id) {
+          query.archiveId = data.id
+        }
+        // 只用于在竣工页那行小字里说明「按哪条档案反查」，不是检索条件
+        if (data.archiveNo) {
+          query.sourceArchiveNo = data.archiveNo
+        }
       }
       // 同路由换 query 时组件不会重建，页签切换与条件下发由
       // archive/index.vue 对 `$route.query` 的 watcher 统一处理
@@ -640,8 +749,8 @@ export default {
     joinInfo (a, b) {
       const parts = [a, b].filter(Boolean)
       return parts.length ? parts.join(' · ') : '—'
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -660,6 +769,11 @@ export default {
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  /* 状态下拉在标题行里只占必要宽度，不要撑开成整条 */
+  &__status {
+    width: 116px;
   }
 
   &__head {

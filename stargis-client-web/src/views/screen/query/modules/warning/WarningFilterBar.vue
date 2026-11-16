@@ -192,10 +192,22 @@ export default {
     handleSearch () {
       this.$emit('search', this.buildParams())
     },
-    handleReset () {
+    /**
+     * 只清空控件，不发请求。
+     * ★ 供父组件（WarningQueryView.resetFilters，清单 P2-01）调用：
+     *   父组件自己负责「清空 + 回第 1 页 + 重查」，
+     *   这里如果再 emit('search')，同一次清空会打两次请求。
+     * ★ 必须由父组件显式调，而不是靠「父组件把 query 置空」——
+     *   本组件的条件状态在组件内部，父组件清空 query 之后界面上的文字还在，
+     *   就变成「看着还在筛选、其实已经查全量」，正是清单里点名的隐性过滤。
+     */
+    clearConditions () {
       const cleared = {}
       Object.keys(this.conditions).forEach((key) => { cleared[key] = '' })
       this.conditions = cleared
+    },
+    handleReset () {
+      this.clearConditions()
       this.$emit('search', {})
     },
     handleRecalc () {

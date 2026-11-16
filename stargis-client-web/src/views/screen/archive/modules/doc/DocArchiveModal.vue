@@ -81,7 +81,7 @@ import {
   ScreenInput,
   ScreenSelect,
   ScreenDateInput,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import CategoryPicker from '../CategoryPicker.vue'
@@ -97,7 +97,7 @@ export default {
     ScreenSelect,
     ScreenDateInput,
     ScreenIcon,
-    CategoryPicker,
+    CategoryPicker
   },
   data () {
     return {
@@ -112,15 +112,15 @@ export default {
         categoryId: '',
         archiveName: '',
         archiveDate: today(),
-        secretLevel: '',
+        secretLevel: ''
       },
-      errors: {},
+      errors: {}
     }
   },
   computed: {
     secretOptions () {
       return toOptions(SECRET_LEVELS)
-    },
+    }
   },
   methods: {
     /**
@@ -141,7 +141,7 @@ export default {
         archiveName: doc.docTitle || '',
         archiveDate: today(),
         // 默认沿用公文密级，减少一次选择
-        secretLevel: doc.secretLevel || '',
+        secretLevel: doc.secretLevel || ''
       }
       this.errors = {}
       this.visible = true
@@ -168,7 +168,7 @@ export default {
         categoryId: this.model.categoryId,
         archiveName: this.model.archiveName || undefined,
         archiveDate: this.model.archiveDate || undefined,
-        secretLevel: this.model.secretLevel || undefined,
+        secretLevel: this.model.secretLevel || undefined
       }
       this.confirmLoading = true
       const task = this.docType === 'send' ? archiveDocSend(payload) : archiveDocReceive(payload)
@@ -179,9 +179,23 @@ export default {
             toast.error((res && res.message) || '归档失败')
             return
           }
-          toast.success('归档成功，已生成档案')
+          // 后端返回的是归档结果对象（archiveId + 档案号 + 三段计数），
+          // 把「原附件 → 转换 → 落库」说给用户看：归档后看不到文件时能立刻判断断点在哪
+          const data = res.result || {}
+          const text = `归档成功，已归入档案 ${data.archiveNo || ''}${data.verifyText ? '（' + data.verifyText + '）' : ''}`
+          /*
+           * ★ 落库数少于转换数 = 有文件没写进 t_archive_file（P1-11）。
+           *   这种情况不能报「归档成功」的绿色提示，否则用户以为卷内文件齐了；
+           *   已写入的部分后端有意不回滚（批量导入类事务），所以也不是纯失败。
+           */
+          const lost = Number(data.convertedFileCount || 0) - Number(data.savedFileCount || 0)
+          if (lost > 0) {
+            toast.warning(`${text} —— 有 ${lost} 个文件未落库，请检查后端日志 / 磁盘`)
+          } else {
+            toast.success(text)
+          }
           this.visible = false
-          this.$emit('ok', res.result)
+          this.$emit('ok', data)
         })
         .catch(() => {
           // 错误提示已由请求层处理
@@ -193,8 +207,8 @@ export default {
 
     close () {
       this.visible = false
-    },
-  },
+    }
+  }
 }
 </script>
 

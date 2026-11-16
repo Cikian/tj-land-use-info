@@ -149,7 +149,7 @@ import {
   ScreenSelect,
   ScreenDateInput,
   ScreenButton,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { queryXzqhOptions } from '@/api/land/landData'
 import {
@@ -158,7 +158,7 @@ import {
   PROJECT_TYPE_OPTIONS,
   YN_OPTIONS,
   toOptions,
-  compactQuery,
+  compactQuery
 } from '../constants'
 
 /** 所有检索字段的初始空值，重置与 setQuery 都回到这份结构 */
@@ -174,13 +174,13 @@ function buildEmptyQuery () {
     status: '',
     tdzlProject: '',
     beginInvestment: '',
-    endInvestment: '',
+    endInvestment: ''
   }
 }
 
 /** 常驻（未折叠）条件下不展示、但确实存在的字段：setQuery 时据此自动展开 */
 const HIDDEN_FIELDS = [
-  'projectType', 'xzqh', 'status', 'tdzlProject', 'beginInvestment', 'endInvestment',
+  'projectType', 'xzqh', 'status', 'tdzlProject', 'beginInvestment', 'endInvestment'
 ]
 
 export default {
@@ -191,7 +191,7 @@ export default {
     ScreenSelect,
     ScreenDateInput,
     ScreenButton,
-    ScreenIcon,
+    ScreenIcon
   },
   props: {
     /** 是否默认展开全部条件（查询统计页传 true） */
@@ -201,7 +201,7 @@ export default {
      * 只在 data() 初始化时应用一次，之后完全由本组件自己维护；
      * 组件已挂载后再换条件请调 setQuery()。
      */
-    initialQuery: { type: Object, default: () => ({}) },
+    initialQuery: { type: Object, default: () => ({}) }
   },
   data () {
     const initial = Object.assign(buildEmptyQuery(), this.initialQuery || {})
@@ -219,7 +219,7 @@ export default {
       argResultOptions: toOptions(ARG_RESULT_OPTIONS),
       projectTypeOptions: toOptions(PROJECT_TYPE_OPTIONS),
       statusOptions: toOptions(STATUS_OPTIONS),
-      ynOptions: YN_OPTIONS,
+      ynOptions: YN_OPTIONS
     }
   },
   created () {
@@ -287,8 +287,8 @@ export default {
       if (HIDDEN_FIELDS.some((key) => next[key] !== '' && next[key] !== undefined && next[key] !== null)) {
         this.expanded = true
       }
-    },
-  },
+    }
+  }
 }
 </script>
 

@@ -11,7 +11,9 @@
     （避免档案管理下出现五个以上的并列项）。
 
     结构与档案页上层保持一致：页签放在面板标题栏内，
-    下方模块用 keep-alive 缓存，来回切页签不丢检索条件与分页。
+    下方模块用 keep-alive 缓存（只缓存**组件实例**，省掉重复拉字典）。
+    ★ 检索条件、分页**不保留**：没有下钻参数时页签壳会调本组件的 resetFilters()，
+      再由它转发给当前子面板 —— 缓存下来的旧条件会变成隐性过滤（P2-01）。
   -->
   <div class="doc-manager">
     <screen-panel class="doc-manager__tabs-panel" :bar="false">
@@ -28,7 +30,17 @@
 
     <div class="doc-manager__body">
       <keep-alive>
-        <component :is="currentPanel" ref="panel" />
+        <!--
+          drill 必须转发：收文/发文归档成功后要「查看档案」，由子面板 $emit('drill', {archiveId})，
+          页签壳（archive/index.vue）的 handleDrill 才能切到档案维护并打开档案详情。
+          子组件的事件不会自己冒到页签壳上，少这一行就是「点了查看档案没反应」。
+        -->
+        <component
+          :is="currentPanel"
+          ref="panel"
+          @drill="$emit('drill', $event)"
+          @open-statistics="$emit('open-statistics')"
+        />
       </keep-alive>
     </div>
   </div>
@@ -41,7 +53,7 @@ import DocSendPanel from './DocSendPanel.vue'
 
 const PANELS = {
   receive: DocReceivePanel,
-  send: DocSendPanel,
+  send: DocSendPanel
 }
 
 export default {
@@ -49,28 +61,42 @@ export default {
   components: { ScreenPanel, ScreenTabs, ScreenIcon },
   props: {
     /** 初始子页签：receive 收文 / send 发文 */
-    defaultTab: { type: String, default: 'receive' },
+    defaultTab: { type: String, default: 'receive' }
   },
   data () {
     return {
       activeTab: PANELS[this.defaultTab] ? this.defaultTab : 'receive',
       tabs: [
         { key: 'receive', label: '收文管理' },
-        { key: 'send', label: '发文管理' },
-      ],
+        { key: 'send', label: '发文管理' }
+      ]
     }
   },
   computed: {
     currentPanel () {
       return PANELS[this.activeTab] || DocReceivePanel
-    },
+    }
   },
   methods: {
     /** 供外部（路由 / 父组件）切换子页签 */
     setTab (key) {
       if (PANELS[key]) this.activeTab = key
     },
-  },
+
+    /**
+     * 转发「清空检索条件」给当前子面板（P2-01 契约）。
+     *
+     * ★ 为什么必须在本层暴露：页签壳（archive/index.vue）的 `$refs.panel` 是本组件，
+     *   它只认本层的 resetFilters；收文 / 发文面板再各自有一份实现，
+     *   不转发的话「切回收发文管理」时旧条件仍然生效，而页签壳以为已经清过了。
+     */
+    resetFilters () {
+      const panel = this.$refs.panel
+      if (panel && typeof panel.resetFilters === 'function') {
+        panel.resetFilters()
+      }
+    }
+  }
 }
 </script>
 

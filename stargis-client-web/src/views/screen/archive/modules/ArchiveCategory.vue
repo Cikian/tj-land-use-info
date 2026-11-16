@@ -246,7 +246,7 @@ import {
   ScreenDescriptions,
   ScreenDataTable,
   ScreenPopconfirm,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import CategoryFormModal from './CategoryFormModal.vue'
@@ -255,7 +255,7 @@ import {
   editArchiveCategory,
   deleteArchiveCategory,
   sortArchiveCategory,
-  changeArchiveCategoryStatus,
+  changeArchiveCategoryStatus
 } from '@/api/land/archiveCategory'
 
 /** 深拷贝树（只保留需要写回的字段，避免把后端返回的冗余字段一起搬来搬去） */
@@ -272,7 +272,7 @@ function cloneTree (nodes) {
     archiveCount: node.archiveCount,
     isLeaf: node.isLeaf,
     hasChildren: node.hasChildren,
-    children: cloneTree(node.children),
+    children: cloneTree(node.children)
   }))
 }
 
@@ -330,7 +330,7 @@ export default {
     ScreenDataTable,
     ScreenPopconfirm,
     ScreenIcon,
-    CategoryFormModal,
+    CategoryFormModal
   },
   data () {
     return {
@@ -342,7 +342,7 @@ export default {
       statusFilterOptions: [
         { value: 'all', label: '全部' },
         { value: 1, label: '启用' },
-        { value: 0, label: '停用' },
+        { value: 0, label: '停用' }
       ],
       keywordTimer: null,
       rawTree: [],
@@ -356,8 +356,8 @@ export default {
         { key: 'code', title: '编码', width: 110, formatter: (value) => value || '—' },
         { key: 'childStatus', title: '状态', width: 80, type: 'slot', align: 'center' },
         { key: 'childArchive', title: '文件数', width: 80, type: 'slot', align: 'center' },
-        { key: 'childAction', title: '操作', width: 110, type: 'slot', align: 'center' },
-      ],
+        { key: 'childAction', title: '操作', width: 110, type: 'slot', align: 'center' }
+      ]
     }
   },
   computed: {
@@ -420,7 +420,7 @@ export default {
         total: list.length,
         root: this.rawTree.length,
         enabled: list.filter((node) => node.status === 1).length,
-        disabled: list.filter((node) => node.status !== 1).length,
+        disabled: list.filter((node) => node.status !== 1).length
       }
     },
     showArchiveCount () {
@@ -454,20 +454,20 @@ export default {
         {
           key: 'archiveCount',
           label: '本类别文件数',
-          value: node.archiveCount === null || node.archiveCount === undefined ? '—' : node.archiveCount,
+          value: node.archiveCount === null || node.archiveCount === undefined ? '—' : node.archiveCount
         },
         { key: 'createInfo', label: '创建信息', value: this.joinInfo(node.createTime, node.createBy) },
         { key: 'updateInfo', label: '最后更新', value: this.joinInfo(node.updateTime, node.updateBy) },
-        { key: 'note', label: '类别说明', value: node.note, span: 3 },
+        { key: 'note', label: '类别说明', value: node.note, span: 3 }
       ]
-    },
+    }
   },
   watch: {
     // 输入即搜（300ms 防抖），避免每敲一个字就打一次接口
     keyword () {
       clearTimeout(this.keywordTimer)
       this.keywordTimer = setTimeout(() => this.loadTree(), 300)
-    },
+    }
   },
   created () {
     this.loadTree()
@@ -477,6 +477,23 @@ export default {
   },
   methods: {
     /* ---------------- 数据 ---------------- */
+
+    /**
+     * 清空检索条件（页签壳 P2-01 的公开契约）。
+     *
+     * ★ 本页签是**类别树**，没有分页，所以「页码回 1」不适用；
+     *   要复位的是关键字 / 状态筛选，以及被筛掉之后可能失效的选中与展开状态
+     *   （选中项若已被筛掉，syncSelected 会在下一次加载里把它清掉，
+     *    但那时右侧详情面板已经闪空过一帧，这里先主动清干净）。
+     */
+    resetFilters () {
+      this.keyword = ''
+      this.statusFilter = 'all'
+      this.selectedKeys = []
+      // 关键字有 300ms 防抖，清空时把挂起的加载摘掉，避免「清完又被旧定时器筛一次」
+      clearTimeout(this.keywordTimer)
+      this.loadTree()
+    },
 
     loadTree () {
       this.loading = true
@@ -623,7 +640,7 @@ export default {
             code: moved.code,
             aliasName: moved.aliasName,
             note: moved.note,
-            status: moved.status,
+            status: moved.status
           })
         )
       }
@@ -632,7 +649,7 @@ export default {
       tasks.push(
         sortArchiveCategory({
           parentId: nextParentId || null,
-          orderedIds: targetSiblings.map((node) => node.id),
+          orderedIds: targetSiblings.map((node) => node.id)
         })
       )
 
@@ -739,8 +756,8 @@ export default {
     joinInfo (a, b) {
       const parts = [a, b].filter(Boolean)
       return parts.length ? parts.join(' · ') : '—'
-    },
-  },
+    }
+  }
 }
 </script>
 

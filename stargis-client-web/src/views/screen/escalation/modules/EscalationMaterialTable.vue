@@ -177,7 +177,7 @@ import {
   ScreenRadioGroup,
   ScreenUpload,
   ScreenIcon,
-  ScreenPopconfirm,
+  ScreenPopconfirm
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import { JEECG_ACCESS_TOKEN } from '@/store/mutation-types'
@@ -186,7 +186,7 @@ import {
   queryMaterialList,
   saveMaterial,
   deleteMaterial,
-  downloadMaterial,
+  downloadMaterial
 } from '@/api/land/escalation'
 import FilePreviewModal from '@/views/screen/file-preview/FilePreviewModal.vue'
 import {
@@ -198,7 +198,7 @@ import {
   formatSize,
   resolveExt,
   buildBizPath,
-  nowText,
+  nowText
 } from '../constants'
 
 export default {
@@ -219,7 +219,7 @@ export default {
     /** 已落库项目 ID；传入即进入「远程模式」 */
     projectId: { type: String, default: '' },
     /** 只读（详情页 / 审批页查看） */
-    disabled: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false }
   },
   data () {
     return {
@@ -233,7 +233,7 @@ export default {
       supplementMode: 'auto',
       supplementOptions: [
         { value: 'auto', label: '自动判定' },
-        { value: 'force', label: '标记为补充材料' },
+        { value: 'force', label: '标记为补充材料' }
       ],
       /** 远程模式的数据源 */
       remoteRows: [],
@@ -253,8 +253,8 @@ export default {
         { key: 'version', title: '版本', width: 170, type: 'slot' },
         { key: 'uploadBy', title: '上传人', width: 110, placeholder: '—' },
         { key: 'uploadTime', title: '上传时间', width: 160, type: 'slot' },
-        { key: 'action', title: '操作', width: 170, type: 'slot', align: 'center' },
-      ],
+        { key: 'action', title: '操作', width: 170, type: 'slot', align: 'center' }
+      ]
     }
   },
   computed: {
@@ -265,7 +265,7 @@ export default {
     rows () {
       const list = this.remoteMode ? this.remoteRows : (this.value || [])
       return list.map((item, index) => Object.assign({}, item, {
-        rowKey: item.id || item.storePath || `tmp-${index}`,
+        rowKey: item.id || item.storePath || `tmp-${index}`
       }))
     },
     totalSizeText () {
@@ -281,15 +281,15 @@ export default {
     /** 上传子目录：/escalation/{yyyy}/{MM} */
     bizPath () {
       return buildBizPath(new Date())
-    },
+    }
   },
   watch: {
     projectId: {
       immediate: true,
       handler () {
         if (this.remoteMode) this.loadRemote()
-      },
-    },
+      }
+    }
   },
   methods: {
     formatSize,
@@ -381,7 +381,7 @@ export default {
         version,
         isSupplement: this.supplementMode === 'force' || version > 1 ? 1 : 0,
         uploadBy: this.currentRealname(),
-        uploadTime: nowText(),
+        uploadTime: nowText()
       }
     },
 
@@ -472,7 +472,7 @@ export default {
         storePath: item.storePath,
         previewPath: item.previewPath || null,
         version: item.version || 1,
-        isSupplement: item.isSupplement ? 1 : 0,
+        isSupplement: item.isSupplement ? 1 : 0
       }))
     },
 
@@ -482,8 +482,8 @@ export default {
       const getters = (this.$store && this.$store.getters) || {}
       const info = getters.userInfo || {}
       return info.realname || info.username || ''
-    },
-  },
+    }
+  }
 }
 </script>
 

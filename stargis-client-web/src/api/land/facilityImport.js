@@ -24,8 +24,11 @@ import {
  *     整批不入库（一行都不写），除非显式勾选 skipErrorRows；
  *  2. ★ 判重键是 **(宗地编号, 配套项目名称) 两列一起**，不是宗地导入的「编号即唯一」。
  *     同一块地上可以有很多配套，只要名称不重复；
- *  3. ★ 重复处理策略三选一：reject（默认，重复即报错）/ skip（跳过重复只导新增）/
- *     update（覆盖更新，空单元格不会清空库内原值）；
+ *  3. ★ 重复处理策略四选一：upsert（默认，已有行按非空单元格更新、新行新增）/
+ *     reject（重复即报错）/ skip（跳过重复只导新增）/ update（覆盖更新，
+ *     空单元格不会清空库内原值）。默认取 upsert 而非最保守的 reject：
+ *     中心实际交来的文件本来就是「新增 + 更新混合」，默认报错会逼用户先手工拆表，
+ *     这一步是丢行的主要来源（见清单 P1-06）；
  *  4. ★ `allowOrphan` 在 **preview 与 confirm 上都要传**：它不是「入库选项」，
  *     而是**校验口径本身**（孤儿算不算错误）。只在 confirm 上传会让用户看到
  *     「预览说 12 行有错」，勾上开关后却导进去了 12 条他从未在预览里确认过的数据；
@@ -93,7 +96,7 @@ export function queryFacilityDuplicateStrategies () {
  * 这与 api/land/ledger.js 的 previewLedgerImport 是同一做法。
  *
  * @param {File} file .xlsx 文件
- * @param {string} [duplicateStrategy] reject / skip / update，空则后端用默认 reject
+ * @param {string} [duplicateStrategy] upsert / reject / skip / update，空则后端用默认 upsert
  * @param {boolean} [allowOrphan] true = 宗地查不到的行记入孤儿清单并仍按「可导入」预览
  * @returns {Promise} result 为 FacilityImportResultVO：
  *   { totalRows, validRows, insertedRows, updatedRows, skippedDuplicates,
@@ -269,13 +272,19 @@ function saveExcelBlob (blob, fileName) {
 
 /** 重复策略的本地兜底（接口不可用时用；与后端 FacilityDuplicateStrategy 逐字一致） */
 export const DUPLICATE_STRATEGIES_FALLBACK = [
+  { code: 'upsert', label: '新增并更新已有配套（空单元格不改动）' },
   { code: 'reject', label: '重复即报错（不写库）' },
   { code: 'skip', label: '跳过重复行（只导新增）' },
   { code: 'update', label: '覆盖更新已有配套（空单元格不改动）' }
 ]
 
-/** 默认策略：与后端一致，取最安全的一档 */
-export const DEFAULT_DUPLICATE_STRATEGY = 'reject'
+/**
+ * 默认策略：与后端 `FacilityDuplicateStrategy.of(null)` 一致，取 upsert。
+ * 清单 P1-06 要求「同一文件可同时新增和更新，默认无需先手工拆表」，
+ * 所以这里不能再用最保守的 reject —— 改默认值时必须与后端 `of()`、
+ * Service 兜底、管理端 `FacilityImport.vue` 三处同改。
+ */
+export const DEFAULT_DUPLICATE_STRATEGY = 'upsert'
 
 /**
  * 孤儿清单抹平成带稳定 key 的数组（ScreenDataTable 的 row-key 需要唯一值）。

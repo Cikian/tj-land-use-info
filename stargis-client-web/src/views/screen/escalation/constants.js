@@ -35,8 +35,51 @@ export const STATUS_OPTIONS = ['未办理', '办理中', '已办结', '已归档
  */
 export const ARG_RESULT_OPTIONS = ['通过', '基本通过', '需补充材料', '需进一步论证', '不通过']
 
-/** 项目类型（字典 land_escalation_project_type：产业类/基础设施类/民生类/其他） */
-export const PROJECT_TYPE_OPTIONS = ['产业类', '基础设施类', '民生类', '其他']
+/**
+ * 项目类型（字典 land_escalation_project_type：市级项目 / 区级项目 / 待确认）
+ *
+ * ★ 2026-11 口径变更（清单 P2-10）：中心要的是「市级项目 / 区级项目」两级，
+ *   旧的「产业类 / 基础设施类 / 民生类 / 其他」四类不再作为候选值。
+ *   三类的关系是：
+ *     · 市级项目 / 区级项目 —— 新录入与检索只用这两个值；
+ *     · 待确认             —— **历史过渡值**，不是业务分类。
+ *
+ * ★ 为什么不把历史四类「猜」成市/区级：
+ *   产业类 / 基础设施类 / 民生类 与「市级/区级」不是同一个分类维度
+ *   （前者是项目属性、后者是审批层级），任何映射都是编造。
+ *   用户已确认：无法可靠映射的历史值一律置为「待确认」，由业务人工逐条确认后改写。
+ *   历史数据的批量置值与人工确认清单见
+ *   `server/.../sql/escalation/07_escalation_project_type_v2.sql`
+ *   （字典项改成这三项 + 存量值置「待确认」+ 核对/清单查询）。
+ *
+ * ★ 改这里必须同步三处：字典 SQL（03 与 07）、后端 EscalationProject 的取值常量、
+ *   admin-client 的字典项（管理端走 JDictSelectTag，改字典即生效）。
+ */
+export const PROJECT_TYPE_OPTIONS = ['市级项目', '区级项目', '待确认']
+
+/** 历史过渡值（人工确认清单里的那一档），单独导出便于调用点写判断而不是硬编码中文 */
+export const PROJECT_TYPE_PENDING = '待确认'
+
+/** 旧的四类取值：只用于「识别历史值」，**不再作为候选值**（清单 P2-10 第 3 条） */
+export const PROJECT_TYPE_LEGACY = ['产业类', '基础设施类', '民生类', '其他']
+
+/**
+ * 项目类型展示文本。
+ *
+ * ★ 为什么展示层也要兜一道：数据迁移脚本是幂等的，但「脚本没跑 / 跑到一半」
+ *   的时候列表里仍可能出现历史四类。此时**不能原样显示成一种新的项目类型**，
+ *   否则界面就出现了清单明确要求去掉的旧口径；统一显示「待确认」，
+ *   与迁移后的库内值一致，也提示这条记录需要人工确认。
+ *
+ * @param {string} value 库里的 project_type
+ * @param {string} [dictTextFromServer] 后端 @Dict 给的文本（有则以它为准）
+ * @returns {string} 三值之一或原值（空值返回空串，由调用点决定占位符）
+ */
+export function projectTypeText (value, dictTextFromServer) {
+  if (value === null || value === undefined || value === '') return ''
+  const text = dictTextFromServer || String(value)
+  return PROJECT_TYPE_OPTIONS.indexOf(text) > -1 ? text : PROJECT_TYPE_PENDING
+}
 
 /** 材料类型（字典 land_escalation_material_type：申请材料/论证报告/支撑材料/其他） */
 export const MATERIAL_TYPE_OPTIONS = ['申请材料', '论证报告', '支撑材料', '其他']
@@ -51,7 +94,7 @@ export const GNQ_OPTIONS = ['生态城', '经开区', '高新区', '保税区', 
  */
 export const YN_OPTIONS = [
   { value: '1', label: '是' },
-  { value: '0', label: '否' },
+  { value: '0', label: '否' }
 ]
 
 /** 字典编码（如需在页面上直连字典接口时使用；本模块选项数组已固化，仅作备注） */
@@ -59,7 +102,7 @@ export const DICT = {
   projectType: 'land_escalation_project_type',
   argResult: 'land_escalation_arg_result',
   materialType: 'land_escalation_material_type',
-  yn: 'yn',
+  yn: 'yn'
 }
 
 /** 记录类型（t_escalation_record.record_type） */
@@ -76,7 +119,7 @@ export const MATERIAL_MAX_SIZE_MB = 50
 export const MATERIAL_ALLOWED_EXT = [
   'pdf', 'doc', 'docx', 'xls', 'xlsx',
   'wps', 'wpt', 'et', 'ett', 'dps', 'dpt', 'ofd',
-  'jpg', 'jpeg', 'png',
+  'jpg', 'jpeg', 'png'
 ]
 export const MATERIAL_ALLOWED_EXT_TEXT = 'pdf / doc(x) / xls(x) / wps / et / dps / ofd / jpg / png'
 
@@ -322,7 +365,7 @@ export function defaultPagination (pageSize = 10) {
     current: 1,
     pageSize,
     total: 0,
-    pageSizeOptions: [10, 20, 50, 100],
+    pageSizeOptions: [10, 20, 50, 100]
   }
 }
 
@@ -340,7 +383,7 @@ export function toNameCountList (source) {
       name: item && item.name !== undefined && item.name !== null && item.name !== ''
         ? String(item.name)
         : '未填写',
-      count: Number(item && item.count) || 0,
+      count: Number(item && item.count) || 0
     }))
   } else if (source && typeof source === 'object') {
     rows = Object.keys(source).map((key) => ({ name: key, count: Number(source[key]) || 0 }))
@@ -381,6 +424,6 @@ export function sumCounts (rows) {
 export function withPercent (rows) {
   const total = sumCounts(rows)
   return (rows || []).map((item) => Object.assign({}, item, {
-    percent: total ? Number(((item.count / total) * 100).toFixed(1)) : 0,
+    percent: total ? Number(((item.count / total) * 100).toFixed(1)) : 0
   }))
 }

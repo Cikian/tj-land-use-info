@@ -85,8 +85,16 @@ const GROUPS = [
     keys: ['jsdw', 'sjdw', 'kcdw', 'jldw', 'sgdw', 'jsgydw']
   },
   {
+    // 档案要件（历史标志位）：与录入详情弹窗同一份口径。
+    // ★ 这 11 个字段原先后端字段注册表里没有，导致「能录入、能导出 0 列」，
+    //   清单 P1-13 已补全；这里同步显示，避免「详情里看不到就以为没存」。
+    title: '档案要件',
+    keys: ['xjpfwj', 'kypfwj', 'csjgspfwj', 'dlgh', 'ghgcxk', 'gxzhslsj',
+      'zyptfa', 'zyglyj', 'ghydxkyhbsxbl', 'sgxk', 'bdcdj']
+  },
+  {
     title: '其他',
-    keys: ['jtwt', 'gzjy', 'zlqsnrjsm', 'bz', 'lrdw', 'lrr', 'lxdh', 'createTime'],
+    keys: ['ptxmhdydydjdc', 'jtwt', 'gzjy', 'zlqsnrjsm', 'bz', 'lrdw', 'lrr', 'lxdh', 'createTime'],
     // 长文本独占整行（否则会被省略号截断，看详情就没意义了）
     stackKeys: ['jtwt', 'gzjy', 'zlqsnrjsm', 'bz']
   }

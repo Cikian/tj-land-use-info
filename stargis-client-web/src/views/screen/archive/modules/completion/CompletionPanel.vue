@@ -16,6 +16,7 @@
     外部契约（页签壳按这个接线）：
       props   initialQuery  外部带进来的初始条件
       method  applyDrill(params)  外部下钻：覆盖条件并重新取数（keep-alive 缓存下也能生效）
+      method  resetFilters()      清空条件并重查（页签壳 P2-01 的公开契约）
 
     ★ 需求原文只有一句「实现竣工验收项目历史工程资料的数字化档案管理，可快速导出档案信息」，
       因此这里的取舍是：把「档案信息」做全（35 列全部可录入/可查/可导出），
@@ -28,6 +29,7 @@
       <completion-search-form
         ref="search"
         :initial-query="initialQuery"
+        :result-total="total"
         @search="handleSearch"
       />
     </screen-panel>
@@ -299,6 +301,15 @@ export default {
       pagination: defaultPagination(20),
       /** 三维固定状态计数（后端固定返回 3 项，缺的补 0） */
       statusCounts: { 未数字化: 0, 数字化中: 0, 已数字化: 0 },
+      /**
+       * 下钻带来的可读项目名 / 来源档案号（P1-09）。
+       * ★ 单独存、**不放进 query**：它们在后端 CompletionQueryDTO 里不存在，
+       *   留在 query 里会被当成检索条件发给后端；而说明行又必须靠它显示项目名。
+       *   之前 cleanQuery 先把它们删掉再 setQuery，于是面板被 keep-alive 缓存后
+       *   二次下钻，说明行只能退化成宗地编号。
+       */
+      drillLabel: '',
+      drillSourceArchiveNo: '',
       stat: this.buildEmptyStat(),
       viewportHeight: 1080
     }
@@ -344,7 +355,7 @@ export default {
     }
   },
   created () {
-    this.query = normalizeQuery(this.initialQuery)
+    this.query = this.cleanQuery(this.initialQuery)
     this.loadData()
     this.loadStat()
   },
@@ -365,6 +376,23 @@ export default {
      */
     syncViewport () {
       this.viewportHeight = window.innerHeight || 1080
+    },
+
+    /**
+     * 归一化检索条件，并剔除**只用于回显**的字段（清单 P1-09）。
+     *
+     * <p>下钻会带 facilityLabel（配套项目名）、sourceArchiveNo（来源档案号）这类展示字段，
+     * 它们在后端 CompletionQueryDTO 里并不存在：留着只会拼进请求参数，
+     * 让人误以为是检索条件。真正的条件只有 archiveId / facilityId / crzdbh。
+     * @param {object} query 原始条件
+     * @returns {object} 可下发给后端的条件
+     */
+    cleanQuery (query) {
+      const result = normalizeQuery(query)
+      delete result.facilityLabel
+      delete result.ptxmmc
+      delete result.sourceArchiveNo
+      return result
     },
 
     buildEmptyStat () {
@@ -472,12 +500,24 @@ export default {
 
     /** 把一组条件同时写回检索表单与状态，并重新取数 */
     applyQuery (query) {
-      this.query = normalizeQuery(query)
+      this.query = this.cleanQuery(query)
       this.pagination.current = 1
       if (this.$refs.search && this.$refs.search.setQuery) {
-        this.$refs.search.setQuery(this.query)
+        // 第二个参数是**纯展示**字段（项目名 / 来源档案号），只喂说明行，不进检索条件
+        this.$refs.search.setQuery(this.query, this.buildDrillContext())
       }
       this.refresh()
+    },
+
+    /**
+     * 下钻的展示字段（P1-09）：只用于「当前条件」那一行小字。
+     * 通过 setQuery 的第二参数传给检索表单，而不是混进 query 发给后端。
+     */
+    buildDrillContext () {
+      return {
+        facilityLabel: this.drillLabel,
+        sourceArchiveNo: this.drillSourceArchiveNo
+      }
     },
 
     /**
@@ -485,10 +525,27 @@ export default {
      * 两种到达路径都要覆盖：
      *   - 面板是首次创建 → initialQuery 在 created 里生效；
      *   - 面板已被 keep-alive 缓存 → created 不会再跑，必须调用本方法。
-     * @param {{projectName?: string, digitizeStatus?: string, xzqh?: string}} params
+     * @param {{projectName?: string, digitizeStatus?: string, xzqh?: string,
+     *          archiveId?: string, facilityId?: string, crzdbh?: string,
+     *          facilityLabel?: string, ptxmmc?: string, sourceArchiveNo?: string}} params
      */
     applyDrill (params) {
-      this.applyQuery(Object.assign({}, params || {}))
+      const source = params || {}
+      this.drillLabel = source.facilityLabel || source.ptxmmc || ''
+      this.drillSourceArchiveNo = source.sourceArchiveNo || ''
+      this.applyQuery(source)
+    },
+
+    /**
+     * 清空检索条件（页签壳 P2-01 的公开契约）。
+     * ★ 走 applyQuery({}) 而不是自己拼：清条件必须同时做到
+     *   「表单回初始空值 + 页码回 1 + 列表与统计一起重查」，
+     *   这套动作已经在 applyQuery 里收口，另写一份必然漂移。
+     */
+    resetFilters () {
+      this.drillLabel = ''
+      this.drillSourceArchiveNo = ''
+      this.applyQuery({})
     },
 
     /* ---------------- 行操作 ---------------- */

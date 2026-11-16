@@ -35,7 +35,7 @@
 
     <!-- ========== 内容区 ========== -->
     <div class="escalation-screen__body">
-      <!-- keep-alive：切页签时不销毁模块，检索条件、分页、列表视图都保留 -->
+      <!-- keep-alive：切页签时不销毁模块（只缓存组件实例，检索条件按 P2-01 统一清空，见 script） -->
       <keep-alive>
         <component
           :is="currentPanel"
@@ -67,7 +67,36 @@ const PANELS = {
   entry: EscalationEntry,
   query: EscalationQuery,
   ledger: EscalationLedger,
-  audit: EscalationAudit,
+  audit: EscalationAudit
+}
+
+/**
+ * 需要接收下钻条件（initial-query）的面板：只有它声明了这个 prop。
+ * 本域唯一的深链落点是「资料及台账管理」——「查询统计」的图表点「查看台账」走的就是它。
+ */
+const DRILLABLE_PANELS = ['ledger']
+
+/**
+ * 路由 query 里属于「控制参数」的键，不当下钻条件用
+ * （与 archive/index.vue 同一份口径：tab/menu/map/token 是页面外壳的控制参数）。
+ */
+const CONTROL_QUERY_KEYS = ['tab', 'menu', 'map', 'token', '_t']
+
+/**
+ * 从路由 query 里取出**业务条件**（下钻用）。
+ * 例：/screen/review?tab=ledger&district=滨海新区&status=已通过 → { district, status }
+ * @param {object} [query] 路由 query，缺省为空对象
+ */
+function readRouteQuery (query) {
+  const source = query || {}
+  const result = {}
+  Object.keys(source).forEach((key) => {
+    const value = source[key]
+    if (CONTROL_QUERY_KEYS.indexOf(key) === -1 && value !== undefined && value !== null && value !== '') {
+      result[key] = value
+    }
+  })
+  return result
 }
 
 export default {
@@ -78,7 +107,7 @@ export default {
      * 初始页签，支持路由深链 ?tab=audit 直接落到某个页签
      * （与 views/screen/index.vue 的 REVIEW_TABS 校验配合使用）。
      */
-    defaultTab: { type: String, default: 'entry' },
+    defaultTab: { type: String, default: 'entry' }
   },
   data () {
     return {
@@ -87,10 +116,18 @@ export default {
         { key: 'entry', label: '项目录入' },
         { key: 'query', label: '查询统计' },
         { key: 'ledger', label: '资料及台账管理' },
-        { key: 'audit', label: '提级论证审批' },
+        { key: 'audit', label: '提级论证审批' }
       ],
       /** 下钻条件：透传给台账面板的 initial-query（首次创建时生效） */
-      drillQuery: {},
+      drillQuery: readRouteQuery(this.$route && this.$route.query),
+      /**
+       * 本次页签变化是否由「业务下钻」引起。
+       * 为真时 activeTab watcher 不清条件 —— 条件由 handleDrill 里的 applyDrill 注入，
+       * 清掉就把刚下钻的条件抹了（档案模块踩过同样的坑，见 `_skipResetOnce`）。
+       */
+      pendingDrill: false,
+      /** 首次激活不清（面板刚创建，条件本就是空），避免白跑一次请求 */
+      firstActivation: true
     }
   },
   computed: {
@@ -100,13 +137,108 @@ export default {
      * （变成 initial-query="[object Object]"），档案模块踩过这个坑。
      */
     panelProps () {
-      return this.activeTab === 'ledger' ? { 'initial-query': this.drillQuery } : {}
+      return DRILLABLE_PANELS.indexOf(this.activeTab) > -1 ? { 'initial-query': this.drillQuery } : {}
     },
     currentPanel () {
       return PANELS[this.activeTab] || EscalationEntry
+    }
+  },
+  /**
+   * P2-01：从别的模块切回提级论证时清空检索（与数据管理 / 档案 / 查询统计同一套契约）。
+   *
+   * ★ 「有下钻参数就不清」：台账点「查看档案」、查询统计点图表这类**深链**
+   *   （`/screen/review?tab=ledger&district=xxx`）带着条件进来，
+   *   此时清空会把刚注入的条件抹掉，表现是「地址里明明有区县，列表却是全量」。
+   */
+  activated () {
+    if (this.firstActivation) {
+      this.firstActivation = false
+      return
+    }
+    if (this.pendingDrill) {
+      this.pendingDrill = false
+      return
+    }
+    const routeQuery = this.$route && this.$route.query ? this.$route.query : {}
+    if (Object.keys(readRouteQuery(routeQuery)).length) return
+    this.$nextTick(() => this.resetActivePanelFilters())
+  },
+  /**
+   * 首屏消费深链。
+   * ★ 与档案模块同一个坑：`data()` 只把条件塞进 drillQuery（台账面板 created 用得到），
+   *   而「按条件 applyDrill + 摘掉地址栏参数」原来只挂在路由 watcher 上。
+   *   直接打开深链时 watcher 不触发，参数就永远留在地址里，刷新一次注入一次。
+   * ★ 本域**确实有**可下钻入口（查询统计的图表 → 资料及台账管理），
+   *   所以这里做真实消费，而不是「只做页签切换清条件」。
+   */
+  mounted () {
+    const query = readRouteQuery(this.$route && this.$route.query)
+    if (!Object.keys(query).length) return
+    this.$nextTick(() => {
+      /*
+       * ★ 首屏不重复请求：路由带 tab=ledger 时页签壳已把 activeTab 设成 ledger，
+       *   台账面板的 created 也已经用 initialQuery 取过一次数。
+       *   这里再 applyDrill 一次就是同一套条件连查两遍（明细接口慢时肉眼可见地闪一下），
+       *   所以「已经在台账页签」时只把地址栏参数摘掉。
+       */
+      if (this.activeTab === 'ledger') {
+        this.clearDrillQuery()
+        return
+      }
+      this.consumeRouteDrill(query)
+    })
+  },
+  watch: {
+    /**
+     * 页签切换同样按「普通进入」处理：旧条件下再切回来会变成隐性过滤
+     * （清单 P2-01 的测试现象就是「检索后跳到别的模块再返回，旧条件仍生效」）。
+     * ★ 路由上还挂着未消费的业务参数时不清 —— 那是下钻，交给 consumeRouteDrill。
+     */
+    activeTab () {
+      if (this.pendingDrill) {
+        this.pendingDrill = false
+        return
+      }
+      const routeQuery = this.$route && this.$route.query ? this.$route.query : {}
+      if (Object.keys(readRouteQuery(routeQuery)).length) return
+      this.$nextTick(() => this.resetActivePanelFilters())
     },
+    /**
+     * 路由 query 变化（同路由换条件）。
+     * ★ 为什么必须 watch：`/screen/review?tab=ledger&district=xxx` 这类**同路由换 query**
+     *   的跳转，vue-router 不会重建组件 —— data() 只在首次创建时读一次路由，
+     *   于是「地址变了但页面没动」。
+     */
+    '$route.query': {
+      handler () {
+        const routeQuery = this.$route && this.$route.query ? this.$route.query : {}
+        const tab = routeQuery.tab
+        if (tab && PANELS[tab] && tab !== this.activeTab) {
+          this.activeTab = tab
+        }
+        const query = readRouteQuery(routeQuery)
+        if (Object.keys(query).length) {
+          this.$nextTick(() => this.consumeRouteDrill(query))
+        }
+      },
+      deep: true
+    }
   },
   methods: {
+    /** 调当前面板公开的 resetFilters()：清可见与隐藏条件、页码回 1、清选中并重查 */
+    resetActivePanelFilters () {
+      const panel = this.$refs.panel
+      if (!panel) return
+      if (typeof panel.resetFilters === 'function') {
+        panel.resetFilters()
+        return
+      }
+      // 兜底（与 archive/index.vue 同一套）：有 applyDrill 就用空条件下钻一次 = 清空后查全量
+      if (typeof panel.applyDrill === 'function') {
+        panel.applyDrill({})
+      }
+    },
+
     /**
      * 从「查询统计」的图表下钻到「资料及台账管理」。
      * 两种到达路径都要覆盖（照档案模块的 handleDrill + applyDrill 双路径写法）：
@@ -114,21 +246,65 @@ export default {
      *   - 台账面板已被 keep-alive 缓存 → data() 不会再跑，必须调用它的 applyDrill。
      */
     handleDrill (params) {
+      this.applyDrillToLedger(params, false)
+    },
+
+    /** 路由深链下钻：与页内下钻同一条路径，额外把地址栏参数摘掉 */
+    consumeRouteDrill (query) {
+      this.applyDrillToLedger(query, true)
+    },
+
+    /**
+     * 把下钻条件送到台账面板。
+     * @param {object} params 下钻条件
+     * @param {boolean} fromRoute 是否来自路由深链（来自路由要顺手 clearDrillQuery）
+     */
+    applyDrillToLedger (params, fromRoute) {
       this.drillQuery = Object.assign({}, params || {})
+      /*
+       * ★ 门闩只在**真的切页签**时上：activeTab 不变时 watcher 根本不触发，
+       *   留着门闩会让下一次普通切换页签静默跳过清条件（条件被带到下个页签）。
+       */
+      const switching = this.activeTab !== 'ledger'
+      this.pendingDrill = switching
       this.activeTab = 'ledger'
       this.$nextTick(() => {
         const panel = this.$refs.panel
         if (panel && typeof panel.applyDrill === 'function') {
           panel.applyDrill(this.drillQuery)
         }
+        // 条件已经交给面板持有，索引里的副本必须清掉：
+        // 否则用户离开再回来时 panelProps 会把它重新当成 initial-query 注入一次。
+        this.drillQuery = {}
+        if (fromRoute) this.clearDrillQuery()
+      })
+    },
+
+    /**
+     * 摘掉路由上的**业务**下钻参数（保留 tab / menu 等控制参数）。
+     * ★ 不清成空对象的原因同 archive/index.vue：控制参数丢了会让刷新后掉回默认页签。
+     */
+    clearDrillQuery () {
+      const current = Object.assign({}, (this.$route && this.$route.query) || {})
+      let changed = false
+      Object.keys(current).forEach((key) => {
+        if (CONTROL_QUERY_KEYS.indexOf(key) === -1) {
+          delete current[key]
+          changed = true
+        }
+      })
+      if (!changed) return
+      this.drillQuery = {}
+      this.$router.replace({ path: this.$route.path, query: current }).catch(() => {
+        // 同一路由重复 replace 会被 vue-router 判为冗余导航，忽略即可
       })
     },
 
     /** 供外部（路由 / 父组件）切换页签 */
     setTab (key) {
       if (PANELS[key]) this.activeTab = key
-    },
-  },
+    }
+  }
 }
 </script>
 

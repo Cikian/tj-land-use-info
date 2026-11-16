@@ -168,9 +168,9 @@
         </template>
 
         <template #archiveFlag="{ row }">
-          <screen-tag :tone="row.archiveId ? 'success' : 'muted'" size="sm">
-            {{ row.archiveId ? '已归档' : '未归档' }}
-          </screen-tag>
+          <!-- 归档情况以**档案真实状态**为准（后端随列表带出 archiveStatus）：
+               无附件时档案是「归档中」，不能因为 archiveId 有值就显示成「已归档」 -->
+          <screen-tag :tone="archiveTone(row)" size="sm">{{ archiveText(row) }}</screen-tag>
         </template>
 
         <template #action="{ row }">
@@ -181,7 +181,15 @@
               {{ isClosed(row) ? '流转痕迹' : '流转' }}
             </button>
 
-            <button type="button" class="doc-receive__link" @click="handleEdit(row)">编辑</button>
+            <!-- 已归档的收文只读：编辑入口直接不渲染（后端 updateDoc 也会拒绝） -->
+            <button
+              v-if="!row.archiveId"
+              type="button"
+              class="doc-receive__link"
+              @click="handleEdit(row)"
+            >
+              编辑
+            </button>
 
             <!-- 只有「已办结且未归档」才提供归档入口，与后端状态机一致 -->
             <button
@@ -194,6 +202,17 @@
             </button>
 
             <screen-popconfirm
+              v-if="row.archiveId"
+              title="删除收文不会删除已生成的档案，确定删除吗？"
+              :description="row.docNo"
+              width="300"
+              @confirm="handleDelete(row)"
+            >
+              <button type="button" class="doc-receive__link is-danger">删除</button>
+            </screen-popconfirm>
+
+            <screen-popconfirm
+              v-else
               title="删除后不可恢复，确定删除该收文吗？"
               :description="row.docNo"
               width="264"
@@ -216,11 +235,51 @@
       </template>
     </screen-panel>
 
-    <!-- ================= 弹窗 ================= -->
+    <!-- ================= 弹窗 =================
+         顺序很重要：同层级的 fixed 弹窗，**后声明的盖住先声明的**。
+         归档弹窗必须排在详情弹窗之后，否则「从详情点归档」时归档弹窗会被详情挡住。 -->
     <doc-receive-form-modal ref="formModal" @ok="onChanged" />
     <doc-flow-modal ref="flowModal" @finished="handleFinished" />
-    <doc-archive-modal ref="archiveModal" @ok="onChanged" />
     <doc-detail-modal ref="detailModal" @open-flow="handleFlow" @edit="handleEdit" @archive="handleArchive" />
+    <doc-archive-modal ref="archiveModal" @ok="handleArchived" />
+
+    <!-- 归档结果：把「原附件数 → 转换数 → 落库行数」三段计数摆出来，便于定位断点 -->
+    <screen-modal
+      :visible.sync="archiveResult.visible"
+      title="归档完成"
+      :width="600"
+      ok-text="查看档案"
+      cancel-text="关闭"
+      @ok="handleOpenArchive"
+      @cancel="handleCloseArchiveResult"
+    >
+      <div class="doc-receive__archive-result">
+        <p class="doc-receive__archive-line">
+          已归入档案 <b>{{ archiveResult.archiveNo || archiveResult.archiveId }}</b>
+          <span class="doc-receive__muted">
+            {{ archiveResult.reusedCaseFile ? '（复用该项目已有案卷）' : '（新建案卷）' }}
+          </span>
+        </p>
+        <p class="doc-receive__archive-line" role="status" :class="{ 'is-warn': archiveLostFiles }">
+          {{ archiveResult.verifyText }}
+        </p>
+        <!--
+          三段计数里「落库 < 转换」= 有文件没进 t_archive_file（P1-11）。
+          这是失败信号，不能用成功绿一笔带过：用户会以为卷内文件齐了。
+        -->
+        <p v-if="archiveLostFiles" class="doc-receive__archive-line is-warn doc-receive__alert" role="alert">
+          <screen-icon name="alert-triangle" :size="12" />
+          有 {{ lostFileCount }} 个文件未落库，请检查后端日志 / 磁盘（归档已写入的部分不会回滚）
+        </p>
+        <p
+          v-if="archiveResult.archiveStatus && archiveResult.archiveStatus !== '已归档'"
+          class="doc-receive__archive-line is-warn"
+        >
+          档案当前状态为「{{ archiveResult.archiveStatus }}」：该公文没有附件，
+          需在档案维护里补传扫描件后才会变成「已归档」。
+        </p>
+      </div>
+    </screen-modal>
 
     <!-- 办结后「是否立即归档」的确认：需求要求给出提示让用户选择 -->
     <screen-modal
@@ -253,7 +312,7 @@ import {
   ScreenTag,
   ScreenPopconfirm,
   ScreenModal,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import DocReceiveFormModal from './DocReceiveFormModal.vue'
@@ -265,10 +324,10 @@ import {
   deleteDocReceive,
   deleteDocReceiveBatch,
   queryDocReceiveStat,
-  queryDocReceiveById,
+  queryDocReceiveById
 } from '@/api/land/document'
 import {
-  DOC_STATUSES,
+  DOC_FILTER_STATUSES,
   DOC_URGENCIES,
   DOC_ARCHIVED_OPTIONS,
   SECRET_LEVELS,
@@ -276,7 +335,7 @@ import {
   docStatusTone,
   docUrgencyTone,
   compactQuery,
-  defaultPagination,
+  defaultPagination
 } from '../../constants'
 
 function buildEmptyQuery () {
@@ -295,7 +354,7 @@ function buildEmptyQuery () {
     archived: '',
     beginDate: '',
     endDate: '',
-    onlyMine: undefined,
+    onlyMine: undefined
   }
 }
 
@@ -317,7 +376,7 @@ export default {
     DocReceiveFormModal,
     DocFlowModal,
     DocArchiveModal,
-    DocDetailModal,
+    DocDetailModal
   },
   data () {
     return {
@@ -334,7 +393,20 @@ export default {
       selectedRowKeys: [],
       pagination: defaultPagination(10),
       finishPrompt: { visible: false, doc: null, docNo: '', docTitle: '' },
-      statusOptions: toOptions(DOC_STATUSES),
+      /** 归档结果（后端返回的三段计数 + archiveId；visible 控制结果弹窗） */
+      archiveResult: {
+        visible: false,
+        archiveId: '',
+        archiveNo: '',
+        archiveStatus: '',
+        reusedCaseFile: false,
+        verifyText: '',
+        /** 三段计数（P1-11）：原附件 → 转换 → 落库，后端如实返回 */
+        attachmentCount: 0,
+        convertedFileCount: 0,
+        savedFileCount: 0
+      },
+      statusOptions: toOptions(DOC_FILTER_STATUSES),
       secretOptions: toOptions(SECRET_LEVELS),
       urgencyOptions: toOptions(DOC_URGENCIES),
       columns: [
@@ -349,8 +421,8 @@ export default {
         { key: 'urgency', title: '紧急程度', width: 90, type: 'slot', align: 'center' },
         { key: 'attachmentCount', title: '附件', width: 70, type: 'slot', align: 'center' },
         { key: 'archiveFlag', title: '归档', width: 90, type: 'slot', align: 'center' },
-        { key: 'action', title: '操作', width: 260, type: 'slot', align: 'center' },
-      ],
+        { key: 'action', title: '操作', width: 260, type: 'slot', align: 'center' }
+      ]
     }
   },
   computed: {
@@ -361,15 +433,30 @@ export default {
         { key: '待承办', label: '待承办', value: this.stat.pending || 0, tone: 'warn' },
         { key: '承办中', label: '承办中', value: this.stat.handling || 0, tone: 'info' },
         { key: '已退回', label: '已退回', value: this.stat.rejected || 0, tone: 'danger' },
-        { key: '已办结', label: '已办结', value: this.stat.finished || 0, tone: 'ok' },
+        { key: '已办结', label: '已办结', value: this.stat.finished || 0, tone: 'ok' }
       ]
     },
     /** 给读屏的完整语义播报，避免只念出裸数字 */
     statAnnouncement () {
-      return `收文统计已更新：共 ${this.stat.total || 0} 条，我的待办 ${this.stat.myTodo || 0} 条，`
-        + `待承办 ${this.stat.pending || 0} 条，承办中 ${this.stat.handling || 0} 条，`
-        + `已退回 ${this.stat.rejected || 0} 条，已办结 ${this.stat.finished || 0} 条`
+      return `收文统计已更新：共 ${this.stat.total || 0} 条，我的待办 ${this.stat.myTodo || 0} 条，` +
+        `待承办 ${this.stat.pending || 0} 条，承办中 ${this.stat.handling || 0} 条，` +
+        `已退回 ${this.stat.rejected || 0} 条，已办结 ${this.stat.finished || 0} 条`
     },
+    /**
+     * 是否有文件没落库（P1-11）。
+     * ★ 判据用后端两个真实计数比大小，而不是去解析 verifyText 文案 ——
+     *   文案是给人看的，改个措辞就会让前端判断失效。
+     */
+    archiveLostFiles () {
+      const result = this.archiveResult
+      const saved = Number(result.savedFileCount || 0)
+      const converted = Number(result.convertedFileCount || 0)
+      return converted > 0 && saved < converted
+    },
+    lostFileCount () {
+      const result = this.archiveResult
+      return Math.max(Number(result.convertedFileCount || 0) - Number(result.savedFileCount || 0), 0)
+    }
   },
   created () {
     this.loadData()
@@ -385,7 +472,7 @@ export default {
       this.loading = true
       const params = Object.assign({}, this.query, {
         pageNo: this.pagination.current,
-        pageSize: this.pagination.pageSize,
+        pageSize: this.pagination.pageSize
       })
       // 只查「我的待办」时不能再叠加状态条件，否则两个条件会自相矛盾
       if (params.onlyMine) delete params.status
@@ -448,6 +535,22 @@ export default {
       this.pagination.current = 1
       this.loadData()
     },
+    /**
+     * 清空检索条件（页签壳 P2-01 的公开契约）。
+     *
+     * ★ 为什么不能只复用 handleReset：契约里还要求「页码回 1 + 清选中 + 重查汇总」，
+     *   而 handleReset 是页内按钮、只看列表。两者共用同一份空结构，避免条件漂移。
+     * ★ 这里**不清**归档结果弹窗：它是上一次操作的结论，与检索条件无关。
+     */
+    resetFilters () {
+      this.query = buildEmptyQuery()
+      this.dateRange = []
+      this.activeStat = ''
+      this.selectedRowKeys = []
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      this.loadData()
+      this.loadStat()
+    },
     handleDateChange (range) {
       const values = Array.isArray(range) ? range : ['', '']
       this.query.beginDate = values[0] || ''
@@ -479,19 +582,70 @@ export default {
     isClosed (record) {
       return record.status === '已办结' || record.status === '已归档'
     },
+    /** 归档情况文案：以档案真实状态为准（archiveStatus 由后端随列表带出） */
+    archiveText (row) {
+      if (!row || !row.archiveId) return '未归档'
+      return row.archiveStatus || '已归档'
+    },
+    archiveTone (row) {
+      if (!row || !row.archiveId) return 'muted'
+      if (!row.archiveStatus || row.archiveStatus === '已归档') return 'success'
+      // 归档中 / 审核中：进过档案但还没成为正式归档件，用 info 语气而不是成功色
+      return 'info'
+    },
     handleAdd () {
       this.$refs.formModal.showAdd()
     },
     handleEdit (record) {
       if (!record || !record.id) return
+      // 已归档只读（后端 updateDoc 也拒绝，这里只是少一次白跑的请求）
+      if (record.archiveId) {
+        toast.warning('该收文已归档，不能再编辑；如需更正请在档案维护里处理')
+        return
+      }
       this.$refs.formModal.showEdit(record)
     },
     handleFlow (record) {
       if (!record || !record.id) return
       this.$refs.flowModal.open(record)
     },
+    /**
+     * 从详情 / 列表打开归档弹窗。
+     *
+     * ★ 必须先把详情关掉：两个弹窗都是同层 fixed，后声明的盖住先声明的。
+     *   即使模板里已经把归档弹窗挪到详情之后（双保险），
+     *   详情留着不收也会让「归档完成后回到详情」看起来像卡住。
+     */
     handleArchive (record) {
+      const detail = this.$refs.detailModal
+      if (detail && typeof detail.close === 'function') detail.close()
       this.$refs.archiveModal.open(record, 'receive')
+    },
+    /** 归档成功：刷新列表与统计，并弹出「三段计数 + 查看档案」结果 */
+    handleArchived (result) {
+      this.onChanged()
+      const data = result || {}
+      this.archiveResult = {
+        visible: true,
+        archiveId: data.archiveId || '',
+        archiveNo: data.archiveNo || '',
+        archiveStatus: data.archiveStatus || '',
+        reusedCaseFile: !!data.reusedCaseFile,
+        verifyText: data.verifyText || '',
+        attachmentCount: Number(data.attachmentCount || 0),
+        convertedFileCount: Number(data.convertedFileCount || 0),
+        savedFileCount: Number(data.savedFileCount || 0)
+      }
+    },
+    /** 「查看档案」：走页签壳的 drill 通道，用同一个 archiveId 打开档案详情 */
+    handleOpenArchive () {
+      const archiveId = this.archiveResult.archiveId
+      this.handleCloseArchiveResult()
+      if (!archiveId) return
+      this.$emit('drill', { archiveId })
+    },
+    handleCloseArchiveResult () {
+      this.archiveResult = Object.assign({}, this.archiveResult, { visible: false })
     },
     handleDetail (record) {
       queryDocReceiveById(record.id).then((res) => {
@@ -513,7 +667,7 @@ export default {
         visible: true,
         doc,
         docNo: (doc && doc.docNo) || '',
-        docTitle: (doc && doc.docTitle) || '',
+        docTitle: (doc && doc.docTitle) || ''
       }
     },
     handleFinishArchive () {
@@ -547,8 +701,8 @@ export default {
         this.selectedRowKeys = []
         this.onChanged()
       })
-    },
-  },
+    }
+  }
 }
 </script>
 
@@ -774,6 +928,35 @@ export default {
     font-size: var(--screen-font-sm);
     line-height: 1.7;
     color: var(--screen-text-sub);
+  }
+
+  /* ---------------- 归档结果（三段计数） ---------------- */
+  &__archive-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--screen-space-2);
+  }
+
+  &__archive-line {
+    margin: 0;
+    font-size: var(--screen-font-sm);
+    line-height: 1.7;
+    color: var(--screen-text-sub);
+
+    b {
+      color: var(--screen-accent);
+    }
+
+    &.is-warn {
+      color: var(--screen-warning);
+    }
+  }
+
+  /* 带图标的告警行：图标与文字同一行居中，不与正文抢行高 */
+  &__alert {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 }
 

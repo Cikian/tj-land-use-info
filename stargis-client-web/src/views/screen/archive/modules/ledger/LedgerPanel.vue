@@ -38,8 +38,20 @@
     </screen-panel>
 
     <!-- ================= 2. 指标卡 + 资料归集分布 ================= -->
+    <!--
+      ★ P2-09：这两块**默认折叠**，把高度让给列表。
+        1080p 下「检索 + 指标卡 + 13 类分布 + 状态页签 + 列表」原先把列表压到只剩两三行，
+        而列表才是台账页的主战场。折叠只影响高度，不隐藏任何业务列；
+        需要看概况/资料分布时点面板右上角的折叠按钮即可展开（展开后仍是同一份数据）。
+    -->
     <div class="ledger-panel__overview">
-      <screen-panel class="ledger-panel__kpi" title="台账概况" sub-title="与检索条件联动">
+      <screen-panel
+        class="ledger-panel__kpi"
+        title="台账概况"
+        sub-title="与检索条件联动"
+        collapsible
+        :collapsed.sync="overviewCollapsed"
+      >
         <div class="ledger-panel__kpi-grid">
           <div
             v-for="card in kpiCards"
@@ -64,7 +76,12 @@
         </div>
       </screen-panel>
 
-      <screen-panel class="ledger-panel__material" title="13 类资料归集情况">
+      <screen-panel
+        class="ledger-panel__material"
+        title="13 类资料归集情况"
+        collapsible
+        :collapsed.sync="materialCollapsed"
+      >
         <template #extra>
           <span class="ledger-panel__hint">点某一类 = 筛出缺少该类资料的台账</span>
         </template>
@@ -199,7 +216,10 @@ import {
 
 /** 列显示方式（大屏没有 switch 原子，用分段单选表达「开 / 关」两态） */
 const VIEW_OPTIONS = [
-  { value: 'simple', label: '精简列' },
+  // 「精简列」本质就是只给资料齐全度汇总（x/13 + 缺几类），
+  // 这里按 P2-09 的口径改名为「资料齐全度摘要」——
+  // 需要逐类 √/× 时再切到「资料矩阵」，两者是同一份数据的两种密度。
+  { value: 'simple', label: '齐全度摘要' },
   { value: 'matrix', label: '资料矩阵' }
 ]
 
@@ -243,6 +263,9 @@ export default {
       }),
       viewMode: stored ? 'matrix' : 'simple',
       viewOptions: VIEW_OPTIONS,
+      /** 概况 / 13 类资料分布默认折叠（P2-09：把高度让给列表） */
+      overviewCollapsed: true,
+      materialCollapsed: true,
       materials: LEDGER_MATERIALS_FALLBACK.slice(),
       stat: {
         total: 0,
@@ -524,6 +547,25 @@ export default {
     },
 
     /* ---------------- 下钻 ---------------- */
+
+    /**
+     * 清空检索条件（P2-01 统一契约：页签壳在没有下钻参数时调用）。
+     *
+     * 同时清三处，少一处都会留下「看似全量、其实还在过滤」的隐性筛子：
+     *   ① 检索表单（含只有表单知道的隐藏字段，如资料数区间）；
+     *   ② 本组件的 query（列表 / 统计 / 导出都用它）；
+     *   ③ 状态页签、页码、勾选。
+     */
+    resetFilters () {
+      this.query = {}
+      this.statusTab = 'all'
+      this.selectedRowKeys = []
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      if (this.$refs.search && typeof this.$refs.search.setQuery === 'function') {
+        this.$refs.search.setQuery({})
+      }
+      return this.refresh()
+    },
 
     handleKpiClick (card) {
       if (!card || !card.drill) return

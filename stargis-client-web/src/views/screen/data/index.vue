@@ -22,6 +22,15 @@
         六个菜单项里「用地/配套录入」需要边看地块边填，内容区之外
         仍留给地图，所以画布整体仍是 pointer-events: none + 各区自己开 stage-hit。
 
+    检索条件生命周期（P2-01，与其它域同一套契约）：
+      · 面板公开 `resetFilters()`：条件恢复初始值（含 bizId/bizKey 等隐藏条件）、
+        页码回 1、清空选中与展开项，并保证界面与请求参数一致；
+      · 本页在**页签切换 / 页面 activated()** 时调用当前面板的 `resetFilters()`，
+        条件是「路由 query 里没有下钻参数」；
+      · 下钻（applyDrill / 路由带条件）是唯一允许带条件进面板的路径，消费完
+        立刻把路由上的条件摘掉，避免离开再回来时旧条件被重新注入。
+      · 用户点面板里的「重置」照旧，不走本页的逻辑。
+
     页签 key 与 views/screen/index.vue 的 DATA_TABS 严格一致，顺序与后端菜单
     sort_no 一致：
       landImport 经营性用地批量导入 / land 经营性用地信息录入 /
@@ -95,7 +104,12 @@
 
     <!-- ========== 内容区 ========== -->
     <div class="data-screen__body" :class="{ 'is-split': isSplitPanel }">
-      <!-- keep-alive：切页签时不销毁面板，检索条件、分页、展开状态都保留 -->
+      <!--
+        keep-alive：切页签时**保留面板实例**（省掉重复拉字典、重铺图层、重建树），
+        但**不再保留检索条件** —— 缓存下来的旧条件会变成隐性过滤，用户跨模块
+        回来看到的不是全量（测试问题 P2-01）。条件由本页在页签切换 / activated
+        时调面板的 resetFilters() 清空，见 script 里的 resetActivePanelFilters。
+      -->
       <keep-alive>
         <component
           :is="currentPanel"
@@ -200,7 +214,22 @@ export default {
         { key: 'recycle', label: '数据更新与移除' }
       ],
       /** 下钻条件：透传给面板的 initial-query（首次创建时生效）；深链带条件进来时从路由取 */
-      drillQuery: readRouteQuery(this.$route && this.$route.query)
+      drillQuery: readRouteQuery(this.$route && this.$route.query),
+      /**
+       * 本页会话内「已经出现过」的页签（key → true，只在逻辑里用，不参与渲染）。
+       * ★ 用途：第一次切到某个页签时面板实例是刚创建的、条件本来就是空的，
+       *   再调一次 resetFilters() 只是白打一次全量请求；只有复用 keep-alive
+       *   缓存的实例才真的需要清。
+       */
+      seenTabs: {},
+      /**
+       * 是否已经经历过首次 activated。
+       * ★ keep-alive 下 activated 在首次挂载时也会触发，那一刻面板刚按
+       *   initial-query 取过数，再清一次又是一次重复请求 —— 首轮跳过。
+       */
+      hasActivated: false,
+      /** 本次页签切换是否由下钻驱动：是的话条件刚注入，不能马上被清掉 */
+      drillTabPending: false
     }
   },
   computed: {
@@ -256,27 +285,65 @@ export default {
      * ★ 为什么必须 watch：`/screen/data?tab=facility&crzdbh=xxx` 这类**同路由换 query**
      *   的跳转，Vue Router 不会重建组件 —— data() 只在首次创建时读一次路由，
      *   于是「从宗地详情点『查看该宗地配套』」会表现成「地址变了但页面没动」。
+     * ★ 条件注入与「摘掉路由参数」都收口在 consumeRouteDrill 里，见该方法注释。
      */
     '$route.query': {
       handler () {
-        const routeQuery = this.$route && this.$route.query ? this.$route.query : {}
-        const query = readRouteQuery(routeQuery)
-        const tab = routeQuery.tab
-        if (tab && PANELS[tab] && tab !== this.activeTab) {
-          this.activeTab = tab
-        }
-        if (Object.keys(query).length) {
-          this.drillQuery = query
-          this.$nextTick(() => {
-            const panel = this.$refs.panel
-            if (panel && typeof panel.applyDrill === 'function') {
-              panel.applyDrill(query)
-            }
-          })
-        }
+        this.consumeRouteDrill()
       },
       deep: true
+    },
+
+    /**
+     * 普通页签切换（左二级导航）。
+     * ★ 缓存下来的面板会带着上一次的检索条件复活，跨模块回来时表现为
+     *   「明明没筛却只看到一部分数据」（P2-01），所以这里清空当前面板。
+     * ★ 例外两条：
+     *   - 本次切换由下钻驱动（drillTabPending）→ 条件刚注入，不能马上清；
+     *   - 路由上还有没消费的下钻条件 → 走注入，不清空。
+     */
+    activeTab () {
+      if (this.drillTabPending) {
+        this.drillTabPending = false
+        return
+      }
+      this.$nextTick(() => {
+        if (this.hasRouteDrill()) {
+          this.consumeRouteDrill()
+          return
+        }
+        const tab = this.activeTab
+        const firstVisit = !this.seenTabs[tab]
+        this.seenTabs[tab] = true
+        // 首次创建的实例本来就是干净的，再清一次只会多发一次全量请求
+        if (firstVisit) return
+        this.resetActivePanelFilters()
+      })
     }
+  },
+  created () {
+    /*
+     * 首次挂载：当前页签的面板马上会被创建，它的 data() 会读 initial-query
+     * （下钻 / 深链条件），所以这里只登记「已出现」并**把路由上的条件摘掉**。
+     * ★ 摘掉这一步是 P2-01 的核心缺陷修复：原来条件一直留在地址栏里，
+     *   用户离开本模块再回来（或从另一个对象下钻）时旧条件会被重新注入，
+     *   表现成「检索条件自己被记住了」，必须手动重置才能看全量。
+     */
+    this.seenTabs[this.activeTab] = true
+    this.clearRouteDrillParams()
+  },
+  activated () {
+    /*
+     * 页面重新可见（keep-alive 下从别的模块 / 别的页签回来）。
+     * ★ 首次挂载也会触发 activated，那一刻当前面板刚按 initial-query 取过数，
+     *   再清一次就是重复请求，所以首轮跳过（hasActivated）。
+     */
+    if (!this.hasActivated) {
+      this.hasActivated = true
+      return
+    }
+    if (this.consumeRouteDrill()) return
+    this.$nextTick(() => this.resetActivePanelFilters())
   },
   methods: {
     /**
@@ -290,14 +357,110 @@ export default {
       const target = params.tab && PANELS[params.tab] ? params.tab : 'facility'
       const query = Object.assign({}, params)
       delete query.tab
+      const switching = target !== this.activeTab
+      // 目标面板是本次才创建的 → 它的 created 已经按 initial-query 取过数
+      const freshInstance = switching && !this.seenTabs[target]
+      this.seenTabs[target] = true
       this.drillQuery = query
-      this.activeTab = target
+      if (switching) {
+        // 下钻驱动的页签切换：让 activeTab watcher 放过这次切换
+        this.drillTabPending = true
+        this.activeTab = target
+      }
       this.$nextTick(() => {
+        if (freshInstance) return
         const panel = this.$refs.panel
         if (panel && typeof panel.applyDrill === 'function') {
           panel.applyDrill(query)
         }
       })
+    },
+
+    /**
+     * 消费路由上的下钻参数：注入面板 → 记住 drillQuery → **把路由参数摘掉**。
+     * @returns {boolean} 是否有条件 / 页签变化被消费（调用方据此决定要不要清空）
+     */
+    consumeRouteDrill () {
+      const routeQuery = this.$route && this.$route.query ? this.$route.query : {}
+      const query = readRouteQuery(routeQuery)
+      const tab = routeQuery.tab
+      const wantTab = tab && PANELS[tab] ? tab : ''
+      const switching = !!wantTab && wantTab !== this.activeTab
+      const targetTab = switching ? wantTab : this.activeTab
+      const freshInstance = switching && !this.seenTabs[targetTab]
+      let consumed = switching
+      if (switching) {
+        this.seenTabs[targetTab] = true
+        this.drillTabPending = true
+        this.activeTab = targetTab
+      }
+      if (Object.keys(query).length) {
+        consumed = true
+        this.drillQuery = query
+        this.$nextTick(() => {
+          if (freshInstance) return
+          const panel = this.$refs.panel
+          if (panel && typeof panel.applyDrill === 'function') {
+            panel.applyDrill(query)
+          }
+        })
+      }
+      if (consumed) this.clearRouteDrillParams()
+      return consumed
+    },
+
+    /** 路由上是否还有**业务**下钻参数（tab / menu / map / token 这类控制参数不算） */
+    hasRouteDrill () {
+      return Object.keys(readRouteQuery(this.$route && this.$route.query)).length > 0
+    },
+
+    /**
+     * 把路由上的下钻参数摘掉。
+     * ★ 用 replace 而不是 push：清参数不该在浏览器历史里留一条记录，
+     *   否则用户按「后退」正好回到带旧条件的那一条，缺陷原样复活。
+     * ★ 控制参数（tab / menu / map / token）原样保留：它们不是检索条件，
+     *   其中 `?map=0` 是「不加载真实地图」的预览开关（见 views/screen/index.vue），
+     *   一并清掉会让一次下钻之后的刷新变成强行加载地图，反而干扰调试与验收。
+     */
+    clearRouteDrillParams () {
+      const route = this.$route
+      if (!route || !route.query || !this.$router) return
+      if (!Object.keys(readRouteQuery(route.query)).length) return
+      const next = {}
+      Object.keys(route.query).forEach((key) => {
+        if (CONTROL_QUERY_KEYS.indexOf(key) > -1) next[key] = route.query[key]
+      })
+      const done = this.$router.replace({ query: next })
+      // 重复导航会被 vue-router 拒绝；这里只关心「参数摘掉了」，失败无需打扰用户
+      if (done && typeof done.catch === 'function') done.catch(() => {})
+    },
+
+    /**
+     * 清空当前激活面板的检索条件 —— P2-01 的统一契约（其它域同一套实现）。
+     *
+     * 面板侧契约（每个可检索面板必须提供）：
+     *   `resetFilters()` —— 检索条件恢复初始值（**含 bizId / bizKey 等隐藏条件**）、
+     *   页码回 1、清空选中行与展开项，并保证「界面」与「实际请求参数」一致
+     *   （不能出现输入框空了、query 里还留着旧值）。
+     *
+     * ★ 为什么父级也要把 drillQuery 清空：被 keep-alive 缓存的面板改不动
+     *   initial-query；而被销毁重建（切走页签再回来 / 重进模块）的面板会重新读
+     *   initial-query —— 不清空的话，上一次下钻的条件会「一进面板就回来」。
+     */
+    resetActivePanelFilters () {
+      this.drillQuery = {}
+      const panel = this.$refs.panel
+      if (!panel) return
+      if (typeof panel.resetFilters === 'function') {
+        panel.resetFilters()
+        return
+      }
+      /*
+       * 兜底：面板还没补上 resetFilters() 时，走它已有的 applyDrill 通道注入
+       * 「空条件」——效果等价（条件清空 + 页码回 1 + 取消选中 + 重新取数），
+       * 面板逐个补齐后自动走上面的正路（判据只看方法在不在，不用改这里）。
+       */
+      if (typeof panel.applyDrill === 'function') panel.applyDrill({})
     },
 
     /** 供外部（路由 / 父组件）切换页签 */

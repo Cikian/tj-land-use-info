@@ -1,6 +1,6 @@
 <template>
   <!--
-    HomeLayerTree 首页右面板「地图管理」图层树
+    HomeLayerTree 首页右面板「图层树」
     ==================================================================
     ★ 2026-10-27 起：右面板默认展示「落实配套情况统计」（HomeStatPanel），
       本组件是右面板的**第二个页签内容**，由屏幕右边缘的竖排小页签切换过来
@@ -12,12 +12,13 @@
     本组件只负责宿主定位与拉起时序。
     定尺取自高保真模型 首页.html：
       标题装饰 大标题-右_u24.png   (1491, 95)   420×46
-      标题文字 地图管理（右对齐）    (1763, 104)  18px #FFFFFF
+      标题文字 图层树（右对齐）      (1763, 104)  18px #FFFFFF
       面板底   panel-right-bg.png  (1490, 149)  400×881
   -->
   <div class="home-tree" :style="rootStyle">
     <img class="home-tree__title-deco" :src="hf.panelTitleRight" alt="" aria-hidden="true" />
-    <h2 class="home-tree__title">地图管理</h2>
+    <!-- 标题与页签名一致：这块内容就是「图层树」，不要再用模块名「地图管理」（P1-14） -->
+    <h2 class="home-tree__title">图层树</h2>
 
     <!-- 面板宽度调节条（与右面板统计同一条位置：贴面板内侧左边缘，往左拖变宽） -->
     <screen-resize-bar
@@ -95,9 +96,16 @@ export default {
   },
   mounted () {
     this.openWhenMapReady()
+    this.watchPopVisible()
   },
   beforeDestroy () {
     this.stopReadyPolling()
+    // 弹层的 isShow 监听必须跟着组件一起摘：组件被外层重建后如果旧 watcher
+    // 还在，它会继续对着已销毁的弹层实例发事件。
+    if (this._stopPopWatch) {
+      this._stopPopWatch()
+      this._stopPopWatch = null
+    }
   },
   methods: {
     /** 拖动面板内侧调节条：新宽度抛给页面（与右面板统计共用同一份 panelLayout 状态） */
@@ -142,8 +150,15 @@ export default {
     activateEngine () {
       this.$nextTick(() => {
         const engine = this.$refs.layerTreeEngine
+        // btnClick 是开关：本次挂载内已经激活过就不再点（第二下会把它自己关掉，
+        // 表现是弹层显示着、图层勾选却不生效）。引擎实例重建时 _engineActivated
+        // 跟着组件一起没了，首次打开的行为与改动前完全一致。
+        const activated = this._engineActivated === true || (engine && engine.checked === true)
         try {
-          if (engine) engine.btnClick()
+          if (engine && !activated) {
+            engine.btnClick()
+            this._engineActivated = true
+          }
         } catch (error) {
           this.$screenToast.info('地图未就绪，图层管理暂不可用')
         }
@@ -160,6 +175,65 @@ export default {
       if (popVm && popVm.isShow === false && typeof popVm.showPop === 'function') {
         popVm.showPop()
       }
+    },
+
+    /**
+     * 外部重开入口（清单 P1-14）。父页面在「切到图层树页签 / 折叠后展开 /
+     * 从其它模块切回」时调用。
+     *
+     * 为什么需要它：插件弹层自带的关闭按钮只把它自己的 isShow 置 false
+     * （LayerTree 引擎不发任何开关事件），而本组件外层是「v-if 只挂一次 +
+     * v-show 保活」，不销毁也就没有第二次 mounted / openWhenMapReady，
+     * 于是弹层关一次就再也回不来。
+     *
+     * 复活方式按插件现有契约：先 showPop（最轻，不动引擎、**不销毁**
+     * Cesium 图层管理器 —— 已勾选图层的显隐状态由插件自己保存，重建会丢），
+     * 弹层还没挂好时才重走「等地图就绪 → 激活引擎」。
+     *
+     * ⚠ 必须幂等：页签切换 / 折叠展开 / 从其它模块切回三个入口可能落在同一次
+     *   交互里，重复激活会踩到上面 btnClick 的开关语义。
+     */
+    reopen () {
+      const popVm = this.$refs.layerTreePop
+      if (popVm && popVm.isShow === true) return
+      // 地图还在建（S3dmViewer 异步）：交回就绪轮询，不要对着还不存在的
+      // viewer 直呼 btnClick —— 那会抛错并弹「地图未就绪」的假提示。
+      if (!window.viewer) {
+        this.stopReadyPolling()
+        this.openWhenMapReady()
+        return
+      }
+      // 地图已就绪：先停掉挂载时开的轮询，免得它 500ms 后再激活一次。
+      this.stopReadyPolling()
+      this.activateEngine()
+    },
+
+    /**
+     * 盯住插件弹层的 isShow：被内部关闭按钮置 false 时通知外层
+     * （外层收到后把「已展开」置 false），否则会留下「面板还在、里面空的」
+     * 死状态 —— 这是 P1-14 的另一半。
+     *
+     * ★ 只认「曾经显示过 → false」这一跳：弹层首次挂载时 isShow 本来就是
+     *   false（等着 showPop），把它当用户关闭会让面板一挂上就被收起。
+     */
+    watchPopVisible () {
+      this._popWasVisible = false
+      this._stopPopWatch = this.$watch(
+        () => {
+          const popVm = this.$refs.layerTreePop
+          return popVm ? popVm.isShow : null
+        },
+        (value) => {
+          if (value === true) {
+            this._popWasVisible = true
+            return
+          }
+          if (value === false && this._popWasVisible) {
+            this._popWasVisible = false
+            this.$emit('pop-close')
+          }
+        }
+      )
     }
   }
 }

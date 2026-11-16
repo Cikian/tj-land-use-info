@@ -216,15 +216,20 @@
         图层树懒挂载：只有第一次切到「图层树」页签才挂载（那时才拉起
         stargis-function 引擎、才发图层树请求）；之后用 v-show 保活 ——
         来回切换不会重新拉一遍树，勾选的图层显隐状态也不会丢。
+        ★ 「保活」的代价（P1-14）：插件弹层被它自己的关闭钮关掉后，组件不销毁
+          就没有第二次 mounted。所以三条入口（页签 / 折叠展开 / 切模块返回）
+          都要调 reopenLayerTree()；反过来插件关闭时用 pop-close 通报外层。
       -->
       <home-layer-tree
         v-if="treeMounted"
         v-show="rightTab === 'tree'"
+        ref="homeLayerTree"
         :collapsed="layout.right.collapsed"
         :width="layout.right.size"
         :width-min="layout.right.min"
         :width-max="layout.right.max"
         @width-change="layout.setSize('right', $event)"
+        @pop-close="handleLayerTreeClosed"
       />
       <screen-side-rail
         side="right"
@@ -235,7 +240,7 @@
         collapse-text="收起右侧面板"
         expand-text="展开右侧面板"
         @select="handleRightTab"
-        @toggle="layout.toggle('right')"
+        @toggle="handleRightToggle"
       />
 
       <!-- ===== 底部属性表：左右内缩随两侧折叠/拖宽过渡；上沿可拖动改高 ===== -->
@@ -983,12 +988,50 @@ export default {
      * 点右边缘竖排小页签切换右面板内容。
      * ★ 顺手展开：折叠状态下点页签，用户意图显然是「看这个内容」，
      *   只切内容不展开会让面板继续留在屏幕外，看起来像点了没反应。
-     * ★ 首次切到「图层树」才置 treeMounted（懒挂载），之后 v-show 保活。
+     * ★ 首次切到「图层树」才置 treeMounted（懒挂载），之后 v-show 保活
+     *   —— 「保活」也正是 P1-14 的根因：插件弹层用内部关闭钮关掉后，
+     *   组件不销毁就没有第二次 mounted，必须由这里补一次重开。
      */
     handleRightTab (key) {
       this.rightTab = key
       if (key === 'tree') this.treeMounted = true
       this.layout.setCollapsed('right', false)
+      if (key === 'tree') this.reopenLayerTree()
+    },
+
+    /**
+     * 右面板折叠 / 展开（屏边把手）。
+     * ★ 展开后要补一次图层树重开：折叠期间插件弹层可能被关掉，
+     *   面板滑回来时若不复活，就是一块「有底图、里面空的」面板。
+     */
+    handleRightToggle () {
+      this.layout.toggle('right')
+      if (!this.layout.right.collapsed && this.rightTab === 'tree') this.reopenLayerTree()
+    },
+
+    /**
+     * 图层树插件内部关闭（弹层右上角 X，见 HomeLayerTree 的 pop-close）。
+     * ★ 为什么要把外层「已展开」置 false：插件只改自己的 isShow，外层若无感，
+     *   DOM 里就留下「面板还在、内容没了」的死状态 —— 再点页签也回不来（P1-14）。
+     *   收起面板后，屏边页签 / 把手都会走上面的重开入口。
+     */
+    handleLayerTreeClosed () {
+      this.layout.setCollapsed('right', true)
+    },
+
+    /**
+     * 让图层树重新显示出来（`HomeLayerTree.reopen()` 的转发）。
+     *
+     * ★ $nextTick：首次切到「图层树」时组件是在同一次渲染里才挂上的，
+     *   此刻 $refs 还没有它；直接取会静默什么都不做。
+     * ★ 重开语义由子组件自己负责（只 showPop + 必要时重新激活引擎），
+     *   这里不做任何插件内部状态判断 —— 页面不该知道 isShow 这回事。
+     */
+    reopenLayerTree () {
+      this.$nextTick(() => {
+        const tree = this.$refs.homeLayerTree
+        if (tree && typeof tree.reopen === 'function') tree.reopen()
+      })
     },
 
     /* ---------------- 「添加地块」绘制模式 ---------------- */
@@ -1077,6 +1120,11 @@ export default {
         const navigation = this.$router.replace({ path: '/screen' })
         if (navigation && typeof navigation.catch === 'function') navigation.catch(() => {})
       }
+
+      // 从其它整页模块切回首页：首页那棵 v-else 子树被销毁过，图层树是**重建**
+      // 的，而插件的 isShow / 引擎激活态不会随重建自动回到「可见」——补一次重开
+      // （子组件里 reopen 是幂等的，和 mounted 的首次拉起不会重复激活）。
+      if (key === 'home' && this.rightTab === 'tree') this.reopenLayerTree()
 
       if (IMPLEMENTED_MENUS.indexOf(key) > -1) return
 

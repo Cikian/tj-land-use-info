@@ -150,12 +150,14 @@ import { ScreenDataTable, ScreenTag, ScreenIcon, ScreenPopconfirm } from '@/comp
 import {
   dictText,
   DICT,
+  // 项目类型走三值口径（市级项目 / 区级项目 / 待确认），别名避免与下面的同名方法冲突
+  projectTypeText as projectTypeLabel,
   statusTone,
   argResultTone,
   formatInvestment,
   opinionSummary,
   joinInfo,
-  isClosedWithoutResult,
+  isClosedWithoutResult
 } from '../constants'
 
 export default {
@@ -175,11 +177,11 @@ export default {
     mode: { type: String, default: 'default' },
     /** 台账「最新审核意见」列的截断长度 */
     opinionLimit: { type: Number, default: 40 },
-    emptyText: { type: String, default: '暂无提级论证项目' },
+    emptyText: { type: String, default: '暂无提级论证项目' }
   },
   data () {
     return {
-      columns: [],
+      columns: []
     }
   },
   watch: {
@@ -187,8 +189,8 @@ export default {
       immediate: true,
       handler () {
         this.columns = this.mode === 'ledger' ? this.buildLedgerColumns() : this.buildDefaultColumns()
-      },
-    },
+      }
+    }
   },
   methods: {
     statusTone,
@@ -198,9 +200,13 @@ export default {
     joinInfo,
     isClosedWithoutResult,
 
-    /** 项目类型 / 论证结果文本：后端 _dictText 优先，其次本模块固化的字典表 */
+    /**
+     * 项目类型文本（清单 P2-10：只允许「市级项目 / 区级项目 / 待确认」三值）。
+     * ★ 历史四类（产业类/基础设施类/民生类/其他）若还没被迁移脚本刷掉，
+     *   这里也统一显示「待确认」，避免界面出现已废弃的分类口径。
+     */
     projectTypeText (row) {
-      return dictText(DICT.projectType, row.projectType, row.projectType_dictText)
+      return projectTypeLabel(row.projectType, row.projectType_dictText)
     },
     argResultText (row) {
       return dictText(DICT.argResult, row.argResult, row.argResult_dictText)
@@ -222,7 +228,7 @@ export default {
         { key: 'argResult', title: '论证结果', width: 130, type: 'slot' },
         { key: 'latestOpinion', title: '最新审核意见', width: 260, type: 'slot' },
         { key: 'updateTime', title: '更新时间', width: 160, type: 'slot' },
-        { key: 'action', title: '操作', width: 190, type: 'slot', align: 'center' },
+        { key: 'action', title: '操作', width: 190, type: 'slot', align: 'center' }
       ]
     },
 
@@ -238,14 +244,14 @@ export default {
         { key: 'status', title: '办理状态', width: 150, type: 'slot' },
         { key: 'argResult', title: '论证结果', width: 130, type: 'slot' },
         { key: 'materialCount', title: '材料数', width: 80, type: 'number', align: 'right' },
-        { key: 'action', title: '操作', width: 170, type: 'slot', align: 'center' },
+        { key: 'action', title: '操作', width: 170, type: 'slot', align: 'center' }
       ]
     },
 
     handleSelectChange (keys, rows) {
       this.$emit('select-change', keys, rows)
-    },
-  },
+    }
+  }
 }
 </script>
 

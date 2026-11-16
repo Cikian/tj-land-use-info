@@ -213,7 +213,7 @@ import {
   ScreenBarList,
   ScreenLineChart,
   ScreenEmpty,
-  ScreenLoading,
+  ScreenLoading
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import EscalationSearchForm from './EscalationSearchForm.vue'
@@ -227,7 +227,7 @@ import {
   queryStatByXzqh,
   queryStatByMonth,
   queryStatByType,
-  exportProjectXls,
+  exportProjectXls
 } from '@/api/land/escalation'
 import {
   STATUS_OPTIONS,
@@ -235,7 +235,7 @@ import {
   normalizeStatusCounts,
   sumCounts,
   withPercent,
-  defaultPagination,
+  defaultPagination
 } from '../constants'
 
 /**
@@ -247,7 +247,7 @@ const VIZ_COLORS = [
   'var(--screen-viz-blue)',
   'var(--screen-viz-cyan)',
   'var(--screen-viz-green)',
-  'var(--screen-viz-amber)',
+  'var(--screen-viz-amber)'
 ]
 
 /** 申报单位排行取前 N 名，避免长尾把图撑长 */
@@ -276,7 +276,7 @@ export default {
     ScreenLoading,
     EscalationSearchForm,
     EscalationTable,
-    EscalationDetailModal,
+    EscalationDetailModal
   },
   data () {
     return {
@@ -292,10 +292,10 @@ export default {
         byXzqh: [],
         byMonth: [],
         byType: [],
-        byStatus: [],
+        byStatus: []
       },
       statusCounts: {},
-      pagination: defaultPagination(10),
+      pagination: defaultPagination(10)
     }
   },
   computed: {
@@ -303,7 +303,7 @@ export default {
     statusCards () {
       return STATUS_OPTIONS.map((name) => ({
         name,
-        count: Number(this.statusCounts[name]) || 0,
+        count: Number(this.statusCounts[name]) || 0
       }))
     },
     byResultItems () {
@@ -328,14 +328,14 @@ export default {
       return withPercent(toNameCountList(this.stat.byXzqh)).map((item) => ({
         name: item.name,
         value: item.count,
-        percent: item.percent,
+        percent: item.percent
       }))
     },
     byTypeItems () {
       return withPercent(toNameCountList(this.stat.byType)).map((item) => ({
         name: item.name,
         value: item.count,
-        percent: item.percent,
+        percent: item.percent
       }))
     },
     /** 折线图要求按时间正序，后端不保证顺序，这里排一次 */
@@ -343,7 +343,7 @@ export default {
       return toNameCountList(this.stat.byMonth)
         .sort((a, b) => String(a.name).localeCompare(String(b.name)))
         .map((item) => ({ name: item.name, value: item.count }))
-    },
+    }
   },
   created () {
     const routeQuery = (this.$route && this.$route.query) || {}
@@ -359,7 +359,7 @@ export default {
       this.loading = true
       const params = Object.assign({}, this.query, {
         pageNo: this.pagination.current,
-        pageSize: this.pagination.pageSize,
+        pageSize: this.pagination.pageSize
       })
 
       return queryProjectList(params)
@@ -393,7 +393,7 @@ export default {
         unwrap(queryStatByXzqh(params)),
         unwrap(queryStatByMonth(params)),
         unwrap(queryStatByType(params)),
-        unwrap(queryLedgerCountByStatus(params)),
+        unwrap(queryLedgerCountByStatus(params))
       ])
         .then(([byResult, byDept, byXzqh, byMonth, byType, byStatus]) => {
           this.stat = { byResult, byDept, byXzqh, byMonth, byType, byStatus }
@@ -406,6 +406,20 @@ export default {
 
     handleSearch (query) {
       this.query = query || {}
+      this.pagination.current = 1
+      this.loadData()
+      this.loadStat()
+    },
+
+    /**
+     * P2-01 统一契约：离开本模块再回来时清空检索。
+     * 由 `escalation/index.vue` 在页签切换 / activated 且路由无业务下钻参数时调用。
+     * 必须同时清「表单显示」与「实际下发的 query」——只清输入框会让旧条件继续生效，
+     * 这正是测试里「跨模块返回仍被过滤」的成因。
+     */
+    resetFilters () {
+      if (this.$refs.search) this.$refs.search.setQuery({})
+      this.query = {}
       this.pagination.current = 1
       this.loadData()
       this.loadStat()
@@ -464,8 +478,8 @@ export default {
       const range = monthRange(name)
       if (!range) return
       this.drill({ beginDeclareDate: range[0], endDeclareDate: range[1] })
-    },
-  },
+    }
+  }
 }
 </script>
 

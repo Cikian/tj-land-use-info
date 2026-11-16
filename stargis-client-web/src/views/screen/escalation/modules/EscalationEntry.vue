@@ -88,7 +88,7 @@ import {
   queryProjectList,
   deleteProject,
   deleteProjectBatch,
-  exportProjectXls,
+  exportProjectXls
 } from '@/api/land/escalation'
 import { defaultPagination } from '../constants'
 
@@ -102,7 +102,7 @@ export default {
     EscalationSearchForm,
     EscalationTable,
     EscalationFormModal,
-    EscalationDetailModal,
+    EscalationDetailModal
   },
   data () {
     return {
@@ -111,7 +111,7 @@ export default {
       dataSource: [],
       total: 0,
       selectedRowKeys: [],
-      pagination: defaultPagination(10),
+      pagination: defaultPagination(10)
     }
   },
   created () {
@@ -122,7 +122,7 @@ export default {
       this.loading = true
       const params = Object.assign({}, this.query, {
         pageNo: this.pagination.current,
-        pageSize: this.pagination.pageSize,
+        pageSize: this.pagination.pageSize
       })
 
       return queryProjectList(params)
@@ -149,6 +149,18 @@ export default {
 
     handleSearch (query) {
       this.query = query || {}
+      this.pagination.current = 1
+      this.selectedRowKeys = []
+      this.loadData()
+    },
+
+    /**
+     * P2-01 统一契约：离开本模块再回来时清空检索（含表单显示与选中行）。
+     * 由 `escalation/index.vue` 在页签切换 / activated 且无待消费下钻条件时调用。
+     */
+    resetFilters () {
+      if (this.$refs.search) this.$refs.search.setQuery({})
+      this.query = {}
       this.pagination.current = 1
       this.selectedRowKeys = []
       this.loadData()
@@ -216,8 +228,8 @@ export default {
       const query = this.$refs.search ? this.$refs.search.getQuery() : this.query
       exportProjectXls(query)
       toast.info('已开始导出，请稍候…')
-    },
-  },
+    }
+  }
 }
 </script>
 

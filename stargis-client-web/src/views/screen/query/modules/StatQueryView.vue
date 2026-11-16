@@ -17,6 +17,17 @@
       后端条件接受多值（逗号分隔 / 数组），因为旧系统 getCnd 就是多选拼 OR；
       但大屏的下拉是单选组件，一次选一个最直观。要「几个区一起查」时，
       用「查询导出」页签的高级查询（关系符 OR）即可 —— 能力不缺，只是入口不同。
+      2026-11 起本页也提供了「自定义条件」（同一个 QueryConditionBuilder），
+      所以在这个页签里就能拼 AND/OR，不必再切页签。
+
+    ★ 对外契约（父组件 query/index.vue 按名字调用，改名要同步改父级）：
+      resetFilters()   清条件（常用 + 自定义）、页码回 1、清定位高亮，然后按空条件重查
+      applyDrill(o)    路由带着业务条件下钻进来时调用：覆盖式设置条件后重查
+      这两个方法也是清单 P2-01「普通离开再进入模块时清空检索条件」的落点。
+
+    ★ 定位（清单 P1-12）：结果行的「定位」按行 id 取 geoDetail，再用
+      createGeoLayer 在**共享地图**（window.viewer）上铺单块高亮 + 相机飞行。
+      不新建 Cesium Viewer；切页签 / 销毁时 clearAll，不留残影给数据管理页。
   -->
   <div class="stat-query">
     <!-- ---------- 条件 ---------- -->
@@ -50,6 +61,41 @@
         </screen-field>
       </div>
 
+      <!--
+        「当前筛选」：常用条件 + 自定义条件合并后的**实际生效条件**。
+        ★ 为什么必须有这一行（清单 P2-01 第 4 条）：自定义条件收起后，
+          用户看到的只是几个下拉，真正在下发的 AND/OR 组合是隐藏的；
+          没有这行就是「看似全量、实际仍过滤」。
+      -->
+      <div class="stat-query__filters">
+        <span class="stat-query__filters-label">当前筛选</span>
+        <span class="stat-query__filters-text">{{ filterSummary }}</span>
+        <button
+          v-if="hasFilters"
+          type="button"
+          class="stat-query__filters-clear"
+          @click="handleReset"
+        >
+          全部清除
+        </button>
+      </div>
+
+      <!--
+        自定义条件（清单 P2-11 第 2 条）：与「查询导出」页签同一个构造器。
+        ★ 用 v-show 不用 v-if：构造器里的 validate() 要按 ref 调用，
+          收起后再点「查询」就取不到校验结果了（等于没有校验）。
+      -->
+      <div v-show="conditionEditorOpen" class="stat-query__custom">
+        <query-condition-builder
+          ref="builder"
+          :columns="columns"
+          :options="options"
+          :value="customConditions"
+          @input="customConditions = $event"
+          @search="handleSearch"
+        />
+      </div>
+
       <template #footer>
         <div class="stat-query__actions">
           <screen-button size="sm" icon="close" @click="handleReset">清除</screen-button>
@@ -58,6 +104,13 @@
           </screen-button>
           <screen-button size="sm" icon="download" :disabled="!pagination.total" @click="handleExport">
             导出 Excel
+          </screen-button>
+          <screen-button
+            size="sm"
+            :icon="conditionEditorOpen ? 'chevron-up' : 'plus'"
+            @click="conditionEditorOpen = !conditionEditorOpen"
+          >
+            自定义条件{{ customCount ? `（${customCount}）` : '' }}
           </screen-button>
           <span class="stat-query__tip">
             导出的 Excel 含两个页签：当前筛选结果（按自定义列）+ 分析结果
@@ -87,12 +140,15 @@
       :page-size="pagination.pageSize"
       :page-size-options="pageSizeOptions"
       :link-keys="linkKeys"
+      show-locate
+      :locating-id="locatingId"
       @toggle-column="handleToggleColumn"
       @reset-columns="handleResetColumns"
       @page-change="handlePageChange"
       @refresh="loadAll"
       @export="handleExport"
       @open-detail="handleOpenDetail"
+      @locate="handleLocate"
     />
 
     <!-- 经营性用地：点宗地编号 → 看这块地下有哪些配套（不受查询条件影响） -->
@@ -126,6 +182,8 @@ import {
 import { toast } from '@/components/screen/toast'
 import {
   buildExportUrl,
+  queryAdvancedPage,
+  queryAdvancedSummary,
   queryColumns,
   queryFacilityPage,
   queryFacilityStats,
@@ -133,6 +191,13 @@ import {
   queryLandStats,
   queryOptions
 } from '@/api/land/statQuery'
+// 定位用「数据管理」已有的 geoDetail（按 id 取单条地块图形），不另开接口：
+// 图形只在数据管理里维护，查询页只需要读同一条记录的最新边界。
+import { queryLandGeoDetail } from '@/api/land/landAdmin'
+import { queryFacilityGeoDetail } from '@/api/land/facilityAdmin'
+// 宗地/配套几何图层工厂：地图实例由 views/screen/index.vue 共享（window.viewer），
+// 这里只往共享地图上加/删自己的实体，**不新建 Cesium Viewer**。
+import { createGeoLayer } from '@/views/screen/landGeoLayer'
 import {
   APPROVAL_OPTIONS,
   BUILD_NATURE_OPTIONS,
@@ -141,6 +206,7 @@ import {
   YES_NO_OPTIONS,
   metricsOf
 } from '../constants'
+import QueryConditionBuilder from './QueryConditionBuilder.vue'
 import QueryResultPanel from './QueryResultPanel.vue'
 import StatSummaryPanel from './StatSummaryPanel.vue'
 import LandFacilityDetailModal from './LandFacilityDetailModal.vue'
@@ -151,6 +217,7 @@ export default {
   components: {
     FacilityDetailModal,
     LandFacilityDetailModal,
+    QueryConditionBuilder,
     QueryResultPanel,
     ScreenButton,
     ScreenField,
@@ -171,11 +238,17 @@ export default {
       options: {},
       /** 当前条件（值是字符串；空串表示不限） */
       conditions: {},
+      /** 自定义条件（与「查询导出」页签同一个构造器的输出） */
+      customConditions: [],
+      /** 自定义条件编辑区是否展开（收起后靠「当前筛选」那行兜底披露） */
+      conditionEditorOpen: false,
       /** 选中的展示列 */
       selectedKeys: [],
       rows: [],
       summary: {},
       loading: false,
+      /** 正在定位的行 id（空串 = 空闲）；连点保护与按钮态共用 */
+      locatingId: '',
       pagination: { current: 1, pageSize: 20, total: 0 },
       pageSizeOptions: PAGE_SIZE_OPTIONS,
       /** 地块配套详情（经营性用地：点宗地编号） */
@@ -206,12 +279,14 @@ export default {
     conditionFields () {
       if (this.dataType === 'facility') {
         return [
-          this.selectField('ptxmmc', '配套项目名称', this.multiOptions('ptxmmc'), { searchable: true, labelWidth: 104 }),
-          this.selectField('ptsslb', '配套设施类别', this.multiOptions('ptsslb')),
-          this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true }),
-          this.selectField('xzqh', '行政区划', this.multiOptions('xzqh')),
+          // ★ multiple: true 的字段后端是 List（多值 OR / IN），
+          //   走 POST 合并自定义条件时必须发数组；其余字段是单值标量。
+          this.selectField('ptxmmc', '配套项目名称', this.multiOptions('ptxmmc'), { searchable: true, labelWidth: 104, multiple: true }),
+          this.selectField('ptsslb', '配套设施类别', this.multiOptions('ptsslb'), { multiple: true }),
+          this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true, multiple: true }),
+          this.selectField('xzqh', '行政区划', this.multiOptions('xzqh'), { multiple: true }),
           // 功能区与行政区划并列：2026-11 拆列后，生态城/经开区等记录只能按 gnq 检索
-          this.selectField('gnq', '功能区', this.multiOptions('gnq'), { labelWidth: 88 }),
+          this.selectField('gnq', '功能区', this.multiOptions('gnq'), { labelWidth: 88, multiple: true }),
           this.selectField('xmfl', '项目分类', PROJECT_TYPE_OPTIONS),
           this.selectField('jsxx', '建设性质', BUILD_NATURE_OPTIONS),
           this.selectField('sfkg', '是否开工', YES_NO_OPTIONS),
@@ -228,15 +303,45 @@ export default {
         ]
       }
       return [
-        this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true, labelWidth: 88 }),
-        this.selectField('xzqh', '行政区划', this.multiOptions('xzqh'), { labelWidth: 88 }),
+        this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true, labelWidth: 88, multiple: true }),
+        this.selectField('xzqh', '行政区划', this.multiOptions('xzqh'), { labelWidth: 88, multiple: true }),
         this.selectField('crsjYears', '出让时间', this.multiOptions('crsjYears'), {
           labelWidth: 88,
-          placeholder: '全部年份'
+          placeholder: '全部年份',
+          multiple: true
         }),
-        this.selectField('srr', '建设单位', this.multiOptions('srr'), { searchable: true, labelWidth: 88 }),
+        this.selectField('srr', '建设单位', this.multiOptions('srr'), { searchable: true, labelWidth: 88, multiple: true }),
         this.selectField('xmfl', '项目分类', PROJECT_TYPE_OPTIONS, { labelWidth: 88 })
       ]
+    },
+    /** 真正会下发的自定义条件（只有「字段 + 值」都有才算） */
+    activeCustomConditions () {
+      return this.customConditions.filter((row) => row &&
+        row.field &&
+        row.value !== null && row.value !== undefined && String(row.value).trim() !== '')
+    },
+    customCount () {
+      return this.activeCustomConditions.length
+    },
+    /** 「当前筛选」文案：把常用条件与自定义条件合成一句话，与请求参数同源 */
+    filterSummary () {
+      const parts = []
+      this.conditionFields.forEach((field) => {
+        const value = this.trimmed(this.conditions[field.key])
+        if (value) {
+          parts.push(`${field.label}：${value}`)
+        }
+      })
+      if (this.customCount) {
+        parts.push(`自定义条件 ${this.customCount} 条`)
+      }
+      return parts.length ? parts.join(' · ') : '全部数据（未设条件）'
+    },
+    hasFilters () {
+      if (this.customCount) {
+        return true
+      }
+      return this.conditionFields.some((field) => !!this.trimmed(this.conditions[field.key]))
     }
   },
   created () {
@@ -245,7 +350,20 @@ export default {
     //   而 ScreenSelect 的显示值来自 `:value="conditions[key]"` ——
     //   没初始化的话，用户选完下拉会「选了但显示不出来」，可条件已经进了请求。
     this.conditions = this.emptyConditions()
+    /*
+     * 定位图层：一个实例管一类地块（宗地红橙 / 配套青色）。
+     * ★ 不用响应式（data）：它只持有 Cesium 实体句柄，与 Vue 渲染无关；
+     *   放进 data 会被 Vue 递归 observe，白搭性能还可能报警告。
+     */
+    this.geoLayer = createGeoLayer(this.dataType === 'facility' ? 'facility' : 'land')
     this.loadMeta()
+  },
+  /** 切走页签（keep-alive 缓存）时清掉定位实体与高亮，避免污染数据管理页的地图 */
+  deactivated () {
+    this.clearLocate()
+  },
+  beforeDestroy () {
+    this.clearLocate()
   },
   methods: {
     /** 空条件对象（key 取当前数据集的条件字段） */
@@ -296,20 +414,27 @@ export default {
 
     /**
      * 查询：明细与分析结果一起发。
-     * ★ 一定要同一个条件对象：两次调用各拼一次条件，稍有差异就会出现
+     * ★ 一定要同一个对象：两次调用各拼一次条件，稍有差异就会出现
      *   「表格 12 条、统计说 15 条」这种最难解释的问题。
+     *
+     * ★ 有自定义条件时改走 POST（/page + /summary）：
+     *   自由组合条件是数组结构，GET 查询串装不下（与「查询导出」页签同一条路径），
+     *   而两条路径最终落到同一个 Service，口径不会分叉。
+     *   没有自定义条件时仍走原来的 GET：行为与改动前完全一致（不回归）。
      */
     async loadAll (pageNo) {
       const current = typeof pageNo === 'number' ? pageNo : this.pagination.current
+      const useCustom = this.activeCustomConditions.length > 0
       const params = this.buildParams(current)
+      const postPayload = useCustom ? this.buildPostPayload(current) : null
       this.loading = true
       try {
-        const pagePromise = this.dataType === 'facility'
-          ? queryFacilityPage(params)
-          : queryLandPage(params)
-        const statsPromise = this.dataType === 'facility'
-          ? queryFacilityStats(params)
-          : queryLandStats(params)
+        const pagePromise = useCustom
+          ? queryAdvancedPage(postPayload)
+          : (this.dataType === 'facility' ? queryFacilityPage(params) : queryLandPage(params))
+        const statsPromise = useCustom
+          ? queryAdvancedSummary(postPayload)
+          : (this.dataType === 'facility' ? queryFacilityStats(params) : queryLandStats(params))
         const [pageRes, statsRes] = await Promise.all([pagePromise, statsPromise])
 
         if (!pageRes || !pageRes.success) {
@@ -331,7 +456,7 @@ export default {
       }
     },
 
-    /** 条件 → 请求参数（空值不下发；多值在界面上是单选，所以直接单值传） */
+    /** 条件 → GET 请求参数（空值不下发；多值在界面上是单选，所以直接单值传） */
     buildParams (pageNo) {
       const params = {
         dataType: this.dataType,
@@ -340,23 +465,123 @@ export default {
         columns: this.selectedKeys.join(',')
       }
       Object.keys(this.conditions).forEach((key) => {
-        const value = this.conditions[key]
-        if (value !== null && value !== undefined && String(value).trim() !== '') {
-          params[key] = String(value).trim()
+        const value = this.trimmed(this.conditions[key])
+        if (value) {
+          params[key] = value
         }
       })
       return params
     },
 
+    /**
+     * 条件 → POST 请求体（常用条件 + 自定义条件合并，清单 P2-11 第 2 条）。
+     * ★ 多值字段发数组：后端 StatQueryDTO 里 dkmc / xzqh 这些是 List，
+     *   发字符串也能绑上（单元素），但语义上该是数组，且多于一个值时才不会丢。
+     */
+    buildPostPayload (pageNo) {
+      const payload = {
+        dataType: this.dataType,
+        pageNo,
+        pageSize: this.pagination.pageSize,
+        columns: this.selectedKeys.slice(),
+        conditions: this.buildCustomConditions()
+      }
+      this.conditionFields.forEach((field) => {
+        const value = this.trimmed(this.conditions[field.key])
+        if (value) {
+          payload[field.key] = field.multiple ? [value] : value
+        }
+      })
+      return payload
+    },
+
+    /** 自定义条件 → 后端 AdvancedCondition[]{field, operator, value, relation} */
+    buildCustomConditions () {
+      const builder = this.$refs.builder
+      if (builder && builder.buildConditions) {
+        return builder.buildConditions()
+      }
+      // 构造器还没渲染（理论上不会，v-show 保活）：退回按父组件持有的行自行过滤，
+      // 免得「条件已经在界面上但没进请求」。规则与构造器一致：字段与值都要有。
+      return this.activeCustomConditions.map((row) => ({
+        field: row.field,
+        operator: row.operator || 'like',
+        value: String(row.value).trim(),
+        relation: row.relation === 'OR' ? 'OR' : 'AND'
+      }))
+    },
+
+    /** 提交前校验自定义条件（数值/日期格式）；返回 false 表示已提示过、不要继续 */
+    validateCustomConditions () {
+      const builder = this.$refs.builder
+      const message = builder && builder.validate ? builder.validate() : ''
+      if (message) {
+        toast.warning(message)
+        return false
+      }
+      return true
+    },
+
     handleSearch () {
+      if (!this.validateCustomConditions()) {
+        return
+      }
       this.loadAll(1)
     },
 
+    /** 界面上的「清除」：清条件（含自定义条件）并重查 */
     handleReset () {
-      const cleared = {}
-      Object.keys(this.conditions).forEach((key) => { cleared[key] = '' })
-      this.conditions = cleared
+      this.conditions = this.emptyConditions()
+      this.customConditions = []
+      this.clearLocate()
       this.loadAll(1)
+    },
+
+    /**
+     * 清单 P2-01 的统一契约：清条件、页码回 1、清选中行，并同步「当前筛选」。
+     * 由父级（query/index.vue）在页签切换 / 页面激活时调用。
+     *
+     * ★ 为什么连自定义条件一起清：它是**条件**，不是视图偏好。
+     *   只清可见下拉而留着 AND/OR 组合，就是清单里说的「看似全量、实际仍过滤」。
+     * ★ 为什么不重设 selectedKeys（列选择）：那是显示偏好，与「检索条件」无关，
+     *   每次切页签把列设置也抹掉，用户得反复重新勾。
+     */
+    async resetFilters () {
+      this.conditions = this.emptyConditions()
+      this.customConditions = []
+      this.conditionEditorOpen = false
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      this.clearLocate()
+      return this.loadAll(1)
+    },
+
+    /**
+     * 外部下钻（路由带条件进来，例如 /screen/query?tab=land&dkmc=xxx）。
+     * ★ 语义是「换一批条件」而不是叠加：先清空再灌入，避免上一次的条件残留。
+     * ★ 参数里没有一个属于本数据集时按「清空后全量」处理 —— 例如从配套页签
+     *   带着 ptxmmc 下钻到宗地页签，宗地数据集没有这个条件，不能假装生效。
+     */
+    applyDrill (params) {
+      const next = this.emptyConditions()
+      let matched = 0
+      Object.keys(params || {}).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(next, key)) {
+          return
+        }
+        const value = this.trimmed(params[key])
+        if (value) {
+          next[key] = value
+          matched += 1
+        }
+      })
+      if (!matched) {
+        return this.resetFilters()
+      }
+      this.conditions = next
+      this.customConditions = []
+      this.conditionEditorOpen = false
+      this.clearLocate()
+      return this.loadAll(1)
     },
 
     handlePageChange (payload) {
@@ -388,13 +613,105 @@ export default {
 
     /**
      * 导出：走 `window.open` + token 查询串（与档案导出同一套）。
-     * 条件与列表页**完全一致**（含自定义列），所以「导出的行 = 屏幕上的行」。
+     * 条件与列表页**完全一致**（含自定义列 / 自定义条件），所以「导出的行 = 屏幕上的行」。
+     *
+     * ★ 有自定义条件时把条件序列化进 `conditionsJson`（GET 装不下数组结构），
+     *   后端反序列化成同一套 AdvancedCondition 再落到同一个 Service。
      */
     handleExport () {
+      if (!this.validateCustomConditions()) {
+        return
+      }
       const params = this.buildParams(1)
       delete params.pageNo
       delete params.pageSize
+      const conditions = this.buildCustomConditions()
+      if (conditions.length) {
+        params.conditionsJson = JSON.stringify(conditions)
+      }
       window.open(buildExportUrl(params), '_blank')
+    },
+
+    /**
+     * 定位到某一行的地块（清单 P1-12）。
+     *
+     * 流程：按行 id 取单条 geoDetail → 用它重铺**本面板自己的** GeoLayer →
+     * 高亮 → 相机飞行。整条链路复用数据管理的 `createGeoLayer` 与共享地图
+     * （`window.viewer`），不新建 Viewer、也不往共享地图上留别人的实体。
+     *
+     * ★ 先 renderAll 再高亮：renderAll 内部先 clearAll，天然满足
+     *   「连续定位只保留当前高亮」（清单 P1-12 第 3 条）。
+     * ★ 无图形必须给反馈：后端对「没画过图形」返回 success=false，
+     *   这里一律 toast 并把上一次的高亮清掉（不留残影）。
+     */
+    async handleLocate (row) {
+      if (!row || !row.id) {
+        toast.warning('这一行没有行标识，无法定位（请刷新后重试）')
+        return
+      }
+      if (!window.Cesium || !window.viewer) {
+        toast.warning('地图还没准备好，暂时无法定位')
+        return
+      }
+      const id = String(row.id)
+      if (this.locatingId === id) {
+        return
+      }
+      this.locatingId = id
+      try {
+        const request = this.dataType === 'facility'
+          ? queryFacilityGeoDetail(id)
+          : queryLandGeoDetail(id)
+        const res = await request
+        // 连点了别的行：这次的结果已经过时，丢掉（否则会出现「点了 A，停了 C」）
+        if (this.locatingId !== id) {
+          return
+        }
+        if (!res || !res.success) {
+          // 后端把「没有图形」和「无权限」都表达成 success=false，
+          // 原文透出来比自定义一句话更有用（否则「查得到记录却定位不了」无从解释）
+          toast.warning((res && res.message) || '该地块没有地块图形，无法定位')
+          this.clearLocate()
+          return
+        }
+        const geojson = res.result && res.result.dkGeojson
+        if (!geojson) {
+          toast.warning('该地块没有地块图形，无法定位')
+          this.clearLocate()
+          return
+        }
+        this.geoLayer.renderAll([{
+          id,
+          crzdbh: res.result.crzdbh || row.crzdbh || '',
+          dkmc: res.result.dkmc || row.dkmc || '',
+          dkGeojson: geojson
+        }], false)
+        this.geoLayer.highlight(id)
+        this.geoLayer.flyTo(id)
+      } catch (e) {
+        toast.error('定位失败：' + (e && e.message ? e.message : '网络异常'))
+        this.clearLocate()
+      } finally {
+        if (this.locatingId === id) {
+          this.locatingId = ''
+        }
+      }
+    },
+
+    /** 清掉本面板在地图上留下的实体与高亮（切页签 / 销毁 / 重置条件时调用） */
+    clearLocate () {
+      if (this.geoLayer) {
+        this.geoLayer.clearAll()
+      }
+      this.locatingId = ''
+    },
+
+    /** 条件值统一去空白：'' 表示不限（null/undefined 也当空） */
+    trimmed (value) {
+      if (value === null || value === undefined) {
+        return ''
+      }
+      return String(value).trim()
     },
 
     handleOpenDetail (row) {
@@ -460,10 +777,55 @@ export default {
     }
   }
 
+  /* 「当前筛选」：一行文字 + 一键清除，说明「现在到底在下发什么条件」 */
+  &__filters {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: var(--screen-font-xs);
+    color: var(--screen-text-mute);
+  }
+
+  &__filters-label {
+    flex: 0 0 auto;
+    color: var(--screen-text-sub);
+  }
+
+  &__filters-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    .screen-ellipsis();
+  }
+
+  &__filters-clear {
+    flex: 0 0 auto;
+    padding: 0;
+    font: inherit;
+    color: var(--screen-accent);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    .screen-focus-ring();
+
+    &:hover {
+      color: var(--screen-text);
+    }
+  }
+
+  /* 自定义条件区：与常用条件之间留一条分隔，视觉上明确是「附加条件」 */
+  &__custom {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--screen-border);
+  }
+
   &__actions {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   &__tip {

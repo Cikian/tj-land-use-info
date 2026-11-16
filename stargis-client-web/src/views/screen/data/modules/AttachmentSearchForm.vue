@@ -7,7 +7,8 @@
       bizType            归属类型（land / facility / process）
       bizId              归属对象的唯一 id（精确）—— ★ 只由下钻预置，**不给用户填**
       bizKey             所属对象（模糊：出让宗地编号 / 配套项目名称）
-      fileType           材料类型码（精确：01~13、99）
+      fileType           材料类型码（精确：宗地 01~04；配套 / 环节 01~13；
+                         迁移遗留的 99「其他（历史）」也可作检索值）
       keyword            ★ 文件名模糊 —— 后端字段名是 keyword 不是 fileName
       uploadBy           上传人账号（精确）
       beginDate / endDate 上传时间区间
@@ -120,7 +121,7 @@ import {
   ScreenButton,
   ScreenIcon
 } from '@/components/screen'
-import { ATTACHMENT_BIZ_TYPES, queryAllowedAttachmentTypes, ATTACHMENT_TYPES_FALLBACK } from '@/api/land/attachment'
+import { ATTACHMENT_BIZ_TYPES, queryAllowedAttachmentTypes, attachTypeOptionsOf } from '@/api/land/attachment'
 import { queryLandDictItems } from '@/api/land/landAdmin'
 import { dictToOptions, compactQuery, dictDefinitions } from '../constants'
 
@@ -168,8 +169,9 @@ export default {
       presetBizKey: (this.initialQuery || {}).bizKey || '',
       dateRange: [],
       bizTypeOptions: ATTACHMENT_BIZ_TYPES,
-      // 先用本地兜底（01~13、99），created 里再用字典 / allowedTypes 覆盖
-      typeOptions: ATTACHMENT_TYPES_FALLBACK.map((item) => ({ value: item.value, label: item.text }))
+      // 先用本地兜底（按归属给宗地 4 类 / 配套 13 类；下钻带 bizType 时给对应那套），
+      // created 里再由接口覆盖
+      typeOptions: attachTypeOptionsOf((this.initialQuery || {}).bizType)
     }
   },
   watch: {
@@ -192,6 +194,18 @@ export default {
         return
       }
       this.query.bizId = ''
+    },
+
+    /**
+     * 换归属类型：材料类型清单跟着换，并且**清掉已选的材料类型**。
+     *
+     * ★ 为什么必须清：两套目录的 01~04 重号（宗地 01=土地整理计划、
+     *   配套 01=核定用地与地籍调查）。留着旧码会让过滤条件静默换义 ——
+     *   用户以为还在筛「土地整理计划」，实际筛的是「核定用地与地籍调查」。
+     */
+    'query.bizType' () {
+      this.query.fileType = ''
+      this.loadTypes(this.query.bizType || '')
     }
   },
   created () {
@@ -209,12 +223,18 @@ export default {
     /**
      * 附件类型选项。
      * ★ 优先用专用接口 `/land/data/attachment/allowedTypes`（它给的是
-     *   { value, text }，与字典同构），失败再退到字典，最后是本地兜底。
-     *   三层兜底的原因：附件类型是 13 类且会扩，用户一旦选不到想要的类型
-     *   就只能归到「其他」，那等于数据分类失效。
+     *   { value, text }，与字典同构，且**按 bizType 返回对应那一套**），
+     *   失败再退到字典，最后是本地兜底。
+     *   三层兜底的原因：材料类型分两套（宗地 4 / 配套 13）且会扩，用户一旦选不到
+     *   想要的类型就只能归到「其他」，那等于数据分类失效。
+     *
+     * @param {string} [bizType] 归属类型；不传按后端规则退回宗地那套
      */
-    loadTypes () {
-      queryAllowedAttachmentTypes()
+    loadTypes (bizType) {
+      const scope = bizType === undefined ? this.query.bizType : bizType
+      // 先落本地兜底：接口慢/挂掉时下拉里至少是「当前归属对应的那套」
+      this.typeOptions = attachTypeOptionsOf(scope)
+      queryAllowedAttachmentTypes(scope)
         .then((res) => {
           if (res && res.success && res.result && res.result.length) {
             this.typeOptions = dictToOptions(res.result)
@@ -226,7 +246,11 @@ export default {
         .then((done) => {
           if (done) return
           queryLandDictItems(dictDefinitions()).then((dicts) => {
-            if (dicts.attachType) this.typeOptions = dicts.attachType
+            // 字典兜底只覆盖宗地那套（land_attach_type）；选的是配套时保留本地兜底，
+            // 否则会把 4 个宗地类型塞给配套筛选，筛出来永远是空的
+            if (dicts.attachType && (scope === 'land' || scope === 'process' || !scope)) {
+              this.typeOptions = dicts.attachType
+            }
           })
         })
     },
@@ -244,6 +268,7 @@ export default {
     handleReset () {
       this.query = buildEmptyQuery()
       this.dateRange = []
+      // 归属类型被清空 → 材料类型由 watch('query.bizType') 自动换回「未选归属」那套
       this.$emit('reset')
       // 重置后立即检索一次，让列表回到全量状态（与档案模块行为一致）
       this.$emit('search', this.getQuery())

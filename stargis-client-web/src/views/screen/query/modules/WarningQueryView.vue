@@ -22,6 +22,7 @@
   -->
   <div class="warning-query">
     <warning-filter-bar
+      ref="filterBar"
       class="warning-query__filter"
       :level-options="levelOptions"
       :type-options="typeOptions"
@@ -195,6 +196,26 @@ export default {
     handleSearch (params) {
       this.query = params || {}
       this.loadAll(1)
+    },
+
+    /**
+     * 清单 P2-01 的统一契约：清条件、页码回 1、清选中行（这里是「正在看的详情」），
+     * 然后按空条件重查 —— 界面上必须立刻是「全量」。
+     *
+     * ★ 条件状态在 WarningFilterBar 内部，所以先让它清控件（clearConditions），
+     *   再清父组件持有的 query；只清一边就会出现「控件显示全部、请求仍带条件」。
+     * ★ 名称与查询统计其余页签一致（resetFilters），父级 query/index.vue 才能统一调用。
+     */
+    async resetFilters () {
+      const filterBar = this.$refs.filterBar
+      if (filterBar && typeof filterBar.clearConditions === 'function') {
+        filterBar.clearConditions()
+      }
+      this.query = {}
+      this.pagination = Object.assign({}, this.pagination, { current: 1 })
+      this.detailVisible = false
+      this.detailRow = null
+      return this.loadAll(1)
     },
 
     handlePageChange (payload) {

@@ -146,10 +146,16 @@
 
     <facility-form-modal ref="formModal" @ok="handleSaved" />
     <facility-geo-import-modal ref="geoImportModal" @ok="handleGeoImported" />
+    <!--
+      详情弹窗只上抛 open-process，**面板本体必须挂在这里**（P1-01）：
+      本页签是常驻组件，而详情弹窗的根节点随 visible 销毁 ——
+      面板挂在详情里就会被「先关详情」一起销毁，表现是点了没反应。
+    -->
     <facility-detail-modal
       ref="detailModal"
       @edit="handleEdit"
       @remove="handleRemove"
+      @open-process="handleProcess"
       @changed="loadData"
     />
     <process-tree-panel ref="processPanel" @changed="handleProcessChanged" />
@@ -225,8 +231,12 @@ import {
   deleteFacilityAdminBatch
 } from '@/api/land/facilityAdmin'
 import { queryLandOptions } from '@/api/land/landData'
+// 快速定位出让宗地时要用到宗地自己的图形（P2-05），接口与宗地面板同源
+import { queryLandGeoList, queryLandGeoDetail } from '@/api/land/landAdmin'
 // 配套地块几何图层：进菜单把全部已画图配套面铺到地图上，列表双击定位 + 高亮
 import { createGeoLayer } from '@/views/screen/landGeoLayer'
+// 合并包围盒要按顶点算：本文件把两类图形的 GeoJSON 解析成 Cartesian3 顶点
+import { parsePolygons } from '@/views/screen/geoPolygons'
 import FacilityGeoImportModal from './FacilityGeoImportModal'
 import { defaultPagination, compactQuery } from '../constants'
 
@@ -242,6 +252,18 @@ import { defaultPagination, compactQuery } from '../constants'
  * 变了才全量刷新并换版本。双击定位时按 id 拉 /geoDetail 替换概览轮廓。
  */
 const facilityGeoCache = { version: '', lands: null }
+
+/**
+ * 「快速定位出让宗地」用的宗地概览缓存（模块级，**独立于 LandEntryPanel 里那份**）。
+ *
+ * ★ 为什么不能借用 LandEntryPanel 的 geoOverviewCache：
+ *   createGeoLayer 实例之间是隔离的（items / highlightId / 覆盖层 / 颜色解析
+ *   全在工厂函数的闭包里），但「概览数据 + 版本号」是**面板文件的模块级变量**。
+ *   两个面板共用同一个 version 就会互相覆盖：宗地面板做了一次强制刷新（把版本作废），
+ *   本面板再带着空版本去请求会拿到全量、或者反过来拿到 unchanged 却本地无数据。
+ *   所以这里另立一份，各自持自己的 version / lands。
+ */
+const locatorLandGeoCache = { version: '', lands: null }
 
 export default {
   name: 'FacilityEntryPanel',
@@ -329,23 +351,42 @@ export default {
   created () {
     // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
     this.geoLayer = createGeoLayer('facility')
+    /*
+     * P2-05：再建一个「宗地」图层实例（红橙配色），专门用来摆「快速定位」选中
+     * 那一宗地自己的面。landGeoLayer.js 的注释写明两个面板各 createGeoLayer
+     * 一个实例、互不干扰 —— 同一面板里建两个不同配色的实例同理：
+     * 状态全在闭包里，配色由 STYLE_PRESETS 决定，不会串。
+     * 它与 LandEntryPanel 的宗地图层是两回事：那个实例由那个面板 clearAll，
+     * 本实例的清理由本面板的「退出定位 / deactivated / beforeDestroy」负责。
+     */
+    this.landGeoLayer = createGeoLayer('land')
+    /** 当前「快速定位」的宗地编号（空串 = 普通视图）。非响应式：只影响 Cesium 与相机 */
+    this.locateLandCode = ''
     this.loadLandOptions('')
-    this.loadData()
+    // 首次进入与「切页签回来」走同一个入口，两处共用同一套同 tick 去重（见 ensureListLoaded）
+    this.ensureListLoaded()
   },
   activated () {
     /*
-     * keep-alive 的激活钩子（首次挂载也会触发一次）：
-     * 每次进「配套地块数据录入」菜单都重铺配套几何图层，
-     * 切走页签时由 deactivated 清掉（与宗地图层互不残留）。
-     * 普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
+     * keep-alive 的激活钩子（首次挂载也会触发一次），要做两件事：
+     *
+     * 1. **重拉列表**（测试清单 P1-02）—— 页签被 keep-alive 缓存后 created 不再跑，
+     *    只重铺地图不动列表就会出现「回收站里已经恢复了这条配套、切回录入页
+     *    列表里还是没有」。与 created 那一次由 ensureListLoaded 合并，不会重复请求。
+     * 2. 重铺配套几何图层 —— 每次进菜单都是最新图形；普通激活走版本化增量，
+     *    只有本页写操作完成后才强制重建。
+     *
+     * 切走页签时由 deactivated 清掉图层（与宗地图层互不残留）。
      */
+    this.ensureListLoaded()
     this.loadGeoLayer(false)
   },
   deactivated () {
-    this.geoLayer.clearAll()
+    // 两类实体都自己清（P2-05）：不指望别的面板的生命周期替本面板删图层
+    this.clearLocatorLayers()
   },
   beforeDestroy () {
-    this.geoLayer.clearAll()
+    this.clearLocatorLayers()
     if (this.landSearchTimer) {
       clearTimeout(this.landSearchTimer)
       this.landSearchTimer = null
@@ -354,7 +395,34 @@ export default {
   methods: {
     /* ---------------- 数据 ---------------- */
 
+    /**
+     * 首次挂载（created）与 keep-alive 激活（activated）共用的列表拉取入口。
+     *
+     * ★ 为什么必须去重：首次进入时 created 与 activated 在同一 tick 内先后触发，
+     *   不去重就会发两套请求（byLand / 分页各两遍）。
+     *   写法照 DataRecyclePanel.ensureLoaded：标记 + $nextTick 把同 tick 的多次调用合成一次。
+     * ★ 为什么还要比 listLoadSeq：激活排队的这次刷新可能还没跑，别处就已经显式加载过
+     *   （父页 drill 进来会立刻 applyDrill / handleLandPicked → loadData；保存/移除后也是
+     *   loadData），那时再补一次就是纯重复请求。loadData 每次自增序号，序号变了就放弃。
+     * ★ 页码与查询条件原样保留：激活刷新是「拿最新数据」，不是新查询 ——
+     *   重置页码会把用户正在看的那一页抢走；条目变少让当前页空掉时，
+     *   loadPage 里已有「当前页被删空自动回退一页」的兜底，不需要在这里重置。
+     *   宗地模式（不分页）本来就按 query.crzdbh 重查，条件同样保留。
+     */
+    ensureListLoaded () {
+      if (this.listLoadScheduled) return
+      this.listLoadScheduled = true
+      const seq = this.listLoadSeq || 0
+      this.$nextTick(() => {
+        this.listLoadScheduled = false
+        if ((this.listLoadSeq || 0) !== seq) return
+        this.loadData()
+      })
+    },
+
     loadData () {
+      // 记一次「已发生的加载」，ensureListLoaded 靠它判断排队的刷新是否已被顶掉
+      this.listLoadSeq = (this.listLoadSeq || 0) + 1
       const code = String(this.query.crzdbh || '').trim()
       // 宗地模式下先试 byLand：它一次返回该宗地全部配套 + 阶段汇总，比分页接口信息更全。
       // 但编号可能是模糊的（命中多条宗地），byLand 只按精确编号查 —— 所以命中为空时
@@ -440,8 +508,13 @@ export default {
         })
     },
 
-    /** 选中宗地 → 清掉分页与选中行，按该宗地重查 */
+    /**
+     * 选中宗地 → 清掉分页与选中行，按该宗地重查；
+     * **同时**在地图上摆出该宗地的面与它下属的配套面并定位（测试清单 P2-05）。
+     * ★ 列表与图形互不阻塞：列表请求照旧发出去，图形失败只给 toast，不拦列表。
+     */
     handleLandPicked (value) {
+      const code = String(value || '').trim()
       this.pagination.current = 1
       this.selectedRowKeys = []
       if (this.$refs.search) {
@@ -449,6 +522,7 @@ export default {
         this.query = this.$refs.search.getQuery()
       }
       this.loadData()
+      this.showLandWithFacilities(code)
     },
 
     handleClearLand () {
@@ -460,6 +534,8 @@ export default {
       }
       this.pagination.current = 1
       this.loadData()
+      // 退出定位：地图回到「全部已画图配套」的普通视图，两类定位实体都撤掉（P2-05）
+      this.exitLandLocator()
     },
 
     /* ---------------- 检索与分页 ---------------- */
@@ -469,6 +545,16 @@ export default {
       this.pagination.current = 1
       this.selectedRowKeys = []
       this.loadData()
+      /*
+       * 检索条件变了就核对定位态：宗地编号被清掉、或换成了另一宗地时，
+       * 必须把定位态整体退出 —— 否则地图上还留着上一宗地的宗地面 / 配套面，
+       * 与列表对不上，用户会以为列表筛错了（P2-05）。
+       * 同一宗地再查一次不动定位，避免重复飞行。
+       */
+      const code = String(this.query.crzdbh || '').trim()
+      if (!code || code !== this.locateLandCode) {
+        this.exitLandLocator()
+      }
     },
 
     handlePageChange ({ current, pageSize }) {
@@ -529,19 +615,188 @@ export default {
       }
       // 版本化增量：图形没变（unchanged）时直接用本地缓存铺图（零数据传输）；
       // 变了才拉全量概览并更新缓存。概览档后端预计算（40 点/环）。
-      queryFacilityGeoList(facilityGeoCache.version, forceRefresh === true)
-        .then((res) => {
-          if (!res || !res.success) return
-          const data = res.result || {}
-          if (data.unchanged && facilityGeoCache.lands) {
-            this.geoLayer.renderAll(facilityGeoCache.lands, false)
+      return this.ensureFacilityOverview(forceRefresh)
+        .then((lands) => {
+          // 定位态下只重铺「本宗地的配套面」（P2-05）：把全量铺回来会冲掉
+          // 「只看这一宗地」的语义，也会在用户刚定位好的画面上多画几百个面
+          if (this.locateLandCode) {
+            this.renderLandLocatorFacilities(this.locateLandCode, lands)
             return
           }
-          facilityGeoCache.version = data.version || ''
-          facilityGeoCache.lands = data.lands || []
-          this.geoLayer.renderAll(facilityGeoCache.lands, false)
+          this.geoLayer.renderAll(lands, false)
         })
         .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
+    },
+
+    /**
+     * 确保拿到配套概览列表（内存缓存优先，没有才按版本号增量拉一次）。
+     * ★ 单独抽出来是因为「进菜单铺全部配套面」与「快速定位某宗地的配套面」
+     *   都要这份数据：两条路径共用同一个缓存源，避免同一次激活发两遍全量请求。
+     * @param {boolean} [forceRefresh] 写操作后强制后端重建概览（refresh=1）
+     */
+    ensureFacilityOverview (forceRefresh) {
+      if (facilityGeoCache.lands) {
+        return Promise.resolve(facilityGeoCache.lands)
+      }
+      return queryFacilityGeoList(facilityGeoCache.version, forceRefresh === true)
+        .then((res) => {
+          if (!res || !res.success) return []
+          const data = res.result || {}
+          if (!data.unchanged) {
+            facilityGeoCache.version = data.version || ''
+            facilityGeoCache.lands = data.lands || []
+          }
+          return facilityGeoCache.lands || []
+        })
+        .catch(() => [])
+    },
+
+    /* ---------------- 快速定位出让宗地：宗地面 + 配套面同屏（P2-05） ---------------- */
+
+    /**
+     * 选中宗地后同时摆出「该宗地的面 + 它下属的配套面」，相机按**两者合并范围**定位。
+     *
+     * ★ 为什么不能只对配套 flyTo（改造前的表现）：配套图层的 flyTo 只按**那一条**
+     *   配套的全部块算包围球，宗地面根本进不了画面 —— 用户看到的是一堆青色小块，
+     *   说不清这块地本身在哪、边界到哪。测试清单 P2-05 要求两者同时可见、能分辨图例
+     *   （宗地红橙 / 配套青色本来就是两套配色，见 landGeoLayer.js 的 STYLE_PRESETS）。
+     * ★ 图形来源沿用现有的两级加载口径：先用概览档（毫秒级、多数已在缓存）铺面并定位，
+     *   飞行落定后再按 id 拉该宗地的 /geoDetail 精确图形替换高亮覆盖层 ——
+     *   与 handleLocate 的「先概览后精确」完全同一套，不新造第三种取图方式。
+     * ★ 没有图形不拦列表：列表请求在上面已经发出去，这里只给一句明确提示。
+     */
+    showLandWithFacilities (code) {
+      if (!code) {
+        this.exitLandLocator()
+        return
+      }
+      // 先记目标编号：后面每个异步回调都靠它判断「期间有没有换宗地 / 有没有退出定位」
+      this.locateLandCode = code
+      // 上一个宗地的面先撤掉；配套面也清空，下面按本宗地重铺（renderAll 自己也会先清）
+      this.landGeoLayer.clearAll()
+      this.geoLayer.clearAll()
+
+      Promise.all([this.ensureFacilityOverview(), this.ensureLocatorLandOverview()])
+        .then(([facilityLands, landLands]) => {
+          // 期间换了宗地 / 点了退出定位：这批结果作废，别把旧宗地的面画回来
+          if (this.locateLandCode !== code) return
+          const landHit = (landLands || []).find((item) => item && item.crzdbh === code && item.dkGeojson)
+          const facilities = (facilityLands || []).filter((item) => item && item.crzdbh === code && item.dkGeojson)
+
+          // 配套面：只留本宗地的（先清后画，幂等）
+          this.geoLayer.renderAll(facilities, false)
+          if (landHit) {
+            // 宗地面铺到宗地图层并高亮（白描边 + 加深填充），与「双击定位」同一视觉口径
+            this.landGeoLayer.renderAll([landHit], false)
+            this.landGeoLayer.highlight(landHit.id)
+          }
+
+          const positions = this.collectLocatorPositions(landHit, facilities)
+          if (!positions.length) {
+            toast.warning(
+              `宗地 ${code} 与其下属配套都还没有图形：可在编辑里绘制或用「导入地块图形」导入，列表照常可用`
+            )
+            return
+          }
+          if (!landHit) {
+            toast.info(`宗地 ${code} 还没有地块图形，已定位到它下属的 ${facilities.length} 个配套面`)
+          }
+          this.flyToMergedBounds(positions, () => {
+            if (this.locateLandCode !== code || !landHit) return
+            // 飞行落定后才换精确图形：几百点贴地面的建面开销放飞行中会肉眼可见地卡动画
+            queryLandGeoDetail(landHit.id)
+              .then((res) => {
+                if (this.locateLandCode !== code) return
+                if (!res || !res.success || !res.result || !res.result.dkGeojson) return
+                this.landGeoLayer.applyPreciseOverlay(landHit.id, res.result.dkGeojson)
+              })
+              .catch(() => { /* 概览面仍可查看，失败不打扰 */ })
+          })
+        })
+        .catch(() => { /* 辅助视图，失败不打扰列表 */ })
+    },
+
+    /** 退出「快速定位」：两个图层的定位实体都撤掉，配套面回到全量视图（幂等） */
+    exitLandLocator () {
+      if (!this.locateLandCode) return
+      this.locateLandCode = ''
+      // 两类实体都清：定位用的宗地面（含高亮覆盖层）与「只有本宗地配套」的配套面
+      this.landGeoLayer.clearAll()
+      this.geoLayer.clearAll()
+      // 回到普通视图；概览缓存命中时是同步铺图，不会再打一次接口
+      this.loadGeoLayer(false)
+    },
+
+    /** 清掉本面板铺在地图上的一切（配套面 + 高亮 + 定位的宗地面），幂等 */
+    clearLocatorLayers () {
+      this.locateLandCode = ''
+      this.geoLayer.clearAll()
+      this.landGeoLayer.clearAll()
+    },
+
+    /** 只重铺「本宗地的配套面」—— 定位态下被 loadGeoLayer 复用（保存 / 移除后刷新） */
+    renderLandLocatorFacilities (code, facilityLands) {
+      const list = (facilityLands || []).filter((item) => item && item.crzdbh === code && item.dkGeojson)
+      this.geoLayer.renderAll(list, false)
+    },
+
+    /**
+     * 确保拿到宗地概览列表（独立缓存，隔离原因见 locatorLandGeoCache 的注释）。
+     * 与配套那份同一套版本化增量协议：带上次 version，没变只回 unchanged。
+     */
+    ensureLocatorLandOverview () {
+      if (locatorLandGeoCache.lands) {
+        return Promise.resolve(locatorLandGeoCache.lands)
+      }
+      return queryLandGeoList(locatorLandGeoCache.version, false)
+        .then((res) => {
+          if (!res || !res.success) return []
+          const data = res.result || {}
+          if (!data.unchanged) {
+            locatorLandGeoCache.version = data.version || ''
+            locatorLandGeoCache.lands = data.lands || []
+          }
+          return locatorLandGeoCache.lands || []
+        })
+        .catch(() => [])
+    },
+
+    /**
+     * 宗地面 + 全部配套面的顶点合集，用来算**合并包围盒**。
+     *
+     * ★ 为什么自己算：图层模块公开的定位能力只有 flyTo(id)（内部按单条的全部块算
+     *   包围球），而这两类实体分属两个图层实例、没有跨实例的合并 bounds API。
+     *   本次只允许改面板，不扩图层导出接口，所以在面板侧把两边 GeoJSON 解析成
+     *   Cartesian3 顶点，合并后交给相机——与 flyTo 用的是同一个 BoundingSphere 口径。
+     */
+    collectLocatorPositions (landItem, facilityList) {
+      const Cesium = window.Cesium
+      if (!Cesium) return []
+      const boxes = [landItem].concat(facilityList || []).filter(Boolean)
+      const positions = []
+      boxes.forEach((item) => {
+        parsePolygons(item.dkGeojson).forEach((ring) => {
+          ring.forEach((coord) => positions.push(Cesium.Cartesian3.fromDegrees(coord[0], coord[1], 0)))
+        })
+      })
+      return positions
+    },
+
+    /**
+     * 相机飞到合并包围球。
+     * 俯角与倍距照抄 landGeoLayer.flyTo（-45°、半径 2.4 倍），
+     * 让「快速定位宗地」与「双击定位某条」的落点观感一致，不会一个远一个近。
+     */
+    flyToMergedBounds (positions, onComplete) {
+      const Cesium = window.Cesium
+      const viewer = window.viewer
+      if (!Cesium || !viewer || !positions.length) return
+      const sphere = Cesium.BoundingSphere.fromPoints(positions)
+      viewer.camera.flyToBoundingSphere(sphere, {
+        duration: 1.2,
+        offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), sphere.radius * 2.4),
+        complete: typeof onComplete === 'function' ? onComplete : undefined
+      })
     },
 
     /**
@@ -611,6 +866,11 @@ export default {
       })
     },
 
+    /**
+     * 打开配套流程管理（列表行「配套流程」与详情页「配套流程管理」共用本方法）。
+     * ★ 顺序固定：先关详情再开面板 —— 两层都是同层 fixed 弹窗，
+     *   详情留着不收会截获面板上的点击（看起来像面板点不动）。
+     */
     handleProcess (record) {
       if (!record || !record.id) return
       if (this.$refs.detailModal) this.$refs.detailModal.close()
@@ -716,6 +976,8 @@ export default {
     /**
      * 应用下钻条件。
      * ★ 面板被 keep-alive 缓存后 created 不会再跑，必须由父组件显式调用。
+     * ★ 下钻带 crzdbh（从宗地表点「该宗地配套」过来）本身就是「定位这一宗地」，
+     *   所以和快速定位一样把宗地面与配套面一起摆出来（P2-05）；没带编号则退出定位态。
      */
     applyDrill (query) {
       const next = query || {}
@@ -728,6 +990,21 @@ export default {
       this.pagination.current = 1
       this.selectedRowKeys = []
       this.loadData()
+      const code = String(this.query.crzdbh || '').trim()
+      if (code) {
+        this.showLandWithFacilities(code)
+      } else {
+        this.exitLandLocator()
+      }
+    },
+
+    /**
+     * P2-01 统一契约：父页在「普通离开再进入」时调它清空检索。
+     * 等价于 applyDrill({})：`setQuery({})` 回到 buildEmptyQuery（含 bizId/bizKey 隐藏条件），
+     * 同时因为不带 crzdbh，会走 exitLandLocator() 把宗地 + 配套两类实体一起收掉。
+     */
+    resetFilters () {
+      this.applyDrill({})
     }
   }
 }

@@ -142,6 +142,7 @@ const FILES = [
   'src/views/screen/query/modules/AdvancedQueryView.vue',
   'src/views/screen/query/modules/StatSummaryPanel.vue',
   'src/views/screen/query/modules/QueryResultPanel.vue',
+  'src/views/screen/query/modules/QueryConditionBuilder.vue',
   'src/views/screen/query/modules/LandFacilityDetailModal.vue',
   'src/views/screen/query/modules/FacilityDetailModal.vue',
 
@@ -173,7 +174,7 @@ const FILES = [
   'src/views/screen/map/MapPickPanel.vue',
   'src/views/screen/map/MapPlacePanel.vue',
   'src/views/screen/analysis/index.vue',
-  'src/views/screen/analysis/AnalysisToolPanel.vue',
+  'src/views/screen/analysis/AnalysisToolPanel.vue'
 ]
 
 const problems = []
@@ -318,8 +319,8 @@ function checkVue (file, source) {
 /** 非 .vue 的 js 文件只做最基本的语法检查 */
 function checkJs (file, source) {
   try {
-    // eslint-disable-next-line no-new-func
-    new Function(source.replace(/^\s*(import|export)\s/gm, '// $&'))
+    // eslint-disable-next-line no-new-func, no-new
+    void new Function(source.replace(/^\s*(import|export)\s/gm, '// $&'))
   } catch (e) {
     // ESM 语法用 Function 解析会误报，这里只拦住明显的括号不平衡
     const counts = { '(': 0, '{': 0, '[': 0 }
@@ -377,7 +378,7 @@ function resolveImport (spec, fromFile) {
     `${base}.vue`,
     `${base}.json`,
     path.join(base, 'index.js'),
-    path.join(base, 'index.vue'),
+    path.join(base, 'index.vue')
   ]
   return candidates.some((item) => fs.existsSync(item))
 }
