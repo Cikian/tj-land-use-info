@@ -198,8 +198,8 @@
   import AttachmentPreviewModal from './modules/AttachmentPreviewModal'
   import AttachmentTreeList from './modules/AttachmentTreeList'
   import {
-    ATTACH_TYPES_FALLBACK,
     BIZ_TYPE_OPTIONS,
+    attachTypeOptionsOf,
     bizTypeText,
     deleteAttachment,
     downloadAttachment,
@@ -212,6 +212,7 @@
   } from '@/api/land/attachment'
   import { bizTypeColor } from '@/api/land/dataRecycle'
   import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 配套附件管理（方案 2.3.1（三）第 5 项）
@@ -242,6 +243,13 @@
   export default {
     name: 'AttachmentList',
     components: { AttachmentUploadModal, AttachmentPreviewModal, AttachmentTreeList },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）：
+     * 「业务类型 / 业务对象（bizId+bizKey）/ 附件类型 / 文件名 / 上传人 / 上传时间」
+     * 全留在缓存实例里的话，回来会以为全库只有这些附件。契约见 mixins/resetOnActivate.js。
+     * `viewMode`（目录树 / 平铺列表）属于视图习惯、不是检索条件，按缓存本意保留。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -303,7 +311,9 @@
         if (this.allowedTypes.length) {
           return this.allowedTypes
         }
-        return ATTACH_TYPES_FALLBACK
+        // 接口不可用时按当前归属给兜底清单：两套目录的 01~04 重号，
+        // 不能合成一份平铺下拉（会出现两条 value='01'，选中的名字永远错一半）
+        return attachTypeOptionsOf(this.query.bizType)
       },
       bizPlaceholder () {
         if (!this.query.bizType) {
@@ -431,13 +441,13 @@
       },
 
       loadAllowedTypes (bizType) {
-        // ★ 材料类型清单按 bizType 取对应那套（宗地 5 类 / 配套 13 类）
+        // ★ 材料类型清单按 bizType 取对应那套（宗地 4 类 / 配套 13 类，P1-08 报告图 3）
         queryAllowedTypes(bizType).then(res => {
           if (res.success && res.result && res.result.length) {
             // 后端给的是 {value, text}（不是字典的 {value,label}），统一成 label 供下拉使用
             this.allowedTypes = res.result.map(item => ({ value: item.value, label: item.text || item.label }))
           }
-        }).catch(() => { /* 接口不可用时用本地兜底清单（与字典逐字一致） */ })
+        }).catch(() => { /* 接口不可用时用本地兜底清单（attachTypeOptionsOf，与后端白名单逐字一致） */ })
       },
       fileTypeLabel (code) {
         const hit = this.fileTypeOptions.filter(item => item.value === code)[0]
@@ -547,6 +557,17 @@
         this.bizOptions = []
         this.handleSearch()
       },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 复用「重置」按钮：buildEmptyQuery() 里含两个**表单上看不见**的条件
+       * `bizId`（远程搜索选中的业务对象 id）与 `bizKey`（显示用的编号/名称）——
+       * 只清 input 不清这两个，回来时列表仍然被上一次选中的项目筛着，正是 P2-01 要修的隐性过滤。
+       * handleSearch 里还有页码回 1、按视图取数与概览卡刷新。
+       */
+      resetSearch () {
+        this.handleReset()
+      },
       handleUploadDateChange (values) {
         this.query.beginDate = values && values.length === 2 ? values[0] : undefined
         this.query.endDate = values && values.length === 2 ? values[1] : undefined
@@ -569,9 +590,13 @@
         this.query.bizId = undefined
         this.query.bizKey = ''
         this.bizOptions = []
+        // ★ 材料类型也要清：两套目录的 01~04 重号（宗地 01=土地整理计划、
+        //   配套 01=核定用地与地籍调查），留着旧码会让过滤条件**静默换义** ——
+        //   用户以为还在筛「土地整理计划」，实际筛的是「核定用地与地籍调查」。
+        this.query.fileType = undefined
         // 概览卡片的统计口径跟随业务类型；这里连带列表一起刷新，
         // 否则会出现「卡片上是配套的数量、列表还是全部业务的记录」这种自相矛盾的显示
-        // ★ 材料类型清单也要跟着换：宗地 5 类与配套 13 类是两套不同的清单
+        // ★ 材料类型清单也要跟着换：宗地 4 类与配套 13 类是两套不同的清单
         this.loadAllowedTypes(this.query.bizType || undefined)
         this.handleSearch()
       },

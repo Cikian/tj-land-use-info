@@ -72,7 +72,7 @@ export function queryDuplicateStrategies () {
  * 预览校验（★ 不写库）。
  *
  * @param {File} file .xlsx / .xls
- * @param {string} duplicateStrategy reject / skip / update
+ * @param {string} duplicateStrategy upsert（默认）/ reject / skip / update
  * @param {boolean} allowOrphan 是否允许挂到未登记宗地（true 时孤儿行记入清单并照常入库）
  * @returns result 里除常规计数外，还有 orphans（孤儿清单）与 orphanRows（孤儿行数）
  */
@@ -278,6 +278,7 @@ function saveExcelBlob (blob, fileName) {
 
 /** 重复策略本地兜底（接口不可用时用） */
 export const DUPLICATE_STRATEGIES_FALLBACK = [
+  { code: 'upsert', label: '新增并更新已有配套（空单元格不改动）' },
   { code: 'reject', label: '重复即报错（不写库）' },
   { code: 'skip', label: '跳过重复行（只导新增）' },
   { code: 'update', label: '覆盖更新已有配套（空单元格不改动）' }

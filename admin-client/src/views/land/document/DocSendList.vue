@@ -123,13 +123,19 @@
           <a-tag v-if="text" color="blue">{{ text }}</a-tag>
           <span v-else class="doc-table__muted">—</span>
         </template>
-        <template slot="archiveFlag" slot-scope="text">
-          <a-tag v-if="text" color="green">已归档</a-tag>
+        <template slot="archiveFlag" slot-scope="text, record">
+          <!-- 归档情况按档案真实状态显示（无附件时档案是「归档中」） -->
+          <a v-if="text" @click="handleOpenArchive(record)">
+            <a-tag :color="record.archiveStatus === '已归档' || !record.archiveStatus ? 'green' : 'blue'">
+              {{ record.archiveStatus || '已归档' }}
+            </a-tag>
+          </a>
           <span v-else class="doc-table__muted">未归档</span>
         </template>
         <template slot="action" slot-scope="text, record">
           <a v-has="'land:docSend:list'" @click="handleDetail(record)">详情</a>
-          <span v-has="'land:docSend:edit'">
+          <!-- 已归档只读：编辑入口不渲染（后端 updateDoc 也会拒绝） -->
+          <span v-if="!record.archiveId" v-has="'land:docSend:edit'">
             <a-divider type="vertical" />
             <a @click="handleEdit(record)">编辑</a>
           </span>
@@ -148,8 +154,9 @@
     </div>
 
     <doc-send-modal ref="modal" @ok="onChanged" />
-    <doc-archive-modal ref="archive" @ok="onChanged" />
+    <!-- 归档弹窗排在详情弹窗之后：antd 弹窗按声明顺序抬高 z-index，后声明者在上 -->
     <doc-detail-modal ref="detail" />
+    <doc-archive-modal ref="archive" @ok="handleArchived" />
   </a-card>
 </template>
 
@@ -158,6 +165,7 @@
   import DocArchiveModal from './modules/DocArchiveModal'
   import DocDetailModal from './modules/DocDetailModal'
   import { queryDocSendList, deleteDocSend, queryDocSendStat, queryDocSendById } from '@/api/land/document'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 发文管理（方案 2.3.2 第 9 项：发文的信息记录）
@@ -168,6 +176,12 @@
   export default {
     name: 'DocSendList',
     components: { DocSendModal, DocArchiveModal, DocDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）：
+     * 「已归档（archived）/ 密级 / 发文日期区间」留在缓存实例里会变成隐性过滤。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -255,6 +269,15 @@
         this.pagination.current = 1
         this.loadData()
       },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 复用「重置」按钮：buildEmptyQuery() 含 archived（表单上只有一个「已归档」勾选，
+       * 值却是 undefined/true，容易漏清）与发文日期区间；页码复位与重取都在 handleReset 里。
+       */
+      resetSearch () {
+        this.handleReset()
+      },
       handleDateChange (values) {
         if (values && values.length === 2) {
           this.query.beginDate = values[0]
@@ -281,8 +304,26 @@
       handleEdit (record) {
         this.$refs.modal.showEdit(record)
       },
+      /** 先关详情再开归档（双保险：模板里归档弹窗也已排到详情之后） */
       handleArchive (record) {
+        if (this.$refs.detail && this.$refs.detail.close) {
+          this.$refs.detail.close()
+        }
         this.$refs.archive.open(record, 'send')
+      },
+      /** 归档成功：刷新列表与统计，并提示归档列可点进档案 */
+      handleArchived (result) {
+        this.onChanged()
+        const data = result || {}
+        if (data.archiveId) {
+          this.$message.info('可在列表「归档」列点进该档案查看卷内文件')
+        }
+      },
+      /** 打开该发文归档后的档案（按 archiveId 精确打开） */
+      handleOpenArchive (record) {
+        const archiveId = record && record.archiveId
+        if (!archiveId) return
+        this.$router.push({ path: '/land/archive/list', query: { archiveId } })
       },
       handleDetail (record) {
         queryDocSendById(record.id).then(res => {

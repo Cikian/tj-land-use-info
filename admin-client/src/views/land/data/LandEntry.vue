@@ -215,6 +215,7 @@
   import LandHistoryModal from './modules/LandHistoryModal'
   import LandGeoImportModal from './modules/LandGeoImportModal'
   import { getDictItems } from '@/components/dict/JDictSelectUtil'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     deleteLand,
     deleteLandBatch,
@@ -245,6 +246,12 @@
   export default {
     name: 'LandEntry',
     components: { LandFormModal, LandDetailModal, LandHistoryModal, LandGeoImportModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）：
+     * 本页菜单 keep_alive=1，「有配套 / 受让人 / 出让时间」这些条件留在缓存实例里，
+     * 回来时不重新拉数就会变成隐性过滤。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -433,6 +440,20 @@
         this.query = this.buildEmptyQuery()
         this.crsjRange = []
         this.handleSearch()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 直接复用「重置」按钮的行为，不另写一份清空逻辑：
+       * 按钮重置与「回来时复位」本来就该是同一个结果，两处各写一遍迟早会漂移
+       * （新增一个检索条件时只改了一处）。handleReset 里已经包含了
+       * buildEmptyQuery()（隐藏字段 hasFacility / facilityKeyword 也在里面）、
+       * 出让时间区间 crsjRange、页码回 1、勾选清空与重新取数。
+       *
+       * 「更多条件」的展开态 expanded 属于界面习惯、不是检索条件，按缓存的本意保留。
+       */
+      resetSearch () {
+        this.handleReset()
       },
       handleCrsjChange (values) {
         this.query.crsjBegin = values && values.length === 2 ? values[0] : undefined

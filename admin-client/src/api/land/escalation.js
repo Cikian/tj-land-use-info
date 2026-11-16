@@ -217,6 +217,43 @@ export const DICT = {
   yn: 'yn'
 }
 
+/**
+ * 项目类型（字典 land_escalation_project_type）：市级项目 / 区级项目 / 待确认。
+ *
+ * ★ 2026-11 口径变更（清单 P2-10）：旧的「产业类 / 基础设施类 / 民生类 / 其他」
+ *   四类不再作为候选值 —— 那四类是项目属性，与「市级 / 区级」不是同一个分类维度，
+ *   猜着映射等于编造。历史值统一由迁移脚本置为「待确认」，再人工逐条确认。
+ *
+ * ★ 改这里要同步：大屏端 `screen/escalation/constants.js`、字典与迁移 SQL
+ *   （`sql/escalation/03_escalation_dict.sql`、`07_escalation_project_type_v2.sql`）。
+ */
+export const PROJECT_TYPE_OPTIONS = ['市级项目', '区级项目', '待确认']
+
+/** 历史过渡值（人工确认清单里的那一档） */
+export const PROJECT_TYPE_PENDING = '待确认'
+
+/** 旧的四类取值：只用于「识别历史值」，不再作为候选值 */
+export const PROJECT_TYPE_LEGACY = ['产业类', '基础设施类', '民生类', '其他']
+
+/**
+ * 项目类型展示文本：三值以外（历史四类 / 脏值）一律显示「待确认」。
+ *
+ * ★ 为什么展示层也要兜一道：迁移脚本是幂等的，但「还没跑 / 跑到一半」时库里仍有历史值。
+ *   此时把它原样显示出来，界面就出现了清单明确要求去掉的旧口径；
+ *   统一显示「待确认」，既与迁移后的库内值一致，也提示这条记录需要人工确认。
+ *
+ * @param {string} value 库里的 project_type
+ * @param {string} [dictTextFromServer] 后端 @Dict 给的文本（有则优先）
+ * @returns {string} 三值之一；空值返回空串，由调用点决定占位符
+ */
+export function projectTypeText (value, dictTextFromServer) {
+  if (value === null || value === undefined || value === '') {
+    return ''
+  }
+  const text = dictTextFromServer || String(value)
+  return PROJECT_TYPE_OPTIONS.indexOf(text) > -1 ? text : PROJECT_TYPE_PENDING
+}
+
 /** 意见正文上限（原型硬性要素：0/1000 实时计数） */
 export const RECORD_MAX_LENGTH = 1000
 
@@ -414,6 +451,10 @@ export default {
   loadDictItems,
   dictText,
   loadAllDicts,
+  PROJECT_TYPE_OPTIONS,
+  PROJECT_TYPE_PENDING,
+  PROJECT_TYPE_LEGACY,
+  projectTypeText,
   statusColor,
   argResultColor,
   actionColor,

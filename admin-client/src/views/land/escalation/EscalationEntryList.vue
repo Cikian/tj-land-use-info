@@ -66,6 +66,7 @@
   import EscalationTable from './modules/EscalationTable'
   import EscalationFormModal from './modules/EscalationFormModal'
   import EscalationDetailModal from './modules/EscalationDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     deleteProject,
     deleteProjectBatch,
@@ -83,6 +84,12 @@
   export default {
     name: 'EscalationEntryList',
     components: { EscalationSearchForm, EscalationTable, EscalationFormModal, EscalationDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 9 个检索条件（含申报时间区间、投资额区间、是否土地整理项目）都留在缓存实例里，
+     * 回来时列表看起来就是「全部项目」。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -135,6 +142,23 @@
       handleSearch (query) {
         this.query = query || {}
         this.pagination.current = 1
+        this.selectedRowKeys = []
+        this.loadData()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件在子组件 EscalationSearchForm 里，交给它的 handleReset() 清（含申报时间区间这类
+       * 只存在于组件内部的区间值）；它 emit('search', {}) 走本页 handleSearch ——
+       * 页码回 1、勾选清空、重新取数，只发一次请求。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.selectedRowKeys = []
         this.loadData()
       },

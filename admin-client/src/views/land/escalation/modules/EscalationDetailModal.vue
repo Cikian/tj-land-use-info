@@ -45,7 +45,7 @@
                 <a-descriptions-item label="项目名称">{{ detail.projectName || '—' }}</a-descriptions-item>
                 <a-descriptions-item label="申报单位">{{ detail.declareDept || '—' }}</a-descriptions-item>
                 <a-descriptions-item label="项目类型">
-                  {{ dictLabel(DICT.projectType, detail.projectType, detail.projectType_dictText) || '—' }}
+                  {{ projectTypeText(detail.projectType, detail.projectType_dictText) || '—' }}
                 </a-descriptions-item>
                 <a-descriptions-item label="项目规模">{{ detail.projectScale || '—' }}</a-descriptions-item>
                 <a-descriptions-item label="总投资（亿元）">{{ investmentText(detail.totalInvestment) }}</a-descriptions-item>
@@ -172,6 +172,8 @@
     actionColor,
     argResultColor,
     dictText,
+    // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+    projectTypeText,
     queryProjectById,
     queryRecordList,
     statusColor
@@ -204,6 +206,8 @@
       statusColor,
       argResultColor,
       actionColor,
+      /** 项目类型三值口径（市级 / 区级 / 待确认），历史四类显示为「待确认」 */
+      projectTypeText,
       /**
        * 打开详情
        * @param {object} record 列表行（至少要有 id）

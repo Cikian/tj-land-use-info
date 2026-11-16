@@ -109,6 +109,7 @@
 <script>
   import { listDecisionOpinion, deleteDecisionOpinion, warningOptions } from '@/api/land/statWarning'
   import DecisionOpinionModal from './modules/DecisionOpinionModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 决策意见维护（方案 2.3.1（五）· 契约 §5.7 / §6.2）
@@ -124,6 +125,13 @@
   export default {
     name: 'DecisionOpinionList',
     components: { DecisionOpinionModal },
+    /*
+     * 普通离开再进入时清筛选、页码回 1、重查（清单 P2-01）。
+     * 「预警等级 / 问题类型」两个筛选留在缓存里时，列表看起来像「意见只有这几条」——
+     * 而且问题类型有一个 `__general__` 哨兵值（代表空串 = 通用意见），漏清会让条件含义悄悄改变。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -234,6 +242,14 @@
         }
         this.pagination.current = 1
         this.loadData()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 复用「重置」：两个筛选项回 undefined（含把 __general__ 哨兵一起清掉）、页码回 1、重新取数。
+       */
+      resetSearch () {
+        this.handleReset()
       },
       handleTableChange (pagination) {
         this.pagination = Object.assign({}, this.pagination, {

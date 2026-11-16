@@ -47,6 +47,7 @@
   import ArchiveSearchForm from './modules/ArchiveSearchForm'
   import ArchiveTable from './modules/ArchiveTable'
   import ArchiveDetailModal from './modules/ArchiveDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import { queryArchiveList, exportArchiveZip } from '@/api/land/archive'
 
   /**
@@ -59,6 +60,14 @@
   export default {
     name: 'ArchiveQuery',
     components: { ArchiveSearchForm, ArchiveTable, ArchiveDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     *
+     * 本页常见入口是「从档案统计按项目查看 / 从台账看档案」带 ?ptxmmc= / ?archiveNo= 进来（下钻），
+     * 那些条件由 mixin 识别为下钻并保留；只有普通返回（页签切回来、菜单再点一次）才清空。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -108,6 +117,22 @@
       handleSearch (query) {
         this.query = query || {}
         this.pagination.current = 1
+        this.loadData()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件维护在子组件 ArchiveSearchForm 里，交给它的 handleReset() 清（含类别树选中值、
+       * 日期区间这些不在 query 里显式出现的状态），它 emit('search', {}) 会走本页 handleSearch，
+       * 页码复位与取数一并完成、只发一次请求。$refs 拿不到时兜底自己清 + 取数。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.loadData()
       },
       handleTableChange (pagination) {

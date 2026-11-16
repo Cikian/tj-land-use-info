@@ -40,12 +40,21 @@
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-model-item label="道路名称" prop="roadName">
-              <a-input v-model="model.roadName" placeholder="必填" />
+              <!--
+                ★ 道路名称与配套项目名称只保留一个用户输入入口（清单 P1-10 第 4 条）：
+                  选了配套项目时道路名称随项目带出并只读（后端仍冗余存 roadName）；
+                  没关联项目的历史移交记录保持可编辑，否则这类数据永远改不了名称。
+              -->
+              <a-input
+                v-model="model.roadName"
+                :readonly="!!model.facilityId"
+                :placeholder="model.facilityId ? '随「关联配套项目」自动带出' : '必填；关联配套项目后自动带出'" />
             </a-form-model-item>
           </a-col>
           <a-col :span="12">
             <a-form-model-item label="关联配套项目" prop="facilityId">
               <a-select
+                :value="model.facilityId"
                 show-search
                 allowClear
                 placeholder="输入道路/配套项目名称搜索"
@@ -53,6 +62,7 @@
                 :defaultActiveFirstOption="false"
                 :notFoundContent="facilityLoading ? '搜索中…' : '未找到配套项目'"
                 @search="handleFacilitySearch"
+                @focus="handleFacilityFocus"
                 @change="handleFacilityChange">
                 <a-select-option v-for="item in facilityOptions" :key="item.id" :value="item.id">
                   {{ item.ptxmmc }}
@@ -238,7 +248,9 @@
         model: this.buildEmptyModel(),
         rules: {
           roadName: [
-            { required: true, message: '请输入道路名称', trigger: 'blur' },
+            // 道路名称在选中配套项目后是只读联动字段（清单 P1-10 第 4 条），
+            // 为空只可能是「还没关联项目」，提示语要说清下一步该做什么
+            { required: true, message: '请先选择「关联配套项目」，道路名称随项目自动带出', trigger: 'blur' },
             { max: 200, message: '道路名称不能超过 200 个字符', trigger: 'blur' }
           ],
           handoverNo: [
@@ -293,6 +305,7 @@
         this.title = '新增移交事项'
         this.model = this.buildEmptyModel()
         this.facilityOptions = []
+        this.loadFacilityOptions('')
         this.visible = true
         this.$nextTick(() => {
           if (this.$refs.form) {
@@ -314,6 +327,9 @@
         this.visible = true
         this.facilityOptions = []
         this.model = Object.assign(this.buildEmptyModel(), record)
+        // 候选要跟着回显的这条记录走：拉首批并把当前项目补进候选
+        // （当前项可能不在前 50 条里，不补下拉会显示空白）
+        this.loadFacilityOptions('')
         this.$nextTick(() => {
           if (this.$refs.form) {
             this.$refs.form.clearValidate()
@@ -345,18 +361,56 @@
         })
       },
       handleFacilitySearch (keyword) {
-        if (!keyword) {
-          this.facilityOptions = []
-          return
+        this.loadFacilityOptions(keyword)
+      },
+      /** 展开下拉时若还没有候选就补首批（新增时不必先输关键词） */
+      handleFacilityFocus () {
+        if (!this.facilityOptions.length) {
+          this.loadFacilityOptions('')
         }
+      },
+      /**
+       * 拉取配套项目候选（整体替换）。
+       *
+       * ★ `roadFirst: true`（清单 P1-10）：移交业务的对象几乎都是道路，
+       *   而接口原来按固定顺序取前 50 条，首批里常常全是排水 / 供水 / 绿化，
+       *   用户得先输关键词才找得到那条路。该参数让后端把 ptsslb=道路 的排在前面；
+       *   后端未上线这个参数时会被忽略（Spring 忽略未知查询串参数），前端不必加开关。
+       *   首批与关键词搜索走的是同一个方法，因此两处都带上了它。
+       *
+       * @param {string} [keyword] 关键词；空 = 首批
+       */
+      loadFacilityOptions (keyword) {
         this.facilityLoading = true
-        searchFacilityOptions({ keyword, limit: 50 }).then(res => {
+        searchFacilityOptions({ keyword: keyword || undefined, limit: 50, roadFirst: true }).then(res => {
           this.facilityOptions = res && res.success ? (res.result || []) : []
+          // 编辑回显的当前项目可能不在前 50 条里，不补下拉就显示空白（清单 P1-10）
+          this.ensureCurrentFacilityOption()
         }).catch(() => {
           this.facilityOptions = []
+          this.ensureCurrentFacilityOption()
         }).finally(() => {
           this.facilityLoading = false
         })
+      },
+      /**
+       * 把当前已选的配套项目补进候选。
+       * ★ label 用后端 `ptxmmc`（其次宗地编号，最后占位文案），**不用** roadName：
+       *   两者可能不同值，用 roadName 会掩盖真实项目名（清单 P1-10 第 3 条）。
+       */
+      ensureCurrentFacilityOption () {
+        const id = this.model && this.model.facilityId
+        if (!id) {
+          return
+        }
+        if (this.facilityOptions.some(item => item.id === id)) {
+          return
+        }
+        this.facilityOptions = [{
+          id,
+          ptxmmc: this.model.ptxmmc || this.model.crzdbh || '当前已选配套项目（名称待补）',
+          crzdbh: this.model.crzdbh
+        }].concat(this.facilityOptions)
       },
       handleFacilityChange (facilityId) {
         if (!facilityId) {
@@ -370,8 +424,9 @@
         }
         this.model.facilityId = hit.id
         this.model.ptxmmc = hit.ptxmmc
-        // ★ 只在字段为空时回填，不覆盖用户已手工改过的值
-        if (!this.model.roadName) {
+        // ★ 道路名称是配套项目的只读联动字段（用户重新选项目时才覆盖）：
+        //   编辑打开一条历史记录不动它，历史数据里两者不同值（人工改过）不会被静默覆盖。
+        if (hit.ptxmmc) {
           this.model.roadName = hit.ptxmmc
         }
         if (!this.model.crzdbh) {

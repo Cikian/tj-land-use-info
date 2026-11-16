@@ -281,6 +281,7 @@
     deleteProcess
   } from '@/api/land/facilityAdmin'
   import { queryLandOptions } from '@/api/land/landData'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 配套地块数据录入（方案 2.3.1（三）第 2 项）
@@ -301,6 +302,14 @@
   export default {
     name: 'FacilityEntry',
     components: { FacilityFormModal, FacilityDetailModal, ProcessItemModal, FacilityGeoImportModal },
+    /*
+     * 普通离开再进入时复位（清单 P2-01）。
+     * 本页没有分页、也没有传统检索表单，但「选择出让宗地」实质就是这一页的检索条件 ——
+     * 它决定右侧配套列表是哪个宗地的。缓存的实例会记住上次选的宗地，
+     * 回来时看到的是一个宗的配套，很容易被当成本模块的全部内容。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -351,6 +360,21 @@
             this.loadProcessTree()
           }
         }
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 回到「还没选宗地」的初始状态：清掉宗地选择、已选宗地、配套列表、远程搜索候选，
+       * 以及下方展开的环节进度（它属于某个配套，配套都清了它就没有意义）。
+       * 这里**不重新取数**：本页没有「无条件列表」可查，未选宗地时后端也没有对应接口，
+       * 初进页面本来就是空的（data() 里 facilities 为空数组）。
+       */
+      resetSearch () {
+        this.selectedCrzdbh = undefined
+        this.currentLand = null
+        this.landOptions = []
+        this.facilities = []
+        this.closeProcess()
       },
 
       // ---------------- 宗地搜索 ----------------

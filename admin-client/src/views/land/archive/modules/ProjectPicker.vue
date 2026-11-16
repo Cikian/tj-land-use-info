@@ -55,10 +55,24 @@
           </a-select-option>
         </a-select>
         <div v-if="facilitySummary" class="project-picker__summary">{{ facilitySummary }}</div>
+        <!--
+          ★ 判空必须同时满足「已成功拉过一次 + 没在加载 + 候选确实为空」：
+            只写 `crzdbh && !facilityOptions.length` 会在编辑回显触发加载之前就误报
+            「该宗地下暂无配套项目」，也会把接口失败说成「没有数据」（清单 P1-10）。
+        -->
         <div
-          v-else-if="crzdbh && !facilityOptions.length && !facilityLoading"
+          v-else-if="facilityLoadFailed"
+          class="project-picker__summary project-picker__summary--warn">
+          配套项目加载失败，请重试或到「数据管理」核对该宗地下的配套项目。
+        </div>
+        <div
+          v-else-if="showEmptyFacilityWarn"
           class="project-picker__summary project-picker__summary--warn">
           该宗地下暂无配套项目，请先到「数据管理」录入配套项目后再建档案。
+        </div>
+        <!-- 补/去末尾「号」才命中时的一行说明，理由见 legacyCodeHint 的注释 -->
+        <div v-else-if="legacyCodeHint" class="project-picker__summary project-picker__summary--warn">
+          {{ legacyCodeHint }}
         </div>
       </div>
     </div>
@@ -67,6 +81,30 @@
 
 <script>
   import { queryLandOptions, queryFacilityOptions } from '@/api/land/landData'
+
+  /**
+   * 宗地编号的候选写法：原样 → 补/去末尾「号」（清单 P1-09，与大屏同名组件等价）。
+   *
+   * ★ 为什么需要补试：`t_supporting_facilities.crzdbh = t_land.crzdbh` 是配套挂宗地的
+   *   关联键，而后端下拉接口（FacilityMapper.xml selectOptions）是按
+   *   `f.crzdbh = #{crzdbh}` **精确匹配**。历史数据里「带号 / 不带号」两种写法都出现过
+   *   （AGENTS §2.4 实测 1366 条缺「号」、58 条配套因此挂不上宗地），
+   *   于是档案里存「津北辰（挂）2018-015」、配套表里是「…015号」时，
+   *   接口返回空数组 → 页面报「该宗地下暂无配套项目」，用户以为数据丢了。
+   *
+   * ★ 只做**读侧的一次补试**：不改写 value.crzdbh、不做字符归一
+   *   （写入侧归一是后端 DataSupport 的职责，前端重复做会造出第二套口径）。
+   *   也不改本组件的 props / 对外事件 —— 补试命中的编号只用于本次查询与提示。
+   */
+  function codeVariants (code) {
+    const raw = String(code || '').trim()
+    if (!raw) {
+      return []
+    }
+    const list = [raw]
+    list.push(/号$/.test(raw) ? raw.slice(0, -1) : raw + '号')
+    return list
+  }
 
   /**
    * 出让宗地 → 配套项目 两级联动选择器
@@ -83,6 +121,15 @@
    *   再套一层 a-form-model 会渲染出嵌套的 &lt;form&gt; 标签，
    *   浏览器会把内层 form 丢弃，导致布局与校验行为不可预期。
    *   因此这里用普通 div + label 排版，与父表单的表单项视觉保持一致。
+   *
+   * ★ 两个关联链不得互换（清单 P1-09 第 4 条）：
+   *   `t_archive.facility_id`            —— 档案/台账属于哪个配套项目（项目归属，本组件维护）；
+   *   `t_completion_archive.archive_id`  —— 竣工历史档案指定的扫描件档案，与本组件无关。
+   *
+   * ★ 为什么必须有 watcher（清单 P1-09 / P1-10）：编辑弹窗是「先打开、后回显」——
+   *   created 时 value 里还没有 crzdbh，详情接口回来后父组件才整体替换 value。
+   *   只在 created 读一次的话配套下拉永远是空的，表现就是「宗地下明明有配套，
+   *   却提示该宗地下暂无配套项目」。
    */
   export default {
     name: 'ProjectPicker',
@@ -108,7 +155,17 @@
         facilityOptions: [],
         landLoading: false,
         facilityLoading: false,
-        landLoadedOnce: false
+        landLoadedOnce: false,
+        /** 配套项目是否成功拉过一次：用来区分「还没加载」和「确实为空」 */
+        facilityLoadedOnce: false,
+        /** 配套项目拉取失败：失败要提示加载失败，不能显示成「暂无配套项目」 */
+        facilityLoadFailed: false,
+        /** 实际命中配套的宗地编号（可能补/去了末尾「号」，见 codeVariants） */
+        facilityMatchCode: '',
+        /** 正在请求中的宗地编号：去掉「父组件回写 value」带来的重复请求 */
+        facilityPendingCode: '',
+        /** 请求序号：切宗地后旧响应必须丢弃，否则慢请求会把新候选覆盖成旧宗地的 */
+        facilitySeq: 0
       }
     },
     computed: {
@@ -134,6 +191,56 @@
           return ''
         }
         return [v.ptxmmc, v.ptsslb].filter(Boolean).join(' · ')
+      },
+      /** 是否显示「该宗地下暂无配套项目」（见模板上的注释） */
+      showEmptyFacilityWarn () {
+        return !!this.crzdbh &&
+          this.facilityLoadedOnce &&
+          !this.facilityLoading &&
+          !this.facilityLoadFailed &&
+          !this.facilityOptions.length
+      },
+      /**
+       * 补试命中时说明「按哪个编号取到的配套」。
+       * ★ 为什么要把这件事显示出来：补试成功意味着**档案上的编号与配套表不一致**，
+       *   这是数据要清洗的信号（AGENTS §2.4）。只静默补试，问题会一直藏着；
+       *   报错又太重 —— 用户此刻只想把档案建完，所以只给一行提示。
+       */
+      legacyCodeHint () {
+        if (!this.facilityMatchCode) {
+          return ''
+        }
+        if (this.facilityMatchCode === this.crzdbh) {
+          return ''
+        }
+        return `按「${this.facilityMatchCode}」匹配到配套项目（档案里存的是「${this.crzdbh}」），建议清洗宗地编号。`
+      }
+    },
+    watch: {
+      /**
+       * 编辑回显是异步的：打开弹窗时 value 里还没有 crzdbh，详情回来后父组件才回写。
+       * 不在这里重拉，配套下拉就永远是空的（清单 P1-09 第 2 条）。
+       */
+      crzdbh (next, prev) {
+        if ((next || '') === (prev || '')) {
+          return
+        }
+        // 选宗地时本组件已主动拉过一次，父组件回写 value 会再触发 watcher：同宗地只保留一个请求
+        if (this.facilityLoading && this.facilityPendingCode === (next || '')) {
+          return
+        }
+        this.loadFacilityOptions('')
+      },
+      /** 当前配套项目变化（编辑回显 / 外部改写）：补进候选，否则下拉显示空白 */
+      facilityId (next, prev) {
+        if ((next || '') === (prev || '')) {
+          return
+        }
+        this.ensureCurrentFacilityInOptions()
+        // 候选还没加载过（例如详情回显早于宗地联动）时顺手拉一次首批
+        if (!this.facilityLoadedOnce && this.crzdbh) {
+          this.loadFacilityOptions('')
+        }
       }
     },
     created () {
@@ -216,23 +323,89 @@
       },
       loadFacilityOptions (keyword) {
         if (!this.crzdbh) {
-          this.facilityOptions = []
+          this.resetFacilityState()
           return Promise.resolve()
         }
-        this.facilityLoading = true
-        return queryFacilityOptions({ crzdbh: this.crzdbh, keyword: keyword || undefined, limit: 50 })
-          .then(res => {
-            if (res.success) {
-              this.facilityOptions = res.result || []
-              this.ensureCurrentFacilityInOptions()
-            }
-          }).finally(() => {
-            this.facilityLoading = false
-          })
+        const seq = ++this.facilitySeq
+        this.facilityPendingCode = this.crzdbh
+        this.facilityLoadFailed = false
+        const codes = codeVariants(this.crzdbh)
+        // 逐个写法尝试：原样查不到再补/去末尾「号」试一次（历史数据写法不一致，见 codeVariants）
+        const attempt = index => {
+          // 过期响应直接丢弃：慢请求不能把新宗地的候选覆盖成旧宗地的
+          if (seq !== this.facilitySeq) {
+            return
+          }
+          if (index >= codes.length) {
+            // 两种写法都没命中：候选必须清空（不能留着上一个宗地的旧候选），
+            // 只把当前已选项补回来，保证下拉显示的是名称而不是空白
+            this.finishFacilityLoad(seq, codes[0], [])
+            return
+          }
+          const code = codes[index]
+          this.facilityLoading = true
+          return queryFacilityOptions({ crzdbh: code, keyword: keyword || undefined, limit: 50 })
+            .then(res => {
+              if (seq !== this.facilitySeq) {
+                return
+              }
+              if (!res || !res.success) {
+                this.facilityLoadFailed = true
+                this.finishFacilityLoad(seq, code, [])
+                return
+              }
+              const list = res.result || []
+              // 首个写法没命中时补试另一种写法，命中即用
+              if (!list.length && index < codes.length - 1) {
+                return attempt(index + 1)
+              }
+              this.finishFacilityLoad(seq, code, list)
+            })
+            .catch(() => {
+              if (seq !== this.facilitySeq) {
+                return
+              }
+              this.facilityLoadFailed = true
+              this.finishFacilityLoad(seq, code, [])
+            })
+        }
+        return attempt(0)
       },
+      /** 清空配套相关的全部状态（宗地被清空时） */
+      resetFacilityState () {
+        this.facilitySeq += 1
+        this.facilityOptions = []
+        this.facilityLoadedOnce = false
+        this.facilityLoadFailed = false
+        this.facilityMatchCode = ''
+        this.facilityPendingCode = ''
+        this.facilityLoading = false
+      },
+      /**
+       * 收口一次加载的最终状态：候选整体替换（不留旧候选），再补当前已选项。
+       * @param {number} seq 请求序号（过期响应直接丢弃）
+       * @param {string} code 本次实际命中的宗地编号
+       * @param {Array} list 后端返回的配套项目
+       */
+      finishFacilityLoad (seq, code, list) {
+        if (seq !== this.facilitySeq) {
+          return
+        }
+        this.facilityLoading = false
+        this.facilityLoadedOnce = true
+        this.facilityMatchCode = code || ''
+        this.facilityOptions = list || []
+        this.ensureCurrentFacilityInOptions()
+      },
+      /**
+       * 把当前已选项补进候选。
+       * ★ label 只用**可读名称**：名称缺失时退到宗地编号，最后给占位文案，
+       *   **绝不**拿长数字 ID 当名称（清单 P1-09 明令：ID 冒充名称不算修复）。
+       *   原来要求 `v.ptxmmc` 才补，名称字段缺失时下拉直接空白 —— 一并修掉。
+       */
       ensureCurrentFacilityInOptions () {
         const v = this.value || {}
-        if (!v.facilityId || !v.ptxmmc) {
+        if (!v.facilityId) {
           return
         }
         if (this.facilityOptions.some(item => item.id === v.facilityId)) {
@@ -240,7 +413,7 @@
         }
         this.facilityOptions = [{
           id: v.facilityId,
-          ptxmmc: v.ptxmmc,
+          ptxmmc: v.ptxmmc || v.crzdbh || '当前已选配套项目（名称待补）',
           crzdbh: v.crzdbh,
           dkmc: v.dkmc,
           ptsslb: v.ptsslb,

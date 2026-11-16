@@ -20,8 +20,13 @@
         </div>
         <div class="doc-detail__tags">
           <a-tag v-if="docType === 'receive'" :color="statusColor(doc.status)">{{ doc.status }}</a-tag>
-          <a-tag v-if="doc.archiveId" color="green">已归档</a-tag>
-          <a-tag v-else>未归档</a-tag>
+          <!--
+            ★ 归档状态必须与列表同源（清单 P1-11）：列表用的是 record.archiveStatus，
+              详情原来只看 archiveId —— 无附件归档时档案其实是「归档中」，
+              于是同一条记录在列表显示「归档中」、点进详情变「已归档」，用户会来问哪个是真的。
+              取法：优先后端 archiveStatus；该字段缺失（老接口 / 历史数据）时才按 archiveId 兜底。
+          -->
+          <a-tag :color="archiveTagColor">{{ archiveTagText }}</a-tag>
           <a-tag v-if="doc.secretLevel" :color="secretColor(doc.secretLevel)">密级：{{ doc.secretLevel }}</a-tag>
           <a-tag v-if="doc.urgency && doc.urgency !== '普通'" color="orange">{{ doc.urgency }}</a-tag>
         </div>
@@ -123,6 +128,31 @@
       },
       attachments () {
         return (this.doc && this.doc.attachments) || []
+      },
+      /**
+       * 归档标签的文案：优先 `doc.archiveStatus`（与列表同源），缺失才按 `archiveId` 兜底。
+       * ★ 为什么要兜底而不是直接显示 archiveStatus：老数据 / 老接口可能只带 archiveId；
+       *   有 archiveId 说明「确实已经产生了一份档案」，此时显示「已归档」比显示空更像事实。
+       *   两者都空 = 没归档（列表里同样显示「未归档」）。
+       */
+      archiveTagText () {
+        const doc = this.doc || {}
+        if (doc.archiveStatus) {
+          return doc.archiveStatus
+        }
+        return doc.archiveId ? '已归档' : '未归档'
+      },
+      /** 颜色口径与列表一致：已归档绿、其它真实状态（如「归档中」）蓝、未归档走默认灰 */
+      archiveTagColor () {
+        const text = this.archiveTagText
+        if (text === '已归档') {
+          return 'green'
+        }
+        if (text && text !== '未归档') {
+          return 'blue'
+        }
+        // ★ 返回 undefined 走 .ant-tag 默认灰；不能写 'default'（非 antd 预设色 → 白底白字看不见）
+        return undefined
       }
     },
     methods: {

@@ -300,22 +300,54 @@ export function buildUploadBiz (bizType) {
   return `${prefix}/attachment/${year}/${month}`
 }
 
-/** 附件类型下拉的本地兜底（与 sql/data/01_data_dict.sql 的 land_attach_type 逐字一致） */
-export const ATTACH_TYPES_FALLBACK = [
+/**
+ * 材料类型目录（**唯一基准**：P1-08 报告图 3）。
+ *
+ * ★ 为什么分两套常量而不是一份合并清单：宗地只有 4 类、配套有 13 类，
+ *   而且两套的 01~04 是**重号**（宗地 01=土地整理计划，配套 01=核定用地与地籍调查）。
+ *   合并成一份平铺下拉会出现两条 value='01' 的选项 —— 选中后显示的名字永远错一半。
+ *   所以这里的口径与后端 `LandAttachmentServiceImpl.typeNamesOf` 完全一致：
+ *   只能按归属取对应那一套。
+ *
+ * ★ 与后端的关系：后端 `/land/data/attachment/allowedTypes` 是运行时权威来源，
+ *   这里的常量只在接口不可用时兜底；两处必须逐字一致（后端改白名单要同步改这里）。
+ *
+ * ★ 环节进度（process）跟随挂靠侧 = 配套，所以用配套那 13 类。
+ */
+export const ATTACH_TYPES_LAND = [
   { value: '01', label: '土地整理计划' },
   { value: '02', label: '配套情况函' },
   { value: '03', label: '配套筹备函' },
-  { value: '04', label: '出让宗地图形数据' },
-  { value: '05', label: '项建批复' },
-  { value: '06', label: '可研批复' },
-  { value: '07', label: '初设及概算批复' },
-  { value: '08', label: '道路规划' },
-  { value: '09', label: '管线综合矢量数据' },
-  { value: '10', label: '专业配套方案' },
-  { value: '11', label: '施工许可' },
-  { value: '12', label: '竣工与移交文件' },
-  { value: '99', label: '其他' }
+  { value: '04', label: '出让宗地图形数据（shp）' }
 ]
+
+export const ATTACH_TYPES_FACILITY = [
+  { value: '01', label: '配套项目核定用地与地籍调查' },
+  { value: '02', label: '项建批复' },
+  { value: '03', label: '可研批复' },
+  { value: '04', label: '初设及概算批复' },
+  { value: '05', label: '道路规划' },
+  { value: '06', label: '规划工程许可' },
+  { value: '07', label: '专业配套方案' },
+  { value: '08', label: '专业管理意见' },
+  { value: '09', label: '规划用地许可与划拨手续办理' },
+  { value: '10', label: '施工许可' },
+  { value: '11', label: '不动产登记' },
+  { value: '12', label: '竣工文件' },
+  { value: '13', label: '移交文件' }
+]
+
+/**
+ * 按归属取材料类型兜底清单。
+ *
+ * @param {string} [bizType] land / facility / process；未选时不猜，
+ *        按后端同款规则退回宗地那套（后端 `typeNamesOf(null)` 也退宗地）
+ */
+export function attachTypeOptionsOf (bizType) {
+  return (bizType === 'facility' || bizType === 'process'
+    ? ATTACH_TYPES_FACILITY
+    : ATTACH_TYPES_LAND).slice()
+}
 
 /** 业务类型下拉 */
 export const BIZ_TYPE_OPTIONS = [
@@ -346,6 +378,8 @@ export default {
   formatSize,
   bizTypeText,
   buildUploadBiz,
-  ATTACH_TYPES_FALLBACK,
+  ATTACH_TYPES_LAND,
+  ATTACH_TYPES_FACILITY,
+  attachTypeOptionsOf,
   BIZ_TYPE_OPTIONS
 }

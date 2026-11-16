@@ -219,7 +219,7 @@
               class="legacy-note"
               type="info"
               show-icon
-              message="说明：旧库的「竣工文件(jgwj)」「移交文件(yjwj)」两列未纳入新实体（新数据统一走附件管理的「12 竣工与移交文件」），因此这里不展示，避免出现「填了写不进去」的假入口。" />
+              message="说明：旧库的「竣工文件(jgwj)」「移交文件(yjwj)」两列未纳入新实体（新数据统一走附件管理的「12 竣工文件 / 13 移交文件」两类），因此这里不展示，避免出现「填了写不进去」的假入口。" />
             <a-row :gutter="12">
               <a-col v-for="item in legacyFields" :key="item.key" :span="6">
                 <a-form-item :label="item.label">
@@ -280,6 +280,48 @@
     checkPtxmmc
   } from '@/api/land/facilityAdmin'
   import { queryXzqhOptions } from '@/api/land/landData'
+  import { getDictItems } from '@/components/dict/JDictSelectUtil'
+
+  /**
+   * 建设性质 / 道路等级 / 功能区的**兜底**候选（清单 P1-05）。
+   *
+   * ★ 为什么还要留硬编码：这三列已经进了 sys_dict（`land_jsxx` / `land_dldj` / `land_gnq`，
+   *   见 sql/data/17_facility_dict_jsxx_dldj_gnq.sql），正常走字典；但字典接口挂掉时
+   *   若把候选清空，用户连「新建」都选不出来，等于表单不能用 —— 下拉空白比候选略旧更糟。
+   *   兜底值与字典 seed 逐字一致，取哪一份结果都一样，不会出现「两套取值」。
+   */
+  const BUILD_NATURE_FALLBACK = [
+    { value: '新建', label: '新建' },
+    { value: '改建', label: '改建' },
+    { value: '扩建', label: '扩建' },
+    { value: '翻建', label: '翻建' },
+    { value: '现状', label: '现状' },
+    { value: '其他', label: '其他' }
+  ]
+  const ROAD_LEVEL_FALLBACK = [
+    { value: '城市主干路', label: '城市主干路' },
+    { value: '城市次干路', label: '城市次干路' },
+    { value: '城市支路', label: '城市支路' },
+    { value: '快速路', label: '快速路' }
+  ]
+  const FUNCTION_AREA_FALLBACK = [
+    { value: '生态城', label: '生态城' },
+    { value: '土地发展中心', label: '土地发展中心' },
+    { value: '经开区', label: '经开区' },
+    { value: '高新区', label: '高新区' },
+    { value: '保税区', label: '保税区' }
+  ]
+
+  /**
+   * 字典码 → data 里的候选项数组。
+   * ★ 只登记这三列：配套设施类别 / 资金来源 / 资金落实情况等其余枚举本轮不动
+   *   （清单只要求建设性质、道路等级、功能区与业务数据对齐），避免顺手扩大改动面。
+   */
+  const FACILITY_DICT_OPTIONS = [
+    { key: 'buildNatureOptions', code: 'land_jsxx' },
+    { key: 'roadLevelOptions', code: 'land_dldj' },
+    { key: 'functionAreaOptions', code: 'land_gnq' }
+  ]
 
   /**
    * 配套项目新增/编辑弹窗（53 个业务字段，分 5 组折叠）
@@ -332,27 +374,10 @@
           { value: '绿化', label: '绿化' },
           { value: '交通设施', label: '交通设施' }
         ],
-        buildNatureOptions: [
-          { value: '新建', label: '新建' },
-          { value: '改建', label: '改建' },
-          { value: '扩建', label: '扩建' },
-          { value: '翻建', label: '翻建' },
-          { value: '现状', label: '现状' },
-          { value: '其他', label: '其他' }
-        ],
-        roadLevelOptions: [
-          { value: '城市主干路', label: '城市主干路' },
-          { value: '城市次干路', label: '城市次干路' },
-          { value: '城市支路', label: '城市支路' },
-          { value: '快速路', label: '快速路' }
-        ],
-        functionAreaOptions: [
-          { value: '生态城', label: '生态城' },
-          { value: '土地发展中心', label: '土地发展中心' },
-          { value: '经开区', label: '经开区' },
-          { value: '高新区', label: '高新区' },
-          { value: '保税区', label: '保税区' }
-        ],
+        // ---- 建设性质 / 道路等级 / 功能区：先给兜底值，mounted 里再用字典覆盖 ----
+        buildNatureOptions: BUILD_NATURE_FALLBACK,
+        roadLevelOptions: ROAD_LEVEL_FALLBACK,
+        functionAreaOptions: FUNCTION_AREA_FALLBACK,
         fundSourceOptions: [
           { value: '土地整理成本', label: '土地整理成本' },
           { value: '地块收益', label: '地块收益' },
@@ -420,8 +445,35 @@
           this.xzqhOptions = res.result.map(item => ({ value: item.value, label: item.label }))
         }
       }).catch(() => { /* 区划下拉失败不阻断录入，用户可留空继承宗地 */ })
+      this.loadDictOptions()
     },
     methods: {
+      /**
+       * 用字典覆盖建设性质 / 道路等级 / 功能区三个下拉（清单 P1-05）。
+       *
+       * ★ 复用本工程既有的字典通道 `getDictItems`（`@/components/dict/JDictSelectUtil`）：
+       *   它优先读登录时缓存在 localStorage 的整份字典（`getDictItemsFromCache`），
+       *   缓存没有才请求 `/sys/dict/getDictItems/{code}`；本目录的 LandEntry / LandFormModal
+       *   用的就是它，不另造一套。提级论证模块用的是 `@/api/land/escalation` 里的
+       *   `loadDictItems` —— 那只是给 getDictItems 加了一层模块内缓存，底层同一个函数，
+       *   这里不必跨模块 import 一个业务域的 api 只为一个缓存。
+       *
+       * ★ 字典取不到时**保留**兜底数组，不清空下拉：
+       *   `getDictItems` 在请求失败时 resolve 的是空数组，直接覆盖会让三个下拉全空，
+       *   用户会以为录入功能坏了（比候选略旧严重得多）。
+       */
+      loadDictOptions () {
+        FACILITY_DICT_OPTIONS.forEach(item => {
+          getDictItems(item.code).then(items => {
+            const options = (items || [])
+              .filter(dict => dict && dict.value !== undefined && dict.value !== null)
+              .map(dict => ({ value: dict.value, label: dict.label || dict.text || dict.value }))
+            if (options.length) {
+              this[item.key] = options
+            }
+          }).catch(() => { /* 保留兜底候选，见方法注释 */ })
+        })
+      },
       emptyModel () {
         return {
           id: null,

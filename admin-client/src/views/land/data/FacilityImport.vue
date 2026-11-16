@@ -409,7 +409,7 @@
         fields: [],
         strategies: DUPLICATE_STRATEGIES_FALLBACK,
         // ---- 导入选项（预览与入库共用同一份口径） ----
-        duplicateStrategy: 'reject',
+        duplicateStrategy: 'upsert',
         allowOrphan: false,
         // ---- 导入结果 ----
         result: null,
@@ -515,7 +515,10 @@
             key: 'fields',
             label: '模板列数',
             value: this.fields.length || '—',
-            extra: `必填 ${this.requiredCount} 列（出让宗地编号 / 配套项目名称 / 录入单位 / 录入人 / 联系电话）`
+            // ★ 列名必须与后端 FacilityImportField.required() 一致（crzdbh / ptxmmc / lxdh），
+            //   人数用 requiredCount 动态取，列名写死也只在后端改字典时才需要跟着改（清单 P1-04）；
+            //   录入单位 / 录入人是**选填**——原来把它们列进「必填」会让用户以为不填就导不进去
+            extra: `必填 ${this.requiredCount} 列（出让宗地编号 / 配套项目名称 / 联系电话）；录入单位、录入人选填`
           },
           {
             key: 'key',

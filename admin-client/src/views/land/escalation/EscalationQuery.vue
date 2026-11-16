@@ -84,6 +84,7 @@
   import EscalationTable from './modules/EscalationTable'
   import EscalationDetailModal from './modules/EscalationDetailModal'
   import EscalationStatCharts from './modules/EscalationStatCharts'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     STATUS_OPTIONS,
     exportProjectXls,
@@ -110,6 +111,13 @@
   export default {
     name: 'EscalationQuery',
     components: { EscalationSearchForm, EscalationTable, EscalationDetailModal, EscalationStatCharts },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 本页 created 会把 $route.query 灌进 query（图表下钻入口），缓存实例上会一直留着；
+     * 带下钻参数（argResult / status / declareDept / xzqh / projectType / 申报时间区间）进来时
+     * mixin 只重查不清条件。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -222,6 +230,23 @@
       handleSearch (query) {
         this.query = query || {}
         this.pagination.current = 1
+        this.loadData()
+        this.loadStat()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件在子组件 EscalationSearchForm 里，交给它的 handleReset() 清；
+       * 它 emit('search', {}) 走本页 handleSearch —— 页码回 1、列表与 5 张统计图同条件重取
+       * （两个口径必须一起刷，否则「图上是新条件、列表还是旧条件」）。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.loadData()
         this.loadStat()
       },

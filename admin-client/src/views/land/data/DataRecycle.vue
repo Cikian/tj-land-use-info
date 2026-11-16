@@ -181,6 +181,7 @@
     BIZ_TYPE_OPTIONS,
     ACTION_OPTIONS_FALLBACK
   } from '@/api/land/dataRecycle'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 数据更新与移除（方案 2.3.1（三）第 6 项）
@@ -199,12 +200,20 @@
    */
   export default {
     name: 'DataRecycle',
+    /**
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     *
+     * 本页有两个页签、两套检索条件（回收站 / 变更留痕），两套都要复位：
+     * 只清当前页签的话，切到另一个页签时上一次的类型/关键字还在，
+     * 而列表看起来「就是这些」，仍是隐性过滤。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         activeTab: 'recycle',
         loading: false,
         // ---- 回收站 ----
-        recycleQuery: { bizType: '', keyword: '' },
+        recycleQuery: this.buildEmptyRecycleQuery(),
         recycleRows: [],
         recycleTotal: 0,
         summary: { landDeleted: 0, facilityDeleted: 0, total: 0 },
@@ -220,7 +229,7 @@
         ],
         // ---- 变更留痕 ----
         logLoading: false,
-        logQuery: { bizType: '', action: '', operator: '', keyword: '' },
+        logQuery: this.buildEmptyLogQuery(),
         logRows: [],
         logTotal: 0,
         logActionOptions: ACTION_OPTIONS_FALLBACK,
@@ -302,20 +311,45 @@
       // 首次进入也要拉数据：不能只依赖 activated（原因见 ensureLoaded 注释）
       this.ensureLoaded()
     },
-    activated () {
-      // keep-alive 再次激活：回到本页时刷新，避免回收站停留在旧快照。
-      this.ensureLoaded()
-    },
+    /*
+     * 这里**不再写 activated**：keep-alive 重新进入的处理已交给 mixins/resetOnActivate.js
+     * —— 它做的是「清条件 + 页码回 1 + 重查」，比原来「只重查、条件原样留着」多出复位这一步，
+     * 两者同时挂会连发两套请求（回收站 + 留痕各两次）。
+     * mounted 里的 ensureLoaded 仍然保留：没有开缓存的环境不触发 activated，首屏数据靠它。
+     */
     methods: {
+      /** 回收站检索条件的初始值（data() 与「重置 / 重新进入」共用，避免两处硬编码漂移） */
+      buildEmptyRecycleQuery () {
+        return { bizType: '', keyword: '' }
+      },
+      /** 变更留痕检索条件的初始值（同上） */
+      buildEmptyLogQuery () {
+        return { bizType: '', action: '', operator: '', keyword: '' }
+      },
       /**
-       * 首次挂载与 keep-alive 激活统一入口。
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
        *
-       * ★ 为什么不能只写 activated：`activated` 只在路由被 keep-alive 缓存时才触发，
+       * 两套条件都回初始值、留痕的页码回 1、关掉明细弹窗（弹窗也是页内状态，
+       * 重新进入时还开着会让人以为刚刚点过什么），最后 refresh() 重取三份数据。
+       */
+      resetSearch () {
+        this.recycleQuery = this.buildEmptyRecycleQuery()
+        this.logQuery = this.buildEmptyLogQuery()
+        this.logPagination = Object.assign({}, this.logPagination, { current: 1 })
+        this.detailVisible = false
+        this.currentLog = null
+        this.refresh()
+      },
+      /**
+       * 首屏取数入口（mounted 调用一次）。
+       *
+       * ★ 为什么不能只靠 activated：`activated` 只在路由被 keep-alive 缓存时才触发，
        *   而是否缓存由「菜单管理 → 是否缓存（keep_alive）」决定（见 RouteView.vue）。
        *   只靠 activated 的话，一旦某环境该菜单没勾缓存，本页会整页空白、且排查起来
        *   完全看不出是哪一步没跑。
-       * ★ 为什么加同 tick 去重：首次进入时 mounted 与 activated 会先后各触发一次，
-       *   不去重就发两套请求（回收站 + 留痕各两次）。
+       * ★ 为什么还留着同 tick 去重：本页历史上 mounted 与 activated 会先后各触发一次，
+       *   现在 activated 由 mixins/resetOnActivate.js 接管（且首次激活会跳过），
+       *   但这段去重留着当护栏 —— 将来若再加一个「进入即取数」的调用点，也不会有两套请求。
        */
       ensureLoaded () {
         if (this.loadScheduled) {
@@ -372,7 +406,7 @@
         })
       },
       resetRecycle () {
-        this.recycleQuery = { bizType: '', keyword: '' }
+        this.recycleQuery = this.buildEmptyRecycleQuery()
         this.loadRecycle()
       },
       handleRestore (record) {
@@ -441,7 +475,7 @@
         this.loadLog()
       },
       resetLog () {
-        this.logQuery = { bizType: '', action: '', operator: '', keyword: '' }
+        this.logQuery = this.buildEmptyLogQuery()
         this.searchLog()
       },
       handleLogTableChange (pagination) {

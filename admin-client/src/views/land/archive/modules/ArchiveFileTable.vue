@@ -57,7 +57,13 @@
       </template>
 
       <template slot="status" slot-scope="text">
-        <a-tag :color="statusColor(text)">{{ text || '已归档' }}</a-tag>
+        <!--
+          ★ 空值显示「—」而不是「已归档」（清单 P1-11）：状态只能来自数据。
+            兜底成「已归档」会让「这条文件没有状态」看起来像「已经归档好了」，
+            而卷内文件是否真的归档正是本页要让用户判断的事情。
+        -->
+        <a-tag v-if="text" :color="statusColor(text)">{{ text }}</a-tag>
+        <span v-else class="archive-file-table__muted">—</span>
       </template>
 
       <template slot="action" slot-scope="text, record">
@@ -434,6 +440,11 @@
 
     &__category {
       color: #334155;
+    }
+
+    /* 空值占位（如状态列为空）：与表内其它「—」同一灰度，不抢注意力 */
+    &__muted {
+      color: @text-weak;
     }
 
     &__danger {

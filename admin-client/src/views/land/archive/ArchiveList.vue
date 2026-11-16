@@ -11,7 +11,9 @@
       </div>
       <div class="page-head__actions">
         <a-button v-has="'land:archive:add'" type="primary" icon="plus" @click="handleAdd">新增档案</a-button>
-        <a-button v-has="'land:archive:export'" icon="download" :disabled="!total" @click="handleExport">按条件导出 ZIP</a-button>
+        <!-- 导出按钮的可用性跟随「当前视图有没有数据」：项目视图下 total（案卷数）恒为 0，
+             只看它会出现「明明列表里有项目、却导不出」 -->
+        <a-button v-has="'land:archive:export'" icon="download" :disabled="!hasAnyData" @click="handleExport">按条件导出 ZIP</a-button>
         <a-button v-has="'land:archive:stat'" icon="pie-chart" @click="goStatistics">档案统计</a-button>
       </div>
     </div>
@@ -23,14 +25,24 @@
     <div class="list-panel">
       <div class="list-panel__toolbar">
         <div class="list-panel__toolbar-left">
-          <span class="list-panel__total">
+          <!-- 两种视图的分页口径不同（项目 / 案卷），总数必须跟着视图说，不能共用一个数字 -->
+          <span v-if="isProjectView" class="list-panel__total">
+            共 <b>{{ projectTotal }}</b> 个项目
+          </span>
+          <span v-else class="list-panel__total">
             共 <b>{{ total }}</b> 个档案
           </span>
-          <span v-if="selectedRowKeys.length" class="list-panel__selected">
+          <span v-if="!isProjectView && selectedRowKeys.length" class="list-panel__selected">
             已选 <b>{{ selectedRowKeys.length }}</b> 项
           </span>
         </div>
         <div class="list-panel__toolbar-right">
+          <!-- 默认项目视图：档案本来就挂在配套项目上，先按项目看更接近业务视角；
+               案卷视图保留，批量选择/批量删除仍然只在案卷视图里做 -->
+          <a-radio-group v-model="viewMode" button-style="solid" size="small" @change="handleViewChange">
+            <a-radio-button value="project">项目视图</a-radio-button>
+            <a-radio-button value="flat">案卷视图</a-radio-button>
+          </a-radio-group>
           <a-popconfirm
             v-if="selectedRowKeys.length"
             v-has="'land:archive:delete'"
@@ -44,7 +56,20 @@
         </div>
       </div>
 
+      <!-- 项目视图：项目 → 案卷 → 材料类别 → 文件，案卷懒加载 -->
+      <archive-project-tree
+        v-if="isProjectView"
+        :dataSource="projectRows"
+        :loading="loading"
+        :pagination="projectPagination"
+        :query="query"
+        @change="handleTableChange"
+        @detail="handleDetail"
+        @export-project="handleExportOne" />
+
+      <!-- 案卷视图：原来的逐卷平铺列表（批量选择 / 批量删除在这里） -->
       <archive-table
+        v-else
         :dataSource="dataSource"
         :loading="loading"
         :pagination="pagination"
@@ -57,7 +82,7 @@
         @delete="handleDelete" />
     </div>
 
-    <archive-modal ref="modal" @ok="loadData" />
+    <archive-modal ref="modal" @ok="handleSaved" />
     <archive-detail-modal ref="detail" @edit="handleEdit" @export="handleExportOne" />
   </a-card>
 </template>
@@ -65,9 +90,18 @@
 <script>
   import ArchiveSearchForm from './modules/ArchiveSearchForm'
   import ArchiveTable from './modules/ArchiveTable'
+  import ArchiveProjectTree from './modules/ArchiveProjectTree'
   import ArchiveModal from './modules/ArchiveModal'
   import ArchiveDetailModal from './modules/ArchiveDetailModal'
-  import { queryArchiveList, deleteArchive, deleteArchiveBatch, exportArchiveZip } from '@/api/land/archive'
+  import resetOnActivate from '../mixins/resetOnActivate'
+  import {
+    queryArchiveList,
+    queryArchiveProjectPage,
+    queryArchiveById,
+    deleteArchive,
+    deleteArchiveBatch,
+    exportArchiveZip
+  } from '@/api/land/archive'
 
   /**
    * 档案维护（方案 2.3.2 第 2 项）
@@ -75,18 +109,39 @@
    * 「可在已上传的配套项目中添加档案信息，并记录相关操作」——
    * 新增/编辑弹窗里的配套项目是下拉选择已有记录，不能手工输入新项目名；
    * 所有写操作都会在后端写 t_archive_log 操作记录。
+   *
+   * ★ P2-07 两种列表视图（同一份数据、同一套检索条件）：
+   *   「项目视图」（默认）：项目 → 案卷 → 材料类别 → 文件，
+   *       第一层就能看到材料类别摘要 / 案卷数 / 文件数 / 总大小，不必逐条进详情；
+   *   「案卷视图」：原来的逐卷平铺列表，批量选择 / 批量删除仍在这里做。
+   *   两种视图共用 ArchiveSearchForm 与 this.query —— 切换视图**不重置检索条件**，
+   *   用户不用「切一次视图就重输一遍条件」。
+   *   聚合分页以**项目**为单位（后端 /land/archive/projectPage 负责），
+   *   不是把全部档案拉到前端再分组 —— 那样数据一多就会把浏览器拖死。
    */
   export default {
     name: 'ArchiveList',
-    components: { ArchiveSearchForm, ArchiveTable, ArchiveModal, ArchiveDetailModal },
+    components: { ArchiveSearchForm, ArchiveTable, ArchiveProjectTree, ArchiveModal, ArchiveDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     *
+     * 本页 13 个检索条件全在 ArchiveSearchForm 里维护，缓存的实例上条件、页码、勾选都在；
+     * 从收发文「归档」列点进来的 ?archiveId= 属于下钻，mixin 会认出来并**只重查不清条件**。
+     * 契约见 mixins/resetOnActivate.js。视图模式（项目 / 案卷）不是检索条件，保留。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
         deleting: false,
+        viewMode: 'project',
         query: {},
         dataSource: [],
         total: 0,
         selectedRowKeys: [],
+        /** 项目视图数据：一页 = 一页项目 */
+        projectRows: [],
+        projectTotal: 0,
         pagination: {
           current: 1,
           pageSize: 10,
@@ -98,11 +153,69 @@
         }
       }
     },
+    computed: {
+      isProjectView () {
+        return this.viewMode === 'project'
+      },
+      /**
+       * 项目视图的分页器。
+       * total 用后端返回的**项目总数**，不是案卷总数 ——
+       * 用案卷数会让页数虚高（5 个项目、12 个案卷 → 显示 2 页，第 2 页是空的）。
+       */
+      projectPagination () {
+        return Object.assign({}, this.pagination, {
+          total: this.projectTotal,
+          showTotal: total => `共 ${total} 个项目`
+        })
+      },
+      /** 当前视图有没有数据（导出按钮的可用性要用它判断，见模板注释） */
+      hasAnyData () {
+        return this.isProjectView ? this.projectTotal > 0 : this.total > 0
+      }
+    },
     created () {
       this.loadData()
+      // ★ 从收发文列表的「归档」列点过来时带 ?archiveId=…：按 id 精确打开该档案详情，
+      //   而不是让用户再筛一次列表、再点一行（与收发文归档后的「查看档案」闭环对齐）。
+      const archiveId = this.$route && this.$route.query ? this.$route.query.archiveId : ''
+      if (archiveId) {
+        this.openDetailById(archiveId)
+        // 清掉这个一次性参数，避免刷新或再次进入时重复打开
+        this.$router.replace({ path: this.$route.path, query: {} }).catch(() => {})
+      }
     },
     methods: {
+      /**
+       * 保存成功（新增 / 编辑）：列表与**已打开的详情**一起刷新（P1-15）。
+       *
+       * 只刷列表会出现「列表已是新值、详情还是旧值」——测试看到的
+       * 「详情状态与列表不一致」有一半来自这里。详情弹窗的 refresh() 不重开弹窗、不重置页签。
+       */
+      handleSaved () {
+        this.loadData()
+        if (this.$refs.detail && typeof this.$refs.detail.refresh === 'function') {
+          this.$refs.detail.refresh()
+        }
+      },
+      /** 按 id 打开档案详情（深链 / 归档后「查看档案」用） */
+      openDetailById (id) {
+        if (!id) {
+          return
+        }
+        queryArchiveById(id).then(res => {
+          if (res && res.success && res.result) {
+            this.$refs.detail.open(res.result)
+          } else {
+            this.$message.warning((res && res.message) || '打开档案详情失败')
+          }
+        })
+      },
+      /** 按当前视图取数（两种视图共用同一份 query 与页码） */
       loadData () {
+        return this.isProjectView ? this.loadProjectPage() : this.loadFlatPage()
+      },
+      /** 案卷视图：原来的逐卷分页 */
+      loadFlatPage () {
         this.loading = true
         const params = Object.assign({}, this.query, {
           pageNo: this.pagination.current,
@@ -120,15 +233,82 @@
           // 当前页被删空时自动回退一页，避免停在空白页
           if (!this.dataSource.length && this.total > 0 && this.pagination.current > 1) {
             this.pagination.current -= 1
-            return this.loadData()
+            return this.loadFlatPage()
           }
         }).finally(() => {
           this.loading = false
         })
       },
+      /** 项目视图：分页以「项目」为单位（pageNo/pageSize 数的是项目数） */
+      loadProjectPage () {
+        this.loading = true
+        const params = Object.assign({}, this.query)
+        return queryArchiveProjectPage(params, {
+          pageNo: this.pagination.current,
+          pageSize: this.pagination.pageSize
+        }).then(res => {
+          if (!res || !res.success) {
+            this.$message.warning((res && res.message) || '项目视图加载失败')
+            return
+          }
+          const page = res.result || {}
+          this.projectRows = page.records || []
+          this.projectTotal = page.total || 0
+          // 与案卷视图同理：当前页被删空时回退一页，不停在空白页
+          if (!this.projectRows.length && this.projectTotal > 0 && this.pagination.current > 1) {
+            this.pagination.current -= 1
+            return this.loadProjectPage()
+          }
+        }).finally(() => {
+          this.loading = false
+        })
+      },
+      /**
+       * 切换视图。
+       *
+       * 页码必须回到第 1 页：两种视图的分页口径不同（项目 vs 案卷），
+       * 沿用旧页码会出现「第 3 页的项目」配「第 3 页的案卷」这种错位。
+       * 检索条件（this.query）与检索表单原样保留 —— 切视图不该让用户重输条件。
+       *
+       * ★ 只用 this.viewMode，不用 @change 的事件参数：antd 1.7 的 a-radio-group
+       *   change 发的是事件对象（值是 e.target.value），不是新值本身；
+       *   而 v-model 监听的是同一次点击的 input 事件，this.viewMode 此刻已是新值。
+       */
+      handleViewChange () {
+        const mode = this.viewMode
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
+        // 批量操作只在案卷视图做，切走时清掉选中，避免「看不见的选中项被批量删除」
+        this.selectedRowKeys = []
+        if (mode === 'project') {
+          this.projectRows = []
+        } else {
+          this.dataSource = []
+        }
+        this.loadData()
+      },
       handleSearch (query) {
         this.query = query || {}
         this.pagination.current = 1
+        this.selectedRowKeys = []
+        this.loadData()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 检索条件、日期区间、类别树选中值都维护在子组件 ArchiveSearchForm 里，
+       * 所以**交给它自己清**：它的 handleReset() 会重置内部 query（含 categoryId/categoryPath
+       * 这类树控件的隐藏值）并 emit('search', {})，落到本页 handleSearch ——
+       * 条件、页码、勾选、取数一次到位，且只发一次请求。
+       * 本页再额外清一次条件/页码是兜底：万一将来表单改成 v-if 渲染导致 $refs 拿不到，
+       * 也不会出现「条件已清、列表还是旧结果」。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.selectedRowKeys = []
         this.loadData()
       },
@@ -185,12 +365,22 @@
         exportArchiveZip(query)
         this.$message.success('已开始导出，请稍候…')
       },
-      /** 从详情页导出「该项目」的全部档案 */
+      /**
+       * 按「某个项目」导出（详情页的「导出该项目档案」+ 项目视图行内的「导出该项目」共用）。
+       *
+       * 两个入口传进来的都是「有 facilityId / crzdbh 的数据行」：
+       *   详情页是 archive 详情，项目视图行是 /projectPage 的 ArchiveProjectVO。
+       * ★ 两者都可能一个都没有（历史数据只存了项目名）：这时**必须拦住**，
+       *   否则导出接口收到空条件会导出全部档案 —— 用户以为导的是这一个项目。
+       */
       handleExportOne (record) {
-        exportArchiveZip({
-          facilityId: record.facilityId || undefined,
-          crzdbh: record.facilityId ? undefined : (record.crzdbh || undefined)
-        })
+        const facilityId = (record && record.facilityId) || undefined
+        const crzdbh = facilityId ? undefined : ((record && record.crzdbh) || undefined)
+        if (!facilityId && !crzdbh) {
+          this.$message.warning('该记录既没有关联配套项目、也没有出让宗地编号，无法按项目导出')
+          return
+        }
+        exportArchiveZip({ facilityId, crzdbh })
         this.$message.success('已开始按项目导出，请稍候…')
       },
       goStatistics () {
@@ -271,6 +461,7 @@
 
     &__toolbar-right {
       display: flex;
+      align-items: center;
       gap: 8px;
     }
   }

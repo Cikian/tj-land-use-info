@@ -396,7 +396,10 @@
             key: 'fields',
             label: '模板列数',
             value: this.fields.length,
-            extra: `必填 ${this.requiredCount} 列（出让宗地编号/项目分类/录入单位/录入人/联系电话）`
+            // ★ 必填列名必须与后端 LandImportField.required() 一致（crzdbh / xmfl / lxdh 三项）。
+            //   原来这里还列着「录入单位 / 录入人」——P1-04 已把这两列改为选填，
+            //   指标卡是同一份口径的第二处副本，漏改会让用户以为不填就导不进去。
+            extra: `必填 ${this.requiredCount} 列（出让宗地编号/项目分类/联系电话）`
           },
           {
             key: 'strategy',

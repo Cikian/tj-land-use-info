@@ -32,7 +32,13 @@
         <div class="stat-panel__title">按办理状态分布</div>
         <div v-if="statusSegments.length" class="stat-ring">
           <svg viewBox="0 0 120 120" class="stat-ring__svg" role="img" aria-label="按办理状态分布环形图">
-            <circle cx="60" cy="60" r="48" fill="none" stroke="#eef2f7" stroke-width="14" />
+            <circle
+              cx="60"
+              cy="60"
+              r="48"
+              fill="none"
+              stroke="#eef2f7"
+              stroke-width="14" />
             <circle
               v-for="segment in statusSegments"
               :key="segment.name"
@@ -126,7 +132,13 @@
             <polyline :points="trendPolyline" fill="none" stroke="#2e7cf6" stroke-width="2" />
             <g v-for="point in monthPoints" :key="point.name" class="stat-trend__point" @click="drill(monthDrill(point.name))">
               <title>{{ point.name }}：{{ point.count }}</title>
-              <circle :cx="point.x" :cy="point.y" r="4" fill="#fff" stroke="#2e7cf6" stroke-width="2" />
+              <circle
+                :cx="point.x"
+                :cy="point.y"
+                r="4"
+                fill="#fff"
+                stroke="#2e7cf6"
+                stroke-width="2" />
               <text :x="point.x" :y="point.y - 10" text-anchor="middle" class="stat-trend__value">{{ point.count }}</text>
               <text :x="point.x" :y="trendHeight - 6" text-anchor="middle" class="stat-trend__label">{{ point.name }}</text>
             </g>
@@ -143,19 +155,20 @@
     -->
     <div v-if="typeRows.length" class="stat-extra">
       <span class="stat-extra__label">项目类型分布</span>
+      <!-- 下钻条件仍用库里的原值（迁移未跑完时按旧值也筛得到），显示走三值口径 -->
       <span
         v-for="item in typeRows"
         :key="item.name"
         class="stat-extra__chip"
         @click="drill({ projectType: item.name })">
-        {{ dictLabel(DICT.projectType, item.name) }} <b>{{ item.count }}</b>
+        {{ projectTypeText(item.name) }} <b>{{ item.count }}</b>
       </span>
     </div>
   </a-spin>
 </template>
 
 <script>
-  import { DICT, dictText } from '@/api/land/escalation'
+  import { projectTypeText } from '@/api/land/escalation'
 
   /**
    * 提级论证统计图（设计文档 5.2 / 5.5）
@@ -211,7 +224,6 @@
     },
     data () {
       return {
-        DICT,
         palette: ['#2e7cf6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16', '#ec4899'],
         // 折线画布（viewBox 坐标系，与实际像素无关，保证自适应缩放）
         trendWidth: 520,
@@ -365,6 +377,8 @@
       }
     },
     methods: {
+      /** 项目类型三值口径：模板里的「项目类型分布」条用它翻译（历史四类显示为「待确认」） */
+      projectTypeText,
       // ------------------------------------------------------------------
       // 下钻
       // ------------------------------------------------------------------
@@ -402,9 +416,6 @@
           rows = Object.keys(source).map(key => ({ name: key, count: Number(source[key]) || 0 }))
         }
         return rows.filter(item => item.count > 0)
-      },
-      dictLabel (dictCode, value) {
-        return dictText(dictCode, value) || value
       },
       statusPalette (name, index) {
         // 与台账标签同一套语义色：未办理灰 / 办理中蓝 / 已办结绿 / 已归档青

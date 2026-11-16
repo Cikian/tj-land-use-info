@@ -140,6 +140,7 @@
   import CompletionTable from './modules/CompletionTable'
   import CompletionModal from './modules/CompletionModal'
   import CompletionDetailModal from './modules/CompletionDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     DIGITIZE_STATUS,
     deleteCompletion,
@@ -170,6 +171,13 @@
   export default {
     name: 'CompletionArchiveList',
     components: { CompletionSearchForm, CompletionTable, CompletionModal, CompletionDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 本页的隐性条件是「数字化状态」（同时驱动状态页签）与「是否已挂扫描件 hasArchive」，
+     * 都留在缓存实例里，回来时页签还停在上一次的状态、列表却看起来像全量。
+     * 带 ?digitizeStatus= 下钻进来时 mixin 会保留条件。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -527,6 +535,23 @@
         this.query = Object.assign({}, query || {})
         this.statusTab = this.query.digitizeStatus || 'all'
         this.pagination.current = 1
+        this.refresh()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件与日期区间都在子组件 CompletionSearchForm 里，交给它的 handleReset() 清，
+       * 它 emit('search', {}) 会走本页 handleSearch（状态页签回「全部」、页码回 1、refresh 重取
+       * 列表 + 状态计数 + 指标卡）。只发这一次请求，所以这里不再自己 loadData。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.statusTab = 'all'
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.refresh()
       },
       handleTabChange (key) {

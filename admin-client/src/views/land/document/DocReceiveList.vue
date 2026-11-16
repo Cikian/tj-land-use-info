@@ -151,8 +151,13 @@
           <a-tag v-if="text" color="blue">{{ text }}</a-tag>
           <span v-else class="doc-table__muted">—</span>
         </template>
-        <template slot="archiveFlag" slot-scope="text">
-          <a-tag v-if="text" color="green">已归档</a-tag>
+        <template slot="archiveFlag" slot-scope="text, record">
+          <!-- 归档情况按**档案真实状态**显示：无附件时档案是「归档中」，不能因 archiveId 有值就写成已归档 -->
+          <a v-if="text" @click="handleOpenArchive(record)">
+            <a-tag :color="record.archiveStatus === '已归档' || !record.archiveStatus ? 'green' : 'blue'">
+              {{ record.archiveStatus || '已归档' }}
+            </a-tag>
+          </a>
           <span v-else class="doc-table__muted">未归档</span>
         </template>
         <template slot="action" slot-scope="text, record">
@@ -161,7 +166,8 @@
             <a-divider type="vertical" />
             <a @click="handleFlow(record)">{{ isClosed(record) ? '流转痕迹' : '流转' }}</a>
           </span>
-          <span v-has="'land:docReceive:edit'">
+          <!-- 已归档只读：编辑入口不渲染（后端 updateDoc 也会拒绝，防止绕过页面） -->
+          <span v-if="!record.archiveId" v-has="'land:docReceive:edit'">
             <a-divider type="vertical" />
             <a @click="handleEdit(record)">编辑</a>
           </span>
@@ -181,8 +187,9 @@
 
     <doc-receive-modal ref="modal" @ok="onChanged" />
     <doc-flow-modal ref="flow" @finished="handleFinished" />
-    <doc-archive-modal ref="archive" @ok="onChanged" />
+    <!-- 归档弹窗排在详情弹窗之后：antd 弹窗按声明顺序抬高 z-index，后声明者在上 -->
     <doc-detail-modal ref="detail" @open-flow="handleFlow" />
+    <doc-archive-modal ref="archive" @ok="handleArchived" />
   </a-card>
 </template>
 
@@ -191,6 +198,7 @@
   import DocFlowModal from './modules/DocFlowModal'
   import DocArchiveModal from './modules/DocArchiveModal'
   import DocDetailModal from './modules/DocDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     queryDocReceiveList, deleteDocReceive, queryDocReceiveStat, queryDocReceiveById
   } from '@/api/land/document'
@@ -210,6 +218,13 @@
   export default {
     name: 'DocReceiveList',
     components: { DocReceiveModal, DocFlowModal, DocArchiveModal, DocDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）：
+     * 本页的「只查我的待办（onlyMine）/ 已归档（archived）/ 统计卡快捷筛选（activeStat）」
+     * 都是**表单上看不全的隐性条件**，留在缓存实例里会让人以为「收文就这么多」。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -222,7 +237,11 @@
         },
         dataSource: [],
         total: 0,
-        statuses: ['待承办', '承办中', '已退回', '已办结', '已归档'],
+        // ★ P2-12：筛选下拉**不再提供「承办中」**（用户确认：只调筛选项，不取消业务状态）。
+        //   状态机、统计卡「承办中」与流转历史都保留 —— 转办后的记录仍是合法的「承办中」，
+        //   删掉常量会让它们变成非法状态（标签无颜色、流转链断裂）。
+        //   需要看承办中的记录时，用「我的待办」或列表里的状态列即可。
+        statuses: ['待承办', '已退回', '已办结', '已归档'],
         secretLevels: ['一般', '内部', '秘密', '机密'],
         urgencies: ['普通', '急件', '特急'],
         columns: [
@@ -324,6 +343,16 @@
         this.pagination.current = 1
         this.loadData()
       },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 复用「重置」按钮：buildEmptyQuery() 里含 onlyMine（统计卡「我的待办」写进去的隐性条件）
+       * 与 archived、收文日期区间；handleReset 还会清 activeStat、页码回 1 并重取。
+       * 统计卡数字（loadStat）不随条件变化，不必跟着刷新。
+       */
+      resetSearch () {
+        this.handleReset()
+      },
       handleDateChange (values) {
         if (values && values.length === 2) {
           this.query.beginDate = values[0]
@@ -365,8 +394,26 @@
       handleFlow (record) {
         this.$refs.flow.open(record)
       },
+      /** 先关详情再开归档：两层弹窗叠着时，用户很容易以为「点了没反应」 */
       handleArchive (record) {
+        if (this.$refs.detail && this.$refs.detail.close) {
+          this.$refs.detail.close()
+        }
         this.$refs.archive.open(record, 'receive')
+      },
+      /** 归档成功：刷新列表与统计，并提示去档案里查看（归档列本身就是入口） */
+      handleArchived (result) {
+        this.onChanged()
+        const data = result || {}
+        if (data.archiveId) {
+          this.$message.info('可在列表「归档」列点进该档案查看卷内文件')
+        }
+      },
+      /** 打开该公文归档后的档案（按 archiveId 精确打开，不是再筛一次列表） */
+      handleOpenArchive (record) {
+        const archiveId = record && record.archiveId
+        if (!archiveId) return
+        this.$router.push({ path: '/land/archive/list', query: { archiveId } })
       },
       handleDetail (record) {
         queryDocReceiveById(record.id).then(res => {

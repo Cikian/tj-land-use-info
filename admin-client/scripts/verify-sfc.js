@@ -20,6 +20,13 @@ const files = [
   // 数据管理 · 宗地 / 配套地块图形（GeoJSON）导入弹窗（2026-11 新增）
   'src/views/land/data/modules/LandGeoImportModal.vue',
   'src/views/land/data/modules/FacilityGeoImportModal.vue',
+  // 数据管理 · 总览三页（2026-11-16 登记：P2-01「重新进入复位」动了这三页，
+  // 之前不在清单里，等于自检绿灯但其实没检查过它们的模板 / less）
+  'src/views/land/data/LandEntry.vue',
+  'src/views/land/data/FacilityEntry.vue',
+  'src/views/land/data/DataRecycle.vue',
+  // 档案管理 · 档案类别维护（同上，2026-11-16 登记）
+  'src/views/land/archive/ArchiveCategoryList.vue',
   'src/views/land/archive/ArchiveList.vue',
   'src/views/land/archive/ArchiveQuery.vue',
   'src/views/land/archive/ArchiveStatistics.vue',
@@ -49,6 +56,8 @@ const files = [
   'src/views/land/archive/modules/ArchiveModal.vue',
   'src/views/land/archive/modules/ArchiveSearchForm.vue',
   'src/views/land/archive/modules/ArchiveTable.vue',
+  // P2-07 档案维护「项目视图」（项目 → 案卷 → 材料类别 → 文件的聚合树，2026-11-16 新增）
+  'src/views/land/archive/modules/ArchiveProjectTree.vue',
   'src/views/land/archive/modules/CategoryPicker.vue',
   'src/views/land/archive/modules/ProjectPicker.vue',
   'src/views/land/document/DocReceiveList.vue',

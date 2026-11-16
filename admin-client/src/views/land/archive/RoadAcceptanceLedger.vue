@@ -183,6 +183,7 @@
   import LedgerModal from './modules/LedgerModal'
   import LedgerDetailModal from './modules/LedgerDetailModal'
   import LedgerImportModal from './modules/LedgerImportModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     LEDGER_MATERIALS_FALLBACK,
     LEDGER_STATUS,
@@ -219,6 +220,14 @@
   export default {
     name: 'RoadAcceptanceLedger',
     components: { LedgerSearchForm, LedgerTable, LedgerModal, LedgerDetailModal, LedgerImportModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 本页隐性条件最多：状态页签 statusTab、facilityId/crzdbh、missingMaterial（资料矩阵点进来的）、
+     * hasArchive、关键词，created 还会把 $route.query 原样灌进 query ——
+     * 缓存实例上这些全都留着，回来时台账看起来「只有这几条」。
+     * 带下钻参数进来时 mixin 只重查不清条件。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -616,6 +625,24 @@
         this.query = Object.assign({}, query || {})
         this.statusTab = this.query.status || 'all'
         this.pagination.current = 1
+        this.refresh()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件在子组件 LedgerSearchForm 里（含配套项目下拉的 facilityId/facilityLabel、
+       * 资料矩阵下钻用的 missingMaterial、多个日期区间），交给它的 handleReset() 清；
+       * 它 emit('search', {}) 会走本页 handleSearch —— 状态页签回「全部」、页码回 1、
+       * refresh() 重取列表 + 状态计数 + 指标卡。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.statusTab = 'all'
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.refresh()
       },
       handleTabChange (key) {

@@ -226,7 +226,8 @@
       :accept="acceptAttr"
       aria-hidden="true"
       tabindex="-1"
-      @change="handleFilesPicked($event, 'file')" />
+      @change="handleFilesPicked($event, 'file')"
+      @cancel="handlePickerCancel" />
     <input
       ref="dirInput"
       class="attach-upload__input"
@@ -235,7 +236,8 @@
       webkitdirectory
       aria-hidden="true"
       tabindex="-1"
-      @change="handleFilesPicked($event, 'folder')" />
+      @change="handleFilesPicked($event, 'folder')"
+      @cancel="handlePickerCancel" />
   </a-modal>
 </template>
 
@@ -273,35 +275,41 @@
   }
 
   /**
-   * 本地兜底的材料类型清单，**按归属类型给对应那套**。
-   * ★ 兜底也要分两套：宗地 5 类与配套 13 类是不同的清单（逐字取自旧系统存储目录），
-   *   接口一挂就给错清单的话，用户会选到一个根本不存在的类型。
+   * 本地兜底的材料类型清单，**按归属类型给对应那套**（唯一基准：P1-08 报告图 3）。
+   *
+   * ★ 兜底也要分两套：宗地 4 类与配套 13 类是不同的清单，而且两套的 01~04 重号
+   *   （宗地 01=土地整理计划、配套 01=核定用地与地籍调查），
+   *   合并成一份平铺下拉会出现两条 value='01'，选中的名字永远错一半。
+   * ★ 与后端 `LandAttachmentServiceImpl` 的白名单逐字一致；环节进度跟随挂靠侧
+   *   （环节挂在配套项目下），所以也用配套那 13 类。
    */
   const LAND_TYPE_FALLBACK = [
     { value: '01', label: '土地整理计划' },
-    { value: '02', label: '配套方案' },
-    { value: '03', label: '配套情况函' },
-    { value: '04', label: '配套筹备函' },
-    { value: '05', label: '出让宗地图形数据（SHP）' }
+    { value: '02', label: '配套情况函' },
+    { value: '03', label: '配套筹备函' },
+    { value: '04', label: '出让宗地图形数据（shp）' }
   ]
   const FACILITY_TYPE_FALLBACK = [
-    { value: '01', label: '项建批复文件' },
-    { value: '02', label: '可研批复文件' },
-    { value: '03', label: '初设及概算批复文件' },
-    { value: '04', label: '道路规划' },
-    { value: '05', label: '专业配套方案' },
-    { value: '06', label: '施工许可' },
-    { value: '07', label: '专业管理意见' },
-    { value: '08', label: '配套项目核定用地与地籍调查' },
-    { value: '09', label: '规划工程许可' },
-    { value: '10', label: '规划用地许可与划拨手续办理' },
+    { value: '01', label: '配套项目核定用地与地籍调查' },
+    { value: '02', label: '项建批复' },
+    { value: '03', label: '可研批复' },
+    { value: '04', label: '初设及概算批复' },
+    { value: '05', label: '道路规划' },
+    { value: '06', label: '规划工程许可' },
+    { value: '07', label: '专业配套方案' },
+    { value: '08', label: '专业管理意见' },
+    { value: '09', label: '规划用地许可与划拨手续办理' },
+    { value: '10', label: '施工许可' },
     { value: '11', label: '不动产登记' },
     { value: '12', label: '竣工文件' },
     { value: '13', label: '移交文件' }
   ]
 
   function fallbackTypesOf (bizType) {
-    return (bizType === 'facility' ? FACILITY_TYPE_FALLBACK : LAND_TYPE_FALLBACK).slice()
+    // 与后端 typeNamesOf 同一条规则：facility / process 用配套那套，其余（含未选）用宗地那套
+    return (bizType === 'facility' || bizType === 'process'
+      ? FACILITY_TYPE_FALLBACK
+      : LAND_TYPE_FALLBACK).slice()
   }
 
   export default {
@@ -331,9 +339,20 @@
         /** 收起的材料类型 key（默认全展开，结构一眼可见） */
         collapsed: [],
         // ---- 上传 ----
-        /** 当前正在上传的材料类型码 */
+        /**
+         * 已点开系统选择器、但**还没拿到文件**的目标类型（'' = 没有待选）。
+         * ★ 为什么要有它：打开文件选择器 ≠ 开始上传。若在点按钮时就置 uploadingType，
+         *   用户点「取消」后 change 不触发、也没有任何回调，界面就永远停在「上传中」
+         *   并把所有类型的按钮禁用（P0-04 报的就是这个「取消后锁死」）。
+         */
+        pendingType: '',
+        /** 当前正在上传的材料类型码（只有真正拿到文件并通过校验才会被赋值） */
         uploadingType: '',
         batchRunning: false,
+        /** 整批进度 0-100：按「已完成文件数 / 本批总数」推进（上传接口没有字节级进度） */
+        percent: 0,
+        /** 主动中止标记：用户在上传中途关闭弹窗时置真，step 循环据此停下 */
+        batchAborted: false,
         justUploaded: {},
         /** 本次会话刚上传成功的附件 id（用于在服务端记录上标「刚刚上传」） */
         recentIds: {},
@@ -354,7 +373,7 @@
         const treeGroups = (this.tree && this.tree.groups) || []
         const byCode = {}
         treeGroups.forEach(group => { byCode[group.fileType] = group })
-        return (this.typeOptions || []).map(option => {
+        const listed = (this.typeOptions || []).map(option => {
           const hit = byCode[option.value]
           if (hit) {
             return hit
@@ -368,6 +387,17 @@
             totalSize: 0
           }
         })
+        // ★ 清单之外的码值（迁移遗留的 99「其他（历史）」）追加在末尾：
+        //   不追加的话，历史附件在这个弹窗里「凭空消失」，用户会以为文件丢了。
+        //   它们放在最后，与后端 buildTree 的处置一致，不影响现行目录顺序。
+        const listedCodes = {}
+        listed.forEach(group => { listedCodes[group.fileType] = true })
+        treeGroups.forEach(group => {
+          if (!listedCodes[group.fileType]) {
+            listed.push(group)
+          }
+        })
+        return listed
       },
       treeHint () {
         if (!this.bizId) {
@@ -390,6 +420,10 @@
       busy () {
         return !!this.uploadingType
       }
+    },
+    beforeDestroy () {
+      // 弹窗被父组件销毁时摘掉 window 上的兜底监听：它是全局的，留着会指向已销毁的实例
+      this.clearCancelWatch()
     },
     methods: {
       formatSize (bytes) {
@@ -453,8 +487,8 @@
         this.tree = { groups: [] }
         this.treeReady = false
         this.collapsed = []
-        this.uploadingType = ''
-        this.batchRunning = false
+        this.resetPickState()
+        this.batchAborted = false
         this.justUploaded = {}
         this.recentIds = {}
         this.doneCount = 0
@@ -462,6 +496,11 @@
       },
 
       handleClose () {
+        // 上传中途关闭 = 主动中止：让 step 循环在当前的这一份传完后停下并复位，
+        // 否则弹窗关了、uploadingType 还挂着，下次打开会看到「幽灵上传中」。
+        if (this.batchRunning) {
+          this.batchAborted = true
+        }
         this.visible = false
         if (this.doneCount > 0) {
           this.$emit('ok')
@@ -497,7 +536,8 @@
         this.treeReady = false
         this.justUploaded = {}
         this.recentIds = {}
-        this.uploadingType = ''
+        // 材料类型清单要跟着换（宗地 4 类 / 配套 13 类），上传态一并复位
+        this.resetPickState()
         this.processLandId = undefined
         this.processFacilityId = undefined
         this.processLandOptions = []
@@ -670,30 +710,83 @@
       /**
        * 点某个类型的「选择文件 / 选择文件夹」：记下目标类型，唤起对应的选择器。
        * ★ 用户不需要选材料类型 —— 点哪个类型就归到哪个类型。
-       * ★ 取消选择也要复位：用户在系统文件框点「取消」时 change 不触发，
-       *   用 window 的 focus 兜底（文件框关闭后窗口重新获得焦点），
-       *   否则这个节点会一直停在「上传中」并把其它节点全禁用。
+       *
+       * ★ 打开选择器**不等于**开始上传（P0-04 的要害）：
+       *   这里只记 pendingType，uploadingType/batchRunning/percent 都不动。
+       *   真正进入上传态发生在 handleFilesPicked 拿到文件、校验通过、开始串行上传之后
+       *   （见 uploadBatch 开头）。这样用户点「取消」时界面本来就没被锁住。
        */
       pickFiles (mode, group) {
-        this.uploadingType = group.fileType
+        if (this.busy) return
+        this.pendingType = group.fileType
         this.errorMessage = ''
-        const typeCode = group.fileType
-        const resetOnCancel = () => {
-          window.removeEventListener('focus', resetOnCancel)
-          window.setTimeout(() => {
-            if (this.uploadingType === typeCode && !this.batchRunning) {
-              this.uploadingType = ''
+        const input = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
+        if (!input) {
+          this.resetPickState()
+          return
+        }
+        this.armPickerCancel(group.fileType)
+        this.$nextTick(() => {
+          // 每次唤起前清空 value：否则「取消后再选同一个文件/同一个文件夹」不会触发 change，
+          // 表现就是点了没反应（P0-04 的第二个症状）
+          input.value = ''
+          input.click()
+        })
+      },
+
+      /**
+       * 兜底监听「选择器被取消」。
+       *
+       * ★ 为什么需要兜底：原生 input 的 cancel 事件只有较新版本 Chromium 才派发，
+       *   老版本取消时**什么事件都没有**（change 不触发、focus 不一定有）。
+       *   所以两条腿都要有：模板上的 @cancel（精确）+ window focus（兜底）。
+       *   延时 400ms 是为了让 change 先到达 —— 正常选完文件时 change 会同步执行并
+       *   清掉 pendingType，这个定时器醒来就什么都不做。
+       */
+      armPickerCancel (typeCode) {
+        this.clearCancelWatch()
+        this._cancelFocusHandler = () => {
+          this._cancelTimer = window.setTimeout(() => {
+            if (!this.batchRunning && !this.uploadingType && this.pendingType === typeCode) {
+              this.resetPickState()
             }
           }, 400)
         }
-        window.addEventListener('focus', resetOnCancel)
-        this.$nextTick(() => {
-          const input = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
-          if (input) {
-            input.value = ''
-            input.click()
-          }
-        })
+        window.addEventListener('focus', this._cancelFocusHandler)
+      },
+
+      clearCancelWatch () {
+        if (this._cancelFocusHandler) {
+          window.removeEventListener('focus', this._cancelFocusHandler)
+          this._cancelFocusHandler = null
+        }
+        if (this._cancelTimer) {
+          window.clearTimeout(this._cancelTimer)
+          this._cancelTimer = null
+        }
+      },
+
+      /**
+       * 上传态的唯一复位入口。
+       *
+       * ★ 为什么必须收口成一个方法：正常完成 / 全部被校验拒绝 / 网络失败 /
+       *   主动中止 / 用户取消，这五条路径以前各写一遍赋值，漏一处就是
+       *   「某个类型的按钮一直灰着」这种要重启页面才能恢复的故障。
+       *   现在五处都调它，清 pendingType/uploadingType/batchRunning/percent 四件套。
+       */
+      resetPickState () {
+        this.clearCancelWatch()
+        this.pendingType = ''
+        this.uploadingType = ''
+        this.batchRunning = false
+        this.percent = 0
+      },
+
+      /** 原生 input 的 cancel 事件（选择器被取消）：有它就不必等 focus 兜底 */
+      handlePickerCancel () {
+        if (!this.batchRunning) {
+          this.resetPickState()
+        }
       },
 
       /** 原生 change：校验 → 串行上传（mode 用于区分是哪个输入触发的） */
@@ -701,13 +794,23 @@
         const fallback = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
         const input = event && event.target ? event.target : fallback
         const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
+        // 已经拿到（或明确没有）文件：focus 兜底不再需要
+        this.clearCancelWatch()
+        const typeCode = this.pendingType
         if (!selected.length) {
-          this.uploadingType = ''
+          // 取消选择（change 有时会以空 files 的形式到达）
+          this.resetPickState()
+          return
+        }
+        if (!typeCode) {
+          // 没有目标类型说明状态已错乱，宁可复位让用户重来，也不要传到一个猜的类型下
+          this.resetPickState()
+          this.errorMessage = '未能确定材料类型，请重新点击该类型下的上传按钮'
           return
         }
         if (selected.length > MAX_FILES) {
           this.errorMessage = `所选文件夹含 ${selected.length} 个文件，超过一次最多 ${MAX_FILES} 个的限制，请分批上传`
-          this.uploadingType = ''
+          this.resetPickState()
           return
         }
         const accepted = []
@@ -725,10 +828,11 @@
             (rejected.length > 5 ? ' 等' : '')
         }
         if (!accepted.length) {
-          this.uploadingType = ''
+          // 全部被校验拒绝：也走统一复位（错误提示保留，用户能看见原因）
+          this.resetPickState()
           return
         }
-        this.uploadBatch(accepted)
+        this.uploadBatch(accepted, typeCode)
       },
 
       validateFile (file) {
@@ -747,18 +851,36 @@
        * ★ 为什么串行：每份要跑两步（落盘 + 登记），并发会让进度与失败定位都不可解释。
        * ★ 为什么失败不中断：用户选的可能是一整个文件夹，因一个文件格式不对就丢弃其余，
        *   代价太大；失败的汇总在末尾提示。
+       * ★ 进入上传态的位置就在这里：文件已经拿到、校验已通过，才置 uploadingType/batchRunning。
+       *
+       * @param {File[]} files    通过校验的文件
+       * @param {string} typeCode 目标材料类型（点哪个类型就归哪个类型）
        */
-      uploadBatch (files) {
-        const typeCode = this.uploadingType
+      uploadBatch (files, typeCode) {
         const pending = files.slice()
+        const total = pending.length
         const failed = []
         let ok = 0
+        this.uploadingType = typeCode
         this.batchRunning = true
+        this.pendingType = ''
+        this.percent = 0
         const step = () => {
+          // 主动中止（用户在上传中途点了关闭）：已传成功的照常计数，余下的不再发请求
+          if (this.batchAborted) {
+            this.batchAborted = false
+            this.resetPickState()
+            this.doneCount += ok
+            if (ok > 0) {
+              this.$emit('ok')
+            }
+            this.loadTree(true)
+            return
+          }
           const file = pending.shift()
           if (!file) {
-            this.batchRunning = false
-            this.uploadingType = ''
+            // 正常完成（可能有部分失败）
+            this.resetPickState()
             this.doneCount += ok
             if (failed.length) {
               this.errorMessage = `成功 ${ok} 个，失败 ${failed.length} 个：` +
@@ -778,6 +900,8 @@
             } else {
               failed.push(file.name)
             }
+            // 进度按「已完成份数 / 本批总数」推进：上传接口没有字节级进度可给
+            this.percent = Math.round(((ok + failed.length) / total) * 100)
           }).then(step)
         }
         step()

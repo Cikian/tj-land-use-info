@@ -274,6 +274,19 @@
       dotColor (status) {
         return digitizeDotColor(status)
       },
+      /**
+       * 统一取错文案（清单 P0-06）。
+       *
+       * ★ 为什么必须优先取 `e.response.data.message`：
+       *   403 / 500 时 axios 的 `e.message` 只有 “Request failed with status code 403”，
+       *   用户看不出是「没权限」还是「档案已被别人关联」，等于是把责任推回给他；
+       *   而后端失败时返回的是 `Result.error(具体原因)`，那句话才是能指导下一步操作的信息。
+       *   顺序与提级论证等模块一致：后端 message → axios message → 兜底文案。
+       */
+      errorText (e, fallback) {
+        return (e && e.response && e.response.data && e.response.data.message) ||
+          (e && e.message) || fallback
+      },
       /** 由父组件调用：打开某条档案的详情 */
       open (record) {
         if (!record || !record.id) {
@@ -297,7 +310,7 @@
             this.$message.warning(res.message || '未找到对应的历史档案记录')
           }
         }).catch(e => {
-          this.$message.error((e && e.message) || '加载档案详情失败')
+          this.$message.error(this.errorText(e, '加载档案详情失败'))
         }).finally(() => {
           this.loading = false
         })
@@ -323,7 +336,7 @@
             this.$message.warning(res.message)
           }
         }).catch(e => {
-          this.$message.error((e && e.message) || '状态变更失败')
+          this.$message.error(this.errorText(e, '状态变更失败'))
         })
       },
       // ------------------------------------------------------------------
@@ -369,7 +382,7 @@
             this.$message.warning(res.message)
           }
         }).catch(e => {
-          this.$message.error((e && e.message) || '关联失败')
+          this.$message.error(this.errorText(e, '关联失败'))
         })
       },
       handleUnlink () {
@@ -385,7 +398,7 @@
             this.$message.warning(res.message)
           }
         }).catch(e => {
-          this.$message.error((e && e.message) || '取消关联失败')
+          this.$message.error(this.errorText(e, '取消关联失败'))
         })
       }
     }

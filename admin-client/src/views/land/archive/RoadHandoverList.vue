@@ -145,6 +145,7 @@
   import HandoverTable from './modules/HandoverTable'
   import HandoverModal from './modules/HandoverModal'
   import HandoverDetailModal from './modules/HandoverDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     HANDOVER_STATUS,
     changeHandoverStatus,
@@ -167,6 +168,14 @@
   export default {
     name: 'RoadHandoverList',
     components: { HandoverSearchForm, HandoverTable, HandoverModal, HandoverDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 本页隐性条件多：状态页签 statusTab、关联档案 archiveId、hasArchive、关键词，
+     * 且 created 会把 $route.query 原样灌进 query —— 缓存实例上这些都会留着。
+     * 带下钻参数（facilityId/archiveId/crzdbh/status…）进来时 mixin 只重查不清条件。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -535,6 +544,25 @@
         this.query = Object.assign({}, query || {})
         this.statusTab = this.query.status || 'all'
         this.pagination.current = 1
+        this.refresh()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件在子组件 HandoverSearchForm 里（含「配套项目」远程下拉的 facilityId/facilityLabel
+       * 与三个日期区间），交给它的 handleReset() 清；它 emit('search', {}) 会走本页 handleSearch
+       * —— 状态页签回「全部」、页码回 1、refresh() 重取列表 + 状态计数 + 指标卡。
+       * hasDeepLink / initialQuery 是「这一次进入时带了什么下钻」的记录，不动：
+       * 它们只影响子组件首次渲染时是否展开更多条件。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.statusTab = 'all'
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
         this.refresh()
       },
       handleTabChange (key) {

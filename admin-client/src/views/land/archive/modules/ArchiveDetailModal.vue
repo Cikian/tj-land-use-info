@@ -112,7 +112,14 @@
                   {{ record.readableSize || formatSize(text) }}
                 </template>
                 <template slot="status" slot-scope="text">
-                  <a-tag :color="text === '已归档' ? 'green' : 'orange'">{{ text || '已归档' }}</a-tag>
+                  <!--
+                    ★ 空值显示「—」而不是「已归档」（清单 P1-11）：
+                      状态只能来自数据。原来空值兜底成「已归档」，会把「状态列没写」
+                      显示成「已归档」，等于替数据下结论；而档案到底有没有归档完，
+                      恰恰是这个页面最不能猜的一件事。
+                  -->
+                  <a-tag v-if="text" :color="text === '已归档' ? 'green' : 'orange'">{{ text }}</a-tag>
+                  <span v-else class="archive-detail__muted">—</span>
                 </template>
                 <template slot="action" slot-scope="text, record">
                   <a v-has="'land:archive:download'" @click="downloadFile(record)">下载</a>
@@ -279,14 +286,27 @@
        * 关联口径与台账自己的反查一致：**配套项目ID 优先，退回出让宗地编号**。
        * 台账页（RoadAcceptanceLedger）会读 $route.query 作为初始条件、展开查询面板，
        * 所以用户一眼能看到「为什么只有这几条」。
+       *
+       * ★ 必须同时带 facilityLabel（可读名称，取详情的 ptxmmc）+ crzdbh（清单 P1-09 第 1 条）：
+       *   只带 facilityId 时台账检索表单手上没有名称，只能把一长串数字 ID 当项目名显示，
+       *   看起来就像乱码。facilityLabel 仅供回显，台账表单会把它从检索条件里剔除。
+       * ★ 两条关联链不得互换：`t_archive.facility_id` 是项目归属（这里用的就是它），
+       *   `t_completion_archive.archive_id` 是竣工历史档案指定的扫描件档案，与台账无关。
        */
       handleOpenLedger () {
         if (!this.detail) {
           return
         }
-        const params = this.detail.facilityId
-          ? { facilityId: this.detail.facilityId }
-          : { crzdbh: this.detail.crzdbh }
+        const params = {}
+        if (this.detail.facilityId) {
+          params.facilityId = this.detail.facilityId
+          if (this.detail.ptxmmc) {
+            params.facilityLabel = this.detail.ptxmmc
+          }
+        }
+        if (this.detail.crzdbh) {
+          params.crzdbh = this.detail.crzdbh
+        }
         if (!params.facilityId && !params.crzdbh) {
           this.$message.warning('该档案既没有关联配套项目、也没有出让宗地编号，无法定位台账')
           return
@@ -323,12 +343,38 @@
           this.loading = false
         })
       },
+      /**
+       * 重新拉一次「当前打开的这一份」档案（P1-15）。
+       * 编辑保存成功后由列表页调用：列表与详情必须同时刷新，
+       * 否则会出现「列表已是新状态、详情还是旧状态」。
+       * 不重开弹窗，避免把用户正在看的页签弹回「基本信息」。
+       */
+      refresh () {
+        if (!this.detail || !this.detail.id) {
+          return Promise.resolve()
+        }
+        const keepTab = this.activeTab
+        return queryArchiveById(this.detail.id).then(res => {
+          if (!res || !res.success || !res.result) {
+            return
+          }
+          this.detail = res.result
+          this.files = this.detail.files || []
+          this.activeTab = keepTab
+          this.loadRelated()
+          this.loadLogs()
+        })
+      },
       loadRelated () {
         if (!this.detail) {
           return Promise.resolve()
         }
         this.relatedLoading = true
+        // ★ P1-11 第 3 条：优先按 archiveId 精确加载「归档到本卷的公文」，
+        //   与「档案文件」页签同一个 ID，避免「档案文件 3 个、收发文情况 5 条」。
+        //   后端在按 id 一条都没匹配上时（历史数据没写 archive_id）会自动退化为按项目关联。
         return queryRelatedDocuments({
+          archiveId: this.detail.id || undefined,
           facilityId: this.detail.facilityId || undefined,
           landId: this.detail.landId || undefined,
           crzdbh: this.detail.crzdbh || undefined,

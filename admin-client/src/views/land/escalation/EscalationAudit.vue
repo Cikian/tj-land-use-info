@@ -77,7 +77,7 @@
               <a-descriptions-item label="项目编号">{{ current.projectNo }}</a-descriptions-item>
               <a-descriptions-item label="申报单位">{{ current.declareDept || '—' }}</a-descriptions-item>
               <a-descriptions-item label="项目类型">
-                {{ dictLabel(DICT.projectType, current.projectType, current.projectType_dictText) || '—' }}
+                {{ projectTypeText(current.projectType, current.projectType_dictText) || '—' }}
               </a-descriptions-item>
               <a-descriptions-item label="总投资（亿元）">{{ current.totalInvestment || '—' }}</a-descriptions-item>
               <a-descriptions-item label="申报时间">{{ current.declareDate || '—' }}</a-descriptions-item>
@@ -162,6 +162,7 @@
   import EscalationMaterialTable from './modules/EscalationMaterialTable'
   import EscalationRecordPanel from './modules/EscalationRecordPanel'
   import EscalationDetailModal from './modules/EscalationDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     DICT,
     STATUS_OPTIONS,
@@ -169,6 +170,8 @@
     argResultColor,
     dictText,
     loadAllDicts,
+    // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+    projectTypeText,
     queryProjectById,
     queryProjectList,
     queryRecordList,
@@ -190,6 +193,13 @@
   export default {
     name: 'EscalationAudit',
     components: { EscalationMaterialTable, EscalationRecordPanel, EscalationDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 左侧项目列表自带「关键词 + 办理状态」两个条件与自己的页码，且会记住选中的项目；
+     * 这些留在缓存实例里，回来时看到的是「某个项目的审核意见」而不是待办列表。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         DICT,
@@ -217,6 +227,8 @@
       argResultColor,
       actionColor,
       statusDotColor,
+      /** 项目类型三值口径（市级 / 区级 / 待确认），历史四类显示为「待确认」 */
+      projectTypeText,
       // ------------------------------------------------------------------
       // 左侧项目列表
       // ------------------------------------------------------------------
@@ -251,6 +263,21 @@
       },
       handleSearchProject () {
         this.pagination.current = 1
+        this.loadProjects()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 清「关键词 + 办理状态」与页码，并清掉选中的项目与它的意见记录：
+       * 项目列表回到完整的待办口径后，右栏若还停在上一轮选中的项目，
+       * 就是「列表里没有这一条、右侧却显示着」的自相矛盾画面（loadProjects 里也有一层同样的兜底）。
+       */
+      resetSearch () {
+        this.keyword = ''
+        this.filterStatus = undefined
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
+        this.current = null
+        this.records = []
         this.loadProjects()
       },
       handleStatusFilter () {

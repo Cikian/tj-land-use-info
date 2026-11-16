@@ -67,6 +67,7 @@
           <a-col :xs="24" :sm="12" :md="8" :lg="6">
             <a-form-item label="关联配套项目">
               <a-select
+                :value="query.facilityId"
                 show-search
                 allowClear
                 placeholder="输入道路/配套项目名称搜索"
@@ -74,6 +75,7 @@
                 :defaultActiveFirstOption="false"
                 :notFoundContent="facilityLoading ? '搜索中…' : '未找到配套项目'"
                 @search="handleFacilitySearch"
+                @focus="handleFacilityFocus"
                 @change="handleFacilityChange">
                 <a-select-option v-for="item in facilityOptions" :key="item.id" :value="item.id">
                   {{ item.ptxmmc }}
@@ -193,6 +195,9 @@
     },
     created () {
       this.loadXzqh()
+      // 打开即加载首批：原来只在输入关键词后才请求，一进来下拉是空的，
+      // 下钻只带 facilityId 时更会显示空白（清单 P1-09 / P1-10）
+      this.loadFacilityOptions('')
       loadDictItems(DICT.handoverType).then(items => { this.handoverTypes = items || [] })
       if (this.query.beginAgreementDate || this.query.endAgreementDate) {
         this.agreementRange = [this.query.beginAgreementDate, this.query.endAgreementDate]
@@ -217,6 +222,11 @@
           crzdbh: '',
           dkmc: '',
           facilityId: undefined,
+          /**
+           * 只为下拉回显用的可读名称（档案详情下钻时带进来），**不是**检索条件
+           * —— normalize 里会剔除。绝不用它顶替 facilityId，也绝不拿 id 当名称。
+           */
+          facilityLabel: undefined,
           receiveUnit: '',
           hasArchive: undefined,
           keyword: '',
@@ -247,19 +257,61 @@
         this.query.beginMaintenanceEnd = values && values.length === 2 ? values[0] : undefined
         this.query.endMaintenanceEnd = values && values.length === 2 ? values[1] : undefined
       },
-      handleFacilitySearch (keyword) {
-        if (!keyword) {
-          this.facilityOptions = []
-          return
+      /** 展开下拉时若还没有候选就补首批（不让用户先输关键词才看到可选项） */
+      handleFacilityFocus () {
+        if (!this.facilityOptions.length) {
+          this.loadFacilityOptions('')
         }
+      },
+      /**
+       * 配套项目远程搜索。
+       * ★ 关键词为空时加载**首批**而不是清空：清空会让当前已选项一起消失。
+       */
+      handleFacilitySearch (keyword) {
+        this.loadFacilityOptions(keyword)
+      },
+      /**
+       * 拉取配套项目候选（整体替换）。
+       *
+       * ★ `roadFirst: true`（清单 P1-10）：移交检索条件的首要对象是道路，
+       *   接口原来按固定顺序取前 50 条，首批里常常全是排水 / 供水 / 绿化。
+       *   该参数让后端把 ptsslb=道路 的排在前面；后端未上线时会被忽略
+       *   （Spring 忽略未知查询串参数），前端不必加开关。首批与关键词搜索共用本方法。
+       *
+       * @param {string} [keyword] 关键词；空 = 首批
+       */
+      loadFacilityOptions (keyword) {
         this.facilityLoading = true
-        searchFacilityOptions({ keyword, limit: 50 }).then(res => {
+        searchFacilityOptions({ keyword: keyword || undefined, limit: 50, roadFirst: true }).then(res => {
           this.facilityOptions = res && res.success ? (res.result || []) : []
+          // 当前已选项可能不在前 50 条里，补回去否则下拉显示空白、用户以为条件丢了
+          this.ensureCurrentFacilityOption()
         }).catch(() => {
           this.facilityOptions = []
+          this.ensureCurrentFacilityOption()
         }).finally(() => {
           this.facilityLoading = false
         })
+      },
+      /**
+       * 把当前条件里的配套项目补进候选。
+       * ★ label 顺序：facilityLabel（下钻带的可读名）→ crzdbh → 占位文案，
+       *   **绝不**退到 facilityId（长数字 ID 会被当成乱码，清单 P1-09 明令禁止）。
+       */
+      ensureCurrentFacilityOption () {
+        const id = this.query.facilityId
+        if (!id) {
+          return
+        }
+        if (this.facilityOptions.some(item => item.id === id)) {
+          return
+        }
+        const name = this.query.facilityLabel || this.query.crzdbh || '当前已选配套项目（名称待补）'
+        this.facilityOptions = [{
+          id,
+          ptxmmc: name,
+          crzdbh: this.query.crzdbh
+        }].concat(this.facilityOptions)
       },
       handleFacilityChange (facilityId) {
         this.query.facilityId = facilityId
@@ -267,6 +319,8 @@
         if (hit && !this.query.crzdbh) {
           this.query.crzdbh = hit.crzdbh
         }
+        // 换选项目后旧的展示名不再成立，改用新项目名，避免下拉显示上一项的名称
+        this.query.facilityLabel = hit ? (hit.ptxmmc || '') : undefined
       },
       handleSearch () {
         this.$emit('search', this.normalize(this.query))
@@ -276,6 +330,8 @@
         this.agreementRange = []
         this.handoverRange = []
         this.maintenanceRange = []
+        // 重置只清条件，候选回到首批（清空会让下拉变成「没有可选项」）
+        this.loadFacilityOptions('')
         this.$emit('search', this.normalize(this.query))
         this.$emit('reset')
       },
@@ -296,6 +352,8 @@
             result[key] = value
           }
         })
+        // facilityLabel 只是下拉回显用的名称，后端 HandoverQueryDTO 里没有这个字段
+        delete result.facilityLabel
         return result
       },
       getQuery () {

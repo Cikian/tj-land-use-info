@@ -67,7 +67,13 @@
       <a-spin :spinning="loading">
         <a-empty v-if="!dataSource.length" description="当前筛选条件下没有台账记录" />
         <a-row v-else :gutter="16">
-          <a-col v-for="item in dataSource" :key="item.id" :xs="24" :sm="12" :lg="8" :xl="6">
+          <a-col
+            v-for="item in dataSource"
+            :key="item.id"
+            :xs="24"
+            :sm="12"
+            :lg="8"
+            :xl="6">
             <div class="ledger-card" @click="openDetail(item)">
               <div class="ledger-card__head">
                 <span class="ledger-card__no">{{ item.projectNo }}</span>
@@ -118,7 +124,7 @@
       <h1 v-if="printMode === 'row' && printRow" class="print-title">提级论证项目台账（单项）</h1>
       <h1 v-else class="print-title">提级论证项目台账</h1>
       <div class="print-meta">
-        打印时间：{{ printTime }}　｜　记录数：{{ printMode === 'row' ? 1 : dataSource.length }} 条
+        打印时间：{{ printTime }} ｜ 记录数：{{ printMode === 'row' ? 1 : dataSource.length }} 条
       </div>
 
       <table v-if="printMode === 'row' && printRow" class="print-table">
@@ -150,6 +156,7 @@
   import EscalationSearchForm from './modules/EscalationSearchForm'
   import EscalationTable from './modules/EscalationTable'
   import EscalationDetailModal from './modules/EscalationDetailModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import {
     DICT,
     STATUS_OPTIONS,
@@ -158,6 +165,8 @@
     exportLedgerXls,
     loadAllDicts,
     opinionSummary,
+    // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+    projectTypeText,
     queryLedgerCountByStatus,
     queryLedgerList,
     statusColor
@@ -177,6 +186,13 @@
   export default {
     name: 'EscalationLedger',
     components: { EscalationSearchForm, EscalationTable, EscalationDetailModal },
+    /*
+     * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
+     * 本页状态页签 statusTab 与 created 从 $route.query 灌进来的条件都留在缓存实例里；
+     * 带下钻参数（argResult / status 等）进来时 mixin 只重查不清条件。
+     * 契约见 mixins/resetOnActivate.js。视图模式（表格 / 卡片）不是检索条件，保留。
+     */
+    mixins: [resetOnActivate],
     data () {
       return {
         loading: false,
@@ -321,6 +337,24 @@
         this.loadData()
         this.loadCounts()
       },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 条件在子组件 EscalationSearchForm 里，交给它的 handleReset() 清；
+       * 它 emit('search', {}) 走本页 handleSearch —— 状态页签回「全部」、页码回 1、
+       * 列表与「办理状态」页签计数一起重取（计数与列表同条件，不同步会自相矛盾）。
+       */
+      resetSearch () {
+        if (this.$refs.search && typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+          return
+        }
+        this.query = {}
+        this.statusTab = 'all'
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
+        this.loadData()
+        this.loadCounts()
+      },
       handleTabChange (key) {
         this.statusTab = key
         const base = this.$refs.search ? this.$refs.search.getQuery() : {}
@@ -400,7 +434,8 @@
           return field.key === 'status' ? '未办理' : '—'
         }
         if (field.key === 'projectType') {
-          return record.projectType_dictText || dictText(DICT.projectType, value) || value
+          // 三值口径：历史四类在打印件上也统一印「待确认」
+          return projectTypeText(value, record.projectType_dictText)
         }
         if (field.key === 'argResult') {
           return record.argResult_dictText || dictText(DICT.argResult, value) || value

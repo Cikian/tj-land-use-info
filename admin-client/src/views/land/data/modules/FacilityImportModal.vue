@@ -17,9 +17,16 @@
     <div class="facility-import-modal__block">
       <div class="facility-import-modal__row">
         <a-button icon="download" @click="handleDownloadTemplate">下载导入模板</a-button>
+        <!--
+          ★ 必填列表必须与后端 FacilityImportField.required() 逐字一致（crzdbh / ptxmmc / lxdh 三项）：
+            以前这里写的是「必填 5 列（含录入单位 / 录入人）」，用户以为不填就导不进去，
+            实际能导 —— 提示与校验不一致比没有提示更糟（清单 P1-04）。
+            口径与大屏配套导入弹窗、宗地导入弹窗保持同一句。
+        -->
         <span class="facility-import-modal__hint">
           模板第 1 行是<b>英文字段名</b>（程序按它认列）、第 2 行是中文说明、数据从<b>第 3 行</b>开始；
           第 2 个 sheet 是逐字段的「填表说明」。
+          必填 3 列：出让宗地编号、配套项目名称、联系电话；录入单位、录入人选填。
           <b>出让宗地编号必须与系统里的写法完全一致</b> —— 少一个「号」字、用了半角括号，
           都会在宗地校验这一步被判成「查不到该宗地」。
         </span>
@@ -264,10 +271,10 @@
   export default {
     name: 'FacilityImportModal',
     props: {
-      /** 打开时采用的默认重复处理策略（页面上的「导入选项」） */
+      /** 打开时采用的默认重复处理策略（页面上的「导入选项」）。默认 upsert，与后端一致 */
       defaultStrategy: {
         type: String,
-        default: 'reject'
+        default: 'upsert'
       },
       /** 打开时采用的默认孤儿口径（页面上的「导入选项」） */
       defaultAllowOrphan: {
@@ -288,7 +295,7 @@
         reporting: false,
         imported: false,
         skipErrorRows: false,
-        duplicateStrategy: 'reject',
+        duplicateStrategy: 'upsert',
         allowOrphan: false,
         strategies: DUPLICATE_STRATEGIES_FALLBACK,
         result: null,
@@ -386,7 +393,7 @@
         this.imported = false
         this.skipErrorRows = false
         // 每次打开都回到页面上的「导入选项」，避免上一次在弹窗里的临时改动影响这一次
-        this.duplicateStrategy = this.defaultStrategy || 'reject'
+        this.duplicateStrategy = this.defaultStrategy || 'upsert'
         this.allowOrphan = !!this.defaultAllowOrphan
         this.result = null
       },

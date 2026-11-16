@@ -219,6 +219,7 @@
     changeArchiveCategoryStatus
   } from '@/api/land/archiveCategory'
   import ArchiveCategoryModal from './modules/ArchiveCategoryModal'
+  import resetOnActivate from '../mixins/resetOnActivate'
 
   /**
    * 档案类别管理（方案 2.3.2 第 1 项）
@@ -230,15 +231,24 @@
   export default {
     name: 'ArchiveCategoryList',
     components: { ArchiveCategoryModal },
+    /*
+     * 普通离开再进入时清关键条件、重查（清单 P2-01）。
+     * 本页的「关键字 + 状态筛选」会把类别树剪成一小撮，留在缓存里回来就以为类别只剩这些；
+     * 选中的类别同时要清（否则右栏还显示着已经不在树上的节点）。
+     * 契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
+      // 初始筛选条件只在这里定义一次，复位（resetSearch）复用它，避免两处硬编码漂移
+      const filter = this.buildEmptyFilter()
       return {
         loading: false,
         sorting: false,
         statusLoading: false,
-        keyword: '',
+        keyword: filter.keyword,
         keywordTimer: null,
         /** 'all' 表示不过滤 */
-        statusFilter: 'all',
+        statusFilter: filter.statusFilter,
         /** 后端返回的原始类别树（保留全部字段） */
         rawTreeData: [],
         /** id -> 类别记录（含 children），用于快速定位 */
@@ -386,6 +396,29 @@
       // ------------------------------------------------------------------
       // 数据加载
       // ------------------------------------------------------------------
+      /** 关键条件的初始值（data() 与「重新进入复位」共用一份，避免两处硬编码） */
+      buildEmptyFilter () {
+        return { keyword: '', statusFilter: 'all' }
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 清关键字与状态筛选、清选中项（右栏详情跟着回到空态），再按「无条件」重新拉树。
+       *
+       * ★ 为什么用 $nextTick 包一层再查：keyword 上挂着 300ms 防抖的 watch，
+       *   直接改值会在下一个 tick 挂上定时器，紧接着我们立即查一次 → 300ms 后又查一次（两次请求）。
+       *   等 watch 挂上定时器之后再调 handleSearch（它会 clearTimeout 并立即查），全程只发一次。
+       * ★ 展开态 expandedKeys 不清：它属于浏览习惯（缓存本来就该保留），
+       *   且 syncExpandedKeys() 会把已经不存在的节点自动摘掉。
+       */
+      resetSearch () {
+        const filter = this.buildEmptyFilter()
+        this.keyword = filter.keyword
+        this.statusFilter = filter.statusFilter
+        this.selectedKeys = []
+        this.selected = null
+        this.$nextTick(this.handleSearch)
+      },
       /** 手动触发搜索（回车/点按钮）：取消待执行的防抖，立即查询 */
       handleSearch () {
         if (this.keywordTimer) {

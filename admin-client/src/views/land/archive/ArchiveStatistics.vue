@@ -178,6 +178,7 @@
 
 <script>
   import { queryArchiveStat, exportArchiveZip } from '@/api/land/archive'
+  import resetOnActivate from '../mixins/resetOnActivate'
   import { queryXzqhOptions } from '@/api/land/landData'
 
   /**
@@ -193,6 +194,12 @@
    */
   export default {
     name: 'ArchiveStatistics',
+    /*
+     * 普通离开再进入时清条件、重查（清单 P2-01）。
+     * 本页没有分页（统计是全量口径），但「档案年度 / 行政区划 / 责任部门」三个筛选同样会被缓存，
+     * 回来时图上只剩一小块数据而看不出是被筛过的。契约见 mixins/resetOnActivate.js。
+     */
+    mixins: [resetOnActivate],
     data () {
       const now = new Date().getFullYear()
       const years = []
@@ -320,6 +327,15 @@
       handleResetFilter () {
         this.query = {}
         this.loadStat()
+      },
+      /**
+       * keep-alive 重新进入时的复位入口（由 mixins/resetOnActivate.js 调用）。
+       *
+       * 复用「清除筛选」：三个筛选项（archiveYear / xzqh / responsibleDept）回空 + 重新统计。
+       * 本页没有分页对象，所以没有页码要复位。
+       */
+      resetSearch () {
+        this.handleResetFilter()
       },
       handleExport () {
         exportArchiveZip(this.query)

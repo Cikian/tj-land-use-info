@@ -210,7 +210,10 @@
           lckssj: null,
           yjjssj: null,
           lcjssj: null,
-          czwtlx: undefined,
+          // ★ 不能用 undefined（清单 P2-03）：JSON.stringify 会把值为 undefined 的键整个丢掉，
+          //   后端按「缺字段 = 不改」处理，于是「把问题类型清空」在管理端永远清不掉。
+          //   空串会让后端走「显式写 NULL」分支，与备注等字段一致。
+          czwtlx: '',
           jtwt: '',
           gzjy: '',
           lrdw: '',
@@ -239,7 +242,7 @@
           lckssj: item.lckssj || null,
           yjjssj: item.yjjssj || null,
           lcjssj: item.lcjssj || null,
-          czwtlx: item.czwtlx || undefined,
+          czwtlx: item.czwtlx || '',
           jtwt: item.jtwt || '',
           gzjy: item.gzjy || '',
           lrdw: item.lrdw || '',

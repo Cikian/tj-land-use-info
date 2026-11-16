@@ -145,9 +145,16 @@
         const task = this.docType === 'send' ? archiveDocSend(payload) : archiveDocReceive(payload)
         task.then(res => {
           if (res.success) {
-            this.$message.success('归档成功，已生成档案' + (res.result ? `（ID：${res.result}）` : ''))
+            /*
+             * 后端现在返回的是归档结果对象（archiveId + 档案号 + 三段计数），
+             * 不再是单个 ID 字符串：把「原附件数 → 转换数 → 落库行数」直接说给用户看，
+             * 归档后看不到文件时就能一眼判断是「本来没附件」还是「哪一段丢了」。
+             */
+            const data = res.result || {}
+            const verify = data.verifyText ? `；${data.verifyText}` : ''
+            this.$message.success(`归档成功，已归入档案 ${data.archiveNo || data.archiveId || ''}${verify}`)
             this.visible = false
-            this.$emit('ok', res.result)
+            this.$emit('ok', data)
           } else {
             this.$message.warning(res.message)
           }

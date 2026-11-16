@@ -25,9 +25,9 @@
       </div>
     </template>
 
-    <!-- 项目类型（字典文本，后端给了 _dictText 优先用） -->
+    <!-- 项目类型（三值口径：市级 / 区级 / 待确认；历史四类一律显示「待确认」） -->
     <template slot="projectType" slot-scope="text, record">
-      {{ dictLabel(DICT.projectType, text, record.projectType_dictText) || '—' }}
+      {{ projectTypeText(text, record.projectType_dictText) || '—' }}
     </template>
 
     <!-- 总投资（亿元） -->
@@ -102,7 +102,9 @@
     statusColor,
     argResultColor,
     dictText,
-    opinionSummary
+    opinionSummary,
+    // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
+    projectTypeText
   } from '@/api/land/escalation'
 
   /**
@@ -195,6 +197,8 @@
     methods: {
       statusColor,
       argResultColor,
+      /** 项目类型三值口径（市级 / 区级 / 待确认），模板的 projectType 插槽直接调它 */
+      projectTypeText,
       handleTableChange (pagination) {
         this.$emit('change', pagination)
       },

@@ -55,12 +55,46 @@ export const archiveUrl = {
   filePreviewInfo: '/land/archive/file/previewInfo',
   fileDownload: '/land/archive/file/download',
   fileDelete: '/land/archive/file/delete',
-  relatedDocuments: '/land/archive/relatedDocuments'
+  relatedDocuments: '/land/archive/relatedDocuments',
+  /**
+   * P2-07 按「项目」聚合分页（树形第一层：项目 → 案卷 → 材料类别 → 文件）。
+   * 与大屏端 stargis-client-web/src/api/land/archive.js 同名同参，两端共用一套契约。
+   */
+  projectPage: '/land/archive/projectPage',
+  /** 某个项目下的全部案卷（含各自卷内文件）；projectKey 由 /projectPage 原样回传 */
+  projectCaseFiles: '/land/archive/projectCaseFiles'
 }
 
 /** 档案分页列表（档案维护 / 档案查询共用） */
 export function queryArchiveList (params) {
   return getAction(archiveUrl.list, params)
+}
+
+/**
+ * 按「项目」分页聚合（P2-07 项目视图）。
+ *
+ * ★ 分页口径 = 项目：一页 N 个项目，不是一页 N 个案卷。
+ *   按案卷分页会把同一个项目切到相邻两页，反而更难看清「这个项目都有什么」。
+ *   后端 /projectPage 返回的是 {@code org.jeecg.modules.land.archive.vo.ArchiveProjectVO}
+ *   （projectKey / ptxmmc / crzdbh / dkmc / xzqh / archiveCount / archivedCount /
+ *    fileCount / totalSize / categoryNames / categoryCount），字段名以 VO 为准，
+ *   不要照大屏端的旧注释猜。
+ *
+ * @param {object} params 与列表完全相同的筛选条件（ArchiveSearchForm 的输出）
+ * @param {{pageNo?: number, pageSize?: number}} page 页码与每页项目数
+ */
+export function queryArchiveProjectPage (params, page) {
+  return getAction(archiveUrl.projectPage, Object.assign({}, params || {}, page || {}))
+}
+
+/**
+ * 某个项目下的全部案卷（树形第二层，卷内文件已随案卷一并返回）。
+ *
+ * projectKey 由 /projectPage 原样回传，前端**不解析**它的结构
+ * （后端是 COALESCE(facility_id, ptxmmc|crzdbh) 拼出来的，改口径只改后端一处）。
+ */
+export function queryArchiveProjectCaseFiles (params, projectKey) {
+  return getAction(archiveUrl.projectCaseFiles, Object.assign({}, params || {}, { projectKey }))
 }
 
 /** 档案详情（含卷内文件） */
@@ -167,6 +201,8 @@ export default {
   archiveUrl,
   buildDownloadUrl,
   queryArchiveList,
+  queryArchiveProjectPage,
+  queryArchiveProjectCaseFiles,
   queryArchiveById,
   addArchive,
   editArchive,
