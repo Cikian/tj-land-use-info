@@ -119,6 +119,18 @@
           <div class="policy-tables" :title="policyTables">{{ policyTables }}</div>
           <a-radio-group v-model="policy" class="policy-options">
             <div class="engine-option">
+              <a-radio value="append">追加到现有表<span class="engine-desc">（目标表已有数据不动，只新增本次 SHP 的行——适合往一张表里补几条小地块）</span></a-radio>
+              <div v-if="policy === 'append'" class="policy-note">
+                <a-select
+                  v-model="appendTarget"
+                  style="width: 100%"
+                  placeholder="请选择要追加的目标表"
+                  :options="appendTargetOptions"
+                />
+                <div class="policy-note">追加字段按两表同名列对齐：对得上的进库，目标表独有列留空；几何自动转到目标表的坐标系和维度</div>
+              </div>
+            </div>
+            <div class="engine-option">
               <a-radio value="connect">连接导入<span class="engine-desc">（保留现有库和其它表，仅同名表将被覆盖）</span></a-radio>
             </div>
             <div class="engine-option">
@@ -135,7 +147,7 @@
     <div v-else class="success-panel">
       <a-icon type="check-circle" theme="filled" class="success-icon" />
       <div class="success-title">导入成功</div>
-      <div class="success-summary">{{ successInfo.dbName }}.{{ successInfo.tableName }} · 共 {{ successInfo.rowCountText }} 行</div>
+      <div class="success-summary">{{ successInfo.dbName }}.{{ successInfo.tableName }} · {{ successInfo.appendText }} {{ successInfo.rowCountText }} 行</div>
       <div class="success-sub">引擎 {{ successInfo.engine }} · 耗时 {{ successInfo.elapsedText }}</div>
       <div class="success-hint">新库已加入「数据库」下拉列表，关闭后可点击「刷新发现」立即看到新表</div>
     </div>
@@ -181,10 +193,12 @@ export default {
       prechecking: false,
       precheckInfo: null,
       policy: 'connect',
+      /** 追加模式的目标表（precheck.tables 里的纯表名，不含 schema 前缀） */
+      appendTarget: '',
       submitting: false,
       resultMsg: '',
       resultOk: false,
-      successInfo: { dbName: '', tableName: '', rowCountText: '0', engine: '', elapsedText: '' },
+      successInfo: { dbName: '', tableName: '', rowCountText: '0', engine: '', elapsedText: '', appendText: '共' },
       countdown: 3,
       countdownTimer: null
     }
@@ -200,6 +214,23 @@ export default {
     },
     allowOverwrite () {
       return !!(this.precheckInfo && this.precheckInfo.ownImported)
+    },
+    /** 是否追加模式（决定提交的表名来源与 existingPolicy） */
+    isAppend () {
+      return this.pgExists && this.policy === 'append'
+    },
+    /**
+     * 追加目标表下拉选项。precheck.tables 是 "schema.表名" 全名 ——
+     * 本系统所有表都在 public schema，取 "." 后面的纯表名做值（后端校验与
+     * 落库口径一致），全名做展示标签（一眼分清 schema）。
+     */
+    appendTargetOptions () {
+      const tables = (this.precheckInfo && this.precheckInfo.tables) || []
+      return tables.map((fullName) => {
+        const idx = fullName.indexOf('.')
+        const name = idx > -1 ? fullName.slice(idx + 1) : fullName
+        return { value: name, label: fullName }
+      })
     },
     policyTables () {
       const tables = (this.precheckInfo && this.precheckInfo.tables) || []
@@ -219,7 +250,8 @@ export default {
       this.phase = 'form'
       this.precheckInfo = null
       this.policy = 'connect'
-      this.successInfo = { dbName: '', tableName: '', rowCountText: '0', engine: '', elapsedText: '' }
+      this.appendTarget = ''
+      this.successInfo = { dbName: '', tableName: '', rowCountText: '0', engine: '', elapsedText: '', appendText: '共' }
       this.visible = true
     },
     close () {
@@ -240,17 +272,22 @@ export default {
     handleRemove () {
       this.fileList = []
     },
-    /** 连接信息一旦修改，预检结果（含覆盖/连接选择）作废——旧结论对新凭据不成立 */
+    /** 连接信息一旦修改，预检结果（含覆盖/连接/追加选择与目标表）作废——旧结论对新凭据不成立 */
     resetPrecheck () {
       if (this.precheckInfo) {
         this.precheckInfo = null
         this.policy = 'connect'
+        this.appendTarget = ''
         this.resultMsg = ''
       }
     },
     handleSubmit () {
       this.form.validateFields((err, values) => {
         if (err) return
+        if (this.isAppend && !this.appendTarget) {
+          this.$message.warning('请先选择要追加的目标表')
+          return
+        }
         if (!this.precheckInfo) {
           this.runPrecheck(values)
           return
@@ -284,7 +321,8 @@ export default {
         this.prechecking = false
       }
     },
-    /** 第二步：真正导入。库已存在时带上用户选的策略（connect / overwrite） */
+    /** 第二步：真正导入。库已存在时带上用户选的策略（append / connect / overwrite）；
+     *  追加模式下目标表以选中的下拉项为准（表单里的表名输入不参与追加） */
     async doImport (values) {
       const fd = new FormData()
       fd.append('file', this.fileList[0])
@@ -293,10 +331,15 @@ export default {
       fd.append('pgUser', values.pgUser)
       fd.append('pgPassword', values.pgPassword)
       fd.append('dbName', values.dbName)
-      if (values.tableName) fd.append('tableName', values.tableName)
-      fd.append('srid', values.srid || 0)
-      if (values.importEngine) fd.append('importEngine', values.importEngine)
-      if (this.pgExists) fd.append('existingPolicy', this.policy)
+      if (this.isAppend) {
+        fd.append('tableName', this.appendTarget)
+        fd.append('existingPolicy', 'append')
+      } else {
+        if (values.tableName) fd.append('tableName', values.tableName)
+        fd.append('srid', values.srid || 0)
+        if (values.importEngine) fd.append('importEngine', values.importEngine)
+        if (this.pgExists) fd.append('existingPolicy', this.policy)
+      }
 
       this.submitting = true
       this.resultMsg = ''
@@ -305,12 +348,15 @@ export default {
         if (res.success) {
           const r = res.result || {}
           this.resultOk = true
+          // 追加模式 rowCount 语义 = 本次新增的行数（不是表总行数），面板文案相应区分
+          const wasAppend = this.isAppend
           this.successInfo = {
             dbName: r.dbName || values.dbName,
             tableName: r.tableName || '-',
             rowCountText: Number(r.rowCount || 0).toLocaleString(),
             engine: r.engine || '-',
-            elapsedText: (Number(r.elapsedMs || 0) / 1000).toFixed(1) + ' 秒'
+            elapsedText: (Number(r.elapsedMs || 0) / 1000).toFixed(1) + ' 秒',
+            appendText: wasAppend ? '追加' : '共'
           }
           this.phase = 'success'
           this.startCountdown()

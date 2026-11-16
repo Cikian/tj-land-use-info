@@ -57,4 +57,35 @@ export function countVertices (geojsonString) {
   return parsePolygons(geojsonString).reduce((total, ring) => total + ring.length - 1, 0)
 }
 
-export default { parsePolygons, countVertices }
+/**
+ * 计算图形的经纬度范围（定位飞行用）。
+ *
+ * @param {string} geojsonString 裸 Polygon / MultiPolygon geometry 字符串
+ * @returns {Array|null} [minLon, minLat, maxLon, maxLat]；
+ *   空图形、无有效坐标或范围超出经纬度合理区间（SRID 声明与实际不符时
+ *   坐标可能飞出地球）返回 null —— 调用方据此提示「无法定位」
+ */
+export function polygonBounds (geojsonString) {
+  const rings = parsePolygons(geojsonString)
+  if (!rings.length) return null
+  let minLon = Infinity
+  let minLat = Infinity
+  let maxLon = -Infinity
+  let maxLat = -Infinity
+  rings.forEach((ring) => {
+    ring.forEach((c) => {
+      const lon = Number(c[0])
+      const lat = Number(c[1])
+      if (!isFinite(lon) || !isFinite(lat)) return
+      if (lon < minLon) minLon = lon
+      if (lat < minLat) minLat = lat
+      if (lon > maxLon) maxLon = lon
+      if (lat > maxLat) maxLat = lat
+    })
+  })
+  if (minLon === Infinity) return null
+  if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90) return null
+  return [minLon, minLat, maxLon, maxLat]
+}
+
+export default { parsePolygons, countVertices, polygonBounds }

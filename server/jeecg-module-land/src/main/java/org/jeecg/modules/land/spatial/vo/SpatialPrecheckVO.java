@@ -31,4 +31,7 @@ public class SpatialPrecheckVO {
 
     @ApiModelProperty("库内用户表（schema.表名，排除系统 schema）；库不存在时为空")
     private List<String> tables;
+
+    @ApiModelProperty("当前账号对本库是否有写权限（大屏图形编辑要往切片源库写几何，录入前就暴露只读账号）")
+    private boolean writable;
 }

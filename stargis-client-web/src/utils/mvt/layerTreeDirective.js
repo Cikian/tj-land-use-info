@@ -3,6 +3,16 @@ import { createMvtImageryProvider, createMvtStyleAssigner } from './imageryProvi
 const managers = new WeakMap()
 const bindings = new WeakMap()
 
+/**
+ * 跨实例会话勾选意图（nodeId 字符串 → true/false）。
+ * ★ 三个图层树弹层实例（首页页签 / 地图管理「图层管理」/ 壳层隐藏实例）
+ *   各自拉树、各自持有 checkedKeys，互相不知晓；但 scene viewer 是共享的
+ *   （显隐立即生效）。服务端 getSceneAndTree 返回配置态，不包含运行时勾改，
+ *   导致「首页关掉的图层进地图管理又显示成勾上」。按 nodeId 记录最后一次
+ *   用户勾选意图，新实例水合时纠正勾选框，实现三树联动（见 connect/sync）。
+ */
+const sessionChecked = new Map()
+
 function properties(node) {
   let value = node.customproperty || node.customProperty || {}
   // 中台历史数据可能被重复 JSON 编码，兼容两层即可。
@@ -120,7 +130,18 @@ function managerFor(viewer) {
     fly(provider) {
       const rectangle = provider.rectangle
       if (rectangle.east - rectangle.west >= Math.PI) throw new Error('MVT 服务未配置定位范围，请补充 bounds')
-      viewer.camera.flyTo({ destination: rectangle, duration: 0.8 })
+      // ★ setView 定位（flyTo 在 S3DM 定制版里会被残留 lookAtTransform 取消，实测失效）
+      const C = window.Cesium
+      if (viewer.camera.lookAtTransform) viewer.camera.lookAtTransform(C.Matrix4.IDENTITY)
+      const lon = (rectangle.west + rectangle.east) / 2 * 180 / Math.PI
+      const lat = (rectangle.south + rectangle.north) / 2 * 180 / Math.PI
+      const w = (rectangle.east - rectangle.west) * 180 / Math.PI
+      const h = (rectangle.north - rectangle.south) * 180 / Math.PI
+      const spanM = Math.max(w, h) * 111320 * 1.6
+      viewer.camera.setView({
+        destination: C.Cartesian3.fromDegrees(lon, lat, Math.max(spanM, 600)),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 }
+      })
     },
     dispose() { disposed = true; entries.forEach(remove); entries.clear() }
   }
@@ -131,6 +152,16 @@ function managerFor(viewer) {
 export function disposeMvtLayers(viewer) {
   const manager = viewer && managers.get(viewer)
   if (manager) { manager.dispose(); managers.delete(viewer) }
+}
+
+/**
+ * 取某 viewer 上当前勾选生效（已渲染）的 MVT 资源 id 集合。
+ * 跨页联动勾选（数据管理隐藏图层树）合并 keys 时用：sync 是全量替换语义，
+ * 不并进这些 id 的话，一次联动勾选会把其它入口（地图管理图层树）勾的层整批撤下。
+ */
+export function renderedMvtIds(viewer) {
+  const manager = viewer && managers.get(viewer)
+  return manager ? manager.selectedIds() : new Set()
 }
 
 function connect(el, binding, vnode) {
@@ -160,6 +191,23 @@ function connect(el, binding, vnode) {
   // 原树的双击会调用 goToLayer；仅补上 MVT 分支，其它服务继续走原方法。
   vm.goToLayer = goToLayer
   let hydrated = false
+  // ★ 跨实例联动：三个弹层实例（首页 / 地图管理 / 壳层隐藏）各自拉树、各自持有
+  //   checkedKeys，互相不知晓；但 scene viewer 是共享的（显隐立即生效）。
+  //   服务端 getSceneAndTree 返回的是**配置态**，不包含其它实例的运行时勾改，
+  //   于是在首页关掉的图层进地图管理后又显示成勾上（用户看到的「不联动」）。
+  //   这里按 nodeId 记录「最后一次用户勾选意图」，新实例水合时按它纠正勾选框。
+  let lastSeen = null
+  function recordSession () {
+    const current = vm.checkedKeys || []
+    const keys = (Array.isArray(current) ? current : current.checked || []).map(String)
+    if (!lastSeen) {
+      lastSeen = new Set(keys)
+      return
+    }
+    keys.forEach(k => { if (!lastSeen.has(k)) sessionChecked.set(k, true) })
+    lastSeen.forEach(k => { if (keys.indexOf(k) < 0) sessionChecked.set(k, false) })
+    lastSeen = new Set(keys)
+  }
   function sync() {
     const viewer = window.viewer
     if (!viewer || viewer.isDestroyed() || !vm.treeData) return false
@@ -177,14 +225,26 @@ function connect(el, binding, vnode) {
         })
       }
       walk(vm.treeData)
-      if (restored.length) {
-        const current = vm.checkedKeys || []
-        const keys = Array.isArray(current) ? current : current.checked || []
-        const merged = Array.from(new Set(keys.concat(restored)))
-        vm.checkedKeys = Array.isArray(current) ? merged : { ...current, checked: merged }
+      // ① 会话勾选意图优先：服务端配置态被本会话内其它实例的勾改覆盖
+      const current = vm.checkedKeys || []
+      const keys = Array.isArray(current) ? current : current.checked || []
+      const keySet = new Set(keys.map(String))
+      const walkSession = nodes => {
+        nodes.forEach(node => {
+          const want = sessionChecked.get(String(node.id))
+          if (want === true) keySet.add(String(node.id))
+          else if (want === false) keySet.delete(String(node.id))
+          if (node.children) walkSession(node.children)
+        })
       }
+      walkSession(vm.treeData)
+      // ② 已渲染 MVT 层必须勾上（跨页常驻渲染的恢复，仅加不减）
+      restored.forEach(id => keySet.add(String(id)))
+      const merged = Array.from(keySet)
+      vm.checkedKeys = Array.isArray(current) ? merged : { ...current, checked: merged }
     }
     manager.sync(mvtSelections(vm.treeData, vm.checkedKeys || []), notify)
+    recordSession()
     return true
   }
   const unwatch = [vm.$watch('treeData', sync, { deep: true }), vm.$watch('checkedKeys', sync, { deep: true })]

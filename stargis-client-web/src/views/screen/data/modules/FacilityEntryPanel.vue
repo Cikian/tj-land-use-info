@@ -219,29 +219,25 @@ import ProcessTreePanel from './ProcessTreePanel.vue'
 import {
   queryFacilityAdminPage,
   queryFacilityByLand,
-  queryFacilityGeoList,
   queryFacilityGeoDetail,
   deleteFacilityAdmin,
   deleteFacilityAdminBatch
 } from '@/api/land/facilityAdmin'
 import { queryLandOptions } from '@/api/land/landData'
-// 配套地块几何图层：进菜单把全部已画图配套面铺到地图上，列表双击定位 + 高亮
-import { createGeoLayer } from '@/views/screen/landGeoLayer'
+// 配套地块几何图层：双击列表定位时按需渲染该条图形 + 高亮（进菜单不再自动铺图）
 import FacilityGeoImportModal from './FacilityGeoImportModal'
 import { defaultPagination, compactQuery } from '../constants'
+// 移除记录后联动清切片库图形（fire-and-forget，失败只提示不阻断）
+import { purgeFeatureGroups } from '../sliceInfo'
 
 /*
  * 列表高度（**设计画布像素**）现在与 LandEntryPanel 共用 panelLayout 的
  * data.bottom：默认 360、下限 200、上限 936（口径见 panelLayout.js 的注释）。
  */
 
-/**
- * 概览数据本地缓存（模块级）——与 LandEntryPanel 同一套「两级加载 + 版本化增量」：
- * 概览档后端预计算（dk_geojson_overview，每环 ≤40 点）；接口传上次 version，
- * 图形没变只回 { unchanged:true }，面板从缓存直接铺图（零数据传输）；
- * 变了才全量刷新并换版本。双击定位时按 id 拉 /geoDetail 替换概览轮廓。
- */
-const facilityGeoCache = { version: '', lands: null }
+/* ★ 2026-11-14 起进入菜单不再自动铺配套图层（与 LandEntryPanel 同口径：地图保持干净）——
+ *   双击列表行定位到 MVT 切图层上的该配套（见 handleLocate）；
+ *   「导入配套地块图形」仍可用。概览缓存随之移除。 */
 
 export default {
   name: 'FacilityEntryPanel',
@@ -288,9 +284,7 @@ export default {
       removeVisible: false,
       removing: false,
       removeReason: '',
-      removeTargets: [],
-      /** 当前定位目标（连点保护） */
-      locateTargetId: ''
+      removeTargets: []
     }
   },
   computed: {
@@ -327,25 +321,10 @@ export default {
     }
   },
   created () {
-    // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
-    this.geoLayer = createGeoLayer('facility')
     this.loadLandOptions('')
     this.loadData()
   },
-  activated () {
-    /*
-     * keep-alive 的激活钩子（首次挂载也会触发一次）：
-     * 每次进「配套地块数据录入」菜单都重铺配套几何图层，
-     * 切走页签时由 deactivated 清掉（与宗地图层互不残留）。
-     * 普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
-     */
-    this.loadGeoLayer(false)
-  },
-  deactivated () {
-    this.geoLayer.clearAll()
-  },
   beforeDestroy () {
-    this.geoLayer.clearAll()
     if (this.landSearchTimer) {
       clearTimeout(this.landSearchTimer)
       this.landSearchTimer = null
@@ -512,45 +491,18 @@ export default {
 
     handleSaved () {
       this.loadData()
-      // 新增/编辑可能刚画了图形（或改了编号），几何图层同步重铺
-      this.loadGeoLayer(true)
     },
 
     /**
-     * 加载配套地块几何图层（全部已画图配套的面）。
-     * 只取轻量列（id/编号/名称/GeoJSON），失败静默 —— 图层是辅助视图，
-     * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
-     */
-    loadGeoLayer (forceRefresh) {
-      // 与宗地图层一致：写操作后的刷新不依赖同秒时间戳是否变化。
-      if (forceRefresh) {
-        facilityGeoCache.version = ''
-        facilityGeoCache.lands = null
-      }
-      // 版本化增量：图形没变（unchanged）时直接用本地缓存铺图（零数据传输）；
-      // 变了才拉全量概览并更新缓存。概览档后端预计算（40 点/环）。
-      queryFacilityGeoList(facilityGeoCache.version, forceRefresh === true)
-        .then((res) => {
-          if (!res || !res.success) return
-          const data = res.result || {}
-          if (data.unchanged && facilityGeoCache.lands) {
-            this.geoLayer.renderAll(facilityGeoCache.lands, false)
-            return
-          }
-          facilityGeoCache.version = data.version || ''
-          facilityGeoCache.lands = data.lands || []
-          this.geoLayer.renderAll(facilityGeoCache.lands, false)
-        })
-        .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
-    },
-
-    /**
-     * 列表**双击**某条：地图定位 + 高亮。
-     * ★ 只有画过图形的配套能定位 —— 没画过图的行不在图层里，
-     *   明确告诉用户为什么没反应，而不是让他以为点了没生效。
+     * 列表**双击**某条：**定位到 MVT 切图层上的该配套**。
+     *
+     * ★ 2026-11-14 起定位走「唯一值 → 切片源表查范围 → 相机飞行」——
+     *   不再依赖 dk_geojson（GeoJSON 字段即将废弃）。实际查询与飞行由
+     *   父组件（data/index.vue）统一处理，本面板只上报记录。
      */
     handleLocate (record) {
       if (!record || !record.id) return
+      this.$emit('locate-record', record)
       if (!this.geoLayer.has(record.id)) {
         // 称谓按该行记录的配套设施类别走（测试清单 P2-06）：含「道路」→ 配套道路，
         // 其余类别（排水 / 供水 / 燃气 / 路灯 / 绿化 …）→ 中性的配套设施范围。
@@ -584,10 +536,9 @@ export default {
       this.$refs.geoImportModal.open()
     },
 
-    /** GeoJSON 图形导入完成：刷新列表，并重铺几何图层（新图形立即可见、可定位） */
+    /** GeoJSON 图形导入完成：刷新列表。★ 图层不再自动重铺（双击定位时才按需渲染）。 */
     handleGeoImported () {
       this.loadData()
-      this.loadGeoLayer(true)
     },
 
     handleDetail (record) {
@@ -694,17 +645,17 @@ export default {
             )
             // 有失败时**不关弹窗**：用户的重试动作就在眼前，关掉会让他重新找入口
             this.loadData()
-            this.loadGeoLayer(true)
             return
           }
           toast.success(res.message || '已移除，可在「数据更新与移除」中恢复')
+          // 联动清掉切片库里这些项目名下的图形（fire-and-forget；失败只提示，
+          // 业务记录已软删成功，不能因图形清理失败而阻断列表刷新）
+          purgeFeatureGroups('facility', targets, toast)
           this.selectedRowKeys = this.selectedRowKeys.filter(
             (key) => !targets.some((row) => row.id === key)
           )
           this.closeRemove()
           this.loadData()
-          // 被移除的配套要从地图图层上撤下来，重铺即同步
-          this.loadGeoLayer(true)
         })
         .catch(() => {
           // 请求层已提示

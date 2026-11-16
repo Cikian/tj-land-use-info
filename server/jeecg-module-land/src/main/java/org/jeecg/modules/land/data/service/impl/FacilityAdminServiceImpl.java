@@ -84,6 +84,42 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
     private static final int MAX_PAGE_SIZE = 500;
     private static final int DEFAULT_HISTORY_LIMIT = 50;
 
+    /**
+     * 名称折叠匹配的字符变体表（from → to）。切片库（shp 源）与业务库录入的
+     * 配套项目名称存在破折号/波浪线/空格写法差异（—/–/－/～/全角空格），
+     * 普通 like 会漏；折叠到统一字符后双库可匹配率实测 88.8% → 97.2%。
+     * SQL 侧 {@link #foldExpr} 与 Java 侧 {@link #foldPunct} 是同一套规则，必须同步改。
+     */
+    private static final String[] FOLD_FROM = {"\u3000", " ", "\u2014", "\u2013", "\uFF0D", "\uFF5E", "\u301C", "\uFF0F", "\uFF08", "\uFF09"};
+    private static final String[] FOLD_TO = {"", "", "-", "-", "-", "-", "-", "/", "(", ")"};
+
+    /** 对列名生成嵌套 REPLACE + UPPER 折叠表达式（MySQL 侧执行） */
+    private static String foldExpr(String col) {
+        StringBuilder sb = new StringBuilder(col);
+        for (int i = 0; i < FOLD_FROM.length; i++) {
+            sb.insert(0, "REPLACE(").append(",'").append(FOLD_FROM[i]).append("','").append(FOLD_TO[i]).append("')");
+        }
+        return "UPPER(" + sb + ")";
+    }
+
+    /** Java 侧折叠关键字：与 {@link #foldExpr} 同一套规则 */
+    private static String foldPunct(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean mapped = false;
+            for (int j = 0; j < FOLD_FROM.length; j++) {
+                if (FOLD_FROM[j].charAt(0) == c) {
+                    sb.append(FOLD_TO[j]);
+                    mapped = true;
+                    break;
+                }
+            }
+            if (!mapped) sb.append(Character.toUpperCase(c));
+        }
+        return sb.toString();
+    }
+
     /** 允许的合法环节情况（与 sys_dict 的 land_process_status 逐字一致） */
     private static final Set<String> VALID_PROCESS_STATUS = new HashSet<>(ProcessStatus.allValues());
 
@@ -270,7 +306,14 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         }
         if (StringUtils.isNotBlank(condition.getSrr())) {
             // 受让人字段在配套表里没有，这里复用它承载「配套项目名称」的模糊条件（前端同一个输入框）
-            wrapper.like("ptxmmc", condition.getSrr().trim());
+            if ("fold".equals(condition.getSrrMode())) {
+                // 大屏拾取回查专用：标点/空白折叠匹配（见 FOLD_FROM 注释）。
+                // 管理端列表不传 srrMode，走原始 like，行为不变。
+                String kw = foldPunct(condition.getSrr().trim());
+                wrapper.and(w -> w.apply(foldExpr("ptxmmc") + " LIKE CONCAT('%',{0},'%')", kw));
+            } else {
+                wrapper.like("ptxmmc", condition.getSrr().trim());
+            }
         }
         if (StringUtils.isNotBlank(condition.getFacilityKeyword())) {
             String keyword = condition.getFacilityKeyword().trim();

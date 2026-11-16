@@ -34,5 +34,9 @@ public interface IShpImportEngine {
         public int srid;
         public File shpFile;
         public SpatialProperties props;
+        /** 追加模式：引擎不把临时表改名成交付表，导入完成后保留临时表供服务层做列对齐追加 */
+        public boolean appendMode;
+        /** 引擎实际落库的表名（普通模式 = rename 后的目标表名；追加模式 = imp_ 前缀临时表名，供服务层追加后删除） */
+        public String stagedTable;
     }
 }

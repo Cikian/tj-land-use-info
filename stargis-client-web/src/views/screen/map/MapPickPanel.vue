@@ -21,6 +21,8 @@
     ★ 2026-11 起**不再回退设计稿演示数据**（测试问题 P2-02）：没拾中就是空态，
       否则展厅里未操作时面板就显示 OID 153 / 津武（挂）2023-014 这类假属性，
       用户会把它当成真实地块数据。空态文案见模板里的 &__empty。
+    payload 即 {name, value} 行数组）后经 props 传入；没有拾取结果时**显示空态**
+    （★ 用户规则：默认/未拾中/业务库未命中一律什么都不显示，不放设计稿演示数据）。
 
     ★ 2026-11 起右面板可拖宽（400 → 340~720），上面的定尺里凡是横向的值都
       不再写死：面板宽取 CSS 变量 --panel-right-w（页面根下发），当前图层框 /
@@ -37,8 +39,8 @@
         <img class="map-pick__layer-bg" :src="hf.pickLayerBox" alt="" aria-hidden="true" />
         <img class="map-pick__layer-icon" :src="hf.pickLayerIcon" alt="" aria-hidden="true" />
         <span class="map-pick__layer-label">当前图层</span>
-        <!-- 未拾取时显示占位符，不再显示设计稿的演示图层名（P2-02） -->
-        <span class="map-pick__layer-name">{{ currentLayer || '—' }}</span>
+        <!-- 未拾取时显示空（用户规则：不放占位符/演示名）；悬浮显示全文 -->
+        <span class="map-pick__layer-name" :title="currentLayer">{{ currentLayer }}</span>
       </div>
 
       <!-- 字段表 -->
@@ -61,8 +63,9 @@
             alt=""
             aria-hidden="true"
           />
-          <span class="map-pick__td is-name">{{ row.name }}</span>
-          <span class="map-pick__td is-value">{{ row.value }}</span>
+          <!-- ★ 省略号截断的内容鼠标悬浮显示全文（原生 title 提示） -->
+          <span class="map-pick__td is-name" :title="row.name">{{ row.name }}</span>
+          <span class="map-pick__td is-value" :title="row.value">{{ row.value }}</span>
         </div>
         <!--
           空态（P2-02）：原来这里会回退演示数据，展厅里未操作时也显示属性，
@@ -81,13 +84,13 @@ export default {
   name: 'MapPickPanel',
   props: {
     /**
-     * 真实拾取结果：{name, value} 行数组（stargis-function 的 QueryPick
-     * 插件拾中要素后经总线抛出）。null / 空数组 = 尚未拾中或已取消。
+     * 真实拾取结果：{name, value} 行数组（业务库记录的字段行）。
+     * null / 空数组 = 未拾中或业务库未命中 → 面板显示空态（无演示数据）。
      */
     result: { type: Array, default: null },
     /**
      * 拾中要素所在图层名（父组件在地图点击时从 Cesium pick 结果里取，
-     * 取不到时保持 null / 空串，面板显示占位符而不是演示图层名）。
+     * 取不到时保持 null，面板显示空）。
      */
     layerName: { type: String, default: '' }
   },
@@ -103,13 +106,10 @@ export default {
      *   的假属性，会被当成真实地块数据。空态必须显式表达「还没拾取」。
      */
     displayRows () {
-      return Array.isArray(this.result) ? this.result : []
+      return this.result && this.result.length ? this.result : []
     },
     currentLayer () {
       return this.layerName || ''
-    },
-    isEmpty () {
-      return this.displayRows.length === 0
     }
   }
 }

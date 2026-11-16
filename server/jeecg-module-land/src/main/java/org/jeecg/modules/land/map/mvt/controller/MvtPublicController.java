@@ -33,6 +33,15 @@ public class MvtPublicController {
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=30").body(bytes);
     }
 
+    @GetMapping("/{source}/{schema}/{table}/{geometry}/pick")
+    public ResponseEntity<Map<String, Object>> pick(@PathVariable String source, @PathVariable String schema,
+            @PathVariable String table, @PathVariable String geometry,
+            @RequestParam double longitude, @RequestParam double latitude) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("features", service.pick(source, schema, table, geometry, longitude, latitude));
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(body);
+    }
+
     // 局部处理状态码，避免全局异常处理器把不存在/参数错误全部包装为 500。
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, String>> failure(ResponseStatusException error) {
@@ -43,6 +52,6 @@ public class MvtPublicController {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, String>> badCoordinate(MethodArgumentTypeMismatchException error) {
         return ResponseEntity.badRequest().header(HttpHeaders.CACHE_CONTROL, "no-store")
-                .body(Collections.singletonMap("message", "瓦片层级和坐标必须为有效整数"));
+                .body(Collections.singletonMap("message", "请求参数类型无效"));
     }
 }

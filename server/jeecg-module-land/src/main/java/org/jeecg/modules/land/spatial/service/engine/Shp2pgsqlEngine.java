@@ -12,6 +12,7 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * shp2pgsql 引擎（默认）。
@@ -20,9 +21,15 @@ import java.util.List;
  * <ol>
  *   <li><b>-d（drop+recreate）</b>：重复导入同名表时幂等覆盖，而不是报"表已存在"。</li>
  *   <li><b>默认输出 INSERT 语句</b>（不加 -D；-D 是 COPY FROM stdin，psql 专用）。</li>
- *   <li><b>stdout 按配置字符集读取</b>（land.spatial.sql-charset，默认 GBK）：
- *       shp2pgsql 输出 SQL 的编码跟随运行环境 locale，Windows 中文环境是 GBK，
- *       按 UTF-8 读会报 "malformed input off : 0"。</li>
+ *   <li><b>stdout 编码显式钉死 UTF-8</b>：shp2pgsql 是 libpq 系工具，生成 SQL 的
+ *       字符串编码跟随 client encoding —— 本引擎通过进程环境强制
+ *       PGCLIENTENCODING=UTF8，stdout 因此恒为 UTF-8，读取也按 UTF-8。
+ *       ★ 2026-11-15 实测踩坑：此前按 sql-charset（默认 GBK）读 stdout，而
+ *         shp2pgsql 实际输出 UTF-8 —— UTF-8 字节被按 GBK 解读再存 UTF-8，
+ *         产出「津西青（挂）」→「娲ヨタ闈掞紙鎸傦級」这类**双重编码乱码**
+ *         （地块0922 表 1140 行里 1137 行中招，切片源表唯一值列全坏 →
+ *         大屏按编号定位 100% 失败）。stderr 是 shp2pgsql 自身的报错文本，
+ *         跟随 Windows locale，仍按 sql-charset 读。</li>
  * </ol>
  * INSERT 语句按行累积到分号再执行（shp2pgsql 每条语句以分号结尾；
  * CREATE TABLE 是多行，不能按行直接执行）。
@@ -40,6 +47,33 @@ public class Shp2pgsqlEngine implements IShpImportEngine {
         String exe = Shp2pgsqlLocator.resolve(ctx.props.getShp2pgsqlPath(),
                 PgSupport.url(ctx.host, ctx.port, "postgres"), ctx.user, ctx.password);
 
+        /*
+         * ★ 命令行一律 ASCII（2026-11-15 实测踩坑）：
+         *   Windows 上 ProcessBuilder 传中文参数给 shp2pgsql（MinGW 程序，argv 走
+         *   ANSI/GBK）后，shp2pgsql 把收到的 GBK 字节按 UTF-8 解释 → U+FFFD ——
+         *   实测「地块0922」表名变成「???0922」直接建出乱码表，整次导入报废。
+         *   对策：
+         *     ① shp/shx/dbf/prj/cpg 复制成 ASCII 临时名（uuid），命令行路径无中文；
+         *     ② 表名用 ASCII 临时名（imp_<uuid>）导入；
+         *     ③ 导入提交成功后用 JDBC 执行 ALTER TABLE RENAME 成真实表名
+         *        （走 JDBC 的 UTF-8 通道，无损）。
+         */
+        String asciiBase = "imp_" + UUID.randomUUID().toString().replace("-", "");
+        File asciiDir = ctx.shpFile.getParentFile();
+        String srcBase = ctx.shpFile.getName().substring(0, ctx.shpFile.getName().lastIndexOf('.'));
+        String[] sidecars = {".shp", ".shx", ".dbf", ".prj", ".cpg"};
+        List<File> asciiCopies = new ArrayList<>();
+        for (String ext : sidecars) {
+            File src = new File(asciiDir, srcBase + ext);
+            if (src.isFile()) {
+                File dst = new File(asciiDir, asciiBase + ext);
+                java.nio.file.Files.copy(src.toPath(), dst.toPath());
+                asciiCopies.add(dst);
+            }
+        }
+        File asciiShp = new File(asciiDir, asciiBase + ".shp");
+        String asciiTable = asciiBase;
+
         List<String> cmd = new ArrayList<>();
         cmd.add(exe);
         // 不用 -d：drop 已由服务层直接 DROP TABLE 处理（避开 DropGeometryColumn 的注册依赖）；
@@ -52,26 +86,33 @@ public class Shp2pgsqlEngine implements IShpImportEngine {
         cmd.add("-I");
         // 编码：shp 同目录有 .cpg 声明时交给 shp2pgsql 自动读取（声明什么用什么）；
         // 没有 .cpg 才传 -W 按配置解码。强制 GBK 解码 UTF-8 的 dbf 会报
-        // "Illegal byte sequence"（iconv 严格校验）。
-        String baseName = ctx.shpFile.getName().substring(0, ctx.shpFile.getName().lastIndexOf('.'));
-        File cpg = new File(ctx.shpFile.getParentFile(), baseName + ".cpg");
+        // "Illegal byte sequence"（iconv 严格校验）。ASCII 副本与原件同目录，.cpg 随行
+        File cpg = new File(asciiDir, asciiBase + ".cpg");
         if (!cpg.isFile()) {
             cmd.add("-W");
             cmd.add(ctx.props.getDbfCharset());
         }
-        cmd.add(ctx.shpFile.getAbsolutePath());
-        cmd.add(ctx.tableName);
+        cmd.add(asciiShp.getAbsolutePath());
+        cmd.add(asciiTable);
 
         log.info("[shp2pgsql] 执行：{}", String.join(" ", cmd));
         ProcessBuilder pb = new ProcessBuilder(cmd);
+        // ★ 钉死输出编码：shp2pgsql 生成 SQL 的字符串编码跟随 client encoding，
+        //   不显式指定时跟随 Windows locale（中文环境 GBK）——与 DBF 的 -W 输入
+        //   编码是两回事。强制 UTF8 后 stdout 恒为 UTF-8，与下方读取编码一致，
+        //   杜绝「UTF-8 字节按 GBK 误读再存 UTF-8」的双重编码乱码（2026-11-15 实测）
+        pb.environment().put("PGCLIENTENCODING", "UTF8");
         pb.redirectErrorStream(false);
         Process proc = pb.start();
 
+        // stdout 恒为 UTF-8（PGCLIENTENCODING=UTF8 已钉死，sql-charset 不再参与）；
+        // stderr 是 shp2pgsql 自身报错文本，跟随 Windows locale，按 sql-charset 读
         Charset sqlCharset = Charset.forName(ctx.props.getSqlCharset());
         int rows = 0;
         try (Connection conn = PgSupport.connect(ctx.host, ctx.port, ctx.dbName, ctx.user, ctx.password);
              Statement st = conn.createStatement();
-             BufferedReader out = new BufferedReader(new InputStreamReader(proc.getInputStream(), sqlCharset))) {
+             BufferedReader out = new BufferedReader(new InputStreamReader(proc.getInputStream(),
+                     Charset.forName("UTF-8")))) {
             conn.setAutoCommit(false);
             String line;
             StringBuilder stmt = new StringBuilder();
@@ -100,6 +141,18 @@ public class Shp2pgsqlEngine implements IShpImportEngine {
             if (!batch.isEmpty()) {
                 for (String s : batch) st.addBatch(s);
                 st.executeBatch();
+            }
+            // ★ 改名必须在 commit **之前**、与数据同一事务：连接是 autocommit=false，
+            //   commit 后再执行的 ALTER 会开启一个没人提交的新事务，连接关闭即回滚
+            //   （2026-11-15 实测踩坑：表卡在 imp_xxx 名上，RENAME 静默蒸发）
+            if (ctx.appendMode) {
+                // 追加模式：临时表（imp_ 前缀）保留原名交给服务层做列对齐追加，
+                // stagedTable 回填供服务层定位；目标表不动
+                ctx.stagedTable = asciiTable;
+            } else if (!asciiTable.equals(ctx.tableName)) {
+                st.execute("ALTER TABLE " + asciiTable
+                        + " RENAME TO \"" + ctx.tableName.replace("\"", "\"\"") + "\"");
+                ctx.stagedTable = ctx.tableName;
             }
             conn.commit();
         } catch (Exception e) {

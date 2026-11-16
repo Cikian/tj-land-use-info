@@ -11,9 +11,34 @@ import '../src/assets/less/font.css'
 require('@jeecg/antd-online-mini')
 require('@jeecg/antd-online-mini/dist/OnlineForm.css')
 
-import Antd, { version } from 'ant-design-vue'
+import Antd, { version, message as AntdMessage } from 'ant-design-vue'
 
 console.log('ant-design-vue version:', version)
+
+// ★ 家族静默（用户要求）：stargis-function 插件读不到 GIS 功能配置数据源时，
+//   会按层级弹「获取所属行政区/所属街道/…配置信息失败，请检查功能配置」——
+//   大屏未配置这些数据源属正常形态，这一族提示一律不弹；其余 warning 全部照常。
+//   ★ 按共同后缀「配置信息失败」匹配，新增层级自动覆盖，不用逐条追。
+//   ⚠ 插件实际调的是 this.$message.warn（antd 的 warn 别名），所以必须包
+//     AntdMessage.warning **和** AntdMessage.warn 两个入口；且要在所有
+//     Vue.use 之后包 Vue.prototype.$message（插件经组件实例走原型链）。
+//   根因治理：在管理端 GIS 功能配置里配好对应数据源后，功能可用且提示自然消失。
+const _silentConfigToast = text => typeof text === 'string' && text.indexOf('配置信息失败') > -1
+// ★ 包装前先补齐 warn 别名：部分 antd 版本 message 上没有 warn（只有 warning），
+//   直接包 undefined 会让插件的 $message.warn(...) 调用变成 TypeError，
+//   把空间查询选中绘制、属性查询配置加载等整条流程打断（回归事故根因）。
+if (typeof AntdMessage.warn !== 'function' && typeof AntdMessage.warning === 'function') {
+  AntdMessage.warn = AntdMessage.warning
+}
+const _wrapWarn = orig => {
+  if (typeof orig !== 'function') return orig
+  return function (content) {
+    if (_silentConfigToast(content)) return undefined
+    return orig.apply(this, arguments)
+  }
+}
+AntdMessage.warning = _wrapWarn(AntdMessage.warning)
+AntdMessage.warn = _wrapWarn(AntdMessage.warn)
 
 import Viser from 'viser-vue'
 import 'ant-design-vue/dist/antd.less' // or 'ant-design-vue/dist/antd.less'
@@ -149,6 +174,56 @@ SSO.init(() => {
 // 包内 15.65MB 的 'sy' 字体声明，改为按需（永不）加载，详见文件内注释
 import '@/assets/less/font-override.less'
  Vue.use(StargisFunction);
+
+// ★ 精确文本静默（必须放在所有 Vue.use 之后）：stargis-function 插件的
+//   「空间查询」等引擎读不到 GIS 功能配置数据源时按层级弹
+//   「获取所属行政区/所属街道/…配置信息失败，请检查功能配置」——大屏未配置
+//   属正常形态，这一族提示一律不弹，其余提示照常。
+//   ★ 按共同后缀「配置信息失败」家族匹配（与顶部 AntdMessage 包同一口径）。
+//   之前只包了 import 进来的 antd message 对象没拦住：插件经组件实例
+//   this.$message.warn 调用、走 Vue 原型链——所以这里直接包原型上的
+//   $message / $notification（函数本体与各展示静态方法都过滤）。
+const _silentText = a0 => {
+  const text = typeof a0 === 'string' ? a0 : a0 && a0.message
+  return typeof text === 'string' && text.indexOf('配置信息失败') > -1
+}
+const _silentMethods = ['success', 'error', 'info', 'warning', 'warn', 'open', 'loading']
+const _wrapApi = api => {
+  if (!api) return api
+  const wrapMethod = orig => function () {
+    if (_silentText(arguments[0])) return undefined
+    return orig.apply(this, arguments)
+  }
+  // ★ 展示方法经原型链取值（Object.keys 只见自有可枚举键，继承方法会漏包→
+  //   调用变 undefined→TypeError 打断插件流程）；warn 缺失时用 warning 补别名
+  //   ——插件大量使用 $message.warn。
+  const ensure = name => {
+    if (typeof api[name] === 'function') return wrapMethod(api[name])
+    if (name === 'warn' && typeof api.warning === 'function') return wrapMethod(api.warning)
+    return null
+  }
+  if (typeof api === 'function') {
+    const wrapped = function () {
+      if (_silentText(arguments[0])) return undefined
+      return api.apply(this, arguments)
+    }
+    _silentMethods.forEach(fn => {
+      const w = ensure(fn)
+      if (w) wrapped[fn] = w
+    })
+    Object.keys(api).forEach(k => { if (!(k in wrapped)) wrapped[k] = api[k] })
+    return wrapped
+  }
+  const wrappedObj = {}
+  _silentMethods.forEach(fn => {
+    const w = ensure(fn)
+    if (w) wrappedObj[fn] = w
+  })
+  Object.keys(api).forEach(k => { if (!(k in wrappedObj)) wrappedObj[k] = api[k] })
+  return wrappedObj
+}
+Vue.prototype.$message = _wrapApi(Vue.prototype.$message)
+Vue.prototype.$notification = _wrapApi(Vue.prototype.$notification)
 
 import localDataManager from '@/utils/localDataManager.js'
 import setMapUrl from '@/utils/setMapUrl.js'

@@ -76,6 +76,44 @@ public class MvtPostgis {
         }
     }
 
+    /** 按 WGS84 点击点返回覆盖该点的完整源要素，不经过 MVT 瓦片裁剪。 */
+    public List<Map<String, Object>> pick(DataSource source, MvtTable table, double longitude, double latitude) {
+        String geom = MvtSql.geometry(table);
+        String point = "ST_Transform(ST_SetSRID(ST_MakePoint(?, ?), 4326), " + table.getSrid() + ")";
+        String alias = "__mvt_pick_geometry";
+        while (table.getFields().containsKey(alias)) alias += "_";
+        final String geometryAlias = alias;
+        StringBuilder columns = new StringBuilder();
+        table.getFields().keySet().forEach(name -> {
+            if (columns.length() > 0) columns.append(", ");
+            columns.append("t.").append(MvtSql.quote(name));
+        });
+        String sql = "SELECT " + (columns.length() > 0 ? columns + ", " : "")
+                + "ST_AsGeoJSON(ST_Transform(" + geom + ", 4326)) AS " + MvtSql.quote(geometryAlias) + " "
+                + "FROM " + MvtSql.relation(table) + " t WHERE " + geom + " IS NOT NULL "
+                + "AND " + geom + " && " + point + " AND ST_Covers(" + geom + ", " + point + ") "
+                + "ORDER BY ST_Area(" + geom + ") ASC LIMIT 20";
+        return jdbc(source).query(sql, ps -> {
+            ps.setDouble(1, longitude);
+            ps.setDouble(2, latitude);
+            ps.setDouble(3, longitude);
+            ps.setDouble(4, latitude);
+        }, rs -> {
+            List<Map<String, Object>> result = new ArrayList<>();
+            while (rs.next()) {
+                Map<String, Object> feature = new LinkedHashMap<>();
+                Map<String, Object> properties = new LinkedHashMap<>();
+                for (String name : table.getFields().keySet()) {
+                    properties.put(name, rs.getObject(name));
+                }
+                feature.put("properties", properties);
+                feature.put("geometry", rs.getString(geometryAlias));
+                result.add(feature);
+            }
+            return result;
+        });
+    }
+
     private boolean projectionFailure(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof SQLException && "XX000".equals(((SQLException) cause).getSQLState())

@@ -176,11 +176,11 @@ import LandTable from './LandTable.vue'
 import LandFormModal from './LandFormModal.vue'
 import LandDetailModal from './LandDetailModal.vue'
 import LandGeoImportModal from './LandGeoImportModal.vue'
-import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch, queryLandGeoList, queryLandGeoDetail } from '@/api/land/landAdmin'
+import { queryLandAdminPage, deleteLandAdmin, deleteLandAdminBatch } from '@/api/land/landAdmin'
 import { queryLandOptions } from '@/api/land/landData'
-// 宗地几何图层：进菜单把全部已画图宗地面铺到地图上，列表双击定位 + 高亮
-import { createGeoLayer } from '@/views/screen/landGeoLayer'
 import { defaultPagination, compactQuery } from '../constants'
+// 移除记录后联动清切片库图形（fire-and-forget，失败只提示不阻断）
+import { purgeFeatureGroups } from '../sliceInfo'
 
 /*
  * 列表高度（**设计画布像素**）现在由 panelLayout 的 data.bottom 统一持有：
@@ -189,17 +189,9 @@ import { defaultPagination, compactQuery } from '../constants'
  *   切页签回来高度不跳；二是 views/screen/index.vue 的氛围蒙版要跟着列表高度伸缩。
  */
 
-/**
- * 概览数据本地缓存（模块级，浏览器不刷新就一直在）。
- *
- * ★ 两级加载 + 版本化增量，进页面耗时与「宗地总数」解耦：
- *   1. 概览档后端预计算（dk_geojson_overview 列，每环 ≤40 点、总体 <1MB），
- *      渲染也不贴 S3M（减负）；精确边界由双击定位按 id 拉 /geoDetail 替换；
- *   2. 接口协议：传上次拿到的 version（后端 = 全表 MAX(update_time)，任何
- *      导入/编辑/移除/恢复都会推高）——图形没变时只回 { unchanged:true }，
- *      面板从这份缓存直接铺图（毫秒级、零数据传输）；变了才全量刷新并换版本。
- */
-const geoOverviewCache = { version: '', lands: null }
+/* ★ 2026-11-14 起进入菜单不再自动铺地块图层（用户要求：地图保持干净）——
+ *   双击列表行定位到 MVT 切图层上的该宗地（见 handleLocate）；
+ *   「导入地块图形」仍可用。概览缓存随之移除。 */
 
 export default {
   name: 'LandEntryPanel',
@@ -239,9 +231,7 @@ export default {
       removeVisible: false,
       removing: false,
       removeReason: '',
-      removeTargets: [],
-      /** 当前定位目标（连点保护：飞行落定后只替换最后一次点的那个） */
-      locateTargetId: ''
+      removeTargets: []
     }
   },
   computed: {
@@ -261,25 +251,7 @@ export default {
     }
   },
   created () {
-    // 图层实例不用做成响应式（纯 Cesium 实体管理，与 Vue 渲染无关）
-    this.geoLayer = createGeoLayer('land')
     this.loadData()
-  },
-  activated () {
-    /*
-     * keep-alive 的激活钩子（首次挂载也会触发一次）：
-     * 每次进「经营性用地信息录入」菜单都重铺宗地几何图层 ——
-     * 这样别处新增/画图的宗地回到本菜单就能看到最新状态。
-     * 切走页签时由 deactivated 清掉（图层别压在别的菜单上面）。
-     * 普通激活仍走版本化增量；只有本页写操作完成后才强制重建。
-     */
-    this.loadGeoLayer(false)
-  },
-  deactivated () {
-    this.geoLayer.clearAll()
-  },
-  beforeDestroy () {
-    this.geoLayer.clearAll()
   },
   methods: {
     /* ---------------- 数据 ---------------- */
@@ -343,64 +315,16 @@ export default {
      * 只取轻量列（id/编号/名称/GeoJSON），失败静默 —— 图层是辅助视图，
      * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
      */
-    loadGeoLayer (forceRefresh) {
-      // 写操作成功后同时作废浏览器缓存并要求后端重建，避免同秒写入时版本号未变仍铺旧图。
-      if (forceRefresh) {
-        geoOverviewCache.version = ''
-        geoOverviewCache.lands = null
-      }
-      // 版本化增量：图形没变（unchanged）时直接用本地缓存铺图（零数据传输）；
-      // 变了才拉全量概览并更新缓存。概览档后端预计算（40 点/环），无需传参。
-      queryLandGeoList(geoOverviewCache.version, forceRefresh === true)
-        .then((res) => {
-          if (!res || !res.success) return
-          const data = res.result || {}
-          if (data.unchanged && geoOverviewCache.lands) {
-            this.geoLayer.renderAll(geoOverviewCache.lands, false)
-            return
-          }
-          geoOverviewCache.version = data.version || ''
-          geoOverviewCache.lands = data.lands || []
-          this.geoLayer.renderAll(geoOverviewCache.lands, false)
-        })
-        .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
-    },
-
     /**
-     * 列表**双击**某条：地图定位 + 高亮 + **按需换精确图形**。
+     * 列表**双击**某条：**定位到 MVT 切图层上的该宗地**。
      *
-     * ★ 两级加载的第二级：先用概览几何立即飞行定位（等不了网络），
-     *   同时按 id 拉该宗地的精确图形（几 KB）替换概览面 —— 替换成功后
-     *   重新高亮，边界即测绘精度；拉取失败静默，概览面仍可定位查看。
-     * ★ 只有画过图形的宗地能定位 —— 没画过图的行不在图层里，
-     *   明确告诉用户为什么没反应，而不是让他以为点了没生效。
+     * ★ 2026-11-14 起定位走「唯一值 → 切片源表查范围 → 相机飞行」——
+     *   不再依赖 dk_geojson（GeoJSON 字段即将废弃）。实际查询与飞行由
+     *   父组件（data/index.vue）统一处理，本面板只上报记录。
      */
     handleLocate (record) {
       if (!record || !record.id) return
-      if (!this.geoLayer.has(record.id)) {
-        toast.warning('该宗地还没有地块图形：可在编辑里「添加地块」绘制，或用工具条「导入地块图形」导入')
-        return
-      }
-      const t0 = performance.now()
-      console.log('[定位计时] 双击: ' + record.crzdbh)
-      this.locateTargetId = record.id
-      this.geoLayer.highlight(record.id)
-      console.log('[定位计时] 高亮调用返回: ' + Math.round(performance.now() - t0) + 'ms')
-      // 先用概览几何立即飞行（不等网络）；「换精确图形」推迟到飞行落定之后 ——
-      // 800 点贴地面的建面开销会阻塞主线程，放在飞行中就是肉眼可见的定位迟滞
-      // 图形请求与飞行并行（提前 ~1.2s），飞行落定即可应用
-      const detailPromise = queryLandGeoDetail(record.id)
-      this.geoLayer.flyTo(record.id, () => {
-        console.log('[定位计时] 飞行落定: ' + Math.round(performance.now() - t0) + 'ms')
-        detailPromise.then((res) => {
-          console.log('[定位计时] 图形数据到手: ' + Math.round(performance.now() - t0) + 'ms')
-          // 连点了别的行 / 已切走面板：放弃这次替换
-          if (this.locateTargetId !== record.id) return
-          if (!res || !res.success || !res.result || !res.result.dkGeojson) return
-          this.geoLayer.applyPreciseOverlay(record.id, res.result.dkGeojson)
-          console.log('[定位计时] 定位档覆盖层应用完成: 距双击 ' + Math.round(performance.now() - t0) + 'ms')
-        }).catch(() => { /* 概览面仍可查看，失败不打扰 */ })
-      })
+      this.$emit('locate-record', record)
     },
 
     handleSearch (query) {
@@ -440,13 +364,9 @@ export default {
       this.$refs.geoImportModal.open()
     },
 
-    /**
-     * GeoJSON 图形导入完成：刷新列表，并**重铺几何图层** ——
-     * 刚导进来的图形要立刻在地球上可见、可双击定位，这是大屏端导图形单独的价值。
-     */
+    /** GeoJSON 图形导入完成：刷新列表。★ 图层不再自动重铺（双击定位时才按需渲染）。 */
     handleGeoImported () {
       this.loadData()
-      this.loadGeoLayer(true)
     },
 
     handleEdit (record) {
@@ -457,8 +377,6 @@ export default {
 
     handleSaved () {
       this.loadData()
-      // 新增/编辑可能刚画了图形（或改了编号），几何图层同步重铺
-      this.loadGeoLayer(true)
     },
 
     handleDetail (record) {
@@ -523,14 +441,15 @@ export default {
             )
           } else {
             toast.success(res.message || '已移除，可在「数据更新与移除」中恢复')
+            // 联动清掉切片库里这些宗地名下的图形（fire-and-forget；失败只提示，
+            // 业务记录已软删成功，不能因图形清理失败而阻断列表刷新）
+            purgeFeatureGroups('land', targets, toast)
           }
           this.selectedRowKeys = this.selectedRowKeys.filter(
             (key) => !targets.some((row) => row.id === key)
           )
           this.closeRemove()
           this.loadData()
-          // 被移除的宗地要从地图图层上撤下来，重铺即同步
-          this.loadGeoLayer(true)
         })
         .catch(() => {
           // 请求层已提示

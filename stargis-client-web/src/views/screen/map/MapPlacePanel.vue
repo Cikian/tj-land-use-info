@@ -97,14 +97,13 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-import { getAction, postJson } from '@/api/manage'
 import * as turf from '@turf/turf'
-import DynamicDivLabel from '@/utils/wyw/index'
+import { flashAt } from '../data/locateHighlight'
+import { getModuleSliceContext } from '../data/sliceInfo'
+import { featureSearchMvt } from '@/api/land/landAdmin'
 
 /** 实体分组 id（老工作台用的是 placeLocate123，这里换一个避免互相清理） */
 const ENTITY_GROUP_ID = 'placeLocateMap123'
-/** 气泡标签上限：原实现不限量，这里封顶防止一次搜索画几百个 DOM 标签 */
-const LABEL_LIMIT = 50
 
 function toRows (properties) {
   // 要素属性 → {name, value} 行数组（数值统一转字符串，模板直接渲染）
@@ -124,14 +123,10 @@ export default {
       hf,
       keyword: '',
       searching: false,
-      /** 配置是否就绪（sysConfig.ShortCut 里有没有 QueryPlaceName 数据源） */
-      configReady: false,
-      serverUrl: '/stargis/rest/tasks/test/query',
-      /** 查询参数清单：DatasourceID（数据库型）/ Featurcclassid（要素服务型） */
-      allParams: [],
-      /** 配置解析的中间量：数据源 id 串与返回字段（与 HomeHeader 同名同义） */
-      allDBData: [],
-      allFields: [],
+      /** 切片源是否就绪（大屏图层树就绪后即可搜索） */
+      sliceReady: false,
+      /** 搜索来源标签（地块数据 / 配套数据），随切片源动态解析 */
+      sliceSources: [],
       /** 搜索结果：{id, name, rows, geometry:{GeoJson}} */
       results: [],
       selectedIndex: -1,
@@ -143,7 +138,7 @@ export default {
   computed: {
     hint () {
       if (this.searching) return '搜索中…'
-      if (!this.configReady) return '地名定位未配置数据源，请在 GIS 功能配置「快捷方式 → 地名定位」里配置后使用'
+      if (!this.sliceReady) return 'MVT 切片源尚未就绪，请稍后再试'
       if (!this.results.length) return this.keyword ? '未找到匹配结果' : '输入名称后回车搜索'
       return ''
     },
@@ -153,240 +148,64 @@ export default {
     }
   },
   created () {
-    this.loadConfig()
+    this.initSliceSource()
   },
   beforeDestroy () {
     this.clearMapObjects()
   },
   methods: {
-    /* ---------------- 配置加载（对应 HomeHeader.prepareQueryPlaceName） ---------------- */
-    loadConfig () {
-      const config = this.$store.getters.sysConfig || {}
-      const shortcut = config.ShortCut
-      const item = shortcut && shortcut.children
-        ? shortcut.children.find((child) => child.componentname === 'QueryPlaceName')
-        : null
-      if (!item || !item.dataurl) {
-        this.configReady = false
-        return
+    /**
+     * 切片源就绪（地名定位的数据源 = MVT 切片源表）：
+     * 数据管理页联动渲染完成后 getModuleSliceContext 即可用；
+     * 组件 mounted 早于壳层 sceneId 设置，所以延后轮询判定。
+     */
+    initSliceSource () {
+      const check = () => {
+        const land = getModuleSliceContext('land')
+        const facility = getModuleSliceContext('facility')
+        this.sliceSources = [land, facility].filter(Boolean).map((ctx, i) => ({
+          ctx: ctx,
+          label: i === 0 ? '地块数据' : '配套数据'
+        }))
+        this.sliceReady = this.sliceSources.length > 0
+        if (!this.sliceReady) setTimeout(check, 1500)
       }
-      try {
-        // 与原实现一致：GIS 配置端输出的 dataurl 是对象字面量串（非严格 JSON）
-        const dbDataParam = eval('(' + item.dataurl + ')') // eslint-disable-line no-eval
-        Object.keys(dbDataParam).forEach((key) => {
-          if (key.indexOf('dbData') < 0) return
-          const sub = key.replace('dbData', '')
-          if (dbDataParam['fields' + sub]) {
-            this.allDBData = this.allDBData || []
-            this.allDBData.push(dbDataParam[key])
-            this.allFields = this.allFields || []
-            this.allFields.push(dbDataParam['fields' + sub])
-          }
-        })
-      } catch (error) {
-        this.configReady = false
-        return
-      }
-      if (item.serverurl) {
-        try {
-          const server = eval('(' + item.serverurl + ')') // eslint-disable-line no-eval
-          if (server && server.dataUrl) this.serverUrl = server.dataUrl
-        } catch (error) { /* serverurl 解析失败则用默认地址 */ }
-      }
-      this.loadDataSource()
+      setTimeout(check, 1000)
     },
 
-    /** 数据源元信息 → 查询参数（对应 HomeHeader.getDataSource） */
-    loadDataSource () {
-      const pairs = this.allDBData || []
-      if (!pairs.length) {
-        this.configReady = false
-        return
-      }
-      let pending = pairs.length
-      pairs.forEach((item, index) => {
-        const parts = String(item).split('_')
-        let dbName = ''
-        let url = ''
-        if (parts.length > 2) {
-          dbName = parts[parts.length - 2]
-          url = '/app/basicinfo/metaJson'
-        } else {
-          dbName = item
-          url = '/app/basicinfo/metaJsonByClassId'
-        }
-        getAction(url, { id: dbName, flag: true }).then((response) => {
-          const result = response.result
-          if (!result) return
-          if (result.Featurcclassid) {
-            // 要素服务型
-            this.allParams.push({
-              f: 'json',
-              spatialReference: { wkid: '4326' },
-              returnGeometry: true,
-              layerOption: 'all',
-              Featurcclassid: result.Featurcclassid,
-              fieldName: this.allFields[index]
-            })
-          } else if (result.DBConectionString) {
-            // 数据库型
-            const datasource = {}
-            datasource.DBConectionString = result.DBConectionString
-            datasource.DBConectionString.DatasourceType = parseInt(result.DBConectionString.DatasourceType)
-            datasource.DBConectionString.Port = parseInt(result.DBConectionString.Port)
-            datasource.DatasetName = result.Datasets[0] ? result.Datasets[0].DatasetName : ''
-            datasource.TableName =
-              result.Datasets[0] && result.Datasets[0].FeatureClasses[0]
-                ? result.Datasets[0].FeatureClasses[0].TableName
-                : ''
-            if (this.allFields[index]) {
-              datasource.VagueField = [this.allFields[index]]
-              datasource.ReturnField = [{ Field: this.allFields[index] }]
-            }
-            datasource.BeginRow = 0
-            datasource.RowsLimit = 500
-            this.allParams.push({ TrakerName: 'QueryVagueValue', DatasourceID: datasource })
-          }
-        }).finally(() => {
-          if (--pending === 0) this.configReady = true
-        })
-      })
-    },
-
-    /* ---------------- 搜索（对应 HomeHeader.onSearch） ---------------- */
+    /* ---------------- 搜索（MVT 切片源表 featureSearch） ---------------- */
     onSearch () {
       const keyword = (this.keyword || '').trim()
-      if (!keyword) return
-      if (!this.allParams.length) return
+      if (!keyword || !this.sliceReady) return
       this.clearMapObjects()
       this.results = []
       this.selectedIndex = -1
       this.searching = true
-      let pending = this.allParams.length
-      const settle = () => {
-        if (--pending === 0) this.searching = false
-      }
-      this.allParams.forEach((item) => {
-        if (item.DatasourceID) {
-          const task = this.getTaskWYW(item)
-          task.fuzzyValues = [{ field: item.DatasourceID.ReturnField[0].Field, value: keyword }]
-          postJson(window._CONFIG.VUE_DATA_SERVER_URL + this.serverUrl, this.getTaskParamsWYW(task))
-            .then((response) => {
-              this.collectStargis(response.result, item.DatasourceID.ReturnField[0].Field)
+      let pending = this.sliceSources.length
+      this.sliceSources.forEach(({ ctx, label }) => {
+        featureSearchMvt({
+          source: ctx.info.source,
+          table: ctx.info.table,
+          keyword: keyword,
+          limit: 50
+        })
+          .then((res) => {
+            if (!res || !res.success || !Array.isArray(res.result)) return
+            res.result.forEach((item, index) => {
+              const props = item.properties || {}
+              const geojson = item.geojson ? JSON.parse(item.geojson) : null
+              if (!geojson) return
+              this.results.push({
+                id: label + '-' + index,
+                name: String(props.crzdbh || props.ptxmmc || props.dkm || props.dkmc || ('要素 ' + (index + 1))),
+                rows: toRows(props),
+                geometry: { GeoJson: geojson }
+              })
             })
-            .catch(() => {})
-            .finally(settle)
-        } else if (item.Featurcclassid) {
-          this.queryFeatureServer(item, keyword).finally(settle)
-        } else {
-          settle()
-        }
+          })
+          .catch(() => {})
+          .finally(() => { if (--pending === 0) this.searching = false })
       })
-    },
-
-    /** 要素服务型查询：星图 FeatureServer / ArcGIS QueryTask（对应原实现的分支） */
-    queryFeatureServer (item, keyword) {
-      const Cesium = window.Cesium
-      if (!Cesium || (!Cesium.SpatialFilter && !Cesium.QueryTask)) return Promise.resolve()
-      let promise = null
-      const field = item.fieldName
-      if (item.Featurcclassid.includes('stargis/rest') && item.Featurcclassid.includes('FeatureServer')) {
-        item.where = `"${field}" like '%${keyword}%'`
-        item.useFieldAlias = false
-        item.maxReturnCount = 200
-        let url = item.Featurcclassid
-        if (window.secretkey) url = url + '?secretkey=' + window.secretkey
-        promise = new Cesium.StargisQuery(url).execute(new Cesium.SpatialFilter(item)).then((data) => {
-          this.collectStargis(data, field)
-        })
-      } else {
-        item.where = encodeURI(`"${field}" like '%${keyword}%'`)
-        let url = item.Featurcclassid + '/0/query'
-        if (window.secretkey) url = url + '?secretkey=' + window.secretkey
-        promise = new Cesium.QueryTask(url).execute(new Cesium.Query(item)).then((data) => {
-          this.collectArcgis(data, field)
-        })
-      }
-      return promise ? promise.catch(() => {}) : Promise.resolve()
-    },
-
-    /** 中台 / GeoJSON 结果 → 结果列表（对应 successStargisServer） */
-    collectStargis (data, field) {
-      if (!data || !data.features || !data.features.length) return
-      data.features.forEach((feature) => {
-        const name = feature.properties ? feature.properties[field] : ''
-        if (name === undefined || name === null || name === '') return
-        this.results.push({
-          id: 'placeLocate' + this.locateSymbol++,
-          name: String(name),
-          rows: toRows(feature.properties || {}),
-          geometry: { GeoJson: feature.geometry || null }
-        })
-      })
-    },
-
-    /** ArcGIS 结果 → 结果列表（对应 successArcgisServer，含 esri 几何转 GeoJSON） */
-    collectArcgis (data, field) {
-      const { features, geometryType } = data
-      if (!features || !features.length) return
-      features.forEach((item) => {
-        const value = item.attributes ? item.attributes[field] : ''
-        if (value === undefined || value === null || value === '') return
-        let geometry = null
-        if (geometryType === 'esriGeometryPoint') {
-          geometry = turf.point([item.geometry.x, item.geometry.y]).geometry
-        } else if (geometryType === 'esriGeometryPolyline') {
-          const dims = this.dimensionArray(item.geometry.paths)
-          geometry = (dims === 3 ? turf.multiLineString(item.geometry.paths) : turf.lineString(item.geometry.paths)).geometry
-        } else if (geometryType === 'esriGeometryPolygon') {
-          const dims = this.dimensionArray(item.geometry.rings)
-          geometry = (dims === 4 ? turf.multiPolygon(item.geometry.rings) : turf.polygon(item.geometry.rings)).geometry
-        }
-        this.results.push({
-          id: 'placeLocate' + this.locateSymbol++,
-          name: String(value),
-          rows: toRows(item.attributes || {}),
-          geometry: { GeoJson: geometry }
-        })
-      })
-    },
-
-    /** 数组维数（原 dimension_array_es6） */
-    dimensionArray (arr) {
-      if (arr instanceof Array) {
-        return Math.max(...arr.map((item) => 1 + this.dimensionArray(item)))
-      }
-      return 0
-    },
-
-    /* ---------------- 数据库查询任务组装（对应 getTaskWYW / getTaskParamsWYW） ---------------- */
-    getTaskWYW (item) {
-      const result = item.DatasourceID
-      const conn = result.DBConectionString
-      const typeOf = this.getDataBaseType || (() => 'mysql')
-      return {
-        subtask: 'query',
-        datasource: {
-          type: typeOf(conn.DatasourceType),
-          database: conn.Database,
-          instance: conn.Instance,
-          host: conn.Server,
-          port: parseInt(conn.Port),
-          user: conn.User,
-          pwd: conn.Pwd
-        },
-        dataset: result.DatasetName || '',
-        featureclass: result.TableName || '',
-        resultOffset: 0,
-        maxReturnCount: 2000,
-        resultRecordCount: 20,
-        returnGeometry: true,
-        inSR: { EPSG: 4326 },
-        outSR: { EPSG: 4326 }
-      }
-    },
-    getTaskParamsWYW (params) {
-      return JSON.stringify({ task: 'test', synchronize: true, inprocess: false, param: params })
     },
 
     /* ---------------- 定位（对应 drawSelectedOne / drawSelected） ---------------- */
@@ -396,6 +215,10 @@ export default {
       if (!item) return
       this.clearMapObjects()
       this.drawSelected(item, item.id)
+      // 定位闪烁（与数据管理定位同款视觉反馈）：拾中地块高亮 3 秒
+      if (item.geometry && item.geometry.GeoJson) {
+        flashAt({ geometries: [JSON.stringify(item.geometry.GeoJson)] })
+      }
     },
 
     /** 画图形 + 气泡标签 + 相机飞到包围盒；无 Cesium（?map=0）时只跳过画图 */
@@ -444,11 +267,8 @@ export default {
               depthTestEnabled: false,
               clampToS3M: true
             })
-          } else if (this.labels.length < LABEL_LIMIT) {
-            // 点要素：DynamicDivLabel 气泡（原版每点一个，这里封顶防刷屏）
-            this.labels.push({
-              obj: new DynamicDivLabel(viewer, entity.position.getValue(), { id: item.id, mode: 3 }, item.name)
-            })
+          } else if (entity.point || entity.label) {
+            // 点要素：定位标签（Cesium 原生 label，随要素画在 group 里）
           }
         })
         if (lonLat) {
