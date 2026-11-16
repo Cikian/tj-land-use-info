@@ -185,6 +185,7 @@
             f.`jsxx`        AS jsxx,
             f.`dldj`        AS dldj,
             f.`xzqh`        AS xzqh,
+            f.`gnq`         AS gnq,
             f.`jsdw`        AS jsdw,
             f.`tzgs`        AS tzgs,
             f.`zjly`        AS zjly,
@@ -226,6 +227,13 @@
         <if test="q.xzqh != null and q.xzqh.size() > 0">
             AND f.`xzqh` IN
             <foreach collection="q.xzqh" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
+        <!-- 功能区与行政区划是两个独立条件：拆列后不补这一段，库里 202 条功能区记录会「录得进、查不到」 -->
+        <if test="q.gnq != null and q.gnq.size() > 0">
+            AND f.`gnq` IN
+            <foreach collection="q.gnq" item="v" open="(" close=")" separator=",">
                 #{v}
             </foreach>
         </if>
@@ -302,6 +310,7 @@
             f.`dkmc`           AS dkmc,
             f.`ptsslb`         AS ptsslb,
             f.`xzqh`           AS xzqh,
+            f.`gnq`            AS gnq,
             f.`xmfl`           AS xmfl,
             f.`jsxx`           AS jsxx,
             f.`dldj`           AS dldj,
@@ -364,6 +373,7 @@
             f.`dkmc`           AS dkmc,
             f.`ptsslb`         AS ptsslb,
             f.`xzqh`           AS xzqh,
+            f.`gnq`            AS gnq,
             f.`xmfl`           AS xmfl,
             f.`jsxx`           AS jsxx,
             f.`dldj`           AS dldj,
@@ -470,6 +480,13 @@
         SELECT DISTINCT f.`xzqh` FROM `t_supporting_facilities` f
         WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`xzqh` IS NOT NULL AND TRIM(f.`xzqh`) != ''
         ORDER BY f.`xzqh` ASC LIMIT #{limit}
+    </select>
+
+    <!-- 功能区：只在迁移过的记录上有值（其余为空，不该出现在下拉里） -->
+    <select id="selectFacilityGnqOptions" resultType="string">
+        SELECT DISTINCT f.`gnq` FROM `t_supporting_facilities` f
+        WHERE COALESCE(f.`delFlag`, '0') = '0' AND f.`gnq` IS NOT NULL AND TRIM(f.`gnq`) != ''
+        ORDER BY f.`gnq` ASC LIMIT #{limit}
     </select>
 
     <!-- 资金落实情况：取值来自库里实际出现过的值（已落实 / 未落实 …），不写死枚举 -->

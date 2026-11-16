@@ -435,6 +435,8 @@ public class StatQueryServiceImpl implements IStatQueryService {
             options.put("ptxmmc", nullSafe(statQueryMapper.selectFacilityPtxmmcOptions(OPTION_LIMIT)));
             options.put("ptsslb", nullSafe(statQueryMapper.selectFacilityPtsslbOptions(OPTION_LIMIT)));
             options.put("xzqh", nullSafe(statQueryMapper.selectFacilityXzqhOptions(OPTION_LIMIT)));
+            // 功能区与区划并列：拆列后 202 条功能区记录只能靠这个条件下拉检索到
+            options.put("gnq", nullSafe(statQueryMapper.selectFacilityGnqOptions(OPTION_LIMIT)));
             // 资金落实情况：取值来自库里实际出现过的值（已落实 / 未落实 …）
             options.put("zjlsqk", nullSafe(statQueryMapper.selectFacilityZjlsqkOptions(OPTION_LIMIT)));
         } else {
@@ -461,6 +463,7 @@ public class StatQueryServiceImpl implements IStatQueryService {
         q.setSrr(normalizeNames(q.getSrr()));
         q.setPtxmmc(normalizeNames(q.getPtxmmc()));
         q.setXzqh(normalizeList(q.getXzqh(), false));
+        q.setGnq(normalizeList(q.getGnq(), false));
         q.setCrsjYears(normalizeList(q.getCrsjYears(), false));
         q.setPtsslb(normalizeList(q.getPtsslb(), false));
         q.setXmfl(trimToNull(q.getXmfl()));

@@ -62,7 +62,7 @@
         @done="handlePickDone"
       />
   -->
-  <div class="pick-stage" role="region" aria-label="添加地块">
+  <div class="pick-stage" role="region" :aria-label="regionLabel">
     <!-- 一句话说明：用户从表单跳进来，需要知道「现在在做什么、怎么结束、怎么回去」 -->
     <p class="pick-stage__hint">
       <screen-icon name="info" :size="14" />
@@ -84,10 +84,17 @@ import { toast } from './toast'
 import { startDraw } from '@/views/screen/drawPolygon'
 import { show as showDkPreview } from '@/views/screen/previewPolygon'
 
-/** 各发起方的兜底提示文案（title 为空时用） */
+/**
+ * 各发起方的兜底提示文案（title 为空时用）。
+ *
+ * ★ 配套一侧不再说「配套项目地块」（测试清单 P2-06）：配套表单画的是配套道路 /
+ *   配套设施范围的覆盖图形，说成地块会让用户以为在画宗地。
+ *   这里拿不到具体类别（ptsslb 在表单里），所以用中性说法；具体类别由发起方
+ *   通过 startPick 的 title 传进来（见 FacilityFormModal 的 pickDrawTargetText）。
+ */
 const HINT_BY_SOURCE = {
   land: '正在添加经营性用地地块：左键加点，双击或右键结束，Esc 取消',
-  facility: '正在添加配套项目地块：左键加点，双击或右键结束，Esc 取消'
+  facility: '正在绘制配套设施范围：左键加点，双击或右键结束，Esc 取消'
 }
 
 /**
@@ -194,7 +201,13 @@ export default {
   computed: {
     hintText () {
       if (this.title) return this.title
-      return HINT_BY_SOURCE[this.source] || '正在添加地块：左键加点；双击 / 右键或点「完成绘制」结束'
+      // 兜底文案用中性说法：本组件同时服务经营性用地（地块）与配套（道路/设施范围），
+      // 只有调用方知道自己画的是什么，具体称谓由 startPick 的 title 传进来（见 P2-06）。
+      return HINT_BY_SOURCE[this.source] || '正在绘制图形：左键加点；双击 / 右键或点「完成绘制」结束'
+    },
+    /** 区域的无障碍名称：说成「添加地块」会让配套场景的读屏用户误解在画宗地 */
+    regionLabel () {
+      return this.source === 'facility' ? '绘制配套设施范围' : '添加地块'
     }
   },
   created () {
@@ -276,7 +289,8 @@ export default {
      * 地图不可用时的统一提示（window.viewer 不存在 = Cesium 没起来）。
      */
     notifyDrawUnavailable () {
-      toast.warning('地图尚未加载，无法添加地块；请确认地图服务可用后重试')
+      // 中性说法：本组件同时服务「地块」与「配套范围」两种场景（见 P2-06）
+      toast.warning('地图尚未加载，无法绘制图形；请确认地图服务可用后重试')
     }
   }
 }

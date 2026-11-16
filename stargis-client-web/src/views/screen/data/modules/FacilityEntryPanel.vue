@@ -552,7 +552,11 @@ export default {
     handleLocate (record) {
       if (!record || !record.id) return
       if (!this.geoLayer.has(record.id)) {
-        toast.warning('该配套还没有地块图形：可在编辑里「添加地块」绘制，或用工具条「导入地块图形」导入')
+        // 称谓按该行记录的配套设施类别走（测试清单 P2-06）：含「道路」→ 配套道路，
+        // 其余类别（排水 / 供水 / 燃气 / 路灯 / 绿化 …）→ 中性的配套设施范围。
+        // 只改文案，「导入地块图形」仍是工具条上那个按钮的原名。
+        const target = String(record.ptsslb || '').indexOf('道路') > -1 ? '配套道路' : '配套设施范围'
+        toast.warning(`该配套还没有${target}图形：可在编辑里「添加${target}」绘制，或用工具条「导入地块图形」导入`)
         return
       }
       const t0 = performance.now()

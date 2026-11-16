@@ -383,6 +383,53 @@ public class StatQueryTest extends LandIntegrationTestBase {
     }
 
     /**
+     * 功能区 gnq 与行政区划 xzqh 分列后的检索口径（清单 P1-05 第 2、4 条）。
+     *
+     * <p>★ 数据侧已由 {@code sql/data/14_facility_gnq_and_dict.sql} 把功能区从 xzqh 迁到 gnq；
+     * 查询侧如果不补 gnq 条件与字段，那批记录会「录得进、查不到」。
+     */
+    @Test
+    public void gnqIsQueryableAndSeparateFromXzqh() {
+        String tag = uniqueTag();
+        String ptxmmc = TEST_PREFIX + "功能区配套-" + tag;
+        String rawCode = TEST_PREFIX + "gnq-" + tag;
+        landAdminService.createLand(buildLand(rawCode, "功能区地块", "市级项目", "滨海新区", null), null);
+        String code = storedCode(rawCode);
+
+        FacilitySaveDTO dto = buildFacility(code, ptxmmc, "现状", "否", "否");
+        dto.setXzqh("滨海新区");
+        dto.setGnq("生态城");
+        facilityAdminService.createFacility(dto, null);
+
+        // 字段清单是「自定义列 / 导出列 / 高级查询条件」的唯一来源，缺它就等于录了查不到
+        assertTrue(containsKey(statQueryService.queryColumns("facility"), "gnq"),
+                "配套字段清单缺少功能区");
+
+        StatQueryDTO byGnq = new StatQueryDTO();
+        byGnq.setDataType("facility");
+        byGnq.setPtxmmc(Collections.singletonList(ptxmmc));
+        byGnq.setGnq(Collections.singletonList("生态城"));
+        // 结果行只带「选中的列」，所以这里显式把功能区选进自定义列
+        byGnq.setColumns(Arrays.asList("ptxmmc", "xzqh", "gnq"));
+        QueryPageVO page = statQueryService.queryPage(byGnq);
+        assertEquals(1, page.getTotal(), "按功能区应命中 1 条");
+        assertEquals("生态城", page.getRows().get(0).get("gnq"), "结果集要带出功能区原值");
+        assertEquals("滨海新区", page.getRows().get(0).get("xzqh"), "行政区划仍是滨海新区");
+
+        // 功能区值不得再出现在行政区划里 —— 按 16 区统计不会被功能区污染（P1-05 验收第 3 条）
+        StatQueryDTO byXzqh = new StatQueryDTO();
+        byXzqh.setDataType("facility");
+        byXzqh.setPtxmmc(Collections.singletonList(ptxmmc));
+        byXzqh.setXzqh(Collections.singletonList("生态城"));
+        assertEquals(0, statQueryService.queryPage(byXzqh).getTotal(),
+                "功能区不是行政区划，不能被 xzqh 命中");
+
+        // 下拉候选值取自库里实际出现过的值
+        assertTrue(statQueryService.queryOptions("facility").containsKey("gnq"),
+                "功能区候选值缺失");
+    }
+
+    /**
      * 配套项目详情：结果表点开某一行时看到的那一份数据。
      *
      * <p>★ 关键是它**不经过数据管理的录入接口**（那个挂 `land:data:facility` 权限）：

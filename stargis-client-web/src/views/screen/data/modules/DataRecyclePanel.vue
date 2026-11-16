@@ -303,16 +303,44 @@ export default {
   created () {
     this.loadActionOptions()
   },
+  mounted () {
+    // 首次进入也要拉数据：不能只依赖 activated（原因见 ensureLoaded 注释）
+    this.ensureLoaded()
+  },
   activated () {
     // keep-alive 激活时重新取权威数据；首次挂载也会触发，覆盖「移除后再回来」的场景。
-    this.loadSummary()
-    if (this.activeTab === 'bin') {
-      this.loadBin()
-    } else {
-      this.loadLogs()
-    }
+    this.ensureLoaded()
   },
   methods: {
+    /**
+     * 首次挂载与 keep-alive 激活统一入口。
+     *
+     * ★ 为什么不能只写 activated：`activated` 只在组件被 keep-alive 缓存时才触发。
+     *   当前本面板确实在 data/index.vue 的 keep-alive 里，但那是**页面结构**的偶然，
+     *   一旦以后改成不缓存（或外面套了别的壳），只依赖 activated 就会整块空白。
+     * ★ 同 tick 去重：首次进入时 mounted 与 activated 会先后各触发一次，
+     *   不去重就发两套请求（汇总 + 列表各两次）。
+     */
+    ensureLoaded () {
+      if (this.loadScheduled) {
+        return
+      }
+      this.loadScheduled = true
+      this.$nextTick(() => {
+        this.loadScheduled = false
+        this.loadActiveTab()
+      })
+    },
+
+    /** 只刷新当前页签的权威数据；切换页签时不重复拉另一页 */
+    loadActiveTab () {
+      this.loadSummary()
+      if (this.activeTab === 'bin') {
+        this.loadBin()
+      } else {
+        this.loadLogs()
+      }
+    },
     /* ---------------- 回收站 ---------------- */
 
     loadSummary () {

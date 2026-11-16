@@ -115,11 +115,11 @@
               type="button"
               class="facility-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '添加地块，在地图上绘制多边形；可先把本窗口拖到一边' : '地图未加载，无法添加地块'"
+              :aria-label="mapPickAriaLabel"
               @click="handleOpenMapPick"
             >
               <screen-icon name="grid" :size="16" />
-              <span>添加地块</span>
+              <span>{{ mapPickActionLabel }}</span>
             </button>
             <!-- 已绘制的状态：有图形时显示顶点数并允许清除（与 LandFormModal 同款交互） -->
             <span v-if="drawnVertexCount" class="facility-form__map-pick-drawn">
@@ -127,13 +127,11 @@
               <button
                 type="button"
                 class="facility-form__map-pick-clear"
-                aria-label="清除地块图形"
+                :aria-label="`清除${pickTargetText}图形`"
                 @click="handleClearGeojson"
               >清除</button>
             </span>
-            <span class="facility-form__map-pick-tip">
-              {{ mapEnabled ? (drawnVertexCount ? '' : '尚未绘制；点击后在地图上左键加点，双击或右键结束') : '地图未加载（?map=0 预览模式），暂不能添加地块' }}
-            </span>
+            <span class="facility-form__map-pick-tip">{{ mapPickTipText }}</span>
           </div>
 
           <screen-field label="行政区划" label-width="150px">
@@ -627,6 +625,41 @@ export default {
      */
     drawnVertexCount () {
       return countVertices((this.model && this.model.dkGeojson) || '')
+    },
+    /**
+     * 地图绘制入口的用户可见称谓（测试清单 P2-06）。
+     *
+     * ★ 本表单是**配套项目**表单，按钮原来写「添加地块」，是从经营性用地表单复制过来的错文案：
+     *   用户以为要去画一块宗地，实际画的是配套的覆盖范围。
+     * ★ 但配套设施类别（ptsslb）不全是道路（还有排水 / 供水 / 燃气 / 路灯 / 绿化 / 交通设施），
+     *   一律说成「配套道路」在另一种场景下又说错了，所以按当前类别二选一：
+     *   含「道路」→ 配套道路；其余（含尚未选择）→ 中性的「配套设施范围」。
+     * ★ 只改文案：字段名仍是 dkGeojson，接口参数一个不动。
+     */
+    pickTargetText () {
+      const category = String((this.model && this.model.ptsslb) || '')
+      return category.indexOf('道路') > -1 ? '配套道路' : '配套设施范围'
+    },
+    /** 绘制动作的说法：一句「绘制配套道路范围」比「添加配套道路」更贴近实际交互 */
+    pickDrawTargetText () {
+      return this.pickTargetText === '配套道路' ? '配套道路范围' : this.pickTargetText
+    },
+    /** 按钮文字：添加配套道路 / 添加配套设施范围 */
+    mapPickActionLabel () {
+      return `添加${this.pickTargetText}`
+    },
+    /**
+     * 按钮的无障碍名称：说清「点了会发生什么、窗口挡住地图时怎么办」，
+     * 并且与可见文字同一个称谓（读屏用户听到的也不该是「地块」）。
+     */
+    mapPickAriaLabel () {
+      if (!this.mapEnabled) return `地图未加载，无法${this.mapPickActionLabel}`
+      return `${this.mapPickActionLabel}：在地图上绘制多边形；可先把本窗口拖到一边`
+    },
+    /** 按钮右侧的状态行：未绘制时教怎么画，地图没起来时说清为什么不能画 */
+    mapPickTipText () {
+      if (!this.mapEnabled) return `地图未加载（?map=0 预览模式），暂不能${this.mapPickActionLabel}`
+      return this.drawnVertexCount ? '' : '尚未绘制；点击后在地图上左键加点，双击或右键结束'
     }
   },
   watch: {
@@ -754,7 +787,7 @@ export default {
      */
     handleOpenMapPick () {
       if (!this.mapEnabled) {
-        toast.warning('地图尚未加载，无法添加地块')
+        toast.warning(`地图尚未加载，无法${this.mapPickActionLabel}`)
         return ''
       }
       // 已经画过（或编辑回显有图形）时再次点「添加地块」：旧面从地图上消失，
@@ -770,7 +803,7 @@ export default {
       //   因为同一时刻只可能有一张全屏地图，本来就不支持并行绘制。
       this.pickToken = startPick({
         source: 'facility',
-        title: '正在添加配套项目地块：左键加点，双击或右键结束，Esc 取消',
+        title: `正在绘制${this.pickDrawTargetText}：左键加点，双击或右键结束，Esc 取消`,
         issuer: `FacilityFormModal#${this.uid}`
       })
       return this.pickToken
@@ -801,7 +834,7 @@ export default {
         this.model.dkGeojson = geometry.geojson
         // 预览面已由 ScreenPickStage 转交常驻层接管（画完的面留在地图上，
         // 提交 / 取消 / 重画 / 清除时才消失），这里不用再动地图
-        toast.success(`地块图形已添加（${geometry.vertexCount} 个顶点），保存时随表单一并提交`)
+        toast.success(`${this.pickDrawTargetText}已添加（${geometry.vertexCount} 个顶点），保存时随表单一并提交`)
       } else if (this.model.dkGeojson) {
         // 取消绘制（Esc）：表单里已有的图形不受影响，把它的预览面显示回来
         showDkPreview(this.model.dkGeojson)

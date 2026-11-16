@@ -299,12 +299,35 @@
     },
     mounted () {
       this.loadActionOptions()
+      // 首次进入也要拉数据：不能只依赖 activated（原因见 ensureLoaded 注释）
+      this.ensureLoaded()
     },
     activated () {
-      // 与大屏一致：首次进入和 keep-alive 再次激活都刷新，避免回收站停留在旧快照。
-      this.refresh()
+      // keep-alive 再次激活：回到本页时刷新，避免回收站停留在旧快照。
+      this.ensureLoaded()
     },
     methods: {
+      /**
+       * 首次挂载与 keep-alive 激活统一入口。
+       *
+       * ★ 为什么不能只写 activated：`activated` 只在路由被 keep-alive 缓存时才触发，
+       *   而是否缓存由「菜单管理 → 是否缓存（keep_alive）」决定（见 RouteView.vue）。
+       *   只靠 activated 的话，一旦某环境该菜单没勾缓存，本页会整页空白、且排查起来
+       *   完全看不出是哪一步没跑。
+       * ★ 为什么加同 tick 去重：首次进入时 mounted 与 activated 会先后各触发一次，
+       *   不去重就发两套请求（回收站 + 留痕各两次）。
+       */
+      ensureLoaded () {
+        if (this.loadScheduled) {
+          return
+        }
+        this.loadScheduled = true
+        this.$nextTick(() => {
+          this.loadScheduled = false
+          this.refresh()
+        })
+      },
+
       actionColor: actionColor,
       actionText: actionText,
       bizTypeText: bizTypeText,

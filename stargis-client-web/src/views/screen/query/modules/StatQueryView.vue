@@ -210,6 +210,8 @@ export default {
           this.selectField('ptsslb', '配套设施类别', this.multiOptions('ptsslb')),
           this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true }),
           this.selectField('xzqh', '行政区划', this.multiOptions('xzqh')),
+          // 功能区与行政区划并列：2026-11 拆列后，生态城/经开区等记录只能按 gnq 检索
+          this.selectField('gnq', '功能区', this.multiOptions('gnq'), { labelWidth: 88 }),
           this.selectField('xmfl', '项目分类', PROJECT_TYPE_OPTIONS),
           this.selectField('jsxx', '建设性质', BUILD_NATURE_OPTIONS),
           this.selectField('sfkg', '是否开工', YES_NO_OPTIONS),

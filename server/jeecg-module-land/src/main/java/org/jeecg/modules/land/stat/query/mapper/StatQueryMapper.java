@@ -101,6 +101,9 @@ public interface StatQueryMapper {
 
     List<String> selectFacilityXzqhOptions(@Param("limit") int limit);
 
+    /** 功能区（生态城 / 经开区 / 高新区 / 保税区 / 土地发展中心）—— 只返回库里有值的 */
+    List<String> selectFacilityGnqOptions(@Param("limit") int limit);
+
     /** 资金落实情况（已落实 / 未落实 …）—— 值取自库里实际出现的值，不写死枚举 */
     List<String> selectFacilityZjlsqkOptions(@Param("limit") int limit);
 }

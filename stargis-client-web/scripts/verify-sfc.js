@@ -31,6 +31,9 @@ const FILES = [
   'src/utils/mvt/imageryProvider.js',
   'src/utils/mvt/layerTreeDirective.js',
   'src/views/screen/home/HomeLayerTree.vue',
+  // 首页「地块预警信息」弹窗（P2-04 每页条数 + 行区域滚动改造）：原来一直在清单外，
+  // 改它的模板或 less 只能等到打包/跑起来才报错，顺手登记进来
+  'src/views/screen/home/HomePlotModal.vue',
   'src/views/screen/map/index.vue',
   'src/views/maps/components/Basic/HomeBasicBody.vue',
   'src/views/maps/S3dmViewer.vue',

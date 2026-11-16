@@ -57,6 +57,15 @@ public class StatQueryDTO implements Serializable {
     /** 行政区划（多值，精确）。★ 用 xzqh，不沿用旧系统的 xzqh2（见差异清单 D-604 / D-609） */
     private List<String> xzqh;
 
+    /**
+     * 功能区（多值，精确）：生态城 / 经开区 / 高新区 / 保税区 / 土地发展中心。
+     *
+     * <p>★ 与 {@link #xzqh} 分列：旧数据把功能区写进 xzqh，导致「按 16 区统计多出区」。
+     * 2026-11 已拆列（见 {@code sql/data/14_facility_gnq_and_dict.sql}），
+     * 查询侧必须能单独按功能区检索，否则拆列后反而查不到这些记录。
+     */
+    private List<String> gnq;
+
     /** 项目分类：市级项目 / 区级项目；空=全部 */
     private String xmfl;
 

@@ -230,6 +230,10 @@ public final class QueryFieldRegistry {
         add(facility, text("dkmc", "地块名称", true, null));
         add(facility, text("ptsslb", "配套设施类别", true, null));
         add(facility, text("xzqh", "行政区划", true, null));
+        // 功能区（生态城/经开区/高新区/保税区/土地发展中心）：2026-11 从 xzqh 拆出的独立列。
+        // 不进默认列（高保真配套结果仍是 7 列），但必须可检索、可自定义列、可导出，
+        // 否则「页面能录但不能查」——清单 P1-05 第 4 条要求字典/下拉/导入/查询/统计/导出同步。
+        add(facility, text("gnq", "功能区", false, null));
         add(facility, text("xmfl", "项目分类", true, null));
         add(facility, text("jsxx", "建设性质", true, null));
         // —— 其余 ——

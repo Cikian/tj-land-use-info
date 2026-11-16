@@ -11,6 +11,12 @@
       列表是分页的，从当前页累加出来的「总数 10」会随翻页跳变，
       用户会以为数据在变。summary 是**全量口径**，与列表条件无关（只按 bizType 过滤）。
 
+    ★ 检索条件与视图的关系（测试问题 P1-07）：
+      目录树接口只按 bizType 汇总，文件名 / 材料类型 / 所属对象 / 上传人 / 上传时间
+      这些条件它表达不了（见 loadTree 的注释）。因此点「查询」时只要带上了这类条件，
+      面板会**自动切到「平铺列表」**并提示一次（见 switchToFlatForQuery），
+      而不是让用户在默认视图里点了查询却什么都没变。
+
     ★ 上传时预置归属：从配套详情跳过来（drill: { bizType, bizId, bizKey }）时，
       上传弹窗里的业务类型与主键已经填好，用户只需要选文件 —— 少三步操作。
 
@@ -148,6 +154,18 @@ import { defaultPagination, compactQuery, formatSize } from '../constants'
  */
 const TREE_PAGE_SIZE = 40
 
+/**
+ * 「目录树表达不了、只有平铺列表能表达」的检索条件。
+ *
+ * ★ 为什么要把这件事收成一份清单：`/attachment/byProject` 只接受 bizType
+ *   （树回答的是「有哪些项目、每个项目有哪些材料」，把文件名之类的条件带上去
+ *   会把树剪得七零八落 —— 某个项目只剩一个类型、另一个项目整体消失）。
+ *   于是这些条件在树视图下会被**静默忽略**：用户 fill 了「文件名」点查询，
+ *   树一点没变 —— 这正是测试报的「附件查询无效」。
+ *   以后后端给树接口补齐条件（或某些字段允许在树上生效）时，只需增删这里的键。
+ */
+const FLAT_ONLY_FIELDS = ['keyword', 'fileType', 'bizId', 'bizKey', 'uploadBy', 'beginDate', 'endDate']
+
 export default {
   name: 'AttachmentPanel',
   components: {
@@ -209,6 +227,10 @@ export default {
     }
   },
   created () {
+    // ★ 深链直接带条件进来时（?tab=attachment&bizId=…，见 data/index.vue 的 drillQuery），
+    //   initialQuery 里就已经有精细条件了。先定视图再加载，否则同样会落在
+    //   「树只按 bizType 拉、条件全被忽略」的老问题上。
+    this.switchToFlatForQuery()
     this.loadCurrentView()
   },
   methods: {
@@ -229,16 +251,22 @@ export default {
      * ★ 只按 bizType 过滤，不带其它检索条件：目录树的语义是「有哪些项目、
      *   每个项目有哪些材料」——把文件名之类的条件也带上，会把树剪得七零八落
      *   （某个项目只剩一个类型、另一个项目整体消失），反而看不出结构。
-     *   需要按文件名等精细检索时切到「平铺列表」。
+     *   需要按文件名等精细检索时切到「平铺列表」—— 这件事已经自动化了：
+     *   点「查询」时若带上了树表达不了的条件，switchToFlatForQuery() 会先切视图。
      *
      * ★ 为什么用「显示更多」而不是分页：分页会把某个项目截成两半
      *   （第 1 页有它的 3 个类型、第 2 页有另外 2 个），树的结构就断了 ——
      *   而树的价值正是「一眼看全这个项目有什么」。所以按项目数往后累加。
+     *
+     * ★ 不是追加加载时，limit 用**当前已加载的项目数**而不是重置回一页：
+     *   这个方法同时承担「首次加载」和「删除/上传后刷新当前视图」两种职责。
+     *   删掉一个附件后把树缩回 40 个项目，用户会觉得「数据丢了」；
+     *   真正需要复位的地方（检索、切视图）会自己把 treeLimit 改回 TREE_PAGE_SIZE。
      */
     loadTree (append) {
       this.loading = true
       const bizType = String(this.query.bizType || '').trim()
-      const limit = append ? this.treeLimit + TREE_PAGE_SIZE : TREE_PAGE_SIZE
+      const limit = append ? this.treeLimit + TREE_PAGE_SIZE : (this.treeLimit || TREE_PAGE_SIZE)
       return queryAttachmentTreeByProject(bizType || undefined, limit)
         .then((res) => {
           if (!res || !res.success) {
@@ -337,12 +365,55 @@ export default {
       this.loadTree(true)
     },
 
+    /**
+     * 这组检索条件里是否含「目录树表达不了」的精细条件。
+     *
+     * ★ 判断集中在这一个方法（字段清单在 FLAT_ONLY_FIELDS）：
+     *   视图切换策略以后大概还要调（后端给树接口补条件、或某个字段改成树上也能生效），
+     *   到时候只改这一处，不用在每个调用点各判断一遍。
+     */
+    needsFlatQuery (query) {
+      const source = query || {}
+      return FLAT_ONLY_FIELDS.some((key) => {
+        const value = source[key]
+        return value !== undefined && value !== null && String(value).trim() !== ''
+      })
+    },
+
+    /**
+     * 有精细条件时把视图切到「平铺列表」，并给一次可见反馈。
+     *
+     * ★ 为什么是「切视图」而不是「把条件塞给树接口」：
+     *   树接口只按 bizType 过滤（见 loadTree 的注释），塞不进去；
+     *   而平铺列表的 `/attachment/list` 本来就支持全套条件 ——
+     *   切过去是**条件立刻生效**成本最低的做法。
+     * ★ 为什么必须有提示：视图自己跳了、条件框还留着，用户会以为界面坏了。
+     *   一句 toast 说明「树做不了这种检索、已切到平铺列表」，
+     *   比让他继续在树上点查询却毫无反应要好。
+     * ★ 不用 alert：大屏是常驻展厅界面，阻塞式弹窗会卡住演示；项目统一用 toast。
+     *
+     * ★ ScreenTabs 只在**用户点击**时 emit change，直接改 viewMode 不会触发
+     *   handleViewChange，所以这里不会多加载一次（选中项/分页由调用方复位）。
+     *
+     * @returns {boolean} 是否真的切换了（调用方据此判断要不要复位分页/选中）
+     */
+    switchToFlatForQuery () {
+      if (this.viewMode !== 'tree') return false
+      if (!this.needsFlatQuery(this.query)) return false
+      this.viewMode = 'flat'
+      toast.info('已切到「平铺列表」：目录树只按归属类型汇总，无法按文件名 / 材料类型 / 所属对象等条件过滤')
+      return true
+    },
+
     handleSearch (query) {
       this.query = query || {}
       this.pagination.current = 1
       this.selectedRowKeys = []
       // 检索条件变了，树的「已加载多少」要从头算
       this.treeLimit = TREE_PAGE_SIZE
+      // ★ 先定视图再加载：树视图下文件名/材料类型/所属对象等条件会被静默丢掉，
+      //   用户点了「查询」看不到任何变化（测试报的「附件查询无效」）。
+      this.switchToFlatForQuery()
       this.loadCurrentView()
       this.loadSummary()
     },
@@ -422,7 +493,13 @@ export default {
           }
           toast.success(res.message || '已删除')
           this.selectedRowKeys = this.selectedRowKeys.filter((key) => key !== record.id)
-          this.loadData()
+          // ★ 刷新**当前视图**而不是固定刷平铺列表：
+          //   树视图下刷平铺列表等于什么也没刷（树上那份文件还在、项目计数照旧），
+          //   用户只能自己点「刷新」—— 测试报的「删除后必须手动刷新」就是这条。
+          // ★ 树不需要额外补计数：树接口一次返回整棵结构，项目节点的
+          //   totalFiles / totalSize / typeCount 与每个类型分组的 fileCount / totalSize
+          //   都是随行下发的，重拉一次三项一起归位（本项目里也没有单独改计数的接口）。
+          this.loadCurrentView()
           this.loadSummary()
         })
         .catch(() => {
@@ -446,7 +523,13 @@ export default {
       }
       this.pagination.current = 1
       this.selectedRowKeys = []
-      this.loadData()
+      this.treeLimit = TREE_PAGE_SIZE
+      // ★ 下钻条件（bizId / bizKey）本身就是树表达不了的精细条件：
+      //   留在树视图会看到「全量项目树」而看不到这个对象的附件 ——
+      //   与「点了查询看不到过滤结果」是同一个问题，这里一并切到平铺列表。
+      //   bizId 与 bizKey 的联动仍在 AttachmentSearchForm 的 watch 里，本方法不参与。
+      this.switchToFlatForQuery()
+      this.loadCurrentView()
       this.loadSummary()
     }
   }

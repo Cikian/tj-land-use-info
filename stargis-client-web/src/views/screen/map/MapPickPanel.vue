@@ -17,8 +17,10 @@
         隔行高亮 table-row.png（与首页明细表同一张切图），落在第 1/3/5 行
 
     数据来源：父组件监听 stargis-function 拾取结果（总线事件 showPickQueryPop，
-    payload 即 {name, value} 行数组）后经 props 传入；没有拾取结果时回退到
-    设计稿演示数据，保证空态下版式与高保真一致。
+    payload 即 {name, value} 行数组）后经 props 传入。
+    ★ 2026-11 起**不再回退设计稿演示数据**（测试问题 P2-02）：没拾中就是空态，
+      否则展厅里未操作时面板就显示 OID 153 / 津武（挂）2023-014 这类假属性，
+      用户会把它当成真实地块数据。空态文案见模板里的 &__empty。
 
     ★ 2026-11 起右面板可拖宽（400 → 340~720），上面的定尺里凡是横向的值都
       不再写死：面板宽取 CSS 变量 --panel-right-w（页面根下发），当前图层框 /
@@ -35,7 +37,8 @@
         <img class="map-pick__layer-bg" :src="hf.pickLayerBox" alt="" aria-hidden="true" />
         <img class="map-pick__layer-icon" :src="hf.pickLayerIcon" alt="" aria-hidden="true" />
         <span class="map-pick__layer-label">当前图层</span>
-        <span class="map-pick__layer-name">{{ currentLayer }}</span>
+        <!-- 未拾取时显示占位符，不再显示设计稿的演示图层名（P2-02） -->
+        <span class="map-pick__layer-name">{{ currentLayer || '—' }}</span>
       </div>
 
       <!-- 字段表 -->
@@ -61,6 +64,11 @@
           <span class="map-pick__td is-name">{{ row.name }}</span>
           <span class="map-pick__td is-value">{{ row.value }}</span>
         </div>
+        <!--
+          空态（P2-02）：原来这里会回退演示数据，展厅里未操作时也显示属性，
+          容易被当成真实地块数据。现在明确告诉用户「去地图上点一下」。
+        -->
+        <p v-if="isEmpty" class="map-pick__empty">请在地图上拾取要素</p>
       </div>
     </section>
   </div>
@@ -68,17 +76,6 @@
 
 <script>
 import { hf } from '@/assets/screen-blue'
-
-/** 设计稿演示数据：仅在还没有真实拾取结果时展示（空态版式与高保真一致） */
-const DEMO_ROWS = [
-  { name: 'OID', value: '153' },
-  { name: 'FID', value: '152' },
-  { name: 'CRZDBH', value: '津武（挂）2023-014' },
-  { name: '地块名', value: '地块001' },
-  { name: 'Shape_Leng', value: '1047.673' },
-  { name: 'Shape_Area', value: '34017.238' }
-]
-const DEMO_LAYER = '图层001'
 
 export default {
   name: 'MapPickPanel',
@@ -90,7 +87,7 @@ export default {
     result: { type: Array, default: null },
     /**
      * 拾中要素所在图层名（父组件在地图点击时从 Cesium pick 结果里取，
-     * 取不到时保持 null，面板显示演示图层名）。
+     * 取不到时保持 null / 空串，面板显示占位符而不是演示图层名）。
      */
     layerName: { type: String, default: '' }
   },
@@ -100,11 +97,19 @@ export default {
     }
   },
   computed: {
+    /**
+     * 只展示真实拾取结果（P2-02）。
+     * ★ 原来没有结果时回退 DEMO_ROWS：展厅里没人操作，面板却显示 OID 153 之类
+     *   的假属性，会被当成真实地块数据。空态必须显式表达「还没拾取」。
+     */
     displayRows () {
-      return this.result && this.result.length ? this.result : DEMO_ROWS
+      return Array.isArray(this.result) ? this.result : []
     },
     currentLayer () {
-      return this.layerName || DEMO_LAYER
+      return this.layerName || ''
+    },
+    isEmpty () {
+      return this.displayRows.length === 0
     }
   }
 }
@@ -273,6 +278,15 @@ export default {
     position: relative;
     width: 100%;
     height: 46px;
+  }
+
+  // 空态：未拾取 / 已取消 / 切走工具。位置取表体上部，与「当前图层 —」一起说明还没选要素。
+  &__empty {
+    margin: 24px 0 0;
+    font-size: var(--screen-font-sm);
+    line-height: 22px;
+    color: rgba(130, 198, 255, 0.72);
+    text-align: center;
   }
 
   &__row-bg {

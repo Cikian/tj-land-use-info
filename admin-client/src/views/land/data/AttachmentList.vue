@@ -496,8 +496,47 @@
           this.distribution = []
         })
       },
+      /**
+       * 这组检索条件里是否含「目录树表达不了」的精细条件。
+       *
+       * ★ 背景（测试问题清单 P1-07，与大屏端 AttachmentPanel 同构）：
+       *   `loadTree()` 只把 bizType 交给 `/attachment/byProject`，文件名、附件类型、
+       *   业务对象、上传人、上传时间这些条件在树视图下**根本不参与请求**。
+       *   于是默认（树）视图里点「查询」看不出任何变化，用户会以为查询失效。
+       *   ★ 清单收在方法内部而不是散在各调用点：后端给树接口补齐条件后，
+       *     只需从这里删掉对应字段。
+       */
+      needsFlatQuery () {
+        const fields = ['bizId', 'bizKey', 'fileType', 'keyword', 'uploadBy', 'beginDate', 'endDate']
+        return fields.some(key => {
+          const value = this.query[key]
+          return value !== undefined && value !== null && String(value).trim() !== ''
+        })
+      },
+
+      /**
+       * 有精细条件而当前停在树视图时，先切到「平铺列表」再查询，并提示一次。
+       * ★ 为什么切视图而不是硬查：树接口不认这些条件，切到列表才是「条件真的生效」；
+       * ★ 为什么要提示：视图自己跳了、条件框还留着，不说明一句用户会以为界面出错。
+       * ★ a-radio-group 的 change 只在用户点选时触发，直接改 viewMode 不会重复加载。
+       * @returns {boolean} 是否发生了切换（调用方据此决定要不要复位分页）
+       */
+      switchToFlatForQuery () {
+        if (this.viewMode !== 'tree') {
+          return false
+        }
+        if (!this.needsFlatQuery()) {
+          return false
+        }
+        this.viewMode = 'flat'
+        this.$message.info('目录树只按业务类型汇总，无法按文件名 / 附件类型 / 业务对象等条件过滤，已切到「平铺列表」')
+        return true
+      },
+
       handleSearch () {
         this.pagination.current = 1
+        // ★ 先定视图再加载：树视图下精细条件会被静默丢掉（见 needsFlatQuery）
+        this.switchToFlatForQuery()
         // ★ 按当前视图刷新：树视图与列表视图数据源不同
         this.loadCurrentView()
         this.loadSummary()

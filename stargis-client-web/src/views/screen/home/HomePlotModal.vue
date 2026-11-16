@@ -39,32 +39,43 @@
           class="home-plot__th"
           :style="{ left: colLeft(col.left) }"
         >{{ col.title }}</span>
-        <img class="home-plot__body" :src="hf.plotTableBody" alt="" aria-hidden="true" />
+        <!--
+          行区域单独包一层滚动视口（P2-04）：
+          每页 10 / 20 / 50 三档共享同一块 484px 高的可视区，行数超出一屏时
+          靠滚动看全，而不是让外层的 overflow:hidden 把第 11 行之后悄悄裁掉
+          （那正是「切到 20 条仍只看到 10 行」的表现）。
+          表头留在视口外，滚动时不会跟着走。
+        -->
+        <div ref="scroll" class="home-plot__scroll">
+          <div class="home-plot__canvas" :style="{ height: canvasHeight }">
+            <img class="home-plot__body" :src="hf.plotTableBody" alt="" aria-hidden="true" />
 
-        <div
-          v-for="(row, index) in pageRows"
-          :key="row.id || index"
-          class="home-plot__tr"
-          :style="{ top: `${118 + index * 46}px` }"
-        >
-          <img
-            v-if="index % 2 === 0"
-            class="home-plot__tr-bg"
-            :src="hf.plotRow"
-            alt=""
-            aria-hidden="true"
-          />
-          <span
-            v-for="col in columns"
-            :key="col.key"
-            class="home-plot__td"
-            :class="col.percent ? toneClass(row, col.key) : ''"
-            :style="cellStyle(col)"
-            :title="cellTitle(row, col)"
-          >{{ cellText(row, col) }}</span>
+            <div
+              v-for="(row, index) in pageRows"
+              :key="row.id || index"
+              class="home-plot__tr"
+              :style="{ top: rowTop(index) }"
+            >
+              <img
+                v-if="index % 2 === 0"
+                class="home-plot__tr-bg"
+                :src="hf.plotRow"
+                alt=""
+                aria-hidden="true"
+              />
+              <span
+                v-for="col in columns"
+                :key="col.key"
+                class="home-plot__td"
+                :class="col.percent ? toneClass(row, col.key) : ''"
+                :style="cellStyle(col)"
+                :title="cellTitle(row, col)"
+              >{{ cellText(row, col) }}</span>
+            </div>
+
+            <p v-if="!pageRows.length" class="home-plot__empty">暂无预警数据</p>
+          </div>
         </div>
-
-        <p v-if="!pageRows.length" class="home-plot__empty">暂无预警数据</p>
       </div>
 
       <!-- 分页 -->
@@ -81,10 +92,23 @@
         >{{ n }}</button>
         <button type="button" class="home-plot__page is-nav" @click="go(page + 1)">&gt;</button>
         <span class="home-plot__pager-label">每页显示条数</span>
-        <button type="button" class="home-plot__pager-size">
-          {{ pageSize }}
-          <img :src="hf.pagerCaret" alt="" aria-hidden="true" />
-        </button>
+        <!--
+          每页条数选择（P2-04）：原来只是一个没有任何事件的展示按钮，点不动。
+          这里用原生 select —— 弹窗只挂在画布内、只有 10/20/50 三档，
+          不值得为它引一层浮层组件；appearance:none 掉原生箭头，
+          右侧仍用设计稿的 caret 图，外观与原来的「10 ⌄」完全一致。
+        -->
+        <span class="home-plot__pager-size">
+          <select
+            class="home-plot__pager-size-select"
+            :value="pageSize"
+            aria-label="每页显示条数"
+            @change="handlePageSizeChange"
+          >
+            <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+          </select>
+          <img class="home-plot__pager-size-caret" :src="hf.pagerCaret" alt="" aria-hidden="true" />
+        </span>
         <span class="home-plot__pager-label is-go">前往</span>
         <span class="home-plot__pager-input">
           <img :src="hf.pagerInput" alt="" aria-hidden="true" />
@@ -164,6 +188,26 @@ const COLUMN_PRESETS = {
   ].concat(INDICATOR_COLUMNS)
 }
 
+/**
+ * 表格几何常量 —— 与 less 里 .home-plot__head / &__tr / &__scroll 三处必须逐个对上，
+ * 否则行会错位或被裁掉（旧版本把行高写成 52、pageSize 写成 18 就是这么出的事）。
+ *   ROW_TOP     设计稿里首行的 top，相对整个表格容器（表体 457px 装 10 行 × 46，
+ *               起点在高保真稿的 y=118，而表格容器自己从 y=72 开始 → 46）
+ *   HEAD_HEIGHT 表头高度；行区域在它下面的滚动视口里，所以行的 top 要减掉这一截
+ *   ROW_HEIGHT  行高
+ *   BODY_HEIGHT 行区域可视高度（表格 520 − 表头 36），一屏正好 10 行
+ */
+const HEAD_HEIGHT = 36
+const ROW_HEIGHT = 46
+const ROW_TOP = 46
+const BODY_HEIGHT = 484
+
+/**
+ * 每页条数三档（测试清单 P2-04：10 / 20 / 50）。
+ * ★ 10 必须留在选项里：select 显示的是当前值，当前值不在 options 里时浏览器会显示空白。
+ */
+const PAGE_SIZE_OPTIONS = [10, 20, 50]
+
 export default {
   name: 'HomePlotModal',
   props: {
@@ -183,9 +227,10 @@ export default {
     return {
       hf,
       page: 1,
-      // 一屏正好 10 行（设计稿表体 457px / 行高 46）；与 less 里的行高、行距必须一致，
-      // 否则多出来的行会被 overflow:hidden 裁掉（旧值 18 就是这个坑）
-      pageSize: 10,
+      // 默认一屏 10 行（设计稿表体 457px / 行高 46），可在 10 / 20 / 50 之间切换；
+      // 20 / 50 时行数超过一屏，由 .home-plot__scroll 滚动承载（见 canvasHeight）
+      pageSize: PAGE_SIZE_OPTIONS[0],
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
       jump: null
     }
   },
@@ -210,6 +255,24 @@ export default {
       const numbers = []
       for (let n = start; n <= end; n += 1) numbers.push(n)
       return numbers
+    },
+    /**
+     * 行画布高度：只占一屏时就是可视高度；20 / 50 行时把画布撑高，交给滚动视口，
+     * 不再靠 overflow:hidden 硬裁（裁掉的部分用户根本看不到，会以为「只显示 10 行」）。
+     */
+    canvasHeight () {
+      const rowsBottom = ROW_TOP - HEAD_HEIGHT + this.pageRows.length * ROW_HEIGHT
+      return `${Math.max(BODY_HEIGHT, rowsBottom)}px`
+    }
+  },
+  watch: {
+    /**
+     * 行数变了（切页签、父组件重新查询）之后当前页可能越界，
+     * 夹回最后一页，避免出现「共 N 条却停在一页空白」。
+     * 盯 pageCount 而不是 rows：每页条数变化时也走同一次兜底。
+     */
+    pageCount () {
+      this.clampPage()
     }
   },
   mounted () {
@@ -248,6 +311,35 @@ export default {
     go (n) {
       if (typeof n !== 'number' || Number.isNaN(n)) return
       this.page = Math.min(this.pageCount, Math.max(1, n))
+      this.resetScroll()
+    },
+    /** 行的 top：设计稿首行相对表格是 46，进了滚动视口还要再减掉表头那一截（36） */
+    rowTop (index) {
+      return `${ROW_TOP - HEAD_HEIGHT + index * ROW_HEIGHT}px`
+    },
+    /**
+     * 切换每页条数。
+     * ★ 必须回到第 1 页：否则会停在新页大小下已不存在的页码上，出现一页空白。
+     */
+    handlePageSizeChange (event) {
+      const next = Number((event && event.target && event.target.value) || 0)
+      if (!next || this.pageSizeOptions.indexOf(next) < 0 || next === this.pageSize) return
+      this.pageSize = next
+      this.page = 1
+      this.jump = null
+      this.resetScroll()
+    },
+    /** 换页 / 换每页条数后把行区域滚回顶部，别停在上次滚到的位置 */
+    resetScroll () {
+      this.$nextTick(() => {
+        const scroller = this.$refs.scroll
+        if (scroller) scroller.scrollTop = 0
+      })
+    },
+    /** 页码越界兜底：数据变少或每页条数变大后，不许停在空页上 */
+    clampPage () {
+      const next = Math.min(this.pageCount, Math.max(1, this.page))
+      if (next !== this.page) this.page = next
     },
     handleKey (e) {
       if (e.key === 'Escape') this.$emit('close')
@@ -326,10 +418,10 @@ export default {
   }
 
   /* ---------------- 表格 ---------------- */
-  // 表头 36 + 10 行 × 46 = 496，落在设计稿的表体区（表头 72、分页 598）之内。
-  // ⚠ 行高必须是 46，且与脚本里 pageSize=10、行的 top 步进（118 + i*46）三处一致：
-  //   之前行高写 52、pageSize 写 18，结果第 11 行往后被 overflow:hidden 裁掉，
-  //   用户翻到第 1 页只看到 10 条、以为数据丢了（每页条数还写着 18）。
+  // 表格容器：表头 36 + 行区域可视 484 = 520，落在设计稿的表体区（表头 72、分页 598）之内。
+  // ⚠ 表头 36 / 行高 46 / 可视高 484 必须与脚本里的 HEAD_HEIGHT、ROW_HEIGHT、BODY_HEIGHT 逐个对上；
+  //   行区域改由下面的 &__scroll 滚动承载，20 / 50 条时多出来的行不会再被 overflow:hidden 裁掉
+  //   （旧版只按 10 行写死，切到 20 条用户仍只看到 10 行，会以为数据丢了）。
   &__table {
     position: absolute;
     left: 25px;
@@ -339,9 +431,30 @@ export default {
     overflow: hidden;
   }
 
+  // 行区域的滚动视口：贴在表头下方，高度 = 520 − 36。
+  // 用 auto 而不是 hidden —— 每页 10 条时正好一屏（不出滚动条），20 / 50 条时靠滚轮看全。
+  // 滚动条用项目统一的 6px 细条，暗色下不抢视线。
+  &__scroll {
+    position: absolute;
+    left: 0;
+    top: 36px;
+    width: 100%;
+    height: 484px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    .screen-scrollbar(6px);
+  }
+
+  // 行的定位画布：高度由脚本按当前行数算（canvasHeight），绝对定位的行都挂在它上面。
+  // ★ 宽度必须与 &__table 一样写死 1367：出现滚动条时视口内容区会窄 6px，
+  //   若画布用 100% 撑，按百分比定位的列会整体左移约 5px，与表头对不齐。
+  &__canvas {
+    position: relative;
+    width: 1367px;
+  }
+
   &__head,
   &__body {
-    position: relative;
     left: 0;
     display: block;
     width: 100%;
@@ -349,13 +462,17 @@ export default {
   }
 
   &__head {
+    // 表头留在滚动视口**外面**，所以仍是文档流里的普通块，自己顶住那 36px
+    position: relative;
     height: 36px;
   }
 
   &__body {
+    // 表体底图只负责一屏的底纹：行数超出后不再把它拉高，
+    // 拉伸会把图里隐约的分隔线糊成大片渐变；多出来的行直接落在弹窗底图上，观感一致
+    position: absolute;
+    top: 0;
     height: 484px;
-    display: block;
-    pointer-events: none;
   }
 
   &__th {
@@ -487,26 +604,53 @@ export default {
     }
   }
 
+  // 每页条数：外层仍按设计稿占 80×36，里面是原生 select
   &__pager-size {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
     width: 80px;
     height: 36px;
     margin-left: 24px;
-    padding: 0;
+  }
+
+  // 原生 select：去掉系统外观，只留文字（右侧箭头用设计稿的 caret 图，见下一条）。
+  // 不用浮层组件是因为这里只有三档、且弹窗整个在缩放画布内，原生控件最稳。
+  &__pager-size-select {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0 18px 0 0;
     font-family: inherit;
     font-size: var(--screen-font-sm);
     color: #ffffff;
+    text-align: center;
+    text-align-last: center;
     background: transparent;
     border: 0;
+    outline: none;
+    appearance: none;
     cursor: pointer;
+    .screen-focus-ring();
 
-    img {
-      width: 8px;
-      height: 5px;
+    // 展开的列表由系统绘制，必须显式给深色字：否则可能跟随上面的白色文字变成白底白字
+    option {
+      color: #0b1e30;
+      background: #ffffff;
     }
+  }
+
+  &__pager-size-caret {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    width: 8px;
+    height: 5px;
+    margin-top: -2.5px;
+    pointer-events: none;
   }
 
   &__pager-input {
