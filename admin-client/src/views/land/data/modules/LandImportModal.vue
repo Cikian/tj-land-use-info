@@ -20,7 +20,7 @@
         <span class="import-modal__hint">
           模板第 1 行是<b>英文字段名</b>（程序按它认列，例如 <code>crzdbh</code>）、
           第 2 行是中文说明、数据从<b>第 3 行</b>开始；第 2 个 sheet 是逐字段的「填表说明」。
-          必填 5 列：出让宗地编号、项目分类、录入单位、录入人、联系电话。
+          必填 3 列：出让宗地编号、项目分类、联系电话；录入单位、录入人选填。
         </span>
       </div>
 
@@ -166,7 +166,13 @@
           @click="handleConfirm">
           确认导入{{ canImport && importableCount ? '（' + importableCount + ' 行）' : '' }}
         </a-button>
-        <a-button v-else type="primary" @click="handleClose">完成</a-button>
+        <template v-else>
+          <a-button
+            v-if="result && result.batchId && ((result.insertedRows || 0) + (result.updatedRows || 0) > 0)"
+            icon="download"
+            @click="handleExportChanges">导出本批变更</a-button>
+          <a-button type="primary" @click="handleClose">完成</a-button>
+        </template>
       </div>
     </div>
   </a-modal>
@@ -176,6 +182,7 @@
   import {
     confirmLandImport,
     downloadErrorReport,
+    exportLandChangeBatch,
     downloadImportTemplate,
     groupErrorsByRow,
     importSummary,
@@ -397,6 +404,11 @@
         }).finally(() => {
           this.importing = false
         })
+      },
+      handleExportChanges () {
+        if (!this.result || !this.result.batchId) return
+        exportLandChangeBatch(this.result.batchId)
+        this.$message.info('已开始导出本批变更')
       },
       handleDownloadReport () {
         const file = this.loadedFile || this.file

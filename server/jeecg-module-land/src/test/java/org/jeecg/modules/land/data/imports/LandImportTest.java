@@ -3,12 +3,22 @@ package org.jeecg.modules.land.data.imports;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.shiro.mgt.DefaultSecurityManager;
+import org.apache.shiro.mgt.SecurityManager;
+import org.apache.shiro.SecurityUtils;
+import org.apache.shiro.subject.Subject;
 import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.common.system.vo.LoginUser;
 import org.jeecg.modules.land.LandIntegrationTestBase;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.imports.service.ILandImportService;
 import org.jeecg.modules.land.data.imports.service.ILandImportService.ParsedFile;
+import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
+import org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper;
+import org.jeecg.modules.land.data.oplog.service.impl.DataChangeLogExportServiceImpl;
+import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
 import org.jeecg.modules.land.data.service.ILandService;
+import org.jeecg.modules.land.data.support.DataSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
@@ -27,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * @Description: 经营性用地批量导入 - 集成测试（模板 / 校验 / 错误回执 / 入库）
@@ -54,6 +66,15 @@ public class LandImportTest extends LandIntegrationTestBase {
 
     @Autowired
     private ILandService landService;
+
+    @Autowired
+    private DataChangeLogMapper changeLogMapper;
+
+    @Autowired
+    private ChangeLogSupport changeLogSupport;
+
+    @Autowired
+    private DataChangeLogExportServiceImpl changeLogExportService;
 
     // ==================================================================
     // 一、模板
@@ -149,6 +170,38 @@ public class LandImportTest extends LandIntegrationTestBase {
 
         // ★ 关键：预览之后库里不能有这条记录
         assertNull(landService.queryByCrzdbh(crzdbh), "预览绝不能写库");
+    }
+
+    @Test
+    public void blankEntryUnitAndRecorderAllowedAndAuditUsesLoginUser() throws Exception {
+        Subject subject = mock(Subject.class);
+        LoginUser loginUser = new LoginUser();
+        loginUser.setUsername("import_tester");
+        loginUser.setRealname("导入测试人");
+        when(subject.getPrincipal()).thenReturn(loginUser);
+        org.apache.shiro.util.ThreadContext.bind(subject);
+        try {
+            String crzdbh = uniqueNo("optional");
+            MockMultipartFile file = buildTemplateFile(sheet -> {
+                fillValidRow(sheet, 2, crzdbh, "选填字段测试地块");
+                setCell(sheet, 2, "lrdw", "");
+                setCell(sheet, 2, "lrr", "");
+            });
+
+            LandImportResultVO result = importService.confirm(file, LandDuplicateStrategy.REJECT, false);
+            assertTrue(result.getErrors().isEmpty(), "单位与录入人为空不应再阻断导入：" + describe(result));
+            assertEquals(1, result.getInsertedRows());
+            Land saved = landService.queryByCrzdbh(crzdbh);
+            assertNull(saved.getLrdw(), "原始录入单位不由登录部门代填");
+            assertNull(saved.getLrr(), "原始录入人不由登录人代填");
+            assertEquals("import_tester", saved.getCreateBy(), "系统创建人仍取当前登录账号");
+            assertEquals("import_tester", saved.getUpdateBy(), "系统更新人仍取当前登录账号");
+            List<DataChangeLog> logs = changeLogMapper.selectByBatch(result.getBatchId());
+            assertEquals(1, logs.size());
+            assertEquals("import_tester", logs.get(0).getOperator(), "留痕操作人仍取当前登录账号");
+        } finally {
+            org.apache.shiro.util.ThreadContext.unbindSubject();
+        }
     }
 
     @Test
@@ -494,9 +547,14 @@ public class LandImportTest extends LandIntegrationTestBase {
         assertEquals(1, skipped.getSkippedDuplicates(), "应统计到 1 行被跳过");
         assertEquals("原始地块名", landService.queryByCrzdbh(crzdbh).getDkmc(), "不应被改动");
 
-        // ③ UPDATE：覆盖更新，且**空单元格不清空原值**
-        LandImportResultVO updated = importService.confirm(second, LandDuplicateStrategy.UPDATE, false);
-        assertEquals(0, updated.getInsertedRows());
+        // ③ UPDATE：同一文件包含已有编号更新与新编号新增，且**空单元格不清空原值**
+        MockMultipartFile updateBatch = buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, crzdbh, "改名后地块");
+            setCell(sheet, 2, "crj", "2.00");
+            fillValidRow(sheet, 3, uniqueNo("dup-strategy-new"), "本批新增地块");
+        });
+        LandImportResultVO updated = importService.confirm(updateBatch, LandDuplicateStrategy.UPDATE, false);
+        assertEquals(1, updated.getInsertedRows(), "同一批次中的新编号应正常新增");
         assertEquals(1, updated.getUpdatedRows(), "应覆盖更新 1 条：" + describe(updated));
         Land after = landService.queryByCrzdbh(crzdbh);
         assertEquals("改名后地块", after.getDkmc(), "文件里有值的地块名称应被覆盖");
@@ -504,6 +562,52 @@ public class LandImportTest extends LandIntegrationTestBase {
         // ★★ 文件里没填的列必须保持原值
         assertEquals("原始受让人", after.getSrr(),
                 "★ 文件里没有「受让人」这一列的值，不能被清空");
+
+        // 批次留痕：首次新增与本次 UPDATE 各一条；REJECT / SKIP 不产生伪更新日志。
+        assertNotNull(updated.getBatchId(), "确认导入必须返回批次号");
+        List<DataChangeLog> batchLogs = changeLogMapper.selectByBatch(updated.getBatchId());
+        assertEquals(2, batchLogs.size(), "只有实际新增和更新才能进入本批留痕");
+        DataChangeLog updateLog = null;
+        for (DataChangeLog log : batchLogs) {
+            if (DataChangeLog.ACTION_UPDATE.equals(log.getAction())) {
+                updateLog = log;
+            }
+        }
+        assertNotNull(updateLog, "本次覆盖更新必须有 UPDATE 日志");
+        assertTrue(updateLog.getChangeSummary().contains("Excel 第 3 行"), updateLog.getChangeSummary());
+        assertTrue(updateLog.getChangeSummary().contains(updated.getBatchId()));
+        java.util.Map<String, Object> crjDiff = null;
+        for (java.util.Map<String, Object> detail : changeLogSupport.parseDetail(updateLog.getChangeDetail())) {
+            assertFalse("srr".equals(detail.get("field")), "空单元格未覆盖原值，也不能写成字段变更");
+            if ("crj".equals(detail.get("field"))) {
+                crjDiff = detail;
+            }
+        }
+        assertNotNull(crjDiff, "必须记录出让金字段 diff");
+        assertEquals("1.00", String.valueOf(crjDiff.get("before")));
+        assertEquals("2.00", String.valueOf(crjDiff.get("after")));
+
+        // 导出必须逐字段展开同一批日志，不能拿业务表最终值拼一份导出。
+        Workbook export = changeLogExportService.buildBatchExport(updated.getBatchId());
+        try {
+            Sheet sheet = export.getSheetAt(0);
+            assertEquals("批次号", sheet.getRow(0).getCell(0).getStringCellValue());
+            boolean foundExportDiff = false;
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if ("出让金（亿元）".equals(row.getCell(5).getStringCellValue())
+                        && "1.00".equals(row.getCell(6).getStringCellValue())
+                        && "2.00".equals(row.getCell(7).getStringCellValue())) {
+                    foundExportDiff = true;
+                    assertEquals(3, (int) row.getCell(2).getNumericCellValue());
+                    assertEquals(updated.getBatchId(), row.getCell(0).getStringCellValue());
+                    assertEquals("经营性用地", row.getCell(1).getStringCellValue());
+                }
+            }
+            assertTrue(foundExportDiff, "导出中必须包含与日志一致的原值和新值");
+        } finally {
+            export.close();
+        }
     }
 
     @Test
@@ -635,13 +739,13 @@ public class LandImportTest extends LandIntegrationTestBase {
             assertTrue(spec.isTemplated(),
                     "必填字段必须出现在模板里：" + spec.getColumn());
         }
-        // 旧系统那 5 个必填项一个都不能少
+        // 测试口径只保留业务主键、项目分类与联系电话必填，单位与录入人放宽。
         List<String> requiredColumns = new ArrayList<>();
         for (LandImportField.FieldSpec spec : LandImportField.required()) {
             requiredColumns.add(spec.getColumn());
         }
-        assertEquals(Arrays.asList("crzdbh", "xmfl", "lrdw", "lrr", "lxdh"), requiredColumns,
-                "必填列应与旧系统的 5 项一致（顺序即模板列顺序）");
+        assertEquals(Arrays.asList("crzdbh", "xmfl", "lxdh"), requiredColumns,
+                "必填列应为编号、项目分类、联系电话（顺序即模板列顺序）");
         // 受控取值必须有别名表或非空选项，否则用户填什么都过不了
         for (LandImportField.FieldSpec spec : LandImportField.all()) {
             if (spec.getType() == LandImportField.FieldType.ENUM

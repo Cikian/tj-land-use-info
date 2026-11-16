@@ -301,9 +301,16 @@ export default {
     }
   },
   created () {
-    this.loadSummary()
-    this.loadBin()
     this.loadActionOptions()
+  },
+  activated () {
+    // keep-alive 激活时重新取权威数据；首次挂载也会触发，覆盖「移除后再回来」的场景。
+    this.loadSummary()
+    if (this.activeTab === 'bin') {
+      this.loadBin()
+    } else {
+      this.loadLogs()
+    }
   },
   methods: {
     /* ---------------- 回收站 ---------------- */

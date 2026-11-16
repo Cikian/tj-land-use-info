@@ -13,6 +13,10 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.entity.Land;
+import org.jeecg.modules.land.data.fieldconfig.DataFieldLabels;
+import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
+import org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper;
+import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
 import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.imports.LandDuplicateStrategy;
 import org.jeecg.modules.land.data.imports.LandImportField;
@@ -100,6 +104,12 @@ public class LandImportServiceImpl implements ILandImportService {
     @Autowired
     private LandImportSupport support;
 
+    @Autowired
+    private ChangeLogSupport changeLogSupport;
+
+    @Autowired
+    private DataChangeLogMapper changeLogMapper;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -174,6 +184,7 @@ public class LandImportServiceImpl implements ILandImportService {
             throw new JeecgBootException("请选择要导入的 Excel 文件");
         }
         LandImportResultVO result = new LandImportResultVO();
+        result.setBatchId(java.util.UUID.randomUUID().toString().replace("-", ""));
         result.setDuplicateStrategy(strategy.getCode());
         result.setDuplicateStrategyLabel(strategy.getLabel());
 
@@ -673,6 +684,7 @@ public class LandImportServiceImpl implements ILandImportService {
                        LandImportResultVO result) {
         String username = support.currentUsername();
         Date now = new Date();
+        List<DataChangeLog> changeLogs = new ArrayList<>();
 
         for (RowData data : toInsert) {
             Land land = new Land();
@@ -700,10 +712,15 @@ public class LandImportServiceImpl implements ILandImportService {
             land.setUpdateTime(now);
             landMapper.insert(land);
             result.setInsertedRows(result.getInsertedRows() + 1);
+            collectImportChangeLog(changeLogs, result, data.rowNum, DataChangeLog.ACTION_CREATE,
+                    null, land, land.getId(), land.getCrzdbh());
         }
 
         for (RowData data : toUpdate) {
             Land land = data.target;
+            Land before = new Land();
+            // data.target 会就地修改，必须先复制快照，不能改完再查库形成 N+1。
+            org.springframework.beans.BeanUtils.copyProperties(land, before);
             for (Map.Entry<String, Object> entry : data.values.entrySet()) {
                 // ★ 空单元格对应的列根本不在 values 里，因此不会被覆盖 —— 见类注释 ⑥
                 applyValue(land, entry.getKey(), entry.getValue());
@@ -712,11 +729,33 @@ public class LandImportServiceImpl implements ILandImportService {
             land.setUpdateTime(now);
             landMapper.updateById(land);
             result.setUpdatedRows(result.getUpdatedRows() + 1);
+            collectImportChangeLog(changeLogs, result, data.rowNum, DataChangeLog.ACTION_UPDATE,
+                    before, land, land.getId(), land.getCrzdbh());
         }
 
+        flushImportChangeLogs(changeLogs);
         if (strategy == LandDuplicateStrategy.UPDATE && result.getUpdatedRows() == 0
                 && result.getInsertedRows() == 0 && result.getErrorCount() == 0) {
             result.addNotice("没有需要写入的数据");
+        }
+    }
+
+    private void collectImportChangeLog(List<DataChangeLog> logs, LandImportResultVO result, int rowNum,
+                                        String action, Land before, Land after, String bizId, String bizKey) {
+        String summary = "批次号：" + result.getBatchId() + "，Excel 第 " + rowNum + " 行，操作人："
+                + LandImportSupport.nameOrPlaceholder(support.currentRealname());
+        DataChangeLog record = changeLogSupport.collector(DataSupport.BIZ_LAND, bizId, bizKey)
+                .diff(before, after, DataFieldLabels.landLabels())
+                .buildRecord(action, summary, null);
+        if (record != null) {
+            logs.add(record);
+        }
+    }
+
+    /** 留痕与业务写入同一事务；批量插入异常直接回滚，不留下“数据已改但无法追溯”的半批。 */
+    private void flushImportChangeLogs(List<DataChangeLog> logs) {
+        for (int from = 0; from < logs.size(); from += 200) {
+            changeLogMapper.batchInsert(logs.subList(from, Math.min(from + 200, logs.size())));
         }
     }
 

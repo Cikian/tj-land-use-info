@@ -8,6 +8,8 @@ import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
 import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.entity.Land;
+import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
+import org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper;
 import org.jeecg.modules.land.data.process.entity.FacilityProcess;
 import org.jeecg.modules.land.data.process.entity.ProcessConfig;
 import org.jeecg.modules.land.data.process.enums.ProcessStatus;
@@ -72,6 +74,9 @@ public class DataManagementTest extends LandIntegrationTestBase {
 
     @Autowired
     private IDataRecycleService recycleService;
+
+    @Autowired
+    private DataChangeLogMapper changeLogMapper;
 
     @Autowired
     private ProcessConfigMapper processConfigMapper;
@@ -252,8 +257,16 @@ public class DataManagementTest extends LandIntegrationTestBase {
         assertFalse(history.isEmpty(), "新增应产生一条变更履历");
         Map<String, Object> first = history.get(0);
         assertEquals("CREATE", first.get("action"));
+        assertEquals(storedCode(crzdbh), first.get("bizKey"), "操作记录必须返回宗地编号");
         assertTrue(((Number) first.get("changeCount")).intValue() > 0,
                 "CREATE 履历应带上字段级明细");
+
+        // 模拟早期履历漏存 biz_key：接口应按当前宗地编号兜底，而不是让表格整列空白。
+        List<DataChangeLog> storedLogs = changeLogMapper.selectByBiz(DataSupport.BIZ_LAND, id, 1);
+        storedLogs.get(0).setBizKey(null);
+        changeLogMapper.updateById(storedLogs.get(0));
+        Map<String, Object> fallback = recyclServiceHistory(id).get(0);
+        assertEquals(storedCode(crzdbh), fallback.get("bizKey"), "历史记录缺编号时应按当前宗地兜底");
     }
 
     @Test

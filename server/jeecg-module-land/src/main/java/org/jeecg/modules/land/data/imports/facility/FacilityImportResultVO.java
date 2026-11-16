@@ -61,6 +61,9 @@ public class FacilityImportResultVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /** 本次确认导入的批次号；变更留痕、导入日志与本批导出共用 */
+    private String batchId;
+
     // ---------------- 解析计数 ----------------
 
     /** 解析到的数据行数（不含表头行与空行） */

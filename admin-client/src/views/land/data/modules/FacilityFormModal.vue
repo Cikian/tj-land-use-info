@@ -73,6 +73,13 @@
               </a-col>
             </a-row>
             <a-row :gutter="12">
+              <a-col :span="8">
+                <a-form-item label="功能区">
+                  <a-select v-model="model.gnq" placeholder="非行政区功能区（选填）" allow-clear :options="functionAreaOptions" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="12">
               <a-col :span="6">
                 <a-form-item label="规划红线宽度(米)">
                   <a-input-number v-model="model.ghhxkd" :min="0" :precision="2" style="width: 100%" />
@@ -330,12 +337,21 @@
           { value: '改建', label: '改建' },
           { value: '扩建', label: '扩建' },
           { value: '翻建', label: '翻建' },
+          { value: '现状', label: '现状' },
           { value: '其他', label: '其他' }
         ],
         roadLevelOptions: [
           { value: '城市主干路', label: '城市主干路' },
           { value: '城市次干路', label: '城市次干路' },
-          { value: '城市支路', label: '城市支路' }
+          { value: '城市支路', label: '城市支路' },
+          { value: '快速路', label: '快速路' }
+        ],
+        functionAreaOptions: [
+          { value: '生态城', label: '生态城' },
+          { value: '土地发展中心', label: '土地发展中心' },
+          { value: '经开区', label: '经开区' },
+          { value: '高新区', label: '高新区' },
+          { value: '保税区', label: '保税区' }
         ],
         fundSourceOptions: [
           { value: '土地整理成本', label: '土地整理成本' },

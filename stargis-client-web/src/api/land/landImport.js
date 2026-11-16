@@ -35,7 +35,8 @@ export const landImportUrl = {
   preview: '/land/data/import/preview',
   confirm: '/land/data/import/confirm',
   errorReport: '/land/data/import/errorReport',
-  logs: '/land/data/import/logs'
+  logs: '/land/data/import/logs',
+  changeExport: '/land/data/import/changeExport'
 }
 
 /* ==========================================================================
@@ -148,6 +149,11 @@ export function downloadLandErrorReport (file, duplicateStrategy) {
         return saveExcelBlob(blob, parseFileName(disposition) || '经营性用地导入错误回执.xlsx')
       })
     })
+}
+
+/** 按批次导出本批实际字段变更（xlsx） */
+export function exportLandChangeBatch (batchId) {
+  window.open(buildJavaDownloadUrl(landImportUrl.changeExport, { batchId }), '_blank')
 }
 
 /** 最近导入记录 */
@@ -340,8 +346,8 @@ export const LAND_IMPORT_FIELDS_FALLBACK = [
   { column: 'ptcbh', label: '配套筹备函', type: 'yes_no', required: false, optionText: '是 / 否' },
   { column: 'crzdtxsj', label: '出让宗地图形数据（shp）', type: 'yes_no', required: false, optionText: '是 / 否' },
   { column: 'ptjsnr', label: '配套建设内容', type: 'text', required: false, optionText: '自由文本' },
-  { column: 'lrdw', label: '录入单位', type: 'text', required: true, optionText: '自由文本' },
-  { column: 'lrr', label: '录入人', type: 'text', required: true, optionText: '自由文本' },
+  { column: 'lrdw', label: '录入单位', type: 'text', required: false, optionText: '自由文本' },
+  { column: 'lrr', label: '录入人', type: 'text', required: false, optionText: '自由文本' },
   { column: 'lxdh', label: '联系电话', type: 'text', required: true, optionText: '11 位手机号' },
   { column: 'zlqsnrsm', label: '资料缺失内容及说明', type: 'text', required: false, optionText: '自由文本' },
   { column: 'beizhu', label: '备注', type: 'text', required: false, optionText: '自由文本' }
@@ -355,6 +361,7 @@ export default {
   previewLandImport,
   confirmLandImport,
   downloadLandErrorReport,
+  exportLandChangeBatch,
   queryLandImportLogs,
   flattenErrors,
   groupErrorsByRow,

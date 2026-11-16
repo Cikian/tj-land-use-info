@@ -506,6 +506,7 @@ export default {
 
     handleEdit (record) {
       if (!record || !record.id) return
+      if (this.$refs.detailModal) this.$refs.detailModal.close()
       this.$refs.formModal.showEdit(record)
     },
 
@@ -608,6 +609,7 @@ export default {
 
     handleProcess (record) {
       if (!record || !record.id) return
+      if (this.$refs.detailModal) this.$refs.detailModal.close()
       this.$refs.processPanel.open(record)
     },
 

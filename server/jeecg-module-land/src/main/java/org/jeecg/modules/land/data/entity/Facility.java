@@ -65,6 +65,9 @@ public class Facility implements Serializable {
     /** 项目分类：市级项目 / 区级项目 */
     private String xmfl;
 
+    /** 功能区（生态城/经开区/高新区/保税区等；与 16 区行政区划分列） */
+    private String gnq;
+
     /** 建设性质 */
     private String jsxx;
 

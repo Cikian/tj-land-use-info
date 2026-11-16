@@ -543,6 +543,11 @@ export default {
 
     handleClose () {
       this.visible = false
+    },
+
+    /** 供父面板在打开编辑或跨模块下钻前关闭全屏详情，避免残留遮罩。 */
+    close () {
+      this.handleClose()
     }
   }
 }

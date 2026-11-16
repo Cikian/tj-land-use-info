@@ -94,6 +94,9 @@ public class FacilityImportController {
     @Autowired
     private FacilityImportLogMapper importLogMapper;
 
+    @Autowired
+    private org.jeecg.modules.land.data.oplog.service.impl.DataChangeLogExportServiceImpl changeLogExportService;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -290,6 +293,25 @@ public class FacilityImportController {
         }
     }
 
+    /** 按批次导出实际字段变更，与 t_data_change_log 一致，不导出业务表最终值。 */
+    @AutoLog(value = "配套信息批量导入-导出本批变更")
+    @ApiOperation(value = "配套信息批量导入-导出本批变更")
+    @RequiresPermissions(PERM_IMPORT)
+    @GetMapping(value = "/changeExport")
+    public void changeExport(@RequestParam(name = "batchId") String batchId, HttpServletResponse response) {
+        Workbook workbook = null;
+        try {
+            workbook = changeLogExportService.buildBatchExport(batchId);
+            writeWorkbook(response, workbook, "配套信息导入变更明细_"
+                    + new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()) + ".xlsx");
+        } catch (Exception e) {
+            log.error("导出配套信息本批变更失败：batchId={}", batchId, e);
+            writeJsonError(response, "导出本批变更失败：" + e.getMessage());
+        } finally {
+            closeQuietly(workbook);
+        }
+    }
+
     // ==================================================================
     // 五、内部工具
     // ==================================================================
@@ -314,7 +336,7 @@ public class FacilityImportController {
                                 boolean allowOrphan, FacilityImportResultVO result) {
         try {
             importLogMapper.insertLog(
-                    UUID.randomUUID().toString().replace("-", ""),
+                    StringUtils.defaultIfBlank(result.getBatchId(), UUID.randomUUID().toString().replace("-", "")),
                     file == null ? null : file.getOriginalFilename(),
                     file == null ? null : file.getSize(),
                     result.getTotalRows(),

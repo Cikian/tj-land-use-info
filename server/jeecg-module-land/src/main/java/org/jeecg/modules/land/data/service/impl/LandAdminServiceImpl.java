@@ -306,10 +306,14 @@ public class LandAdminServiceImpl extends ServiceImpl<LandMapper, Land> implemen
         }
         int size = limit == null || limit <= 0 ? DEFAULT_HISTORY_LIMIT : Math.min(limit, 200);
         List<DataChangeLog> logs = changeLogMapper.selectByBiz(DataSupport.BIZ_LAND, id, size);
+        Land current = getById(id);
+        String currentCrzdbh = current == null ? null : current.getCrzdbh();
         List<Map<String, Object>> result = new ArrayList<>();
         for (DataChangeLog record : changeLogSupport.enrichAll(logs)) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", record.getId());
+            // 老履历可能漏存 bizKey，页面仍需显示当前宗地编号，不能整列空白。
+            item.put("bizKey", StringUtils.isNotBlank(record.getBizKey()) ? record.getBizKey() : currentCrzdbh);
             item.put("action", record.getAction());
             item.put("actionText", record.getActionText());
             item.put("actionColor", record.getActionColor());

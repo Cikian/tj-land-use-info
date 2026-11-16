@@ -106,4 +106,10 @@ public interface DataChangeLogMapper extends BaseMapper<DataChangeLog> {
     /** 某业务对象的变更次数（列表页「履历 N 次」角标） */
     @Select("SELECT COUNT(*) FROM t_data_change_log WHERE biz_type = #{bizType} AND biz_id = #{bizId}")
     long countByBiz(@Param("bizType") String bizType, @Param("bizId") String bizId);
+
+    /** 按导入批次取字段级日志，导出时展开 change_detail，不取业务表最终值。 */
+    @Select("SELECT " + COLUMNS + " FROM t_data_change_log "
+            + "WHERE change_summary LIKE CONCAT('%', #{batchId}, '%') "
+            + "ORDER BY create_time ASC, id ASC")
+    List<DataChangeLog> selectByBatch(@Param("batchId") String batchId);
 }

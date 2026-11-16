@@ -451,6 +451,7 @@ export default {
 
     handleEdit (record) {
       if (!record || !record.id) return
+      if (this.$refs.detailModal) this.$refs.detailModal.close()
       this.$refs.formModal.showEdit(record)
     },
 
@@ -552,6 +553,7 @@ export default {
         toast.warning('该宗地没有出让宗地编号，无法按编号查配套')
         return
       }
+      if (this.$refs.detailModal) this.$refs.detailModal.close()
       this.$emit('drill', { tab: 'facility', crzdbh: record.crzdbh })
     },
 

@@ -218,17 +218,18 @@ public final class FacilityImportField {
 
     /** 建设性质 */
     public static final List<String> JSXX_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("新建", "改建", "扩建", "翻建", "其他"));
+            Arrays.asList("新建", "改建", "扩建", "翻建", "现状", "其他"));
 
     /**
-     * 道路等级（3 档）。
+     * 道路等级（4 档，含快速路）。
      *
      * <p>★ 旧库实测还有「主干道 / 城市主干道 / 次干道 / 快速路」等异写，
-     * 能唯一归位的（主干道系）放进别名表；语义上多一档的「快速路」<b>刻意不归位</b>
-     * （快速路既不是主干路也不是次干路，硬归会改掉业务事实）。
+     * 能唯一归位的（主干道系）放进别名表。「快速路」既不是主干路也不是次干路，
+     * 早先<b>刻意不放进下拉</b>（硬归会改掉业务事实）；2026-11 业务确认它就是独立一档
+     * → 补为第 4 个标准值，仍不做归位（别名表里只映射它自己）。
      */
     public static final List<String> DLDJ_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("城市主干路", "城市次干路", "城市支路"));
+            Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路"));
 
     /** 资金来源 */
     public static final List<String> ZJLY_OPTIONS = Collections.unmodifiableList(
@@ -305,7 +306,7 @@ public final class FacilityImportField {
      * 道路等级的异写 → 标准等级。
      *
      * <p>旧库把「路」写成「道」的情况很普遍（主干道 / 次干道 / 支路），
-     * 三个标准级各收一批等价写法；「快速路」不归位（见 {@link #DLDJ_OPTIONS}）。
+     * 三个标准级各收一批等价写法；「快速路」是独立第 4 档、只映射它自己（见 {@link #DLDJ_OPTIONS}）。
      */
     private static Map<String, String> dldjAliases() {
         Map<String, String> map = new LinkedHashMap<>();
@@ -377,6 +378,8 @@ public final class FacilityImportField {
                 PTSSLB_OPTIONS, ptsslb, 100, "道路"));
         list.add(new FieldSpec("xzqh", "行政区划", FieldType.ENUM, false, true,
                 XZQH_OPTIONS, xzqh, 100, "西青区"));
+        list.add(new FieldSpec("gnq", "功能区", FieldType.TEXT, false, true,
+                null, null, 50, "生态城"));
         list.add(new FieldSpec("xmfl", "项目分类", FieldType.ENUM, false, true,
                 XMFL_OPTIONS, null, 100, "区级项目"));
         list.add(new FieldSpec("jsxx", "建设性质", FieldType.ENUM, false, true,
@@ -486,10 +489,10 @@ public final class FacilityImportField {
         list.add(new FieldSpec("bz", "备注", FieldType.TEXT, false, true,
                 null, null, 100, ""));
 
-        // ---- 录入信息（旧系统要求批量导入时必填后三项）----
-        list.add(new FieldSpec("lrdw", "录入单位", FieldType.TEXT, true, true,
+        // ---- 录入信息（单位与录入人可空；联系电话仍按测试口径必填并校验格式）----
+        list.add(new FieldSpec("lrdw", "录入单位", FieldType.TEXT, false, true,
                 null, null, 100, "天津市土地利用事务中心"));
-        list.add(new FieldSpec("lrr", "录入人", FieldType.TEXT, true, true,
+        list.add(new FieldSpec("lrr", "录入人", FieldType.TEXT, false, true,
                 null, null, 100, "张三"));
         list.add(new FieldSpec("lxdh", "联系电话", FieldType.TEXT, true, true,
                 null, null, 100, "13812345678"));

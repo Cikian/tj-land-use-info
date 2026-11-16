@@ -384,6 +384,7 @@ export default {
             { key: 'dkmc', label: '地块名称', value: data.dkmc },
             { key: 'ptsslb', label: '配套设施类别', value: data.ptsslb },
             { key: 'xzqh', label: '行政区划', value: data.xzqh },
+            { key: 'gnq', label: '功能区', value: data.gnq },
             { key: 'xmfl', label: '项目分类', value: data.xmfl },
             { key: 'jsxx', label: '建设性质', value: data.jsxx },
             { key: 'dldj', label: '道路等级', value: data.dldj },
@@ -562,6 +563,8 @@ export default {
 
     handleOpenProcess () {
       if (!this.detail) return
+      // 流程管理同为整屏视图，先关闭详情，避免两层 fixed 弹窗互相截获点击。
+      this.handleClose()
       this.activeTab = 'process'
       this.processVisible = true
       this.$nextTick(() => {
@@ -631,6 +634,11 @@ export default {
 
     handleClose () {
       this.visible = false
+    },
+
+    /** 供父面板在编辑或打开流程管理前关闭全屏详情。 */
+    close () {
+      this.handleClose()
     }
   }
 }

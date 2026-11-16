@@ -79,6 +79,7 @@ import javax.sql.DataSource;
         "org.jeecg.modules.land.data.service.impl",
         "org.jeecg.modules.land.data.support",
         "org.jeecg.modules.land.data.oplog.support",
+        "org.jeecg.modules.land.data.oplog.service.impl",
         "org.jeecg.modules.land.data.process.support",
         "org.jeecg.modules.land.data.attachment.service.impl",
         "org.jeecg.modules.land.data.imports.facility.service.impl",

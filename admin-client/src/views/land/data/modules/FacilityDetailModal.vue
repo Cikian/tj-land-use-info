@@ -132,6 +132,7 @@
               { key: 'dkmc', label: '地块名称' },
               { key: 'ptsslb', label: '配套设施类别' },
               { key: 'xzqh', label: '行政区划' },
+              { key: 'gnq', label: '功能区' },
               { key: 'xmfl', label: '项目分类' },
               { key: 'jsxx', label: '建设性质' },
               { key: 'dldj', label: '道路等级' },

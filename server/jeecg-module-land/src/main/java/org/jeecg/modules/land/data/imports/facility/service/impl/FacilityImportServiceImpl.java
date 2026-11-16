@@ -13,6 +13,10 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.entity.Facility;
+import org.jeecg.modules.land.data.fieldconfig.DataFieldLabels;
+import org.jeecg.modules.land.data.oplog.entity.DataChangeLog;
+import org.jeecg.modules.land.data.oplog.mapper.DataChangeLogMapper;
+import org.jeecg.modules.land.data.oplog.support.ChangeLogSupport;
 import org.jeecg.modules.land.data.support.DataSupport;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.imports.facility.FacilityDuplicateStrategy;
@@ -142,6 +146,12 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     @Autowired
     private FacilityImportSupport support;
 
+    @Autowired
+    private ChangeLogSupport changeLogSupport;
+
+    @Autowired
+    private DataChangeLogMapper changeLogMapper;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -222,6 +232,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
             throw new JeecgBootException("请选择要导入的 Excel 文件");
         }
         FacilityImportResultVO result = new FacilityImportResultVO();
+        result.setBatchId(java.util.UUID.randomUUID().toString().replace("-", ""));
         result.setDuplicateStrategy(strategy.getCode());
         result.setDuplicateStrategyLabel(strategy.getLabel());
         result.setAllowOrphan(allowOrphan);
@@ -918,6 +929,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     private void write(List<RowData> toInsert, List<RowData> toUpdate, FacilityImportResultVO result) {
         String username = support.currentUsername();
         Date now = new Date();
+        List<DataChangeLog> changeLogs = new ArrayList<>();
 
         for (RowData data : toInsert) {
             Facility facility = new Facility();
@@ -934,10 +946,14 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
             facility.setUpdateTime(now);
             facilityMapper.insert(facility);
             result.setInsertedRows(result.getInsertedRows() + 1);
+            collectImportChangeLog(changeLogs, result, data.rowNum, DataChangeLog.ACTION_CREATE,
+                    null, facility, facility.getId(), facility.getPtxmmc());
         }
 
         for (RowData data : toUpdate) {
             Facility facility = data.target;
+            Facility before = new Facility();
+            org.springframework.beans.BeanUtils.copyProperties(facility, before);
             for (Map.Entry<String, Object> entry : data.values.entrySet()) {
                 // ★ 空单元格对应的列根本不在 values 里，因此不会被覆盖 —— 见类注释 ⑥
                 applyValue(facility, entry.getKey(), entry.getValue());
@@ -947,11 +963,34 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
             facility.setUpdateTime(now);
             facilityMapper.updateById(facility);
             result.setUpdatedRows(result.getUpdatedRows() + 1);
+            collectImportChangeLog(changeLogs, result, data.rowNum, DataChangeLog.ACTION_UPDATE,
+                    before, facility, facility.getId(), facility.getPtxmmc());
         }
 
+        flushImportChangeLogs(changeLogs);
         if (result.getInsertedRows() == 0 && result.getUpdatedRows() == 0 && result.getErrorCount() == 0
                 && result.getSkippedDuplicates() == 0) {
             result.addNotice("没有需要写入的数据");
+        }
+    }
+
+    private void collectImportChangeLog(List<DataChangeLog> logs, FacilityImportResultVO result, int rowNum,
+                                        String action, Facility before, Facility after,
+                                        String bizId, String bizKey) {
+        String summary = "批次号：" + result.getBatchId() + "，Excel 第 " + rowNum + " 行，操作人："
+                + FacilityImportSupport.nameOrPlaceholder(support.currentRealname());
+        DataChangeLog record = changeLogSupport.collector(DataSupport.BIZ_FACILITY, bizId, bizKey)
+                .diff(before, after, DataFieldLabels.facilityLabels())
+                .buildRecord(action, summary, null);
+        if (record != null) {
+            logs.add(record);
+        }
+    }
+
+    /** 与宗地导入相同：每 200 条一批，异常与业务入库一起回滚。 */
+    private void flushImportChangeLogs(List<DataChangeLog> logs) {
+        for (int from = 0; from < logs.size(); from += 200) {
+            changeLogMapper.batchInsert(logs.subList(from, Math.min(from + 200, logs.size())));
         }
     }
 
@@ -1011,6 +1050,9 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 break;
             case "xzqh":
                 facility.setXzqh((String) value);
+                break;
+            case "gnq":
+                facility.setGnq(DataSupport.normalizeName((String) value, 50));
                 break;
             case "xmfl":
                 facility.setXmfl((String) value);

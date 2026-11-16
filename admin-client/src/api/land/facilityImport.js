@@ -41,7 +41,8 @@ export const facilityImportUrl = {
   preview: '/land/data/facilityImport/preview',
   confirm: '/land/data/facilityImport/confirm',
   errorReport: '/land/data/facilityImport/errorReport',
-  logs: '/land/data/facilityImport/logs'
+  logs: '/land/data/facilityImport/logs',
+  changeExport: '/land/data/facilityImport/changeExport'
 }
 
 /* ==========================================================================
@@ -143,6 +144,11 @@ export function downloadErrorReport (file, duplicateStrategy, allowOrphan) {
         '配套信息导入错误回执.xlsx')
     })
   })
+}
+
+/** 按批次导出本批实际字段变更（xlsx） */
+export function exportFacilityChangeBatch (batchId) {
+  window.open(buildDownloadUrl(facilityImportUrl.changeExport, { batchId }), '_blank')
 }
 
 /** 最近导入记录 */
@@ -285,6 +291,7 @@ export default {
   previewFacilityImport,
   confirmFacilityImport,
   downloadErrorReport,
+  exportFacilityChangeBatch,
   queryImportLogs,
   flattenErrors,
   flattenOrphans,

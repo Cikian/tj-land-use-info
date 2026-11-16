@@ -298,10 +298,11 @@
       }
     },
     mounted () {
-      this.loadSummary()
-      this.loadRecycle()
       this.loadActionOptions()
-      this.loadLog()
+    },
+    activated () {
+      // 与大屏一致：首次进入和 keep-alive 再次激活都刷新，避免回收站停留在旧快照。
+      this.refresh()
     },
     methods: {
       actionColor: actionColor,

@@ -87,6 +87,7 @@ public final class DataFieldLabels {
         facility.put("dkmc", "地块名称");
         facility.put("ptsslb", "配套设施类别");
         facility.put("xzqh", "行政区划");
+        facility.put("gnq", "功能区");
         facility.put("xmfl", "项目分类");
         facility.put("jsxx", "建设性质");
         facility.put("dldj", "道路等级");

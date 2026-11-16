@@ -299,10 +299,10 @@ public final class LandImportField {
         list.add(new FieldSpec("ptjsnr", "配套建设内容", FieldType.TEXT, false, true,
                 null, null, 2000, "地块北侧规划路及雨污水管线"));
 
-        // ---- 录入信息（旧系统要求批量导入时必填后三项）----
-        list.add(new FieldSpec("lrdw", "录入单位", FieldType.TEXT, true, true,
+        // ---- 录入信息（单位与录入人可空；联系电话仍按测试口径必填并校验格式）----
+        list.add(new FieldSpec("lrdw", "录入单位", FieldType.TEXT, false, true,
                 null, null, 100, "天津市土地利用事务中心"));
-        list.add(new FieldSpec("lrr", "录入人", FieldType.TEXT, true, true,
+        list.add(new FieldSpec("lrr", "录入人", FieldType.TEXT, false, true,
                 null, null, 100, "张三"));
         list.add(new FieldSpec("lxdh", "联系电话", FieldType.TEXT, true, true,
                 null, null, 100, "13812345678"));

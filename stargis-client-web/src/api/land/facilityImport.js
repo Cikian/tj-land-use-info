@@ -41,7 +41,8 @@ export const facilityImportUrl = {
   preview: '/land/data/facilityImport/preview',
   confirm: '/land/data/facilityImport/confirm',
   errorReport: '/land/data/facilityImport/errorReport',
-  logs: '/land/data/facilityImport/logs'
+  logs: '/land/data/facilityImport/logs',
+  changeExport: '/land/data/facilityImport/changeExport'
 }
 
 /* ==========================================================================
@@ -192,6 +193,11 @@ export function downloadFacilityErrorReport (file, options) {
         return saveExcelBlob(blob, parseFileName(disposition) || '配套信息导入错误回执.xlsx')
       })
     })
+}
+
+/** 按批次导出本批实际字段变更（xlsx） */
+export function exportFacilityChangeBatch (batchId) {
+  window.open(buildJavaDownloadUrl(facilityImportUrl.changeExport, { batchId }), '_blank')
 }
 
 /** 最近导入记录（默认 20 条，后端封顶 100 条） */
@@ -396,8 +402,8 @@ export const FACILITY_IMPORT_FIELDS_FALLBACK = [
   { column: 'gzjy', label: '工作建议', type: 'text', required: false, optionText: '自由文本' },
   { column: 'zlqsnrjsm', label: '资料缺失内容及说明', type: 'text', required: false, optionText: '自由文本' },
   { column: 'bz', label: '备注', type: 'text', required: false, optionText: '自由文本' },
-  { column: 'lrdw', label: '录入单位', type: 'text', required: true, optionText: '自由文本' },
-  { column: 'lrr', label: '录入人', type: 'text', required: true, optionText: '自由文本' },
+  { column: 'lrdw', label: '录入单位', type: 'text', required: false, optionText: '自由文本' },
+  { column: 'lrr', label: '录入人', type: 'text', required: false, optionText: '自由文本' },
   { column: 'lxdh', label: '联系电话', type: 'text', required: true, optionText: '11 位手机号' }
 ]
 
@@ -409,6 +415,7 @@ export default {
   previewFacilityImport,
   confirmFacilityImport,
   downloadFacilityErrorReport,
+  exportFacilityChangeBatch,
   queryFacilityImportLogs,
   flattenOrphans,
   flattenErrors,

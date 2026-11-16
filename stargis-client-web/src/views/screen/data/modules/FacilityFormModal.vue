@@ -191,6 +191,15 @@
             />
           </screen-field>
 
+          <screen-field label="功能区" label-width="150px">
+            <screen-select
+              v-model="model.gnq"
+              :options="functionAreaOptions"
+              placeholder="非行政区功能区（选填）"
+              aria-label="功能区"
+            />
+          </screen-field>
+
           <screen-field label="是否涉及提级论证" label-width="150px">
             <screen-select v-model="model.sfzsjtjlz" :options="yesNoOptions" placeholder="请选择" aria-label="是否涉及提级论证" />
           </screen-field>
@@ -467,6 +476,7 @@ import {
   YES_NO,
   BUILD_NATURES,
   ROAD_LEVELS,
+  FUNCTION_AREAS,
   FUND_SOURCES,
   PROGRESS_STATES,
   FUND_STATES,
@@ -592,6 +602,7 @@ export default {
       yesNoOptions: YES_NO.map((item) => ({ value: item, label: item })),
       natureOptions: BUILD_NATURES.map((item) => ({ value: item, label: item })),
       roadLevelOptions: ROAD_LEVELS.map((item) => ({ value: item, label: item })),
+      functionAreaOptions: FUNCTION_AREAS.map((item) => ({ value: item, label: item })),
       fundSourceOptions: FUND_SOURCES.map((item) => ({ value: item, label: item })),
       progressStateOptions: PROGRESS_STATES.map((item) => ({ value: item, label: item })),
       fundStateOptions: FUND_STATES.map((item) => ({ value: item, label: item })),

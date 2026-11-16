@@ -295,12 +295,15 @@ public class ChangeLogSupport {
             return save(action, summary, null);
         }
 
-        /** 落库（带请求对象，用于记录操作 IP） */
-        public DataChangeLog save(String action, String summary, HttpServletRequest request) {
+        /**
+         * 只构建、不落库。批量导入用它收集后走 batchInsert，避免逐行远程往返。
+         */
+        public DataChangeLog buildRecord(String action, String summary, HttpServletRequest request) {
             if (items.isEmpty() && !isAlwaysLogged(action)) {
                 return null;
             }
             DataChangeLog record = new DataChangeLog();
+            record.setId(java.util.UUID.randomUUID().toString().replace("-", ""));
             record.setBizType(bizType);
             record.setBizId(bizId);
             record.setBizKey(DataSupport.capLength(bizKey, 200));
@@ -313,6 +316,15 @@ public class ChangeLogSupport {
             record.setOperatorName(dataSupport.currentRealname());
             record.setOperatorIp(DataSupport.clientIp(request));
             record.setCreateTime(new Date());
+            return record;
+        }
+
+        /** 落库（带请求对象，用于记录操作 IP） */
+        public DataChangeLog save(String action, String summary, HttpServletRequest request) {
+            DataChangeLog record = buildRecord(action, summary, request);
+            if (record == null) {
+                return null;
+            }
             try {
                 changeLogMapper.insert(record);
             } catch (Exception e) {

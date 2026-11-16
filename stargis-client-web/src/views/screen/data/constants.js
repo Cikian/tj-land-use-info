@@ -90,14 +90,13 @@ export const ATTACH_TYPES = [
 ]
 
 /** 建设性质（FacilityImportField.JSXX_OPTIONS） */
-export const BUILD_NATURES = ['新建', '改建', '扩建', '翻建', '其他']
+export const BUILD_NATURES = ['新建', '改建', '扩建', '翻建', '现状', '其他']
 
-/**
- * 道路等级（FacilityImportField.DLDJ_OPTIONS）。
- * ★ 刻意是 3 档：旧库实测还有「快速路」，它既不是主干路也不是次干路，
- *   硬归位会改掉业务事实，所以不放进下拉。
- */
-export const ROAD_LEVELS = ['城市主干路', '城市次干路', '城市支路']
+/** 道路等级（FacilityImportField.DLDJ_OPTIONS）：含业务已确认的快速路。 */
+export const ROAD_LEVELS = ['城市主干路', '城市次干路', '城市支路', '快速路']
+
+/** 功能区（与 xzqh 的 16 区行政区划分列；不把它当第 17 个区）。 */
+export const FUNCTION_AREAS = ['生态城', '土地发展中心', '经开区', '高新区', '保税区']
 
 /** 资金来源（FacilityImportField.ZJLY_OPTIONS） */
 export const FUND_SOURCES = ['土地整理成本', '地块收益', '成本分摊', '区内统筹', '其它']
