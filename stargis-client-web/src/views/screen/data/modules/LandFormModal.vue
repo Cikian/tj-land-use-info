@@ -93,16 +93,11 @@
           </screen-field>
 
           <!--
-            「添加地块」：进入地图绘制模式（2026-10 由「选取地块」改名改义：
-            不再是去地图上点选已有地块，而是直接在地球上绘制一个多边形，
-            「完成绘制」后把 GeoJSON 存进 dkGeojson 字段）。
-            ★ 2026-10 起**不再隐藏任何页面**（原先是全屏隐藏、只留地图）：
-              弹窗本身已经可以拖到一边、且背景不压暗，地图随时可操作，
-              再藏页面反而把「填到一半的表单」也一起藏了，用户还得先退出来才能核对。
-            ★ 为什么放在「地块名称」旁边而不是单独一块：
-              用户的心智是「先把这块地指出来」，地块名称 / 行政区划 / 面积都跟着这块地走，
-              所以入口贴着地块名称，比放在表单底部更容易被发现。
-            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进绘制模式
+            「管理地块图形」入口（2026-11-15 由「添加地块」升级）：
+            图形编辑整体搬进 FeatureGroupModal —— 那里能回显该宗地名下的**全部小块**
+            （切片源表按 crzdbh 精确匹配），每块可定位/移除、可继续添加，取消可还原。
+            表单里只剩入口与组状态展示，落库统一走表单「保存」（属性与几何一次落定）。
+            ★ 按钮上的 disabled 判据只有一条：地图没挂载（?map=0 预览）时进管理弹窗
               只会看到一片空白，那种情况下不如直接不给点。
           -->
           <div class="land-form__map-pick">
@@ -111,24 +106,18 @@
               type="button"
               class="land-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '添加地块，在地图上绘制多边形；可先把本窗口拖到一边' : '地图未加载，无法添加地块'"
-              @click="handleOpenMapPick"
+              :aria-label="mapEnabled ? '管理地块图形：查看、定位、新增或移除该宗地的地块块' : '地图未加载，无法管理地块图形'"
+              @click="handleOpenGroup"
             >
               <screen-icon name="grid" :size="16" />
-              <span>添加地块</span>
+              <span>管理地块图形</span>
             </button>
-            <!-- 已绘制的状态：有图形时显示顶点数并允许清除，没有则提示尚未绘制 -->
-            <span v-if="drawnVertexCount" class="land-form__map-pick-drawn">
-              已绘制（{{ drawnVertexCount }} 个顶点）
-              <button
-                type="button"
-                class="land-form__map-pick-clear"
-                aria-label="清除地块图形"
-                @click="handleClearGeojson"
-              >清除</button>
+            <!-- 组状态：dirty 优先（有未保存变更），其次 legacy（旧字段待迁移），再次已存块数 -->
+            <span v-if="partCount" class="land-form__map-pick-drawn">
+              {{ partSummary }}
             </span>
             <span class="land-form__map-pick-tip">
-              {{ mapEnabled ? (drawnVertexCount ? '' : '尚未绘制；点击后在地图上左键加点，双击或右键结束') : '地图未加载（?map=0 预览模式），暂不能添加地块' }}
+              {{ mapEnabled ? (partCount ? '' : '尚未绘制；点击后可按块新增/移除/定位，随表单保存一并落库') : '地图未加载（?map=0 预览模式），暂不能管理地块图形' }}
             </span>
           </div>
 
@@ -395,6 +384,8 @@
         </div>
       </section>
     </div>
+    <!-- 图形管理弹窗：暂存编辑器（没有独立保存），「完成」把整组交回本表单 -->
+    <feature-group-modal ref="groupModal" @change="handlePartsChange" />
   </screen-modal>
 </template>
 
@@ -408,19 +399,22 @@ import {
   ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
-import { uid } from '@/components/screen/utils'
-// 「添加地块」绘制会话：表单弹窗与全屏覆盖层都挂在 body 上（不在同一棵组件树里），
-// 只能通过这份共享状态对话，详见 views/screen/pickSession.js 的说明
-import { startPick, endPick, isPickIssuer } from '@/views/screen/pickSession'
-// 画完留在地图上的常驻预览面（生命周期跟表单会话：提交/取消/重画/清除时清掉）
-import { show as showDkPreview, clear as clearDkPreview } from '@/views/screen/previewPolygon'
-import { countVertices } from '@/views/screen/geoPolygons'
+// 图形组预览面的清理仍归表单会话（管理弹窗打开期间由它接管，提交/取消时统一清）
+import { clear as clearDkPreview } from '@/views/screen/previewPolygon'
+// 旧 dkGeojson（过渡回显）与各块顶点数的解析口径
+import { parsePolygons, countVertices } from '@/views/screen/geoPolygons'
+// 切片源上下文（连接编码/表名/唯一值字段）与保存后的图层重载
+import { getModuleSliceContext, reloadModuleLayers } from '../sliceInfo'
+import FeatureGroupModal from './FeatureGroupModal.vue'
 import {
   queryLandAdminById,
   addLandAdmin,
   editLandAdmin,
   checkCrzdbh,
-  queryLandDictItems
+  queryLandDictItems,
+  querySliceFeatureGroup,
+  saveSliceFeatureGroup,
+  deleteSliceFeatureGroup
 } from '@/api/land/landAdmin'
 import {
   XZQH_LIST,
@@ -490,7 +484,8 @@ export default {
     ScreenInput,
     ScreenSelect,
     ScreenDateInput,
-    ScreenIcon
+    ScreenIcon,
+    FeatureGroupModal
   },
   data () {
     return {
@@ -503,15 +498,28 @@ export default {
       model: emptyModel(),
       errors: {},
       /**
-       * 本次「添加地块」绘制会话的令牌（没进过绘制模式时为空串）。
-       * ★ 必须保存下来：结束会话时要 verbatim 交回去做发起者校验，
-       *   否则「两个表单都开着时，后一个的取消会把前一个的绘制模式关掉」。
+       * 该宗地名下的地块图形组（切片源表按 crzdbh 关联，表单是组的唯一持有者）：
+       *   [{ geojson, saved, legacy, vertices }]
+       *   saved=true 切片库已存；legacy=true 旧 dkGeojson 过渡回显；都 false=本次新画。
+       * 管理弹窗（FeatureGroupModal）只是编辑器，「完成」把整组交回这里，
+       * 表单「保存」时整组替换进切片库（空组 = 显式清空）。
        */
-      pickToken: '',
-      /** 地图是否可用（?map=0 预览时为 false，此时「添加地块」不给点） */
+      geoParts: [],
+      /** 管理弹窗交回过新组（状态行「保存后生效」的判据） */
+      geoDirty: false,
+      /** 打开表单时切片库里已存的块数（组状态展示用） */
+      savedPartCount: 0,
+      /**
+       * 图形组是否已从切片库**真实**拉到（含真实空组）。
+       * ★ 防清库的关键闸门：切片源未就绪 / 回显接口失败时为 false —— 此时
+       *   geoParts 只是 legacy 回退（或空），绝不能当「用户主动清空」提交，
+       *   syncFeatureGroupToSlice 会据此跳过 POST，否则一次保存就把切片库里
+       *   已有的图形整组删光。管理弹窗「完成」交回组时置 true（用户看到过
+       *   真实状态并主动编辑，以弹窗组为准）。
+       */
+      geoPartsLoaded: false,
+      /** 地图是否可用（?map=0 预览时为 false，此时「管理地块图形」不给点） */
       mapEnabled: true,
-      /** 本组件实例的唯一 id：只用于把「谁开的选取会话」写进会话状态，便于排查 */
-      uid: uid('land-form'),
       // 先给兜底，created 里再用字典覆盖（字典接口挂了页面也能填）
       xzqhOptions: XZQH_LIST.map((item) => ({ value: item, label: item })),
       projectTypeOptions: PROJECT_TYPES.map((item) => ({ value: item, label: item })),
@@ -519,27 +527,37 @@ export default {
     }
   },
   computed: {
+    /** 图形组块数（状态行显隐） */
+    partCount () {
+      return (this.geoParts || []).length
+    },
     /**
-     * 已绘制地块图形的顶点数（未绘制时为 0，状态行据此显隐）。
-     * 走 geoPolygons.countVertices：同时认 Polygon（绘制产物）与 MultiPolygon
-     * （GeoJSON 导入合并产物），跨全部块统计 —— 不然导入过多块图形的宗地
-     * 编辑时会被误显示成「尚未绘制」。解析失败（脏数据）按未绘制处理。
+     * 组状态一句话：有未保存变更 → 「保存后生效」；全部来自旧字段 → 「保存后转入切片库」；
+     * 其余 → 「切片库已存 N 块」。
      */
-    drawnVertexCount () {
-      return countVertices((this.model && this.model.dkGeojson) || '')
+    partSummary () {
+      const n = this.partCount
+      if (this.geoDirty) return `已选 ${n} 块 · 保存表单后生效`
+      const hasLegacy = (this.geoParts || []).some((part) => part.legacy)
+      if (hasLegacy) return `旧字段数据 ${n} 块 · 保存后转入切片库`
+      return `切片库已存 ${n} 块`
     }
   },
   watch: {
     /**
      * 弹窗任何途径关掉（底部「取消」、右上角 X、Esc、保存成功）都要收尾：
-     * 清掉常驻预览面与可能残留的绘制会话。★ 右上角 X / Esc 走的是 ScreenModal
-     * 的 update:visible，**不会**经过 handleCancel，所以收尾必须挂在这里兜底
-     * （closePick / clearDkPreview 都幂等，重复调用无副作用）。
+     * 清掉常驻预览面（管理弹窗打开期间由它接管，这里兜底清残留）。
+     * ★ 右上角 X / Esc 走的是 ScreenModal 的 update:visible，**不会**经过
+     *   handleCancel，所以收尾必须挂在这里兜底（clearDkPreview 幂等）。
      */
     visible (v) {
       if (!v) {
         clearDkPreview()
-        this.closePick()
+        // 图形管理弹窗还开着的话一起关掉（它是本表单的子编辑器，
+        // 表单都关了它留着只会让人误以为还能继续操作）
+        if (this.$refs.groupModal && this.$refs.groupModal.visible) {
+          this.$refs.groupModal.visible = false
+        }
       }
     }
   },
@@ -556,22 +574,6 @@ export default {
       if (dicts.projectType) this.projectTypeOptions = dicts.projectType
     })
   },
-  mounted () {
-    /*
-     * 订阅「选取地块」会话的结束事件。
-     *
-     * ★ 为什么走 $bus 而不是 props / $emit：
-     *   全屏覆盖层由 views/screen/index.vue 渲染，它和本弹窗是 body 上的两棵
-     *   平行节点，没有父子关系。$bus 是本工程既有的跨组件通道（utils/vueBus.js）。
-     *   ★ payload 里带 token，本组件必须先校验「是不是自己发起的那次会话」——
-     *     同页可能同时开着新增宗地与新增配套两个表单，不做校验就会出现
-     *     「另一个表单的选取结果被本表单吃掉了」。
-     */
-    this.$bus.$on('landMapPickFinished', this.handlePickEvent)
-  },
-  beforeDestroy () {
-    this.$bus.$off('landMapPickFinished', this.handlePickEvent)
-  },
   methods: {
     /* ---------------- 对外入口 ---------------- */
 
@@ -583,9 +585,15 @@ export default {
       this.errors = {}
       this.submitted = false
       this.loading = false
+      // 图形组从零开始（新增记录的编号刚由用户填，PG 里按编号关联；
+      // loaded=true —— 新增时「空组」就是真实状态，保存允许落库）
+      this.geoParts = []
+      this.geoDirty = false
+      this.savedPartCount = 0
+      this.geoPartsLoaded = true
+      this._originalCrzdbh = ''
       // 兜底清一次预览面（正常路径提交/取消时已清，防的是异常中断留下的残留）
       clearDkPreview()
-      this.closePick()
       this.visible = true
     },
 
@@ -598,9 +606,13 @@ export default {
       this.model = emptyModel()
       this.errors = {}
       this.submitted = false
+      // 图形组等 loadDetail 回来再拉（以切片库为准，拉不到才回退旧字段）
+      this.geoParts = []
+      this.geoDirty = false
+      this.savedPartCount = 0
+      this._originalCrzdbh = ''
       // 兜底清一次预览面（正常路径提交/取消时已清，防的是异常中断留下的残留）
       clearDkPreview()
-      this.closePick()
       this.visible = true
       this.loading = true
       this.loadDetail(record.id)
@@ -629,112 +641,173 @@ export default {
           })
           model.id = data.id || ''
           this.model = model
+          // ★ 记住打开时的编号：保存时编号变了要先把旧编号名下的图形整组删掉，
+          //   否则旧编号在切片库里变成孤儿图形，继续在图层上显示误导人
+          this._originalCrzdbh = String(data.crzdbh || '').trim()
+          // 图形组以切片库为准回显（拉不到才回退旧 dkGeojson 字段，过渡期双保险）
+          this.loadFeatureGroup()
         })
         .finally(() => {
           this.loading = false
         })
     },
 
-    /* ---------------- 交互 ---------------- */
+    /* ---------------- 地块图形组（切片源表，按 crzdbh 关联） ---------------- */
 
     /**
-     * 打开「添加地块」地图绘制模式。
-     * ===============================================================
-     * 打开后由 views/screen/index.vue 渲染的 ScreenPickStage 接手：
-     * 纯 GIS 操作（无顶部按钮）——左键加点，双击或右键结束即回传，Esc 取消；
-     * 绘制引擎是 views/screen/drawPolygon.js。
-     * ★ 2026-10 起**不再隐藏任何页面**（原来会把整块画布连同本弹窗一起藏掉）：
-     *   本弹窗现在可拖动、背景也不压暗，地图本来就随时可操作；
-     *   再藏页面只会把「填到一半的表单」也藏了，用户反而没法一边画一边核对。
-     *
-     * ★ 本表单**自己不渲染任何地图**，也不负责关闭绘制模式：
-     *   地图是 ScreenStage 里那个常驻的 Cesium 实例（本弹窗挂在 body 上，
-     *   拿不到它，也不该再创建第二个 Viewer —— 那会白烧一份 GPU 与内存）。
-     *   本方法只做两件事：① 记录会话令牌；② 把入口状态发出去。
-     *   关闭由绘制模式发起的取消 / 完成事件驱动（见 handlePickFinished）。
-     *
-     * @returns {string} 本次会话令牌；地图不可用时不开启会话，返回空串
+     * 拉切片库里该编号名下的全部图形块。
+     * ★ 切片源上下文来自壳层隐藏图层树（sliceInfo.getModuleSliceContext），
+     *   树未就绪时静默回退 legacy —— 不阻断编辑，保存时同步环节会再试一次。
      */
-    handleOpenMapPick () {
-      if (!this.mapEnabled) {
-        toast.warning('地图尚未加载，无法添加地块')
-        return ''
+    loadFeatureGroup () {
+      this.geoParts = []
+      this.geoDirty = false
+      this.savedPartCount = 0
+      this.geoPartsLoaded = false
+      const ctx = getModuleSliceContext('land')
+      const value = String(this.model.crzdbh || '').trim()
+      if (!ctx || !value) {
+        this.useLegacyGeoParts()
+        return
       }
-      // 已经画过（或编辑回显有图形）时再次点「添加地块」：旧面从地图上消失，
-      // 开始一次全新的绘制（model.dkGeojson 仍保留，画完新面才会覆盖它）
-      clearDkPreview()
-      // 自己上次的令牌如果已经不是当前会话（被 ended / 被别人接管），先清掉，
-      // 否则 closePick 会拿一个陈旧令牌去 endPick，语义上会显得「莫名关掉了别的会话」
-      if (this.pickToken && !isPickIssuer(this.pickToken)) this.pickToken = ''
-      if (this.pickToken) return this.pickToken
-      // ★ startPick 在「已有别人开的会话」时会返回**那个**会话的令牌。
-      //   这里如实记下来（而不是拒绝），保证本次操作总能被自己收到结束事件；
-      //   代价是别人那次会话的发起者会在结束时被顺带清掉令牌 —— 可接受，
-      //   因为同一时刻只可能有一张全屏地图，本来就不支持并行绘制。
-      this.pickToken = startPick({
-        source: 'land',
-        title: '正在添加经营性用地地块：左键加点，双击或右键结束，Esc 取消',
-        issuer: `LandFormModal#${this.uid}`
+      querySliceFeatureGroup({
+        source: ctx.info.source,
+        table: ctx.info.table,
+        field: ctx.field,
+        value: value
       })
-      return this.pickToken
+        .then((res) => {
+          if (!res || !res.success) {
+            this.useLegacyGeoParts()
+            return
+          }
+          const list = Array.isArray(res.result) ? res.result : []
+          // 拉到了真实状态（含真实空组）：此后保存的整组替换以这里为准
+          this.geoPartsLoaded = true
+          this.savedPartCount = list.length
+          if (list.length) {
+            this.geoParts = list.map((geojson) => ({
+              geojson: geojson,
+              saved: true,
+              legacy: false,
+              vertices: countVertices(geojson)
+            }))
+          } else {
+            this.useLegacyGeoParts()
+          }
+        })
+        .catch(() => {
+          // 接口不通按「切片库没有」处理：legacy 回显，保存时同步环节会把真实错误报出来
+          this.useLegacyGeoParts()
+        })
     },
 
     /**
-     * 覆盖层关闭后回到这里（取消绘制 / 完成绘制都会走）。
-     * @param {{geojson: string, vertexCount: number}|null} geometry
-     *   画好的地块图形（由 drawPolygon.js 的 getGeoJSON() 定义）；null = 没画出来。
-     *
-     * ★ 有图形 → 写入 model.dkGeojson（表单状态行随之显示顶点数）；
-     *   没图形 → **保留原值**（可能是编辑态已有的图形，也可能是从未画过），
-     *   静默清空会让用户以为「画完了但没生效」，实际是「根本没画」。
-     * ★ 再次点「完成绘制」且这次画了新图形 → 直接覆盖旧图形（重画的语义）。
+     * 过渡期回退：切片库没有图形时用旧 dkGeojson 字段拆块回显。
+     * ★ 标注 legacy=true，状态行如实显示「旧字段数据 · 保存后转入切片库」；
+     *   拆块只取外环（红线无洞的常态），保存进切片库后以 PG 数据为准。
      */
-    handlePickFinished (geometry) {
-      this.pickToken = ''
-      if (geometry && geometry.geojson) {
-        this.model.dkGeojson = geometry.geojson
-        // 预览面已由 ScreenPickStage 转交常驻层接管（画完的面留在地图上，
-        // 提交 / 取消 / 重画 / 清除时才消失），这里不用再动地图
-        toast.success(`地块图形已添加（${geometry.vertexCount} 个顶点），保存时随表单一并提交`)
-      } else if (this.model.dkGeojson) {
-        // 取消绘制（Esc）：表单里已有的图形不受影响，把它的预览面显示回来
-        showDkPreview(this.model.dkGeojson)
+    useLegacyGeoParts () {
+      const rings = parsePolygons((this.model && this.model.dkGeojson) || '')
+      this.geoParts = rings.map((ring) => ({
+        geojson: JSON.stringify({ type: 'Polygon', coordinates: [ring] }),
+        saved: false,
+        legacy: true,
+        vertices: ring.length - 1
+      }))
+    },
+
+    /** 管理弹窗「完成」交回整组：这里只接收（顶点数重算），落库等表单「保存」 */
+    handlePartsChange (parts) {
+      this.geoParts = (parts || []).map((part) => Object.assign({}, part, {
+        vertices: countVertices(part.geojson)
+      }))
+      // 用户在管理弹窗里看到过真实状态并主动编辑：以弹窗组为准（空组=主动清空，允许落库）
+      this.geoPartsLoaded = true
+      this.geoDirty = true
+    },
+
+    /**
+     * 打开图形管理弹窗。
+     * ★ 编号必须先填：图形以 crzdbh 关联切片源表，没有编号就无从关联。
+     */
+    handleOpenGroup () {
+      if (!this.mapEnabled) {
+        toast.warning('地图尚未加载，无法管理地块图形')
+        return
       }
-    },
-
-    /** 清除已绘制的地块图形（提交时该字段按空串 → null 的惯例上送），地图上的预览面一并清掉 */
-    handleClearGeojson () {
-      this.model.dkGeojson = ''
-      clearDkPreview()
+      const value = String(this.model.crzdbh || '').trim()
+      if (!value) {
+        toast.warning('请先填写「出让宗地编号」，地块图形以编号关联切片源表')
+        return
+      }
+      this.$refs.groupModal.open({
+        sourceType: 'land',
+        parts: this.geoParts,
+        uniqueValue: value,
+        mapEnabled: this.mapEnabled
+      })
     },
 
     /**
-     * 覆盖层抛回的结束事件（$bus: landMapPickFinished）。
-     * @param {{ token: string, geometry: * }} payload
+     * 表单保存成功后，把图形组整组同步进切片库（fire-and-forget，结果用 toast 反馈）。
+     *
+     * 时序（属性先行、几何可补偿——双库没有跨库事务，这是如实能做到的最好保证）：
+     *   ① 业务属性已落库（submit 的 then 分支里）；
+     *   ② 编号改过 → 先删旧编号的整组（防孤儿图形继续在图层上显示）；
+     *   ③ 再把当前组整组替换进切片库（空组 = 显式清空，把块全删光的合法结果）；
+     *   ④ 成功 → 重载切片图层（绕开瓦片缓存）；失败 → 弹窗已关、属性已存，
+     *     toast 明示重试路径：重新打开该记录编辑并保存即可再次同步。
      */
-    handlePickEvent (payload) {
-      const data = payload || {}
-      // 不是自己发起的那次会话 → 与自己无关，直接忽略
-      if (!this.pickToken || data.token !== this.pickToken) return
-      this.handlePickFinished(data.geometry)
+    syncFeatureGroupToSlice () {
+      const ctx = getModuleSliceContext('land')
+      const value = String(this.model.crzdbh || '').trim()
+      if (!ctx || !value) {
+        if (value) {
+          toast.warning('切片图层尚未就绪，地块图形本次未同步；稍后重新打开该记录编辑并保存即可同步')
+        }
+        return
+      }
+      // ★ 防清库闸门：图形组没从切片库真实拉到过、此刻又是空组 —— 说明「空」
+      //   只是回显失败的回退态，绝不能当「用户主动清空」提交（否则一次保存
+      //   就把切片库里已有的图形整组删光）。提示用户重开编辑重试。
+      if (!this.geoPartsLoaded && this.geoParts.length === 0) {
+        toast.warning('地块图形状态未知（切片源未就绪），本次未同步图形；重新打开该记录编辑并保存即可同步')
+        return
+      }
+      const base = { source: ctx.info.source, table: ctx.info.table, field: ctx.field }
+      const old = String(this._originalCrzdbh || '').trim()
+      const post = saveSliceFeatureGroup(Object.assign({}, base, {
+        value: value,
+        geometries: this.geoParts.map((part) => part.geojson)
+      }))
+      const chain = (old && old !== value)
+        ? deleteSliceFeatureGroup(Object.assign({}, base, { value: old })).then(() => post)
+        : post
+      chain
+        .then((res) => {
+          if (!res || !res.success) {
+            toast.error('属性已保存，但地块图形同步失败：' + ((res && res.message) || '未知错误') +
+              '。重新打开该记录编辑并保存即可重试')
+            return
+          }
+          toast.success(`地块图形已同步到切片库（${this.geoParts.length} 块）`)
+          reloadModuleLayers('land')
+        })
+        .catch((e) => {
+          toast.error('属性已保存，但地块图形同步失败：' + (e && e.message ? e.message : e) +
+            '。重新打开该记录编辑并保存即可重试')
+        })
     },
 
-    /** 关闭弹窗 / 重新打开表单时，把可能残留的选取会话一起收掉 */
-    closePick () {
-      const token = this.pickToken
-      this.pickToken = ''
-      if (!token) return
-      // ★ 必须是静态 import：动态 require 会破坏 tree-shaking，
-      //   而且 pickSession 是独立小模块，不存在循环依赖（index.vue 才引它）
-      endPick(token)
-    },
+    /* ---------------- 交互 ---------------- */
 
     /**
      * 编号失焦时做唯一性校验。
      * ★ 校验只在「用户确实填了编号」时发起：空编号已经由必填校验兜住，
      *   再打一次接口只会多一条「编号不能为空」的噪音提示。
-     * ★ 即使 available=true 也把 message 透出来：后端在回收站里存在同编号历史记录时
-     *   会提示「该编号可以使用；注意回收站里有一条同编号的历史记录」，这条信息有用。
+     * ★ 编号可用时**静默通过**（2026-11-15 用户要求去掉「该编号可以使用」类提示）：
+     *   可用是常态，弹提示反而是打断；只有「已被占用」才标红——那才是需要用户行动的信息。
      */
     handleCheckCrzdbh () {
       const value = String(this.model.crzdbh || '').trim()
@@ -746,9 +819,6 @@ export default {
           if (result.available === false) {
             this.errors = Object.assign({}, this.errors, { crzdbh: result.message || '该编号已被占用' })
             return
-          }
-          if (result.message) {
-            toast.info(result.message)
           }
           const next = Object.assign({}, this.errors)
           delete next.crzdbh
@@ -806,11 +876,11 @@ export default {
       Object.keys(model).forEach((key) => {
         if (key === 'id') return
         const value = model[key]
-        // dkGeojson 的空串是「清除图形」的显式信号，**不能**按文本惯例规整成 null：
-        // 后端靠「没带字段（null = 跳过该列，保留已画图形）」与「传空串（= 真正写空）」
-        // 区分两种语义（见 LandAdminServiceImpl.copyBusinessFields 的注释）
+        // dkGeojson 恒传 null（= 后端跳过该列，保留原值）：图形的唯一权威已经是
+        // 切片源表（保存时 syncFeatureGroupToSlice 整组替换），业务表的 dk_geojson
+        // 只剩存量数据、等清理字段后一并退役 —— 既不写新值也不清旧值
         if (key === 'dkGeojson') {
-          data[key] = value === undefined ? null : value
+          data[key] = null
           return
         }
         if (NUMBER_FIELDS.indexOf(key) > -1) {
@@ -856,12 +926,12 @@ export default {
             return
           }
           toast.success(res.message || '保存成功')
-          // 保存成功：弹窗关掉、绘制会话收掉，地图上那个常驻预览面
-          // 也跟着本次表单会话一起消失
+          // 保存成功：弹窗关掉，地图上那个常驻预览面也跟着本次表单会话一起消失；
+          // 图形组整组同步进切片库（属性已落库，几何异步跟随，结果用 toast 反馈）
           clearDkPreview()
-          this.closePick()
           this.visible = false
           this.$emit('ok', payload.id)
+          this.syncFeatureGroupToSlice()
         })
         .catch(() => {
           // 请求层已经弹过错误提示，这里只负责不把弹窗留在 loading 状态
@@ -872,9 +942,8 @@ export default {
     },
 
     handleCancel () {
-      // 取消/关闭表单：本次画的面从地图上清掉（数据没提交，不留痕迹）
+      // 取消/关闭表单：本次的图形预览从地图上清掉（数据没提交，不留痕迹）
       clearDkPreview()
-      this.closePick()
       this.visible = false
     },
 

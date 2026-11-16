@@ -57,4 +57,69 @@ public interface IShpImportService {
      * 口令不下发浏览器。
      */
     SpatialSourceStatsVO sourceStats(String id);
+
+    /**
+     * 按唯一值查切片源表要素范围（大屏列表定位的数据源，替代 dk_geojson）。
+     *
+     * 流程：land_mvt_source 按 code 取连接 → 连对应 PG 库 → geometry_columns
+     * 取几何列 → ST_Extent(ST_Transform(geom,4326)) WHERE 唯一值字段 = 值
+     * （精确 + 双向去「号」尾匹配，见 matchGroupWhere；多要素取并集范围）→ [minLon,minLat,maxLon,maxLat]。
+     * ★ 值匹配用 PreparedStatement 参数化（值是业务数据，可能含引号等字符）。
+     *
+     * @param source 连接编码（land_mvt_source.code）
+     * @param table  切片源表名（先过标识符白名单）
+     * @param field  唯一值字段名（先过标识符白名单）
+     * @param value  唯一值（业务数据，如宗地编号/项目名称）
+     */
+    java.util.List<Double> sliceFeatureBounds(String source, String table, String field, String value) throws Exception;
+
+    /**
+     * 回显某唯一值名下的全部要素几何（大屏图形管理弹窗打开时用）。
+     *
+     * 与 sliceFeatureBounds 同源（land_mvt_source 按 code 取连接 → geometry_columns
+     * 取几何列），但**只走精确匹配**：回显是写路径的读，绝不能把 LIKE 近似命中
+     * 的别家图形拉进编辑弹窗。
+     *
+     * @return 各要素的 GeoJSON（WGS84，ST_Transform(geom,4326)）字符串列表；
+     *         该唯一值没有图形时返回空列表（不算错误）
+     */
+    java.util.List<String> sliceFeatureGeometries(String source, String table, String field, String value) throws Exception;
+
+    /**
+     * 整组替换某唯一值名下的要素几何（大屏图形管理弹窗「保存」用）。
+     *
+     * 语义（与前端「弹窗内暂存、点保存才落库」的交互严格对齐）：
+     *   先 DELETE 该唯一值的全部旧行，再逐条 INSERT 本次提交的几何；
+     *   几何列表为空 = 显式清空整组（弹窗里把所有块都删光的合法结果）。
+     * ★ 坐标系：前端给的是 WGS84 GeoJSON，落库前 ST_Transform 到源表 SRID
+     *   （geometry_columns 实测值，不写死）；属性列只写唯一值字段，其余留空 ——
+     *   业务属性以业务表为准，切片源表只承担「几何 + 唯一值」两个职责。
+     * ★ 整组替换在一个事务里完成，中途失败整体回滚，不会留下半组图形。
+     *
+     * @return 落库的要素行数（= geometries.size()）
+     */
+    int saveSliceFeatureGroup(String source, String table, String field, String value,
+                              java.util.List<String> geometries) throws Exception;
+
+    /**
+     * 整组删除某唯一值名下的全部要素几何。
+     * 两个用途：① 移除业务记录时联动清图形；② 编辑时改了唯一值（编号/名称），
+     * 先删旧值的组再写新值的组，避免旧值名下留下孤儿图形继续在图层上显示。
+     *
+     * @return 删除的行数
+     */
+    int deleteSliceFeatureGroup(String source, String table, String field, String value) throws Exception;
+
+    /**
+     * 切片源表要素搜索（地名定位 / 空间查询共用的数据底座）。
+     *
+     * @param source  连接编码（land_mvt_source.code）
+     * @param table   切片源表名
+     * @param keyword 关键字（可空）：对该表全部字符类型列做 LIKE 模糊匹配
+     * @param bbox    可选空间过滤 "xmin,ymin,xmax,ymax"（EPSG:4326），只返回与该范围相交的要素
+     * @param limit   返回条数上限（1~200）
+     * @return 每条：{ properties: 全部属性列(字符串化), geojson: WGS84 GeoJSON, bbox: [4326 包围盒] }
+     */
+    java.util.List<java.util.Map<String, Object>> featureSearch(String source, String table, String keyword,
+                                                                String bbox, int limit) throws Exception;
 }

@@ -9,7 +9,7 @@ window._CONFIG = {
   //保证无论操作者用什么地址打开管理端，复制的链接其它机器都能直接访问。
   //★ 当前开发机用 9802 直连形态：nginx 80 反代未启用，/api 形态（80 端口）外机连不上，
   //  之前复制的地址全部 Failed to fetch 就是这个原因。以后启用 nginx 反代时改成 http://服务器IP/api
-  MVT_PUBLIC_BASE_URL: 'http://192.168.20.118:9802/api',
+  MVT_PUBLIC_BASE_URL: 'http://127.0.0.1:9802/api',
   //单点登录地址
   VUE_APP_CAS_BASE_URL: '',
   //文件预览路径（kkFileView）：运行时改这里不用重新打包。

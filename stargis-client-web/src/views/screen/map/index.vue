@@ -286,6 +286,10 @@
 import MapToolPanel from './MapToolPanel.vue'
 import MapPickPanel from './MapPickPanel.vue'
 import MapPlacePanel from './MapPlacePanel.vue'
+import { queryLandAdminPage } from '@/api/land/landAdmin'
+import { queryFacilityAdminPage } from '@/api/land/facilityAdmin'
+// 拾取唯一键的字段名唯一来源（地块 crzdbh / 配套项目名称列）——勿在别处手抄拼写
+import { SLICE_UNIQUE_FIELDS } from '../data/sliceInfo'
 import {
   ScreenResizeBar,
   ScreenSideRail,
@@ -296,6 +300,131 @@ import {
 } from '@/components/screen'
 import { hf } from '@/assets/screen-blue'
 import mvtLayerTree from '@/utils/mvt/layerTreeDirective'
+
+/**
+ * 拾取面板展示的**业务库字段**（中文标签映射，按业务库列名）。
+ * 拾中要素按唯一键（宗地编号/项目名称）回查业务库，查到后展示这些业务字段；
+ * 查不到（业务库无对应记录）时回退显示切片属性。
+ */
+/**
+ * 拾取面板展示的**业务库字段**中文标签映射。
+ * ★ 内容机器生成自后端 fieldconfig/DataFieldLabels.java（数据管理页共用的中文字典），
+ *   两边必须同步 —— 改标签请改后端字典后重新生成，勿在此手改单个条目。
+ *   （末尾附加的 shape_le/shape_ar 是注册表没有的几何统计列。）
+ * 拾中要素按唯一键（宗地编号/项目名称）回查业务库，查不到时空态不显示。
+ */
+const LAND_FIELD_LABELS = {
+  crzdbh: '出让宗地编号',
+  dkmc: '地块名称',
+  xzqh: '行政区划',
+  xmfl: '项目分类',
+  ghydxz: '规划用地性质',
+  crj: '出让金（亿元）',
+  crsj: '出让时间',
+  kjsydmj: '可建设用地面积(平方米)',
+  zydmj: '总用地面积（平方米）',
+  jsmj: '建设面积（平方米）',
+  nrcbdptf: '纳入成本的配套费(万元)',
+  wcd: '完成度',
+  srr: '受让人',
+  htydjfsj: '合同约定交付时间',
+  lpmc: '楼盘名称',
+  lpjfsj: '楼盘交付时间（或计划交付时间）',
+  dz: '东至',
+  xz: '西至',
+  nz: '南至',
+  bz: '北至',
+  tdzldw: '土地整理单位',
+  tdzljhxdwjh: '土地整理计划下达文件号',
+  tdzljh: '土地整理计划',
+  ptsfqq: '配套是否齐全',
+  ptqkh: '配套情况函',
+  ptcbh: '配套筹备函',
+  crzdtxsj: '出让宗地图形数据（shp）',
+  ptjsnr: '配套建设内容',
+  lrdw: '录入单位',
+  lrr: '录入人',
+  lxdh: '联系电话',
+  zlqsnrsm: '资料缺失内容及说明',
+  beizhu: '备注',
+  xzqh2: '录入单位简称',
+  shape_le: '周长(米)',
+  shape_ar: '面积(㎡)'
+}
+const FACILITY_FIELD_LABELS = {
+  crzdbh: '出让宗地编号',
+  ptxmmc: '配套项目名称',
+  dkmc: '地块名称',
+  ptsslb: '配套设施类别',
+  xzqh: '行政区划',
+  xmfl: '项目分类',
+  jsxx: '建设性质',
+  dldj: '道路等级',
+  sfzsjtjlz: '是否涉及提级论证',
+  tjlzsftg: '提级论证是否通过',
+  ghhxkd: '规划红线宽度（米）',
+  cd: '长度（米）',
+  tzgs: '投资估算（万元）',
+  zjly: '资金来源',
+  dkcrscndptjgsj: '地块出让时承诺的配套竣工时间',
+  jsdw: '建设单位',
+  sjdw: '设计单位',
+  kcdw: '勘察单位',
+  jldw: '监理单位',
+  sgdw: '施工单位',
+  jsgydw: '接收管养单位',
+  xjpfsfwc: '项建批复是否完成',
+  xjpfzt: '项建批复状态',
+  kypfsfwc: '可研批复是否完成',
+  kypfzt: '可研批复状态',
+  csjgspfsfwc: '初设及概算批复是否完成',
+  csjgspfzt: '初设及概算批复状态',
+  gspfje: '概算批复金额（万元）',
+  zjlsqk: '资金落实情况',
+  sfkg: '是否开工',
+  kgzt: '开工状态',
+  yjkgsj: '预计开工时间',
+  sjkgsj: '实际开工时间',
+  sfjg: '是否竣工',
+  yjjgsj: '预计竣工时间',
+  sjjgsj: '实际竣工时间',
+  sfyj: '是否移交',
+  ptxmhdydydjdc: '配套项目核定用地与地籍调查',
+  xjpfwj: '项建批复文件',
+  kypfwj: '可研批复文件',
+  csjgspfwj: '初设及概算批复文件',
+  dlgh: '道路规划',
+  ghgcxk: '规划工程许可',
+  gxzhslsj: '管线综合矢量数据（shp）',
+  zyptfa: '专业配套方案',
+  zyglyj: '专业管理意见',
+  ghydxkyhbsxbl: '规划用地许可与划拨手续办理',
+  sgxk: '施工许可',
+  bdcdj: '不动产登记',
+  jgwj: '竣工文件',
+  yjwj: '移交文件',
+  jtwt: '具体问题',
+  gzjy: '工作建议',
+  zlqsnrjsm: '资料缺失内容及说明',
+  bz: '备注',
+  lrdw: '录入单位',
+  lrr: '录入人',
+  lxdh: '联系电话'
+}
+
+/** 业务记录里不展示的列：ID 类、系统审计类、图形大列、软删标记 */
+const BUSINESS_EXCLUDED_KEYS = [
+  'id', 'gid', '__oid', 'oid_1', 'oid', 'delFlag', 'del_flag',
+  'createTime', 'updateTime', 'updateBy', 'updateAccount', 'createuserid',
+  'sourceId', 'createBy', 'createAccount',
+  'dk_geojson', 'dk_geojson_overview', 'geom'
+]
+
+// ★ 归一化（小写、去下划线）后比对：业务 JSON 键是实体驼峰属性名
+//   （如 dkGeojson / dkGeojsonOverview），与清单里的列名拼写（dk_geojson）
+//   不同体系，精确匹配拦不住驼峰变体。
+const normKey = k => String(k).toLowerCase().replace(/_/g, '')
+const BUSINESS_EXCLUDED_NORM = new Set(BUSINESS_EXCLUDED_KEYS.map(normKey))
 
 /**
  * 插件开关/弹窗类工具注册表（卡片 key → stargis-function 组件）。
@@ -490,6 +619,7 @@ export default {
     }
   },
   created () {
+    this._pickRequestSequence = 0
     // 拾取结果：payload 是 {name,value} 行数组；false = 取消拾取 / 未拾中
     this.$bus.$on('showPickQueryPop', this.handlePickResult)
     // 道路定位弹窗开关（插件按钮 / 弹窗自带关闭钮都会发）
@@ -514,6 +644,8 @@ export default {
     this.loadStatConfig()
   },
   beforeDestroy () {
+    this._pickRequestSequence++
+    this.stopAttrGridDockWatch()
     this.$bus.$off('showPickQueryPop', this.handlePickResult)
     this.$bus.$off('showQueryRoadPop', this.handleRoadPopEvent)
     this.$bus.$off('showQuerySpatialPop', this.handleSpatialPopEvent)
@@ -527,19 +659,64 @@ export default {
     this.stopLayerProbe()
     this.removeLayerNameHandler()
     // 切模块 = 本页被销毁：把拾取结果与图层名一并归零，
-    // 免得地图页若被 keep-alive 缓存后回来还挂着上一轮的属性（P2-02）
+    // 免得地图页若被 keep-alive 缓存后回来还挂着上一轮的属性（P2-02）；
+    // MVT 拾取画的高亮实体也要一起撤（它是本页自己加的 Cesium 实体）
     this.resetPickResult()
+    this.clearPickHighlight()
   },
   /** 切模块（若本页被 keep-alive 缓存）：拾取状态不跨模块保留 */
   deactivated () {
     this.resetPickResult()
+    this.clearPickHighlight()
   },
   mounted () {
     // 真实地图（Cesium）由 S3dmViewer 异步创建，等 window.viewer 就绪后再
     // 挂图层名探测；?map=0 预览时永远等不到，轮询若干次后自动放弃
     this.startLayerProbeWhenReady()
+    // 插件结果表（空间/属性/综合查询的属性表浮窗）停靠底部抽屉
+    this.startAttrGridDockWatch()
   },
   methods: {
+    /**
+     * 插件结果表停靠底部抽屉（ScreenBottomDock）：
+     * 空间/属性/综合查询的属性表浮窗（.pop.bottom-table.info-table）出现时
+     * 自动展开抽屉（记住之前的折叠态），消失时恢复；位置由文件尾非 scoped
+     * 样式把浮窗钉进抽屉体区域，抽屉高度经 --attr-grid-dock-h 下发（可拖高）。
+     * 轮询 300ms 探测显隐——插件内部 v-show 切 display，拿不到它的事件。
+     */
+    startAttrGridDockWatch () {
+      if (this._attrGridTimer) return
+      this._attrGridTimer = setInterval(() => {
+        const dock = this.$el && this.$el.querySelector('.screen-bottom-dock')
+        // ★ 可能存在多个结果表节点（插件重建查询结果时），全部搬进抽屉
+        const grids = dock ? Array.from(document.querySelectorAll('.pop.bottom-table.info-table'))
+          .filter(g => g.parentNode !== dock) : []
+        grids.forEach(grid => {
+          dock.appendChild(grid)
+          grid.classList.add('is-docked')
+        })
+        const first = dock && dock.querySelector('.pop.bottom-table.info-table')
+        // 停靠判定看插件自己的 v-show 内联显隐
+        const open = !!(first && first.style.display !== 'none')
+        if (open === this._attrGridOpen) return
+        this._attrGridOpen = open
+        if (open) {
+          this._attrGridPrevCollapsed = this.layout.bottom.collapsed
+          if (this.layout.bottom.collapsed) this.layout.setCollapsed('bottom', false)
+        } else if (this._attrGridPrevCollapsed === true) {
+          this.layout.setCollapsed('bottom', true)
+        }
+        const root = this.$el
+        if (root) root.classList.toggle('is-attr-grid-open', open)
+      }, 300)
+    },
+    stopAttrGridDockWatch () {
+      if (this._attrGridTimer) {
+        clearInterval(this._attrGridTimer)
+        this._attrGridTimer = null
+      }
+    },
+
     /**
      * 插件按钮的激活契约：btnClick() 激活前会调用 $parent.cancelAll()
      * 关掉兄弟工具（拾取/道路/空间/属性/综合引擎激活时都会走到这里）。
@@ -548,16 +725,29 @@ export default {
       this.closeOtherTools(null)
     },
 
-    /** 左面板「拾取查询」卡片 → 切换插件拾取模式，并把状态同步回卡片 */
+    /**
+     * 左面板「拾取查询」卡片 → 切换拾取模式，并把状态同步回卡片。
+     * ★ 混合模式（2026-11-16）：插件 QueryPick 引擎负责**原有拾取**
+     *   （S3M 模型 / 实体标绘 / 管线等一切可拾对象，结果经总线
+     *   showPickQueryPop 进右面板——原有功能原样保留），MVT 是**叠加**：
+     *   点击处没有拾中 3D 对象时，才由本组件 LEFT_CLICK 分支（probe）
+     *   做 MVT pickFeatures + 业务库回查。
+     *   之前纯前端化导致原有图层拾取全断（用户指出：MVT 只是补充，
+     *   不能替代原有功能）。
+     */
     togglePick () {
       const engine = this.$refs.pickEngine
       if (!engine) return
       this.closeOtherTools('pick')
+      this._pickRequestSequence++
+      this.clearPickHighlight()
+      this.pickLayer = ''
+      this.pickRows = []
       try {
         engine.btnClick()
       } catch (error) {
         // 插件引擎进入拾取模式要访问 window.viewer.scene：
-        // ?map=0 预览或 Cesium 还没就绪时会抛错，这里兜住并复位引擎，
+        // ?map=0 预览或 Cesium 还没就绪时会抛错，兜住并复位引擎，
         // 避免「卡片亮着但拾取实际没生效」的卡死状态
         try { if (engine.checked) engine.cancelChecked() } catch (ignored) { /* 引擎复位失败不必再处理 */ }
         this.pickActive = false
@@ -568,8 +758,12 @@ export default {
       }
       this.pickActive = !!engine.checked
       this.activeTool = this.pickActive ? 'pick' : ''
-      // 退出拾取（卡片再点一次）：面板回到默认空态，旧结果与图层名必须清掉
-      if (!this.pickActive) this.resetPickResult()
+      // 退出拾取（卡片再点一次）：面板回到默认空态，旧结果与图层名必须清掉，
+      // 本次拾取画的高亮也要撤（否则退出后地图上还留着一个高亮块）
+      if (!this.pickActive) {
+        this.resetPickResult()
+        this.clearPickHighlight()
+      }
     },
 
     /** 左面板「地名定位」卡片 → 切换右面板到地名定位搜索；再点一次退出 */
@@ -643,11 +837,12 @@ export default {
       })
     },
 
-    /** 复位拾取引擎（三工具互斥用）：无地图时引擎会抛错，兜住并归零状态 */
+    /** 关闭拾取模式并作废在途请求（三工具互斥用） */
     closePickEngine () {
-      if (!this.pickActive || !this.$refs.pickEngine) return
-      try { this.$refs.pickEngine.btnClick() } catch (error) { /* 引擎内部访问 viewer 失败，状态强制归零 */ }
+      if (!this.pickActive) return
       this.pickActive = false
+      this._pickRequestSequence++
+      this.clearPickHighlight()
       if (this.activeTool === 'pick') this.activeTool = ''
       // 退出拾取工具 = 旧结果作废（P2-02：不留上一次的属性）
       this.resetPickResult()
@@ -737,6 +932,10 @@ export default {
     /**
      * 左面板「属性查询」卡片 → 切换右面板到插件属性查询面板；再点一次退出。
      * 弹窗依赖 configMin（功能配置里的数据源），没配置时只提示不进模式。
+     */
+    /**
+     * 属性查询：恢复插件面板（2026-11-16 回退「与拾取同款」的改动——用户要求
+     * 右侧功能区照常出现）。数据类型/图层名称/绘制查询等全部由插件面板自己提供。
      */
     toggleAttr () {
       if (!this.attrConfig) {
@@ -1085,13 +1284,16 @@ export default {
     },
 
     /**
-     * 总线结果 → 右面板字段表。
+     * 总线结果（插件原有拾取）→ 右面板字段表；false / 空数组 = 未拾中 → 空态。
      * ★ payload 为 false / 空数组 = 退出拾取或未拾中（点在空白处）：
      *   此时连图层名一起清空，否则「当前图层」会停留在上一个要素的图层上，
-     *   与空表并列出现时像是「属性没读出来」（P2-02）。
-     *   不再回退任何演示数据。
+     *   与空表并列出现时像是「属性没读出来」（P2-02）。不再回退任何演示数据。
+     * ★ 同时记录本次 payload：pickMvtFeature 的混合拾取靠它判定「插件是否处理了
+     *   这次点击」（插件每次点击都会发：非空 rows = 拾中原有要素；false/空 = 没拾中，
+     *   这时才轮到 MVT pickFeatures 补充）。
      */
     handlePickResult (payload) {
+      this._lastPluginPickPayload = payload
       const rows = Array.isArray(payload) ? payload : []
       this.pickRows = rows.length ? rows : null
       if (!rows.length) this.pickLayer = ''
@@ -1123,31 +1325,46 @@ export default {
         this._layerProbeHandler = new Cesium.ScreenSpaceEventHandler(window.viewer.scene.canvas)
         this._layerProbeHandler.setInputAction((movement) => {
           try {
-            const picked = window.viewer.scene.pick(movement.position)
-            if (!picked) {
-              // MVT 影像层拾取：scene.pick 不含影像层，走 Cesium 标准 imagery 拾取
-              // （MvtPublicController 的 provider 实现了 pickFeatures，返回点内地块属性）
-              const ray = window.viewer.camera.getPickRay(movement.position)
-              if (!ray) return
-              const imageryPicks = window.viewer.imageryLayers.pickImageryLayerFeatures(ray, window.viewer.scene)
-              if (!imageryPicks) return
-              Promise.resolve(imageryPicks).then(features => {
-                if (!features || !features.length) return
-                const f = features[0]
-                // 清理上一次的临时拾取点
-                const prev = window.viewer.entities.getById('__mvt_pick_temp')
-                if (prev) window.viewer.entities.remove(prev)
-                const entity = window.viewer.entities.add({
-                  id: '__mvt_pick_temp',
-                  position: Cesium.Cartesian3.fromDegrees(f.coordinate.longitude, f.coordinate.latitude),
-                  point: { pixelSize: 10, color: Cesium.Color.LIME, outlineColor: Cesium.Color.BLACK, outlineWidth: 1 },
-                  name: '地块 ' + (f.name || ''),
-                  description: f.description
-                })
-                window.viewer.selectedEntity = entity
-              }).catch(() => { /* 影像拾取失败静默 */ })
+            if (this.pickActive) {
+              const requestId = ++this._pickRequestSequence
+              this.clearPickHighlight()
+              // ★ 混合拾取（MVT 是补充，不覆盖原有功能）：插件引擎的 LEFT_CLICK
+              //   先于本处理器执行，并经总线抛出本次点击的判定——
+              //   非空 rows = 它拾中了原有要素（S3M/实体/管线），结果已进面板，
+              //   这里**必须保留、绝不清除**，只补图层名；
+              //   false/空 = 它没拾中（纯影像区域）→ 才轮到 MVT pickFeatures
+              //   + 业务库回查。所以面板复位必须放在闸门**之后**。
+              const pluginRows = this._lastPluginPickPayload
+              let hit3d = null
+              try { hit3d = window.viewer.scene.pick(movement.position) } catch (error) { hit3d = null }
+              const src3d = (hit3d && (hit3d.id || hit3d)) || null
+              const pluginHit = Array.isArray(pluginRows) && pluginRows.length > 0
+              if (pluginHit || src3d) {
+                // 原有拾取命中：补图层名（插件 payload 不带图层名，尽力取）
+                try {
+                  const primitive = (hit3d && hit3d.primitive) || hit3d || null
+                  const name = (src3d && src3d.name) || (primitive && (primitive.name || primitive.path)) || ''
+                  if (name) this.pickLayer = String(name)
+                } catch (ignored) { /* 图层名取不到就保留原值 */ }
+                return
+              }
+              this.pickRows = null
+              this.pickLayer = ''
+              const viewer = window.viewer
+              const globe = viewer.scene.globe.ellipsoid
+              const cartesian = viewer.camera.pickEllipsoid(movement.position, globe)
+              if (!cartesian) {
+                // 点到天空/视境外 → 同样按「没拾到」静默处理
+                this.pickLayer = ''
+                this.pickRows = null
+                return
+              }
+              const cartographic = globe.cartesianToCartographic(cartesian)
+              this.pickMvtFeature(cartographic, movement.position, requestId)
               return
             }
+            const picked = window.viewer.scene.pick(movement.position)
+            if (!picked) return
             const entity = picked.id
             const primitive = picked.primitive || picked
             const name = (entity && entity.name) || primitive.name || primitive.path
@@ -1158,6 +1375,150 @@ export default {
         this._layerProbeHandler = null
       }
       return !!this._layerProbeHandler
+    },
+
+    async pickMvtFeature (cartographic, screenPosition, requestId) {
+      const viewer = window.viewer
+      const longitude = cartographic.longitude
+      const latitude = cartographic.latitude
+      try {
+        const hit2 = viewer.camera.pickEllipsoid(new window.Cesium.Cartesian2(screenPosition.x + 100, screenPosition.y), viewer.scene.globe.ellipsoid)
+        let level = 16
+        if (hit2) {
+          const cartographic2 = viewer.scene.globe.ellipsoid.cartesianToCartographic(hit2)
+          const degreesPerPixel = Math.abs(cartographic2.longitude - longitude) * 180 / Math.PI / 100
+          if (degreesPerPixel > 0) level = Math.max(0, Math.min(22, Math.round(Math.log2(360 / (degreesPerPixel * 256)))))
+        }
+        for (let i = viewer.imageryLayers.length - 1; i >= 0; i--) {
+          const layer = viewer.imageryLayers.get(i)
+          const provider = layer && layer._imageryProvider
+          if (!layer || !layer.show || layer.alpha === 0 || !layer._mvtResourceId || !provider ||
+              typeof provider.pickFeatures !== 'function' || !provider.tilingScheme) continue
+          const maximumLevel = Number.isFinite(Number(provider.maximumLevel)) ? Number(provider.maximumLevel) : 22
+          const pickLevel = Math.min(level, maximumLevel)
+          const tile = provider.tilingScheme.positionToTileXY(cartographic, pickLevel)
+          if (!tile) continue
+          const features = await provider.pickFeatures(tile.x, tile.y, pickLevel, longitude, latitude)
+          if (requestId !== this._pickRequestSequence) return
+          if (!features || !features.length) continue
+          const feature = features[0]
+          let layerName = feature.layerName || ''
+          if (!layerName) {
+            try {
+              let el = document.querySelector('.layertree-pop')
+              while (el && !el.__vue__) el = el.parentElement
+              const vm = el && el.__vue__
+              if (vm) {
+                const walk = nodes => (nodes || []).forEach(node => {
+                  if (String(node.oldid || node.id) === String(layer._mvtResourceId)) layerName = String(node.name || '')
+                  walk(node.children)
+                })
+                walk(vm.treeData)
+              }
+            } catch (error) { /* 图层树不可达时保留服务返回的名称 */ }
+          }
+          this.pickLayer = layerName || this.pickLayer
+          // ★ 不再用切片属性占位（用户不要「闪一下 shp 属性」）：先清空面板
+          //   等业务库回查；业务库未命中 → 面板完全空白（见 loadBusinessContent）。
+          this.pickRows = []
+          this.drawPickHighlight(feature.geojson)
+          // ★ 业务库内容：按唯一键（宗地编号/项目名称）回查业务记录，
+          //   查到后把字段表替换为业务字段（中文标签）。
+          //   requestId 竞态校验：连续拾取时旧查询的返回作废。
+          // ★ 唯一键不区分大小写匹配（shp 追加导入的列名可能是大写 CRZDBH）；
+          //   字段名唯一来源 sliceInfo.SLICE_UNIQUE_FIELDS（勿手抄拼写）。
+          const fd = feature.data || {}
+          const keyOf = name => Object.keys(fd).find(k => k.toLowerCase() === String(name).toLowerCase())
+          const crzdbhKey = keyOf(SLICE_UNIQUE_FIELDS.land)
+          const facKey = keyOf(SLICE_UNIQUE_FIELDS.facility)
+          const uniqueKey = String((crzdbhKey && fd[crzdbhKey]) || (facKey && fd[facKey]) || '')
+          if (uniqueKey) {
+            this.loadBusinessContent((layerName || '').indexOf('地块') > -1 ? 'land' : 'facility', uniqueKey, requestId)
+          } else {
+            // 唯一键缺失 → 面板完全空白（用户规则：没拾取到就什么都不显示）
+            this.pickRows = []
+            this.pickLayer = ''
+          }
+          return
+        }
+        if (requestId !== this._pickRequestSequence) return
+        // 3D 对象已在 probe 里拦截走插件原有拾取；到这里 = 纯影像区域
+        // 且 MVT 也没拾中 → 真没有可拾取的内容。
+        // ★ 用户规则：拾取不到就静默保持空面板，不弹提示（避免让人以为报错）
+        this.pickLayer = ''
+        this.pickRows = []
+      } catch (error) {
+        if (requestId !== this._pickRequestSequence) return
+        this.pickRows = []
+        this.$message.error((error && error.message) || '拾取要素失败，请检查 MVT 服务')
+      }
+    },
+
+    /**
+     * 业务库内容加载：按唯一键（宗地编号 / 项目名称）回查业务记录，
+     * 查到后把右面板字段表替换为**业务字段**（中文标签）。
+     * ★ 用户规则：业务库未命中 / 查询失败 → 面板保持完全空白
+     *   （不回退切片属性、不显示演示数据），只有拾到业务记录才显示内容。
+     * ★ requestId 竞态校验：连续拾取时，旧拾取触发的业务查询返回作废
+     *   （面板只显示最新一次拾取的内容）。
+     * @param {string} sourceType 'land' / 'facility'
+     * @param {string} uniqueKey  唯一键值（宗地编号 / 项目名称）
+     * @param {number} requestId  触发本次查询的拾取序号
+     */
+    loadBusinessContent (sourceType, uniqueKey, requestId) {
+      const isLand = sourceType === 'land'
+      const req = isLand
+        ? queryLandAdminPage({ pageNo: 1, pageSize: 1, crzdbh: uniqueKey })
+        : queryFacilityAdminPage({ pageNo: 1, pageSize: 1, srr: uniqueKey, srrMode: 'fold' })
+      req.then((res) => {
+        if (requestId !== this._pickRequestSequence) return
+        const record = res && res.success && res.result && res.result.records && res.result.records[0]
+        if (!record) {
+          // 业务库无对应记录 → 面板完全空白（连当前图层名也清掉）
+          this.pickRows = []
+          this.pickLayer = ''
+          return
+        }
+        // ★ 全字段展示：业务记录的全部列（排除 ID/系统/图形大列），空值也显示字段名
+        //   ——每条记录字段数一致，不再「有的多有的少」；
+        //   标签映射有中文名用中文名，没有的如实显示列名
+        const rows = []
+        Object.keys(record).forEach(key => {
+          if (BUSINESS_EXCLUDED_NORM.has(normKey(key))) return
+          rows.push({ name: this.pickFieldLabel(key, isLand), value: String(record[key] == null ? '' : record[key]) })
+        })
+        this.pickRows = rows
+      }).catch(() => {
+        // 业务查询失败（网络/权限）→ 面板完全空白
+        if (requestId !== this._pickRequestSequence) return
+        this.pickRows = []
+        this.pickLayer = ''
+      })
+    },
+
+    /**
+     * 拾取面板字段标签：映射有中文名用中文名，没有的如实显示列名。
+     * ★ 归一化兜底查找（小写、去下划线）：业务 JSON 键是实体属性名
+     *   （下划线列会变驼峰，如 shapeLe），与映射键（shape_le）拼写体系不同。
+     */
+    /**
+     * 拾取面板字段标签：映射有中文名用中文名，没有的如实显示列名。
+     * ★ 归一化兜底查找（小写、去下划线）：业务 JSON 键是实体属性名
+     *   （下划线列会变驼峰，如 shapeLe），与映射键（shape_le）拼写体系不同。
+     * ★ isLand 传 'auto' 时先查地块字典再查配套字典（原有图层兜底拾取用，
+     *   图层类型未知）。
+     */
+    pickFieldLabel (key, isLand) {
+      const tryMap = map => {
+        if (map[key]) return map[key]
+        const norm = normKey(key)
+        for (const k in map) {
+          if (normKey(k) === norm) return map[k]
+        }
+        return null
+      }
+      if (isLand === 'auto') return tryMap(LAND_FIELD_LABELS) || tryMap(FACILITY_FIELD_LABELS) || key
+      return tryMap(isLand ? LAND_FIELD_LABELS : FACILITY_FIELD_LABELS) || key
     },
 
     startLayerProbeWhenReady () {
@@ -1173,6 +1534,61 @@ export default {
         clearInterval(this._layerProbeTimer)
         this._layerProbeTimer = null
       }
+    },
+
+    /**
+     * 对完整 Polygon/MultiPolygon 源几何逐面创建高亮，保留每面的内洞。
+     * @param {string} geojson 拾中要素的 WGS84 GeoJSON 几何
+     */
+    drawPickHighlight (geojson) {
+      const Cesium = window.Cesium
+      const viewer = window.viewer
+      if (!Cesium || !viewer || !geojson) return
+      this.clearPickHighlight()
+      let geometry = null
+      try { geometry = JSON.parse(geojson) } catch (error) { return }
+      if (!geometry || !Array.isArray(geometry.coordinates)) return
+      const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+        : geometry.type === 'MultiPolygon' ? geometry.coordinates : []
+      if (!polygons.length) return
+      const toPositions = ring => ring.map(c => Cesium.Cartesian3.fromDegrees(c[0], c[1], 0))
+      this._pickHighlightEntities = []
+      polygons.forEach(rings => {
+        const validRings = rings.filter(ring => Array.isArray(ring) && ring.length >= 4)
+        if (!validRings.length) return
+        const hierarchy = new Cesium.PolygonHierarchy(
+          toPositions(validRings[0]),
+          validRings.slice(1).map(hole => new Cesium.PolygonHierarchy(toPositions(hole)))
+        )
+        this._pickHighlightEntities.push(viewer.entities.add({
+          polygon: {
+            hierarchy: hierarchy,
+            material: Cesium.Color.AQUA.withAlpha(0.35),
+            perPositionHeight: false,
+            clampToGround: true,
+            clampToS3M: true
+          }
+        }))
+        validRings.forEach(ring => {
+          const positions = toPositions(ring)
+          this._pickHighlightEntities.push(viewer.entities.add({
+            polyline: {
+              positions: positions.concat([positions[0]]),
+              width: 3,
+              material: Cesium.Color.AQUA.withAlpha(0.9),
+              clampToGround: true
+            }
+          }))
+        })
+      })
+    },
+
+    /** 清掉拾取高亮（幂等） */
+    clearPickHighlight () {
+      if (this._pickHighlightEntities && this._pickHighlightEntities.length && window.viewer) {
+        this._pickHighlightEntities.forEach(entity => window.viewer.entities.remove(entity))
+      }
+      this._pickHighlightEntities = []
     },
 
     removeLayerNameHandler () {
@@ -1907,4 +2323,126 @@ export default {
     }
   }
 }
+</style>
+
+<style lang="less">
+// ★ 插件结果表停靠（非 scoped：浮窗 DOM 由轮询搬进抽屉根，见 startAttrGridDockWatch）。
+//   插件 CSS（.system-theme1 .bottom-table）本来就用 absolute 定位 + bottom:-80px
+//   故意下探 + min-height:340px + min-width:calc(100%-400px)——这是它溢出抽屉的根因。
+//   做法：保留插件习惯的 absolute 定位模式（内部布局不散架），只覆盖坐标与最小
+//   尺寸，再按 antd v1 的真实结构做弹性布局：表体内部滚动、分页条固定贴底。
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked {
+  position: absolute !important;
+  left: 10px !important;
+  right: 10px !important;
+  top: 36px !important;
+  bottom: 6px !important;
+  min-width: 0 !important;
+  width: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  height: auto !important;
+  margin: 0 !important;
+  transform: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  // auto 兜底：万一分页不在弹层直接子级（flex 贴底失效），滚动条仍能到达
+  overflow: auto !important;
+  color: #9fd4f5 !important;
+}
+// 插件自带头部（>> 属性表 / 导出 / 关闭）整个隐藏
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked > .bottom-table-title { display: none !important; }
+// 表格区域弹性撑满。★ a-table 根元素是 .ant-table-wrapper（弹层直接子级），
+//   内里还有 ant-spin-nested-loading / ant-spin-container 两级包裹——
+//   弹性链必须从 wrapper 起逐层透传，否则无参照的 flex 链会全部塌成 0 高
+//   （v9 只接了 .ant-table 一层，结果表格塌没只剩分页）。
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked > .ant-table-wrapper,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-spin-nested-loading,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-spin-container {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-spin-container > .ant-table {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: transparent !important;
+  color: inherit !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-content {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  border-color: rgba(64, 158, 210, .35) !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-scroll {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-header {
+  flex: 0 0 auto !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-body {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  background: transparent !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-body-outer {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  display: flex !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-body-inner {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+// 分页条（antd 内置 pagination，类名 ant-pagination ant-table-pagination）固定贴底
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-pagination {
+  flex: 0 0 auto !important;
+  margin: 4px 8px 6px !important;
+  background: transparent !important;
+}
+// ★ 主题对齐大屏（替代插件老蓝绿 #09636e/#002422）：深蓝表头、青色文字、细分割线
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-thead > tr > th {
+  background: rgba(9, 36, 60, .92) !important;
+  color: #e6f4ff !important;
+  border-bottom: 1px solid rgba(0, 229, 194, .45) !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-tbody > tr > td {
+  background: transparent !important;
+  color: #9fd4f5 !important;
+  border-bottom: 1px solid rgba(64, 158, 210, .18) !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-table-tbody > tr:nth-child(even) > td {
+  background: rgba(14, 52, 82, .35) !important;
+}
+// 分页文字/箭头对齐大屏青色系，选中页强调色
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-item a,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-prev,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-next,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-total-text,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-jump-prev,
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-jump-next {
+  color: #82c6ff !important;
+}
+.screen-bottom-dock .pop.bottom-table.info-table.is-docked .ant-pagination-item-active a {
+  color: #00e5c9 !important;
+}
+// 抽屉折叠时表格跟着藏起来
+.screen-bottom-dock.is-collapsed .pop.bottom-table.info-table.is-docked { display: none !important; }
+// 表格停靠期间隐藏抽屉的空态占位（标题用抽屉原生标题栏）
+.map-screen.is-attr-grid-open .screen-bottom-dock__empty { visibility: hidden; }
 </style>

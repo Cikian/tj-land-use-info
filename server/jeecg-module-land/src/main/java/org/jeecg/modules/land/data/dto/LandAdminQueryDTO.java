@@ -39,6 +39,17 @@ public class LandAdminQueryDTO implements Serializable {
     /** 受让人（模糊） */
     private String srr;
 
+    /**
+     * srr 条件的匹配模式（可选）：
+     * <ul>
+     *   <li>缺省/其它值 = 普通 like（管理端列表，行为不变）</li>
+     *   <li>{@code fold} = 标点/空白折叠匹配（大屏拾取回查专用：切片库与业务库的
+     *       配套项目名称存在 —/–/－/～ 与空格变体，普通 like 会漏，
+     *       折叠后命中率 88.8%→97.2%）</li>
+     * </ul>
+     */
+    private String srrMode;
+
     /** 出让时间起（yyyy-MM-dd） */
     private String crsjBegin;
 

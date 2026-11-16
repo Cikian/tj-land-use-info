@@ -226,19 +226,21 @@ import {
   queryFacilityAdminPage,
   queryFacilityByLand,
   queryFacilityGeoList,
-  queryFacilityGeoDetail,
   deleteFacilityAdmin,
   deleteFacilityAdminBatch
 } from '@/api/land/facilityAdmin'
 import { queryLandOptions } from '@/api/land/landData'
 // 快速定位出让宗地时要用到宗地自己的图形（P2-05），接口与宗地面板同源
 import { queryLandGeoList, queryLandGeoDetail } from '@/api/land/landAdmin'
-// 配套地块几何图层：进菜单把全部已画图配套面铺到地图上，列表双击定位 + 高亮
+// 配套 / 宗地几何图层：**只在「快速定位某宗地」（P2-05）时按需渲染**，
+// 进菜单不再自动铺图（2026-11-14 口径：地图保持干净，双击定位交给父页切片源）
 import { createGeoLayer } from '@/views/screen/landGeoLayer'
 // 合并包围盒要按顶点算：本文件把两类图形的 GeoJSON 解析成 Cartesian3 顶点
 import { parsePolygons } from '@/views/screen/geoPolygons'
 import FacilityGeoImportModal from './FacilityGeoImportModal'
 import { defaultPagination, compactQuery } from '../constants'
+// 移除记录后联动清切片库图形（fire-and-forget，失败只提示不阻断）
+import { purgeFeatureGroups } from '../sliceInfo'
 
 /*
  * 列表高度（**设计画布像素**）现在与 LandEntryPanel 共用 panelLayout 的
@@ -310,9 +312,7 @@ export default {
       removeVisible: false,
       removing: false,
       removeReason: '',
-      removeTargets: [],
-      /** 当前定位目标（连点保护） */
-      locateTargetId: ''
+      removeTargets: []
     }
   },
   computed: {
@@ -368,18 +368,16 @@ export default {
   },
   activated () {
     /*
-     * keep-alive 的激活钩子（首次挂载也会触发一次），要做两件事：
+     * keep-alive 的激活钩子（首次挂载也会触发一次）只做一件事：**重拉列表**（测试清单 P1-02）。
+     * 页签被 keep-alive 缓存后 created 不再跑，会出现「回收站里已经恢复了这条配套、
+     * 切回录入页列表里还是没有」。与 created 那一次由 ensureListLoaded 合并，不会重复请求。
      *
-     * 1. **重拉列表**（测试清单 P1-02）—— 页签被 keep-alive 缓存后 created 不再跑，
-     *    只重铺地图不动列表就会出现「回收站里已经恢复了这条配套、切回录入页
-     *    列表里还是没有」。与 created 那一次由 ensureListLoaded 合并，不会重复请求。
-     * 2. 重铺配套几何图层 —— 每次进菜单都是最新图形；普通激活走版本化增量，
-     *    只有本页写操作完成后才强制重建。
-     *
-     * 切走页签时由 deactivated 清掉图层（与宗地图层互不残留）。
+     * ★ 合并说明（2026-11-17）：激活时**不再铺全部配套面** —— 同事 2026-11-14 口径
+     *   「进菜单不自动铺图，地图保持干净」，定位改由父页 handleLocateRecord 走切片源。
+     *   P2-05「选中宗地看宗地面 + 配套面」是用户主动触发，仍按需铺（见 showLandWithFacilities）。
+     *   切走页签时由 deactivated 清掉两类定位实体（与宗地图层互不残留）。
      */
     this.ensureListLoaded()
-    this.loadGeoLayer(false)
   },
   deactivated () {
     // 两类实体都自己清（P2-05）：不指望别的面板的生命周期替本面板删图层
@@ -603,11 +601,15 @@ export default {
     },
 
     /**
-     * 加载配套地块几何图层（全部已画图配套的面）。
-     * 只取轻量列（id/编号/名称/GeoJSON），失败静默 —— 图层是辅助视图，
-     * 列表本身不受影响；?map=0 预览时 landGeoLayer 内部会安全空转。
+     * 重铺配套地块几何图层。**只在定位态（P2-05）下铺「本宗地的配套面」**：
+     * 2026-11-14 起进菜单不自动铺图（地图保持干净），普通视图下本方法直接空转，
+     * 只作刷新数据用（保存 / 移除后调用，其余路径不会画出多余的几百个面）。
      */
     loadGeoLayer (forceRefresh) {
+      // 无定位态：普通视图的配套面由切片图层负责，本方法什么都不画
+      if (!this.locateLandCode) {
+        return Promise.resolve()
+      }
       // 与宗地图层一致：写操作后的刷新不依赖同秒时间戳是否变化。
       if (forceRefresh) {
         facilityGeoCache.version = ''
@@ -619,11 +621,7 @@ export default {
         .then((lands) => {
           // 定位态下只重铺「本宗地的配套面」（P2-05）：把全量铺回来会冲掉
           // 「只看这一宗地」的语义，也会在用户刚定位好的画面上多画几百个面
-          if (this.locateLandCode) {
-            this.renderLandLocatorFacilities(this.locateLandCode, lands)
-            return
-          }
-          this.geoLayer.renderAll(lands, false)
+          this.renderLandLocatorFacilities(this.locateLandCode, lands)
         })
         .catch(() => { /* 同上：辅助视图，失败不打扰 */ })
     },
@@ -716,15 +714,14 @@ export default {
         .catch(() => { /* 辅助视图，失败不打扰列表 */ })
     },
 
-    /** 退出「快速定位」：两个图层的定位实体都撤掉，配套面回到全量视图（幂等） */
+    /** 退出「快速定位」：两个图层的定位实体都撤掉，地图回到干净视图（幂等） */
     exitLandLocator () {
       if (!this.locateLandCode) return
       this.locateLandCode = ''
       // 两类实体都清：定位用的宗地面（含高亮覆盖层）与「只有本宗地配套」的配套面
+      // ★ 不再「回铺全部配套面」：进菜单本来就不自动铺图，退出定位同样保持地图干净
       this.landGeoLayer.clearAll()
       this.geoLayer.clearAll()
-      // 回到普通视图；概览缓存命中时是同步铺图，不会再打一次接口
-      this.loadGeoLayer(false)
     },
 
     /** 清掉本面板铺在地图上的一切（配套面 + 高亮 + 定位的宗地面），幂等 */
@@ -800,38 +797,20 @@ export default {
     },
 
     /**
-     * 列表**双击**某条：地图定位 + 高亮。
-     * ★ 只有画过图形的配套能定位 —— 没画过图的行不在图层里，
-     *   明确告诉用户为什么没反应，而不是让他以为点了没生效。
+     * 列表**双击**某条：**定位到 MVT 切图层上的该配套**。
+     *
+     * ★ 合并说明（2026-11-17）：定位统一交给父页 handleLocateRecord ——
+     *   同事 2026-11-14 起走「唯一值 → 切片源表查范围 → 相机飞行」，不再依赖
+     *   dk_geojson（该字段即将废弃）。原实现里还有一段「概览定位 + dk_geojson
+     *   精确替换」的 geoLayer 流程，与父页的新定位会同时飞两次相机，
+     *   而且进菜单已不铺配套面（geoLayer.has 恒为 false，只会误报「还没有图形」），
+     *   所以整段移除，本面板只上报记录。
+     * ★ 「看这一宗地的宗地面 + 配套面」由检索列选中宗地触发（P2-05，见 showLandWithFacilities），
+     *   与双击行定位是两条不同的入口，互不覆盖。
      */
     handleLocate (record) {
       if (!record || !record.id) return
-      if (!this.geoLayer.has(record.id)) {
-        // 称谓按该行记录的配套设施类别走（测试清单 P2-06）：含「道路」→ 配套道路，
-        // 其余类别（排水 / 供水 / 燃气 / 路灯 / 绿化 …）→ 中性的配套设施范围。
-        // 只改文案，「导入地块图形」仍是工具条上那个按钮的原名。
-        const target = String(record.ptsslb || '').indexOf('道路') > -1 ? '配套道路' : '配套设施范围'
-        toast.warning(`该配套还没有${target}图形：可在编辑里「添加${target}」绘制，或用工具条「导入地块图形」导入`)
-        return
-      }
-      const t0 = performance.now()
-      console.log('[定位计时] 双击: ' + record.ptxmmc)
-      this.locateTargetId = record.id
-      this.geoLayer.highlight(record.id)
-      console.log('[定位计时] 高亮调用返回: ' + Math.round(performance.now() - t0) + 'ms')
-      // 图形请求与飞行并行（提前 ~1.2s），飞行落定即可应用
-      const detailPromise = queryFacilityGeoDetail(record.id)
-      this.geoLayer.flyTo(record.id, () => {
-        console.log('[定位计时] 飞行落定: ' + Math.round(performance.now() - t0) + 'ms')
-        detailPromise.then((res) => {
-          console.log('[定位计时] 图形数据到手: ' + Math.round(performance.now() - t0) + 'ms')
-          // 连点了别的行 / 已切走面板：放弃这次替换
-          if (this.locateTargetId !== record.id) return
-          if (!res || !res.success || !res.result || !res.result.dkGeojson) return
-          this.geoLayer.applyPreciseOverlay(record.id, res.result.dkGeojson)
-          console.log('[定位计时] 定位档覆盖层应用完成: 距双击 ' + Math.round(performance.now() - t0) + 'ms')
-        }).catch(() => { /* 概览面仍可查看，失败不打扰 */ })
-      })
+      this.$emit('locate-record', record)
     },
 
     /** 打开「导入配套地块图形（GeoJSON）」弹窗 */
@@ -958,12 +937,15 @@ export default {
             return
           }
           toast.success(res.message || '已移除，可在「数据更新与移除」中恢复')
+          // 联动清掉切片库里这些项目名下的图形（fire-and-forget；失败只提示，
+          // 业务记录已软删成功，不能因图形清理失败而阻断列表刷新）
+          purgeFeatureGroups('facility', targets, toast)
           this.selectedRowKeys = this.selectedRowKeys.filter(
             (key) => !targets.some((row) => row.id === key)
           )
           this.closeRemove()
           this.loadData()
-          // 被移除的配套要从地图图层上撤下来，重铺即同步
+          // 被移除的配套要从定位图层上撤下来（无定位态时 loadGeoLayer 自己空转）
           this.loadGeoLayer(true)
         })
         .catch(() => {

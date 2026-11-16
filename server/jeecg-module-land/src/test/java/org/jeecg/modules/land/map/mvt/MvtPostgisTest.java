@@ -76,6 +76,29 @@ class MvtPostgisTest {
     }
 
     @Test
+    void pickingReturnsCompletePolygonAndMultipolygonWithHoles() {
+        String relation = MvtSql.quote(schema) + ".pick_shapes";
+        jdbc.execute("CREATE TABLE " + relation + " (gid int, name text, geom geometry(Geometry,4326))");
+        jdbc.execute("INSERT INTO " + relation + " VALUES "
+                + "(1,'parcel',ST_GeomFromText('POLYGON((117.40 38.78,117.46 38.78,117.46 38.84,117.40 38.84,117.40 38.78),(117.42 38.80,117.44 38.80,117.44 38.82,117.42 38.82,117.42 38.80))',4326)),"
+                + "(2,'facility',ST_GeomFromText('MULTIPOLYGON(((117.41 38.79,117.415 38.79,117.415 38.795,117.41 38.795,117.41 38.79)),((117.445 38.825,117.45 38.825,117.45 38.83,117.445 38.83,117.445 38.825)))',4326))");
+        MvtTable table = find(pg.discover(source), "pick_shapes", "geom");
+
+        List<Map<String, Object>> parcel = pg.pick(source, table, 117.405, 38.805);
+        assertEquals(1, parcel.size());
+        assertEquals("parcel", ((Map<?, ?>) parcel.get(0).get("properties")).get("name"));
+        Map<String, Object> polygon = jdbc.queryForMap("SELECT ST_AsText(ST_GeomFromGeoJSON(?)) AS wkt",
+                parcel.get(0).get("geometry"));
+        assertTrue(String.valueOf(polygon.get("wkt")).contains("117.4 38.78"), "返回源要素完整边界，而非瓦片裁剪片段");
+        assertTrue(pg.pick(source, table, 117.43, 38.81).stream().noneMatch(feature ->
+                "parcel".equals(((Map<?, ?>) feature.get("properties")).get("name"))), "内洞区域不应命中地块");
+        List<Map<String, Object>> facility = pg.pick(source, table, 117.412, 38.792);
+        assertEquals(1, facility.size());
+        assertTrue(String.valueOf(facility.get(0).get("geometry")).contains("MultiPolygon"));
+        assertTrue(pg.pick(source, table, 117.42, 38.81).isEmpty(), "相邻要素间空隙应为空");
+    }
+
+    @Test
     void queryOptimizationPreservesBinaryOutputAndClipping() {
         String relation = MvtSql.quote(schema) + ".clip_cases";
         jdbc.execute("CREATE TABLE " + relation + " (gid int, name text, geom geometry(Geometry,3857))");

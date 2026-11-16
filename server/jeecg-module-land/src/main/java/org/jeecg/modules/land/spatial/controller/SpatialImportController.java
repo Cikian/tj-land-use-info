@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.modules.land.spatial.service.IShpImportService;
+import org.jeecg.modules.land.spatial.vo.SpatialFeatureGroupVO;
 import org.jeecg.modules.land.spatial.vo.SpatialPrecheckVO;
 import org.jeecg.modules.land.spatial.vo.SpatialSourceStatsVO;
 import org.jeecg.modules.land.spatial.vo.ShpImportResultVO;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,6 +42,10 @@ import org.springframework.web.multipart.MultipartFile;
  *   POST   /land/spatial/precheck             ★ 导入前预检（不上传文件）
  *   POST   /land/spatial/import               ★ 上传 SHP zip 并导入（existingPolicy=connect|overwrite）
  *   GET    /land/spatial/source/{id}/stats    ★ 库现状统计（确认弹窗用，口令不出服务端）
+ *   GET    /land/spatial/sliceFeatureBounds   ★ 按唯一值查要素范围（大屏列表定位）
+ *   GET    /land/spatial/featureGroup         ★ 按唯一值回显全部要素几何（图形管理弹窗）
+ *   POST   /land/spatial/featureGroup         ★ 整组替换要素几何（事务内先删后插）
+ *   DELETE /land/spatial/featureGroup         ★ 整组删除要素几何（移除联动/改编号迁移）
  *   DELETE /land/spatial/source/{id}          ★ 移除（dropDatabase=false 仅取消登记；true 连 PG 库一起删）
  * </pre>
  */
@@ -102,6 +108,87 @@ public class SpatialImportController {
         } catch (Exception e) {
             log.error("GIS 库现状统计失败", e);
             return Result.error("统计失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog("切片要素范围查询")
+    @ApiOperation("按唯一值查切片源表要素范围（大屏列表定位用，替代 dk_geojson 定位）")
+    @GetMapping("/sliceFeatureBounds")
+    public Result<java.util.List<Double>> sliceFeatureBounds(
+            @RequestParam("source") String source,
+            @RequestParam("table") String table,
+            @RequestParam("field") String field,
+            @RequestParam("value") String value) {
+        try {
+            return Result.OK(shpImportService.sliceFeatureBounds(source, table, field, value));
+        } catch (Exception e) {
+            log.error("切片要素范围查询失败", e);
+            return Result.error("定位查询失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog("切片要素组回显")
+    @ApiOperation("按唯一值回显切片源表全部要素几何（图形管理弹窗打开时用，只走精确匹配）")
+    @GetMapping("/featureGroup")
+    public Result<java.util.List<String>> featureGroup(
+            @RequestParam("source") String source,
+            @RequestParam("table") String table,
+            @RequestParam("field") String field,
+            @RequestParam("value") String value) {
+        try {
+            return Result.OK(shpImportService.sliceFeatureGeometries(source, table, field, value));
+        } catch (Exception e) {
+            log.error("切片要素组回显失败", e);
+            return Result.error("回显失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog("切片要素组整组替换")
+    @ApiOperation("整组替换某唯一值名下的要素几何（事务内先删后插；geometries 为空 = 清空整组）")
+    @PostMapping("/featureGroup")
+    public Result<Integer> saveFeatureGroup(@RequestBody SpatialFeatureGroupVO body) {
+        try {
+            if (body == null) {
+                return Result.error("请求体不能为空");
+            }
+            return Result.OK(shpImportService.saveSliceFeatureGroup(
+                    body.getSource(), body.getTable(), body.getField(), body.getValue(), body.getGeometries()));
+        } catch (Exception e) {
+            log.error("切片要素组保存失败", e);
+            return Result.error("保存失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog("切片要素组整组删除")
+    @ApiOperation("整组删除某唯一值名下的要素几何（移除记录联动清图形 / 改编号先删旧组）")
+    @DeleteMapping("/featureGroup")
+    public Result<Integer> deleteFeatureGroup(
+            @RequestParam("source") String source,
+            @RequestParam("table") String table,
+            @RequestParam("field") String field,
+            @RequestParam("value") String value) {
+        try {
+            return Result.OK(shpImportService.deleteSliceFeatureGroup(source, table, field, value));
+        } catch (Exception e) {
+            log.error("切片要素组删除失败", e);
+            return Result.error("删除失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog("切片要素搜索")
+    @ApiOperation("切片源表要素搜索（地名定位/空间查询共用）：关键字模糊匹配全部字符列，可选 bbox 空间过滤")
+    @GetMapping("/featureSearch")
+    public Result<java.util.List<java.util.Map<String, Object>>> featureSearch(
+            @RequestParam("source") String source,
+            @RequestParam("table") String table,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "bbox", required = false) String bbox,
+            @RequestParam(value = "limit", defaultValue = "50") int limit) {
+        try {
+            return Result.OK(shpImportService.featureSearch(source, table, keyword, bbox, limit));
+        } catch (Exception e) {
+            log.error("切片要素搜索失败", e);
+            return Result.error("要素搜索失败：" + e.getMessage());
         }
     }
 

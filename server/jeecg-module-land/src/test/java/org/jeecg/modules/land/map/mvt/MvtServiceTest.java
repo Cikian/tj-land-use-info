@@ -28,6 +28,16 @@ class MvtServiceTest {
     }
 
     @Test
+    void rejectsInvalidPickCoordinatesBeforeOpeningDatabase() {
+        MvtService service = new MvtService(mock(MvtSourceMapper.class), mock(MvtDataSources.class), mock(MvtPostgis.class));
+        for (double[] point : new double[][] {{Double.NaN,0},{181,0},{0,-91},{0,Double.POSITIVE_INFINITY}}) {
+            ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                    () -> service.pick("db", "public", "land", "geom", point[0], point[1]));
+            assertEquals(400, error.getStatus().value());
+        }
+    }
+
+    @Test
     void rejectsUnknownTablesAndSourcesWithoutExecutingTileSql() {
         MvtSourceMapper mapper = mock(MvtSourceMapper.class);
         MvtSource source = new MvtSource(); source.setCode("db");

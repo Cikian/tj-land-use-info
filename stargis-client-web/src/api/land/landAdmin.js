@@ -61,6 +61,8 @@ export const landAdminUrl = {
   list: '/land/data/landAdmin/list',
   geoList: '/land/data/landAdmin/geoList',
   geoDetail: '/land/data/landAdmin/geoDetail',
+  sliceFeatureBounds: '/land/spatial/sliceFeatureBounds',
+  featureGroup: '/land/spatial/featureGroup',
   detail: '/land/data/landAdmin/detail',
   history: '/land/data/landAdmin/history',
   codeOptions: '/land/data/landAdmin/codeOptions',
@@ -131,6 +133,55 @@ export function queryLandGeoList (version, forceRefresh) {
  */
 export function queryLandGeoDetail (id) {
   return javaGetAction(landAdminUrl.geoDetail, { id })
+}
+
+/**
+ * 按唯一值查切片源表要素范围（大屏列表定位用，替代 dk_geojson 定位）。
+ * 中台图层树上该模块的切片图层发布自对应库的表，表内带编号/名称属性 ——
+ * 后端按 value 匹配并返回该要素的经纬度范围。
+ * @returns {Promise} result 为 [minLon, minLat, maxLon, maxLat]
+ */
+export function querySliceFeatureBounds (params) {
+  return javaGetAction(landAdminUrl.sliceFeatureBounds, params)
+}
+
+/**
+ * 按唯一值回显切片源表全部要素几何（图形管理弹窗打开时用）。
+ *
+ * 返回 `Result<String[]>`：各要素的 WGS84 GeoJSON 字符串列表；
+ * 该唯一值名下没有图形时 result 为空数组（不算错误）。
+ * ★ 与定位接口不同，这里只走精确匹配 —— 回显是写路径的读，
+ *   LIKE 近似命中的别家图形不能进编辑弹窗。
+ *
+ * @param {{source: string, table: string, field: string, value: string}} params
+ */
+export function querySliceFeatureGroup (params) {
+  return javaGetAction(landAdminUrl.featureGroup, params)
+}
+
+/**
+ * 整组替换某唯一值名下的要素几何（表单保存成功后同步图形用）。
+ *
+ * 后端语义：事务内先删该唯一值全部旧行，再逐条插入 geometries；
+ * **空数组 = 显式清空整组**（把弹窗里的块全删光的合法结果）。
+ * 坐标系：传 WGS84 GeoJSON，后端 ST_Transform 到源表 SRID。
+ *
+ * @param {{source: string, table: string, field: string, value: string, geometries: string[]}} data
+ * @returns {Promise<{success: boolean, result: number}>} result = 落库行数
+ */
+export function saveSliceFeatureGroup (data) {
+  return javaPostAction(landAdminUrl.featureGroup, data)
+}
+
+/**
+ * 整组删除某唯一值名下的全部要素几何。
+ * 两个用途：移除业务记录时联动清图形；编辑改了唯一值时先删旧值的组。
+ *
+ * @param {{source: string, table: string, field: string, value: string}} params
+ * @returns {Promise<{success: boolean, result: number}>} result = 删除行数
+ */
+export function deleteSliceFeatureGroup (params) {
+  return javaDeleteAction(landAdminUrl.featureGroup, params)
 }
 
 /**

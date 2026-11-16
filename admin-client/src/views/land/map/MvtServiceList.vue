@@ -135,13 +135,6 @@
             </div>
             <a :href="tileJsonUrl(selectedTable)" target="_blank" rel="noopener noreferrer">{{ tileJsonUrl(selectedTable) }}</a>
           </div>
-          <div class="detail-address">
-            <div class="detail-address-heading">
-              <h3>XYZ 瓦片地址</h3>
-              <a-button type="link" icon="copy" @click="copy(tileUrl(selectedTable))">复制</a-button>
-            </div>
-            <code>{{ tileUrl(selectedTable) }}</code>
-          </div>
         </template>
         <a-alert v-else type="warning" show-icon :message="selectedTable.reason || '请先声明有效坐标系'" class="detail-metadata" />
       </div>
@@ -261,7 +254,9 @@ export default {
       return this.serviceBase.trim().replace(/\/+$/, '') + '/land/mvt/public/' +
         [code, row.schema, row.table, row.geometry].map(encodeURIComponent).join('/')
     },
-    tileUrl(row) { return this.tileJsonUrl(row) + '/{z}/{x}/{y}.pbf' },
+    // ★ 不再提供 XYZ 形态地址：XYZ 无 bounds，配进中台图层树后「定位」必报
+    //   「未配置定位范围」（TileJSON 自带 bounds）。需要 XYZ 时在 TileJSON 后拼
+    //   /{z}/{x}/{y}.pbf 即可，但中台资源配置推荐直接用 TileJSON。
     async loadSources() {
       this.sourcesLoading = true
       this.error = ''

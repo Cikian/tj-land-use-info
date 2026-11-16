@@ -35,13 +35,6 @@ function canvas() {
   return image
 }
 
-/** XYZ 瓦片号 → 经纬度（pickFeatures 的点内测试用） */
-function tile2lon (x, z) { return x / Math.pow(2, z) * 360 - 180 }
-function tile2lat (y, z) {
-  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z)
-  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
-}
-
 /** 射线法点内多环测试（奇偶规则，天然支持洞） */
 function pointInRings (lon, lat, rings) {
   let inside = false
@@ -53,6 +46,13 @@ function pointInRings (lon, lat, rings) {
     }
   })
   return inside
+}
+
+function pointInGeometry (lon, lat, geometry) {
+  if (!geometry || !Array.isArray(geometry.coordinates)) return false
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+    : geometry.type === 'MultiPolygon' ? geometry.coordinates : []
+  return polygons.some(rings => pointInRings(lon, lat, rings))
 }
 
 /** Cesium 起始层最多覆盖四张瓦片，避免地方数据从全球层级逐层生成父瓦片。 */
@@ -111,12 +111,17 @@ export async function createMvtImageryProvider(url, options = {}) {
   const absoluteUrl = new URL(url, window.location.href).href
   let metadata = {}
   let template = absoluteUrl
+  let featureInfoTemplate = ''
   if (!/\{z\}|%7Bz%7D/i.test(url)) {
     const response = await fetch(absoluteUrl, { signal: options.signal })
     if (!response.ok) throw new Error('MVT 服务信息请求失败：HTTP ' + response.status)
     metadata = await response.json()
     if (!metadata.tiles || !metadata.tiles.length) throw new Error('MVT 服务信息缺少 tiles 地址')
     template = new URL(metadata.tiles[0], absoluteUrl).href
+    if (metadata.featureInfo) {
+      featureInfoTemplate = new URL(metadata.featureInfo, absoluteUrl).href
+        .replace(/%7B/ig, '{').replace(/%7D/ig, '}')
+    }
   }
   // URL 会转义花括号，统一还原占位符，避免生成永远相同的瓦片请求。
   template = template.replace(/%7B/ig, '{').replace(/%7D/ig, '}')
@@ -174,6 +179,26 @@ export async function createMvtImageryProvider(url, options = {}) {
      */
     async pickFeatures(x, y, level, longitude, latitude) {
       if (destroyed) return undefined
+      if (featureInfoTemplate) {
+        const pickUrl = featureInfoTemplate.replace(/\{longitude\}/ig, encodeURIComponent(longitude * 180 / Math.PI))
+          .replace(/\{latitude\}/ig, encodeURIComponent(latitude * 180 / Math.PI))
+        const response = await fetch(pickUrl, { signal: options.signal })
+        if (!response.ok) throw new Error('MVT 要素查询失败：HTTP ' + response.status)
+        const payload = await response.json()
+        const C = window.Cesium
+        return ((payload && payload.features) || []).map(feature => {
+          const info = new C.ImageryLayerFeatureInfo()
+          info.data = feature.properties || {}
+          info.name = String(info.data.gid || info.data.id || metadata.name || '')
+          info.geojson = typeof feature.geometry === 'string' ? feature.geometry : JSON.stringify(feature.geometry)
+          info.description = '<table style="color:#0a0a0a;font-size:13px">' +
+            Object.entries(info.data)
+              .map(([k, v]) => `<tr><td style="padding:2px 8px;font-weight:bold">${k}</td><td style="padding:2px 8px">${v == null ? '' : v}</td></tr>`)
+              .join('') + '</table>'
+          info.coordinate = { longitude: longitude * 180 / Math.PI, latitude: latitude * 180 / Math.PI }
+          return info
+        })
+      }
       const tileXY = scheme.positionToTileXY(new C.Cartographic(longitude, latitude), level)
       if (!tileXY) return undefined
       const tileY = metadata.scheme === 'tms' ? Math.pow(2, level) - tileXY.y - 1 : tileXY.y
@@ -192,17 +217,16 @@ export async function createMvtImageryProvider(url, options = {}) {
       Object.keys(tile.layers).forEach(name => {
         if (options.sourceLayer && name !== options.sourceLayer) return
         const layer = tile.layers[name]
-        const x0 = tile2lon(tileXY.x, level); const x1 = tile2lon(tileXY.x + 1, level)
-        const y0 = tile2lat(tileXY.y + 1, level); const y1 = tile2lat(tileXY.y, level)
-        const toLL = p => [x0 + (x1 - x0) * p.x / layer.extent, y1 - (y1 - y0) * (layer.extent - p.y) / layer.extent]
         for (let i = 0; i < layer.length; i++) {
           const feature = layer.feature(i)
           if (feature.type !== 3) continue // 拾取查询按面要素（地块）
-          const rings = feature.loadGeometry().map(ring => ring.map(toLL))
-          if (!pointInRings(lonDeg, latDeg, rings)) continue
+          const tileFeature = feature.toGeoJSON(tileXY.x, tileXY.y, level)
+          if (!pointInGeometry(lonDeg, latDeg, tileFeature.geometry)) continue
           const info = new C.ImageryLayerFeatureInfo()
           info.name = String(feature.properties.gid || feature.id || name + '#' + i)
           info.data = feature.properties
+          // 外部 MVT 没有完整要素查询端点，只能高亮瓦片内返回的片段。
+          info.geojson = JSON.stringify(tileFeature.geometry)
           info.description = '<table style="color:#0a0a0a;font-size:13px">' +
             Object.entries(feature.properties)
               .map(([k, v]) => `<tr><td style="padding:2px 8px;font-weight:bold">${k}</td><td style="padding:2px 8px">${v}</td></tr>`)

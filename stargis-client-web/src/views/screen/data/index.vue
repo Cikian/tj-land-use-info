@@ -116,10 +116,12 @@
           ref="panel"
           v-bind="panelProps"
           @drill="handleDrill"
+          @locate-record="handleLocateRecord"
           @open-recycle="activeTab = 'recycle'"
         />
       </keep-alive>
     </div>
+
   </div>
 </template>
 
@@ -137,6 +139,18 @@ import FacilityEntryPanel from './modules/FacilityEntryPanel.vue'
 import FacilityImportPanel from './modules/FacilityImportPanel.vue'
 import AttachmentPanel from './modules/AttachmentPanel.vue'
 import DataRecyclePanel from './modules/DataRecyclePanel.vue'
+import { querySliceFeatureBounds, querySliceFeatureGroup } from '@/api/land/landAdmin'
+import { flashAt, clear as clearLocateHighlight } from './locateHighlight'
+// 定位闪烁高亮：飞行到位后按精确几何脉冲闪烁几下（拿不到几何回退范围矩形）
+// 切片源解析/唯一值字段/联动循环体收敛到 sliceInfo.js（图形编辑的表单、管理弹窗、
+// 面板共用同一口径 —— 中台换库/换表/改字典这里改一处全模块跟随）
+import {
+  SLICE_TYPE_BOOTSTRAP,
+  SLICE_UNIQUE_FIELDS,
+  checkSliceLayerReady,
+  getModuleSliceInfo,
+  flyToBbox
+} from './sliceInfo'
 
 /**
  * 页签 key → 面板组件映射。
@@ -232,6 +246,22 @@ export default {
       drillTabPending: false
     }
   },
+  created () {
+    // 非响应式实例属性：联动图层树的按页签重试定时器（见 ensureSliceLayer）
+    this._sliceLayerTimers = {}
+  },
+  activated () {
+    // 从其它大屏页面切回来时页签没变、watch 不触发 —— 显式补一次联动
+    this.ensureSliceLayer(this.activeTab)
+  },
+  beforeDestroy () {
+    Object.keys(this._sliceLayerTimers || {}).forEach((key) => {
+      clearTimeout(this._sliceLayerTimers[key])
+    })
+    this._sliceLayerTimers = {}
+    // 页签销毁时清掉可能还在闪的定位高亮实体（防孤儿实体挂在共享 viewer 上）
+    clearLocateHighlight()
+  },
   computed: {
     /**
      * 宽度 / 折叠状态经 CSS 变量下发（2026-11）：
@@ -280,6 +310,16 @@ export default {
     }
   },
   watch: {
+    /**
+     * 页签切换 → 联动图层树勾选对应切片图层（经营性用地 → 地块数据，
+     * 配套项目 → 配套设施；其它页签不联动）。
+     */
+    activeTab: {
+      handler (tab) {
+        this.ensureSliceLayer(tab)
+      },
+      immediate: true
+    },
     /**
      * 响应路由变化。
      * ★ 为什么必须 watch：`/screen/data?tab=facility&crzdbh=xxx` 这类**同路由换 query**
@@ -346,6 +386,102 @@ export default {
     this.$nextTick(() => this.resetActivePanelFilters())
   },
   methods: {
+    /**
+     * 进入经营性用地 / 配套模块时联动图层树：勾选对应切片图层（幂等）。
+     *
+     * ★ 为什么在本页隐藏挂载图层树：图层树组件（layer-tree-pop，插件全局组件）
+     *   只在地图管理页挂载，本页拿不到实例 —— 隐藏挂载同款组件并接上
+     *   mvt-layer-tree 指令后，程序化勾选经指令的 watch → manager.sync
+     *   渲染到共享 viewer；指令的 hydrate 保证树晚到也安全。
+     * ★ 重试循环的判定是「viewer 上真的出现了该资源 id 的影像层」而不是
+     *   「checkedKeys 已赋值」——实测插件在树数据异步加载完成后会**重置勾选**，
+     *   只盯赋值会出现「第二次进菜单才渲染」；每秒重新断言，被重置就再勾，
+     *   直到渲染出来为止（自愈）。
+     * ★ 赋值必须给**新数组引用**：即使 id 已勾过，引用变化才能触发指令的
+     *   watch 重新 sync。
+     * ★ 合并语义：本次勾选会把「当前已在地图上渲染的其它 MVT 图层」一并并入
+     *   keys（sync 是全量替换语义），否则地图管理侧勾的层会被这次联动整批撤下。
+     */
+    ensureSliceLayer (tab) {
+      const bootstrapNames = SLICE_TYPE_BOOTSTRAP[tab]
+      if (!bootstrapNames) return
+      // ★ 兜底初始化：watch 的 immediate 处理器在 created() **之前**执行，
+      //   此时 _sliceLayerTimers 还没被 created 赋值 —— 不兜底的话首次进入
+      //   的联动调用直接 TypeError，重试循环从未启动（首次进入永远不渲染）
+      if (!this._sliceLayerTimers) this._sliceLayerTimers = {}
+      if (this._sliceLayerTimers[tab]) {
+        clearTimeout(this._sliceLayerTimers[tab])
+      }
+      let tries = 0
+      this._sliceLayerTimers[tab] = setInterval(() => {
+        tries++
+        if (checkSliceLayerReady(tab, bootstrapNames) || tries >= 120) {
+          clearInterval(this._sliceLayerTimers[tab])
+          delete this._sliceLayerTimers[tab]
+        }
+      }, 1000)
+    },
+    /**
+     * 列表定位（双击）：按记录唯一值到切片源表查范围后飞行相机。
+     * ★ 数据源与图形均来自 MVT 切片（dk_geojson 已废弃）：
+     *   唯一值 = 地块 crzdbh / 配套 ptxmmc（切片源表属性，后端按值匹配）。
+     *   切片源信息（连接编码/表名）从壳层隐藏图层树的树数据动态解析，
+     *   中台改库名/表名后这里自动跟随，零配置。
+     */
+    async handleLocateRecord (record) {
+      if (!record) return
+      const tab = this.activeTab
+      const field = SLICE_UNIQUE_FIELDS[tab]
+      if (!field) return
+      const value = String(record[field] || '').trim()
+      if (!value) {
+        this.$message.warning('该记录缺少唯一值（' + field + '），无法定位')
+        return
+      }
+      const info = getModuleSliceInfo(tab)
+      if (!info) {
+        this.$message.warning('切片图层尚未就绪，请稍后重试')
+        return
+      }
+      try {
+        const res = await querySliceFeatureBounds({
+          source: info.source,
+          table: info.table,
+          field: field,
+          value: value
+        })
+        if (!res || !res.success) {
+          this.$message.warning((res && res.message) || '定位查询失败')
+          return
+        }
+        const bounds = res.result || []
+        if (!bounds.length) {
+          this.$message.warning('切片图层中未找到该记录的图形')
+          return
+        }
+        // ★ setView 定位（flyTo 在 S3DM 定制版里动画会被残留 lookAtTransform
+        //   取消、实测失效）——外扩 35% 的边距在 flyToBbox 内统一处理
+        flyToBbox(bounds)
+        // 闪烁高亮：飞行已启动（不等待），异步取精确几何按块闪烁；
+        // 拿不到几何（接口慢/失败/该记录无图形）时退回范围矩形闪烁
+        querySliceFeatureGroup({
+          source: info.source,
+          table: info.table,
+          field: field,
+          value: value
+        })
+          .then((geoRes) => {
+            const geometries = (geoRes && geoRes.success && Array.isArray(geoRes.result)) ? geoRes.result : []
+            flashAt({ geometries: geometries, bounds: bounds })
+          })
+          .catch(() => {
+            flashAt({ bounds: bounds })
+          })
+      } catch (e) {
+        this.$message.warning('定位查询失败：' + (e.message || e))
+      }
+    },
+
     /**
      * 面板之间的下钻（例如从宗地表点「该宗地配套」跳到配套面板）。
      * 两种到达路径都要覆盖：
@@ -633,6 +769,26 @@ export default {
       inset: 0;
       display: block;
       pointer-events: none;
+    }
+
+    /*
+     * 联动图层树的隐藏挂载点（2026-11-13）：
+     * layer-tree-pop 是插件的全局组件，树数据与勾选状态都在它内部；
+     * 隐藏挂载后 mvt-layer-tree 指令照常连接，程序化勾选经
+     * watch → manager.sync 渲染到共享 viewer。
+     * ★ transform 让插件自己的 fixed 弹层也以本节点为包含块、被 overflow 裁掉；
+     *   visibility 继承隐藏 + pointer-events: none 双保险（README 踩坑口径）。
+     */
+    &__hidden-tree {
+      position: fixed;
+      left: -10000px;
+      top: 0;
+      width: 800px;
+      height: 600px;
+      overflow: hidden;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateZ(0);
     }
   }
 }

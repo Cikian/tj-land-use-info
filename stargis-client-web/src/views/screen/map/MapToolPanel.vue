@@ -58,6 +58,19 @@ const WIRED_KEYS = [
   'terrainHeight', 'underground', 'layers', 'terrainAlpha'
 ]
 
+/**
+ * 卡片 key → 父容器 activeTool 值的差异映射。
+ * ★ 四个查询工具的 activeTool 用的是短名（spatial/attr/comp/stat），
+ *   卡片 key 是长名（querySpatial/…）——不做这层映射，这四张卡永远不高亮
+ *   （存量 bug：面板能开、卡片不亮）。
+ */
+const ACTIVE_KEY_OF = {
+  querySpatial: 'spatial',
+  queryAttr: 'attr',
+  queryCombined: 'comp',
+  statistics: 'stat'
+}
+
 export default {
   name: 'MapToolPanel',
   components: { ScreenIcon },
@@ -98,7 +111,7 @@ export default {
   },
   methods: {
     isCardActive (index, tool) {
-      if (WIRED_KEYS.indexOf(tool.key) > -1) return tool.key === this.activeTool
+      if (WIRED_KEYS.indexOf(tool.key) > -1) return (ACTIVE_KEY_OF[tool.key] || tool.key) === this.activeTool
       return index === this.activeIndex
     },
     handleCardClick (index, tool) {

@@ -100,6 +100,9 @@ const FILES = [
   'src/views/screen/data/modules/ProcessItemModal.vue',
   'src/views/screen/data/modules/FacilityImportModal.vue',
   'src/views/screen/data/modules/FacilityImportPanel.vue',
+  // 2026-11-17 合并远端「地图管理」时补登记：同事新增的两块图形管理 UI 原先在自检清单外
+  'src/views/screen/data/modules/FeatureGroupModal.vue',
+  'src/views/screen/ScreenHiddenLayerTree.vue',
   'src/views/screen/data/modules/AttachmentSearchForm.vue',
   'src/views/screen/data/modules/AttachmentTable.vue',
   'src/views/screen/data/modules/AttachmentUploadModal.vue',

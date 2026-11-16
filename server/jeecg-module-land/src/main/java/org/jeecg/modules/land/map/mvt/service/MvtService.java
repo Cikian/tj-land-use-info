@@ -150,6 +150,23 @@ public class MvtService {
         }
     }
 
+    public List<Map<String, Object>> pick(String source, String schema, String name, String geometry,
+                                          double longitude, double latitude) {
+        if (!Double.isFinite(longitude) || !Double.isFinite(latitude)
+                || longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "拾取坐标必须是有效的经纬度");
+        }
+        Catalog catalog = resolveCatalog(source);
+        MvtTable table = resolve(catalog, layerKey(schema, name, geometry));
+        requireAvailable(table);
+        try {
+            return postgis.pick(connections.get(source), table, longitude, latitude);
+        } catch (RuntimeException ex) {
+            log.warn("MVT 要素拾取失败，数据源={}，表={}.{}，异常类型={}", source, schema, name, ex.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "要素查询失败或超时，请检查来源几何和空间索引");
+        }
+    }
+
     public Map<String, Object> tileJson(String source, String schema, String name, String geometry, String baseUrl) {
         Catalog catalog = resolveCatalog(source);
         String key = layerKey(schema, name, geometry);
@@ -163,6 +180,7 @@ public class MvtService {
         result.put("minzoom", 0);
         result.put("maxzoom", 22);
         result.put("tiles", Collections.singletonList(baseUrl + "/{z}/{x}/{y}.pbf"));
+        result.put("featureInfo", baseUrl + "/pick?longitude={longitude}&latitude={latitude}");
         Map<String, Object> layer = new LinkedHashMap<>();
         layer.put("id", name);
         layer.put("fields", table.getFields());

@@ -273,6 +273,12 @@
         @close="warningDetailVisible = false"
       />
     </template>
+
+    <!-- ===== 联动图层树：隐藏挂载插件图层树（2026-11-14） =====
+         打开大屏即开始拉树数据（插件首拉要 10~30 秒，提前挂载把这段延迟
+         藏在大屏打开阶段）；数据管理页进入模块时经 layerTreeBridge 程序化
+         勾选「地块数据 / 配套数据」切片图层，图形走图层树渲染管线显示。 -->
+    <screen-hidden-layer-tree />
   </screen-stage>
 </template>
 
@@ -280,6 +286,8 @@
 import S3dmViewer from '@/views/maps/S3dmViewer.vue'
 import ArchiveScreen from './archive/index.vue'
 import DataScreen from './data/index.vue'
+// MVT 数据图层常驻渲染：壳层启动后自动联动勾选（拾取查询依赖图层常驻，见 mounted 注释）
+import { startSliceLayerAuto } from './data/sliceInfo'
 import EscalationScreen from './escalation/index.vue'
 import MapScreen from './map/index.vue'
 import AnalysisScreen from './analysis/index.vue'
@@ -302,6 +310,8 @@ import { logoutAndGoToLogin } from '@/utils/session'
 // 「选取地块」全屏模式的会话状态：表单弹窗在 body 上、覆盖层也在 body 上，
 // 两者不在同一棵组件树里，只能共享这份状态（详见 pickSession.js 的说明）
 import { endPick, pickState } from './pickSession'
+// 联动图层树的隐藏挂载点（组件自身 mounted 时向 bridge 注册实例）
+import ScreenHiddenLayerTree from './ScreenHiddenLayerTree.vue'
 
 import { headerMenus, systemTitle, warningTabs } from './config'
 
@@ -570,7 +580,8 @@ export default {
     HomeAttrPanel,
     HomePlotModal,
     ScreenHeader,
-    ScreenStage
+    ScreenStage,
+    ScreenHiddenLayerTree
   },
   data () {
     const routeQuery = (this.$route && this.$route.query) || {}
@@ -850,11 +861,43 @@ export default {
     // 刷新页面时如果正处于选取模式（会话不落盘，正常不会出现），兜底清一次，
     // 避免留下「一张没有出口的全屏地图」——那种状态用户只能刷新页面。
     if (pickState.active) endPick(pickState.token)
+    // ★ MVT 数据图层常驻渲染（2026-11-15）：此前联动勾选只挂在数据管理页的
+    //   页签切换上——用户硬刷新后直接进地图管理页（拾取查询）时 MVT 层从未
+    //   渲染，拾取无目标（实测踩坑）。提升到壳层：sceneId 就绪后自动勾选
+    //   地块数据 + 配套数据两个切片图层，之后任何子页面都可见、可拾取。
+    this.startSliceLayerBootstrap()
   },
   beforeDestroy () {
     document.body.classList.remove('is-screen-dark')
+    this.stopSliceLayerBootstrap()
   },
   methods: {
+    /**
+     * MVT 数据图层常驻渲染的引导（见 mounted 注释）：
+     * sceneId 由登录/权限流程异步设置（UI 登录在 GetPermissionList 之后），
+     * 这里每秒轮询等待，就绪后对地块数据 + 配套数据两个模块各启动一次
+     * 联动勾选自愈循环（checkSliceLayerReady，见 data/sliceInfo.js）。
+     */
+    startSliceLayerBootstrap () {
+      if (this._sliceBootstrapTimer) return
+      let tries = 0
+      this._sliceBootstrapTimer = setInterval(() => {
+        tries++
+        if (typeof window.sceneId === 'undefined' || !window.sceneId) {
+          if (tries > 90) this.stopSliceLayerBootstrap() // 90s 仍无场景（未登录/异常）则放弃
+          return
+        }
+        this.stopSliceLayerBootstrap()
+        startSliceLayerAuto('land')
+        startSliceLayerAuto('facility')
+      }, 1000)
+    },
+    stopSliceLayerBootstrap () {
+      if (this._sliceBootstrapTimer) {
+        clearInterval(this._sliceBootstrapTimer)
+        this._sliceBootstrapTimer = null
+      }
+    },
     /** 并发拉取宗地与配套两个看板；失败或没有数据时对应区域保持空白 */
     loadDashboard () {
       this.dashboardLoading = true
@@ -1249,6 +1292,26 @@ export default {
   &__module {
     position: absolute;
     inset: 0;
+  }
+
+  /*
+   * 联动图层树的隐藏挂载点（2026-11-14）：
+   * layer-tree-pop 是插件的全局组件，树数据与勾选状态都在它内部；
+   * 大屏打开即挂载（插件首拉树数据要 10~30 秒，提前把这段延迟藏在大屏
+   * 打开阶段），数据管理页经 layerTreeBridge 取实例做联动勾选。
+   * ★ 视觉隐藏：fixed 甩出屏幕 + transform 形成包含块（裁掉插件自己的
+   *   fixed 弹层）+ overflow hidden + visibility 继承 + pointer-events none。
+   */
+  &__hidden-layertree {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 800px;
+    height: 600px;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateZ(0);
   }
 }
 </style>

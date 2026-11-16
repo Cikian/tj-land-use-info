@@ -152,7 +152,7 @@ spring:
   redis:
     database: ${TJ_REDIS_DB}
     host: ${TJ_REDIS_HOST:127.0.0.1}
-    port: ${TJ_REDIS_PORT:6379}
+    port: ${TJ_REDIS_PORT:36379}
     # ★ 用 ${VAR:} 而不是 ${VAR:''}：本机 Redis 无口令时要落成**空值**，
     #   写成 ${VAR:''} 在 YAML 里会变成字面量两个单引号，Redis 拿它当口令去认证会失败。
     password: ${TJ_REDIS_PASSWORD:}
@@ -314,7 +314,7 @@ ck:
   crydis:
     enable: true                    # 必须为 true 才会初始化
     host: 127.0.0.1                 # Redis 服务器地址
-    port: 6379                      # Redis 端口，默认 6379
+    port: 36379                      # Redis 端口，默认 6379
     password:                       # Redis 密码，没有则留空
     database: ${TJ_REDIS_DB}        # 数据库索引，默认 0
     timeout: 3000                   # 连接超时时间（毫秒）
