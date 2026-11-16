@@ -89,8 +89,14 @@ public interface ILandAttachmentService {
      * 可用的附件类型（材料类型）列表，**按业务类型取对应那套**。
      *
      * <p>★ 必须区分业务类型：宗地与配套是两套不同的材料清单
-     * （宗地 5 类 / 配套 13 类，名称均逐字取自旧系统存储目录的类型目录名）。
+     * （宗地 4 类 / 配套 13 类，编码与顺序以 P1-08 报告图 3 为唯一基准）。
      * 不带 bizType 的话前端只能拿到一半，或者看到与自己无关的选项。
+     *
+     * <p>★ 环节进度（process）跟随它的挂靠侧 —— 环节挂在配套项目下，
+     * 因此与 facility 用同一套 13 类（2026-11 整改前是「环节统一用宗地」）。
+     *
+     * <p>★ 迁移留下的 {@code 99 其他（历史）} **不在**本列表里：它只用于历史附件回显，
+     * 新上传落 99 会被拒（见 {@link #saveUploaded} 的类型校验）。
      *
      * @param bizType land / facility / process；为空按宗地那一套返回
      * @return [{ value: 码, text: 中文名 }]，顺序即字典排序
@@ -103,7 +109,7 @@ public interface ILandAttachmentService {
      * <p>★ 树是派生结果，不落地：目录名就是材料类型名，类型码存在附件的 file_type 里。
      * 空类型（没有附件的材料类型）不进结果。
      *
-     * <p>★ 用哪套材料清单由 bizType 决定（land/process → 宗地 5 类；facility → 配套 13 类）。
+     * <p>★ 用哪套材料清单由 bizType 决定（facility / process → 配套 13 类；land → 宗地 4 类）。
      *
      * @param bizType land / facility / process
      * @param bizId   业务对象 id
@@ -157,7 +163,7 @@ public interface ILandAttachmentService {
      * @param bizType  业务类型：land / facility / process
      * @param bizId    业务主键
      * @param bizKey   业务可读键（宗地编号 / 配套项目名称；可空，仅为列表展示方便）
-     * @param fileType 附件类型码（01~13、99）
+     * @param fileType 附件类型码（land 01~04；facility / process 01~13；见 {@link #allowedFileTypes}）
      * @param meta     由 jeecg 上传接口返回的信息（文件名 / 大小 / 路径 / md5 等）
      * @return 落库后的实体（含服务端生成的 id）
      */

@@ -57,6 +57,41 @@ public interface LandMapper extends BaseMapper<Land> {
                        @Param("updateTime") java.util.Date updateTime);
 
     /**
+     * 取同编号里「最近被移除」的那一条软删行（{@code del_flag = 1}）。
+     *
+     * <p><b>为什么必须手写 SQL（导入恢复复用用）</b>：{@code Land} 上有
+     * {@code @TableLogic}，任何实体查询都会被自动加上 {@code del_flag = 0}，
+     * 用它找回收站里的行永远查不到（契约 §3.4）。
+     *
+     * <p><b>为什么取 update_time 最新的一条</b>：同一编号理论上最多一条软删行
+     * （{@code uk_land_crzdbh (crzdbh, del_flag)} 的结果），但历史数据/唯一键被改动过时
+     * 可能不止一条。这时要恢复「用户最近删掉的那条」——它才是回收站里最显眼、
+     * 也是附件与环节最可能还挂着的那条；其余软删行保留不动（不删，保证可追溯）。
+     */
+    @org.apache.ibatis.annotations.Select("SELECT * FROM `t_land` "
+            + "WHERE `crzdbh` = #{crzdbh} AND `del_flag` = 1 "
+            + "ORDER BY `update_time` DESC, `create_time` DESC, `id` DESC LIMIT 1")
+    Land selectLatestSoftDeletedByCrzdbh(@Param("crzdbh") String crzdbh);
+
+    /**
+     * 把一条软删行恢复为有效行（{@code del_flag 1 → 0}）。
+     *
+     * <p>同样不能用 {@code updateById}：{@code @TableLogic} 会把 {@code del_flag}
+     * 从 UPDATE 的 SET 里摘出去（同 {@link #softDeleteById} 的原因），
+     * 拿实体改 {@code setDelFlag(0)} 再 updateById 是「什么都没发生」。
+     *
+     * <p>条件里带 {@code del_flag = 1}：只有「当前确实处于已删状态」才更新，
+     * 并发下（两个人同时导入同一编号）后到的那次拿到 0 行，
+     * 调用方据此判定「已经被别人恢复过了」，不会重复写一遍。
+     */
+    @org.apache.ibatis.annotations.Update("UPDATE `t_land` "
+            + "SET `del_flag` = 0, `update_by` = #{updateBy}, `update_time` = #{updateTime} "
+            + "WHERE `id` = #{id} AND `del_flag` = 1")
+    int restoreSoftDeletedById(@Param("id") String id,
+                               @Param("updateBy") String updateBy,
+                               @Param("updateTime") java.util.Date updateTime);
+
+    /**
      * 说明：首页宗地统计的 SQL 已迁到
      * {@code org.jeecg.modules.land.stat.home.mapper.HomeStatMapper}，
      * data 域不再保留同一口径的第二份实现。

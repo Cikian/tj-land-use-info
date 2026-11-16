@@ -52,7 +52,10 @@
     <select id="selectDocPage" resultType="org.jeecg.modules.land.archive.document.entity.DocSend">
         SELECT d.*,
                (SELECT COUNT(1) FROM `t_doc_attachment` t
-                 WHERE t.`doc_type` = 'send' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount
+                 WHERE t.`doc_type` = 'send' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount,
+               <!-- 档案真实状态（口径同 DocReceiveMapper：无附件时档案是「归档中」，不能显示成「已归档」） -->
+               (SELECT a.`status` FROM `t_archive` a
+                 WHERE a.`id` = d.`archive_id` AND a.`del_flag` = 0 LIMIT 1) AS archiveStatus
         FROM `t_doc_send` d
         WHERE <include refid="queryWhere"/>
         ORDER BY d.`create_time` DESC

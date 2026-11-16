@@ -204,14 +204,16 @@ public class FacilityImportController {
     /**
      * 确认入库。
      *
-     * @param duplicateStrategy reject（默认，重复即报错）/ skip（跳过重复只导新增）/ update（覆盖更新）
+     * @param duplicateStrategy upsert（默认，新增并更新已有配套，空单元格不改动）/
+     *                          reject（重复即报错）/ skip（跳过重复只导新增）/ update（同 upsert，历史写法）
      * @param skipErrorRows     true = 跳过有错误的行只导入正确的行；
      *                          false（默认）= 只要有一行错误就整批不入库
      * @param allowOrphan       true = 宗地编号查不到的行记入孤儿清单后照常导入
      */
     @AutoLog(value = "配套信息批量导入-确认入库")
     @ApiOperation(value = "配套信息批量导入-确认入库",
-            notes = "默认有错整批不入库；覆盖更新时空单元格不会清空库内原值；"
+            notes = "默认策略 upsert：已有配套按非空单元格更新、没有的照常新增（不会重复插入）；"
+                    + "默认有错整批不入库；upsert 时空单元格不会清空库内原值；"
                     + "allowOrphan=true 时孤儿行照样入库并记入清单")
     @RequiresPermissions(PERM_IMPORT)
     @PostMapping(value = "/confirm")
@@ -316,7 +318,7 @@ public class FacilityImportController {
     // 五、内部工具
     // ==================================================================
 
-    /** 前端传参 → 策略枚举（空 = 默认「重复即报错」） */
+    /** 前端传参 → 策略枚举（空 = 默认「新增并更新已有配套」，见 {@link FacilityDuplicateStrategy#of(String)}） */
     private FacilityDuplicateStrategy parseStrategy(String value) {
         return FacilityDuplicateStrategy.of(value);
     }

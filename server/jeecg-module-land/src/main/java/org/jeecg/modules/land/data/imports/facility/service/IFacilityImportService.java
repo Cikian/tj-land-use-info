@@ -24,6 +24,11 @@ import org.springframework.web.multipart.MultipartFile;
  *   <li>{@link #buildErrorReport} —— 把错误清单（以及孤儿清单）导成 Excel。</li>
  * </ol>
  *
+ * <p><b>★ 重复处理默认「新增 + 更新」（upsert，P1-06 整改）</b>：
+ * 不传 {@code duplicateStrategy} 时已存在的 {@code (crzdbh, ptxmmc)} 按非空单元格更新、
+ * 不存在的照常新增，因此一份混合文件可以一次导入；「重复即报错」「只导新增」仍可显式选。
+ * 默认策略变化<b>不放开</b>下面说的 {@code allowOrphan} 安全校验。
+ *
  * <p><b>★ 预览与入库共用同一条解析路径</b>（{@code parse(file, apply, …)}），
  * 只在最后一步决定「写不写」。这样能保证「预览看到什么，导入就写什么」——
  * 如果两边各写一套校验，必然会出现「预览说没问题、导入报错」这种最伤信任的情况。
@@ -49,7 +54,9 @@ public interface IFacilityImportService {
      * 预览：解析并校验上传的 Excel，<b>不写库</b>。
      *
      * @param file              上传文件（.xlsx / .xls）
-     * @param duplicateStrategy 重复 (宗地编号, 配套项目名称) 的处理策略（null = 默认「重复即报错」）
+     * @param duplicateStrategy 重复 (宗地编号, 配套项目名称) 的处理策略
+     *                          （null = 默认「新增并更新已有配套」upsert，见
+     *                          {@link org.jeecg.modules.land.data.imports.facility.FacilityDuplicateStrategy#of(String)}）
      * @param allowOrphan       是否允许把 {@code crzdbh} 查不到的行挂到「未登记宗地」
      *                          （true = 记入孤儿清单并照样视为可导入；false = 作为硬错误）
      * @return 解析统计 + 错误/警告/提示/孤儿清单；{@code insertedRows} 与 {@code updatedRows} 恒为 0

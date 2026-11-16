@@ -49,7 +49,21 @@ public class FacilityServiceImpl extends ServiceImpl<FacilityMapper, Facility> i
 
     @Override
     public List<FacilityOptionVO> searchOptions(String keyword, Integer limit) {
-        return baseMapper.searchOptions(trimToNull(keyword), normalizeLimit(limit));
+        // 两参版本 = 老的默认口径（不过滤类别、不重排）。显式传 null/false，
+        // 保证「现有调用方看到的顺序与改动前完全一致」。
+        return searchOptions(keyword, limit, null, null);
+    }
+
+    @Override
+    public List<FacilityOptionVO> searchOptions(String keyword, Integer limit,
+                                                String category, Boolean roadFirst) {
+        /*
+         * ★ P1-10：category / roadFirst 两者都为空时，SQL 走 <otherwise> 分支，
+         *   与改动前逐字等价（同样的 WHERE、同样的 ORDER BY、同样的 LIMIT）。
+         *   这是硬要求 —— 档案查询条件、录入弹窗等老调用方不该因为我们加了排序能力而换顺序。
+         */
+        return baseMapper.searchOptions(trimToNull(keyword), normalizeLimit(limit),
+                trimToNull(category), Boolean.TRUE.equals(roadFirst));
     }
 
     @Override

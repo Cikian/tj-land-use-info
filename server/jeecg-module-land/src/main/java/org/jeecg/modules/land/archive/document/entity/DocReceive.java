@@ -180,4 +180,16 @@ public class DocReceive implements Serializable {
     /** 附件数（列表接口返回） */
     @TableField(exist = false)
     private Integer attachmentCount;
+
+    /**
+     * 关联档案的真实状态（列表/详情接口带出，不是本表字段）。
+     *
+     * <p><b>为什么要它</b>：P1-11 第 5 条——「无附件时档案落『归档中』，
+     * 页面不能显示成『已归档』」。本表只有 archive_id 这一个「是否归档过」的标志，
+     * 而 target 档案的真实状态在 t_archive.status 里；用 archive_id 推断已归档
+     * 会把「归档中（等补扫描件）」的公文也说成已归档。
+     * 所以由 SQL 把 t_archive.status 带出来，前端按它显示，展示层不做任何映射。
+     */
+    @TableField(exist = false)
+    private String archiveStatus;
 }

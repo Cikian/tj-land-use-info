@@ -80,11 +80,21 @@ import java.util.regex.Pattern;
  * 旧实现是 {@code INSERT INTO tbl SET k="v"} 字符串拼 SQL（明确注入风险，
  * 设计文档 5.3.3 要求修掉），这里一律走 MyBatis-Plus 实体写入。
  *
- * <p><b>⑥ 覆盖更新时「空单元格 = 不改动」。</b>
- * 选择 UPDATE 策略时，文件里没填的列保持库内原值 ——
+ * <p><b>⑥ 覆盖更新 / upsert 时「空单元格 = 不改动」。</b>
+ * 策略为 {@link FacilityDuplicateStrategy#UPSERT}（默认）或
+ * {@link FacilityDuplicateStrategy#UPDATE} 时，文件里没填的列保持库内原值 ——
  * 否则用户拿一份只填了进度的补丁表导进去，会把六方单位、资金来源、录入人全部抹空。
  *
- * <p><b>★★ ⑦ 宗地存在性校验与孤儿清单（本模块相对宗地导入的核心新增）</b>：
+ * <p><b>⑦ 默认策略是「新增 + 更新」（upsert），不是「重复即报错」</b>
+ * （2026-11 整改 P1-06）：中心的台账基本都是「既有新增、又有更新」的混合批次，
+ * 默认报错会把它们整批拦下、逼用户先拆表（拆表是丢行/重复行的高发环节）。
+ * upsert 用同一个判重键分流：命中 {@code (crzdbh, ptxmmc)} 的行走更新（只写非空单元格）、
+ * 没命中的行走新增，因此<b>重复项不会被插两遍</b>。
+ * 三处默认值必须一致（本类 {@code normalize} 兜底 / {@code FacilityDuplicateStrategy.of()}
+ * / 枚举类注释），漏改一处就会出现「页面默认 upsert、接口不传参数却按 reject 跑」。
+ * ★ 默认策略改动<b>不放开</b> {@code allowOrphan}：宗地必须已存在这条安全校验原样保留。
+ *
+ * <p><b>★★ ⑧ 宗地存在性校验与孤儿清单（本模块相对宗地导入的核心新增）</b>：
  * <ul>
  *   <li><b>一次查询、不做 N+1</b>：把 {@code t_land} 的 {@code crzdbh} 全量取一次
  *       （实测 847 行，只取 4 个短列），在内存里建「精确命中集合」+「归一化索引」。
@@ -152,6 +162,16 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     @Autowired
     private DataChangeLogMapper changeLogMapper;
 
+    /**
+     * 审计信息（当前登录人 + 部门）。
+     *
+     * <p>★ 为什么导入模块需要它：{@code lrdw / lrr} 已改为选填（P1-04），
+     * 用户不填时「谁、哪个部门导的这批数据」只能靠系统审计字段回答。
+     * 表结构里没有部门列（不擅自加列），因此部门只写进变更留痕摘要与日志。
+     */
+    @Autowired
+    private DataSupport dataSupport;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -184,7 +204,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 result.getTotalRows(), result.getValidRows(), result.getInsertedRows(), result.getUpdatedRows(),
                 result.getSkippedDuplicates(), result.getErrorCount(), result.getOrphanRows(),
                 result.getMatchedLandRows(), strategy.getCode(), skipErrorRows, allowOrphan,
-                FacilityImportSupport.nameOrPlaceholder(support.currentRealname()));
+                dataSupport.currentAuditText());
         return result;
     }
 
@@ -214,8 +234,17 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     // 四、解析与校验（预览与入库共用）
     // ==================================================================
 
+    /**
+     * 空策略兜底 → {@link FacilityDuplicateStrategy#UPSERT}。
+     *
+     * <p>★ 必须与 {@link FacilityDuplicateStrategy#of(String)} 的默认值保持一致
+     * （2026-11 P1-06 改成 upsert）。这里兜的是「Service 被直接调用、没经过 Controller
+     * 解析」的路径（内部调用 / 测试 / 将来别的入口），两处不一致时，
+     * 同一份文件走 HTTP 与走 Service 会得到两种结果，而回执上的
+     * {@code duplicateStrategy} 字段又都会显示策略名 —— 排查时几乎无从下手。
+     */
     private FacilityDuplicateStrategy normalize(FacilityDuplicateStrategy strategy) {
-        return strategy == null ? FacilityDuplicateStrategy.REJECT : strategy;
+        return strategy == null ? FacilityDuplicateStrategy.UPSERT : strategy;
     }
 
     /**
@@ -322,8 +351,20 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 result.addNotice("有 " + result.getSkippedDuplicates()
                         + " 行因「出让宗地编号 + 配套项目名称」与库内重复被跳过（策略：跳过重复只导新增）");
             }
-            if (strategy == FacilityDuplicateStrategy.UPDATE && !toUpdate.isEmpty()) {
-                result.addNotice("覆盖更新时，文件中空着的单元格保持库内原值不变（不会被清空）");
+            if ((strategy == FacilityDuplicateStrategy.UPSERT || strategy == FacilityDuplicateStrategy.UPDATE)
+                    && !toUpdate.isEmpty()) {
+                result.addNotice("本次有 " + toUpdate.size()
+                        + " 行按「" + strategy.getLabel() + "」处理：只写文件里有值的单元格，"
+                        + "空单元格保持库内原值不变（不会被清空）");
+            }
+            // 预览阶段把四个计数一次讲清楚：字段本身（willInsertRows / willUpdateRows /
+            // skippedDuplicates / errorCount）前端已在读，这里再给一句人话摘要，
+            // 避免用户对着一排数字猜「混批文件到底会新增几条、改几条」。
+            if (!apply) {
+                result.addNotice("按当前策略处理「出让宗地编号 + 配套项目名称」重复项：将新增 "
+                        + result.getWillInsertRows() + " 条、更新 " + result.getWillUpdateRows()
+                        + " 条、跳过 " + result.getSkippedDuplicates() + " 条、错误 "
+                        + result.getErrorCount() + " 条");
             }
             return new ParsedFile(result, originalValues);
         } catch (JeecgBootException e) {
@@ -512,7 +553,13 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
         //   标记仍由 applyValue 的 crzdbh 分支从原始单元格取出来写进备注 bz。
         DataSupport.CodeInfo code = DataSupport.normalizeCode(data.text(FacilityImportField.COL_CRZDBH));
         data.crzdbh = code == null ? null : code.getCode();
-        data.ptxmmc = data.text(FacilityImportField.COL_PTXMMC);
+        // ★ 配套项目名称也要<b>先归一、再判重</b>（与 applyValue 落库时的写法逐字相同）：
+        //   判重键的另一半就是它，而落库时 {@code DataSupport.normalizeName} 会去掉所有空白、
+        //   半角括号转中文。若拿文件里的原始写法去判重，库里存的 {@code X道路工程} 与文件里的
+        //   {@code X 道路工程}（多一个空格）会被认成两条不同配套 → upsert 命中不了 →
+        //   <b>重复插入</b>，而这正是 P1-06 要堵的那类问题（AGENTS §2.4：归一 → 判重 → 落库，
+        //   顺序不能反）。
+        data.ptxmmc = DataSupport.normalizeName(data.text(FacilityImportField.COL_PTXMMC), 100);
         return data;
     }
 
@@ -736,7 +783,7 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
     /**
      * 宗地存在性校验。
      *
-     * <p>三种结果（见类注释 ⑦）：
+     * <p>三种结果（见类注释 ⑧）：
      * <ol>
      *   <li><b>精确命中</b> → {@code matchedLandRows} +1，并把命中宗地挂到行上
      *       （新增时用它补 {@code dkmc / xzqh / xmfl} 的默认值）；</li>
@@ -880,7 +927,10 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                     result.setSkippedDuplicates(result.getSkippedDuplicates() + 1);
                     data.skipped = true;
                     break;
+                case UPSERT:
                 case UPDATE:
+                    // 两种策略在「已存在的行」上语义相同：按非空单元格更新（见类注释 ⑥）。
+                    // 命中行的 id 记在 data.target 上，写库时 updateById，因此不会重复插入。
                     data.target = hit;
                     toUpdate.add(data);
                     break;
@@ -888,8 +938,8 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
                 default:
                     result.addError(data.rowNum, data.crzdbh, FacilityImportField.COL_PTXMMC, "配套项目名称",
                             "出让宗地编号「" + data.crzdbh + "」下的配套项目「" + data.ptxmmc
-                                    + "」在系统中已存在。可改用「跳过重复只导新增」或"
-                                    + "「覆盖更新已有配套（空单元格不改动）」策略");
+                                    + "」在系统中已存在。默认策略「新增并更新已有配套」会按非空单元格更新它；"
+                                    + "若不想改库，请改用「跳过重复只导新增」或「重复即报错」策略");
                     data.valid = false;
                     break;
             }
@@ -974,11 +1024,19 @@ public class FacilityImportServiceImpl implements IFacilityImportService {
         }
     }
 
+    /**
+     * 逐行变更留痕（与业务写入同一事务）。
+     *
+     * <p>摘要里带「批次号 / Excel 行号 / 操作人 + 部门」：批次号把一行留痕挂回本批导入，
+     * 行号让用户能回 Excel 定位，操作人+部门回答「谁导的」——
+     * 这三样是事后追溯一份几百行台账时的全部线索。
+     * 部门取不到名称时按「部门编码」如实标注（见 {@link DataSupport#currentAuditText()}）。
+     */
     private void collectImportChangeLog(List<DataChangeLog> logs, FacilityImportResultVO result, int rowNum,
                                         String action, Facility before, Facility after,
                                         String bizId, String bizKey) {
         String summary = "批次号：" + result.getBatchId() + "，Excel 第 " + rowNum + " 行，操作人："
-                + FacilityImportSupport.nameOrPlaceholder(support.currentRealname());
+                + dataSupport.currentAuditText();
         DataChangeLog record = changeLogSupport.collector(DataSupport.BIZ_FACILITY, bizId, bizKey)
                 .diff(before, after, DataFieldLabels.facilityLabels())
                 .buildRecord(action, summary, null);

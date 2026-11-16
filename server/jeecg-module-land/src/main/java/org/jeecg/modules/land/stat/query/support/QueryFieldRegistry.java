@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @Description: 查询统计 · 字段白名单（自定义列 / 高级查询 / 导出共用的唯一字段来源）
@@ -33,6 +35,28 @@ import java.util.Map;
  *   ops          该字段允许的运算符
  *   defaultColumn 结果表默认显示（旧系统写死的 6 列 / 配套的 7 列）
  * </pre>
+ *
+ * <p><b>★ 字段顺序 = 录入详情的信息架构顺序，不是数据库列顺序</b>（清单 P1-13 第 4 条）：
+ * 表里 40+ 列按物理顺序输出会让「地块名称」跑到「编号」前面、把审计列夹在业务列中间，
+ * 用户对着导出表核对时会找不到字段。这里的顺序逐段对齐
+ * {@code screen/data/modules/FacilityDetailModal.vue} 的分组
+ * （标识与属性 → 参建单位 → 前期审批与进度 → 档案要件 → 其他），
+ * 改顺序时两处要一起改，否则「页面看到的顺序」与「导出的顺序」会分叉。
+ *
+ * <p><b>★ 「导出全部字段」的排除项为什么不在本表里出现</b>：
+ * {@link #allColumnKeys(DataSet)} 只返回本表登记的字段，而本表<b>刻意不登记</b>
+ * 三类列，原因分别是：
+ * <ul>
+ *   <li>{@code del_flag} / {@code delFlag}（软删标记）：导出后用户会拿它当真假状态看，
+ *       而且软删的行本来就被查询条件排除了，这一列恒为 0，属于噪声；</li>
+ *   <li>{@code source_id}（迁移溯源）与 {@code create_account} 等内部账务列：
+ *       是给迁移/排障用的，业务人员看不懂也不需要；</li>
+ *   <li>{@code dk_geojson} / {@code dk_geojson_overview} / {@code gxzhslsj} 之外的
+ *       超大几何文本（宗地表 {@code dk_geojson} 单条可达 30MB+）：
+ *       一页 20000 行乘上去就是内存与 Excel 行高灾难，而且 Excel 里根本看不出图形。
+ *       ★ {@code gxzhslsj} 例外——库里它是 varchar(100) 的「是否已有 shp」历史标志位，
+ *       不是矢量文本，所以照常导出。</li>
+ * </ul>
  */
 public final class QueryFieldRegistry {
 
@@ -211,6 +235,10 @@ public final class QueryFieldRegistry {
         add(land, text("bz", "北至", false, null));
         add(land, text("ptqkh", "配套情况函", false, null));
         add(land, text("ptcbh", "配套筹备函", false, null));
+        // ★ crzdtxsj 是「是否已有 shp 图形」的历史标志位（varchar(100)），不是图形本身：
+        //   Land.dkGeojson 的注释已澄清两者语义不同（一个是标志、一个是 GeoJSON 文本）。
+        //   清单 P1-13 要求「导出全部业务字段」，它属于业务字段且不含大文本，所以登记。
+        add(land, text("crzdtxsj", "出让宗地图形数据（shp）", false, null));
         // ★ xzqh2 的注释是「录入单位简称」：旧系统（getCnd）却拿它当行政区划筛选用，
         //   差异清单 D-604 已登记。新系统照实标成「录入单位简称」，不再冒充行政区划，
         //   同时保留可查（老用户可能按录入单位找数据）。
@@ -267,6 +295,24 @@ public final class QueryFieldRegistry {
         add(facility, date("yjjgsj", "预计竣工时间", false, null));
         add(facility, date("sjjgsj", "实际竣工时间", false, null));
         add(facility, text("sfyj", "是否移交", false, null));
+        // —— 档案要件（历史标志位）——
+        // 旧配套表沿用下来的 11 个「有没有这份要件」标志（值域 是/否/空），
+        // 清单 P1-13 点名要求补全：它们既在录入弹窗里能填、在录入详情里能看到，
+        // 导出时却整段缺失，等于「填了也导不出来」。中文名照 DataFieldLabels 的登记口径。
+        add(facility, text("xjpfwj", "项建批复文件", false, null));
+        add(facility, text("kypfwj", "可研批复文件", false, null));
+        add(facility, text("csjgspfwj", "初设及概算批复文件", false, null));
+        add(facility, text("dlgh", "道路规划", false, null));
+        add(facility, text("ghgcxk", "规划工程许可", false, null));
+        // ★ 库里是 varchar(100) 的「是否已有管线综合矢量数据」标志，不是矢量文本，
+        //   所以可以放心导出（见类注释里关于超大几何文本的排除说明）。
+        add(facility, text("gxzhslsj", "管线综合矢量数据（shp）", false, null));
+        add(facility, text("zyptfa", "专业配套方案", false, null));
+        add(facility, text("zyglyj", "专业管理意见", false, null));
+        add(facility, text("ghydxkyhbsxbl", "规划用地许可与划拨手续办理", false, null));
+        add(facility, text("sgxk", "施工许可", false, null));
+        add(facility, text("bdcdj", "不动产登记", false, null));
+        add(facility, text("ptxmhdydydjdc", "配套项目核定用地与地籍调查", false, null));
         add(facility, text("jtwt", "具体问题", false, null));
         add(facility, text("gzjy", "工作建议", false, null));
         add(facility, text("zlqsnrjsm", "资料缺失内容及说明", false, null));
@@ -312,6 +358,41 @@ public final class QueryFieldRegistry {
         List<String> keys = new ArrayList<>();
         for (Field field : fields(dataSet)) {
             if (field.isDefaultColumn()) {
+                keys.add(field.getKey());
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * 「导出全部字段」时**额外**要剔除的字段 key（技术列 / 超大文本列）。
+     *
+     * <p>★ 为什么还要一份黑名单，而不是「本表没登记 = 自动排除」：
+     * 本表本来就没登记 delFlag / sourceId / dkGeojson 这些列（见类注释），
+     * 但白名单是**会长的**——以后有人为了方便新增了一个几何或审计字段，
+     * 「导出全部字段」就会悄悄把 30MB 的文本塞进 Excel。
+     * 用一份显式黑名单把这条线钉死，新增字段时它会先在这里暴露出来。
+     */
+    private static final Set<String> EXPORT_EXCLUDED_KEYS = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList(
+                    // 软删（两张表列名不同，两种写法都防一手）
+                    "delFlag", "del_flag",
+                    // 迁移溯源的内部主键
+                    "sourceId", "source_id",
+                    // 超大几何文本（精确档 / 抽稀档）
+                    "dkGeojson", "dk_geojson", "dkGeojsonOverview", "dk_geojson_overview"
+            )));
+
+    /**
+     * 「导出全部字段」的列：本表登记的全部字段，按字段定义顺序，剔除技术列与超大文本列。
+     *
+     * <p>清单 P1-13：全部字段模式**忽略 columns 选择**，但保留查询条件；
+     * 列顺序仍是录入详情的顺序（{@link #fields(DataSet)} 的顺序），不是数据库字母序。
+     */
+    public static List<String> allColumnKeys(DataSet dataSet) {
+        List<String> keys = new ArrayList<>();
+        for (Field field : fields(dataSet)) {
+            if (!EXPORT_EXCLUDED_KEYS.contains(field.getKey())) {
                 keys.add(field.getKey());
             }
         }

@@ -6,6 +6,7 @@ import org.jeecg.modules.land.archive.document.dto.DocArchiveDTO;
 import org.jeecg.modules.land.archive.document.dto.DocHandleDTO;
 import org.jeecg.modules.land.archive.document.dto.DocQueryDTO;
 import org.jeecg.modules.land.archive.document.entity.DocReceive;
+import org.jeecg.modules.land.archive.document.vo.DocArchiveResultVO;
 import org.jeecg.modules.land.archive.document.vo.DocStatVO;
 
 import java.util.List;
@@ -37,6 +38,15 @@ public interface IDocReceiveService extends IService<DocReceive> {
      * @param limit      条数上限
      */
     List<DocReceive> queryRelated(String facilityId, String landId, String crzdbh, Integer limit);
+
+    /**
+     * 查直接归档到某份档案的收文（P1-11 第 3 条：按 archiveId 加载「收发文情况」）。
+     *
+     * <p>与 {@link #queryRelated} 的区别：这条是<b>精确匹配</b>——
+     * 「这份档案是由哪几件收文归档来的」，而不是「这个项目下所有收文」。
+     * 收发文归档复用同项目案卷后，一份档案会对应多份公文，这里的结果才与档案文件页签同源。
+     */
+    List<DocReceive> queryByArchiveId(String archiveId, Integer limit);
 
     /** 收文统计 */
     DocStatVO queryStat();
@@ -83,7 +93,10 @@ public interface IDocReceiveService extends IService<DocReceive> {
      * <p>需求约定：办结时前端先弹「是否归档」，用户选择归档后<b>必须选择档案类别</b>；
      * 公文的所有附件会成为该档案的卷内文件，统一挂在这个类别下。
      *
-     * @return 新生成的档案ID
+     * <p>「一项目一案卷」：同项目已有案卷时<b>追加文件到该卷</b>，不再新建案卷；
+     * 只追加，不删除、不合并任何历史案卷。
+     *
+     * @return 归档结果（档案ID + 原附件数 / 转换数 / 落库行数，供页面与日志核对）
      */
-    String archive(DocArchiveDTO dto);
+    DocArchiveResultVO archive(DocArchiveDTO dto);
 }

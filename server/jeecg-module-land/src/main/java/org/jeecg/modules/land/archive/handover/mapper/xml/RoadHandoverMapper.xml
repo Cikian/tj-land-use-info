@@ -167,16 +167,46 @@
         ORDER BY `name`
     </select>
 
-    <!-- 按接收管养单位（谁接管得最多，取 Top N） -->
+    <!--
+      按接收管养单位（谁接管得最多，取 Top N）。
+      ★ P2-08：**不再把空值归成「未填写」参与排行**。
+        旧写法 COALESCE(NULLIF(receive_unit,''),'未填写') 会让「未填写 / 否 / 无」
+        这类占位值挤进 Top10，看起来像真的有个叫「未填写」的单位在接管道路。
+        这里直接把这些行排除出排行，另由 countReceiveUnitBlank 单独给出
+        「接收管养单位未填写数量」作为数据质量指标（两者口径互补、不混在一起）。
+      ★ 注意：byXzqh / byDldj 走的是上面的 selectStatByColumn，那里「空值归为未填写」
+        是有意的（区划/等级缺失本身就是要看的信息），**不要**顺手一起改掉。
+      ★ P2-08 之二：本语句**当前没有调用方**（Service 里那次调用已注释掉）——
+        两端页面都不再展示这个排行，而它每次打开页面都要跑一条 GROUP BY + 排序。
+        保留语句是给导出/后续报表用（「谁接管得最多」迟早要回答），
+        不要因为「没人调」就删掉它；重新启用时把 Service 里那行调用放回来即可。
+    -->
     <select id="selectStatByReceiveUnit" resultType="org.jeecg.modules.land.archive.handover.vo.HandoverStatVO$NameCount">
-        SELECT COALESCE(NULLIF(h.`receive_unit`, ''), '未填写') AS `name`, COUNT(1) AS `count`
+        SELECT TRIM(h.`receive_unit`) AS `name`, COUNT(1) AS `count`
         FROM `t_road_handover` h
         WHERE <include refid="queryWhere"/>
-        GROUP BY COALESCE(NULLIF(h.`receive_unit`, ''), '未填写')
-        ORDER BY `count` DESC
+          AND h.`receive_unit` IS NOT NULL
+          AND TRIM(h.`receive_unit`) NOT IN ('', '未填写', '否', '无', '-', '—', '/')
+        GROUP BY TRIM(h.`receive_unit`)
+        ORDER BY `count` DESC, `name`
         <if test="limit != null">
             LIMIT #{limit}
         </if>
+    </select>
+
+    <!--
+      接收管养单位未填写数量（数据质量指标）。
+      与上面的排行同源、互斥：这里数的就是被排行排除掉的那些行。
+      排除项除 NULL / 空串外，还包括旧库留下的「未填写」「否」「无」等占位值
+      （业务确认：这些都不是真实单位名）。
+    -->
+    <select id="countReceiveUnitBlank" resultType="long">
+        SELECT COUNT(1)
+        FROM `t_road_handover` h
+        WHERE <include refid="queryWhere"/>
+          AND (h.`receive_unit` IS NULL
+               OR TRIM(h.`receive_unit`) = ''
+               OR TRIM(h.`receive_unit`) IN ('未填写', '否', '无', '-', '—', '/'))
     </select>
 
     <!-- ================= 移交编号 ================= -->

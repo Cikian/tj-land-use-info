@@ -8,8 +8,8 @@ import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
+import org.jeecg.modules.land.data.dto.FacilityQueryDTO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
-import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.service.IFacilityAdminService;
 import org.jeecg.modules.land.data.vo.FacilityProcessTreeVO;
@@ -73,10 +73,11 @@ public class FacilityAdminController {
     // ==================================================================
 
     @AutoLog(value = "配套地块录入-分页列表")
-    @ApiOperation(value = "配套地块录入-分页列表")
+    @ApiOperation(value = "配套地块录入-分页列表",
+            notes = "条件沿用通用查询（crzdbh / dkmc / xzqh / xmfl …），另支持 gnq（功能区，精确匹配）")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/list")
-    public Result<IPage<Facility>> list(LandAdminQueryDTO query) {
+    public Result<IPage<Facility>> list(FacilityQueryDTO query) {
         return Result.OK(facilityAdminService.queryPage(query));
     }
 

@@ -31,6 +31,18 @@
         LIMIT #{limit}
     </select>
 
+    <!--
+      跨宗地的配套项目搜索（档案查询的条件、录入弹窗的「打开就能选到道路类」）。
+
+      ★ P1-10：新增两个**可选**参数，两个都不传时 SQL 与改动前逐字等价
+      （同样的 WHERE、同样的 ORDER BY f.crzdbh, f.ptxmmc、同样的 LIMIT）：
+        · category  —— 按 ptsslb 模糊过滤（传「道路」= ptsslb LIKE '%道路%'）；
+        · roadFirst —— true 时把「名称或类别里带道路」的排到前面。
+      为什么要 roadFirst 而不是让前端对取回的 N 条本地排序：
+        1433 条配套里道路只占一小撮，按 crzdbh 排序后前 50 条经常一条道路都没有，
+        前端对「已经取回的 50 条」排序等于在错的候选集里排序，永远排不出道路来。
+        排序必须在 SQL 里做，才能保证「LIMIT 之前」就把道路挑出来。
+    -->
     <select id="searchOptions" resultType="org.jeecg.modules.land.data.vo.FacilityOptionVO">
         SELECT <include refid="optionColumns"/>
         FROM `t_supporting_facilities` f
@@ -41,8 +53,29 @@
                 (f.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%')
                  OR f.`crzdbh` LIKE CONCAT('%', #{keyword}, '%'))
             </if>
+            <!-- 配套类别模糊匹配：字典里的写法是「道路工程」「道路」等，用户传「道路」即可命中 -->
+            <if test="category != null and category != ''">
+                AND f.`ptsslb` LIKE CONCAT('%', #{category}, '%')
+            </if>
         </where>
-        ORDER BY f.`crzdbh`, f.`ptxmmc`
+        <choose>
+            <when test="roadFirst">
+                <!--
+                  「道路类」判定放在 ORDER BY 的 CASE 里：名称里带「道路」或类别里带「道路」都算。
+                  这里把 '%道路%' 写成字面量而不是参数，是因为它是业务口径（前端不传这个关键字，
+                  它是「优先展示道路类」这条规则本身），传参反而会让人以为可以随便换词。
+                  CASE 之后的 crzdbh / ptxmmc 保证同组内顺序稳定、分页不抖。
+                -->
+                ORDER BY CASE
+                             WHEN f.`ptxmmc` LIKE '%道路%' OR f.`ptsslb` LIKE '%道路%' THEN 0
+                             ELSE 1
+                         END,
+                         f.`crzdbh`, f.`ptxmmc`
+            </when>
+            <otherwise>
+                ORDER BY f.`crzdbh`, f.`ptxmmc`
+            </otherwise>
+        </choose>
         LIMIT #{limit}
     </select>
 

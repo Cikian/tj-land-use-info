@@ -66,7 +66,15 @@
     <select id="selectDocPage" resultType="org.jeecg.modules.land.archive.document.entity.DocReceive">
         SELECT d.*,
                (SELECT COUNT(1) FROM `t_doc_attachment` t
-                 WHERE t.`doc_type` = 'receive' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount
+                 WHERE t.`doc_type` = 'receive' AND t.`doc_id` = d.`id` AND t.`del_flag` = 0) AS attachmentCount,
+               <!--
+                 档案真实状态：P1-11 第 5 条要求「无附件时档案落归档中，页面不能显示成已归档」。
+                 本表只有 archive_id，无法区分「已归档」与「归档中」，
+                 因此把 t_archive.status 一并带出，展示层直接用这个值。
+                 用标量子查询而不是 JOIN：t_archive 逻辑删除的行不能让公文从列表里消失。
+               -->
+               (SELECT a.`status` FROM `t_archive` a
+                 WHERE a.`id` = d.`archive_id` AND a.`del_flag` = 0 LIMIT 1) AS archiveStatus
         FROM `t_doc_receive` d
         WHERE <include refid="queryWhere"/>
         ORDER BY d.`create_time` DESC

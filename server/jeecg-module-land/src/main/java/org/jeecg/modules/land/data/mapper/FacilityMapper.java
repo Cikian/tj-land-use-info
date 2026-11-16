@@ -30,11 +30,15 @@ public interface FacilityMapper extends BaseMapper<Facility> {
     /**
      * 全局配套项目搜索（不限宗地，供跨宗地检索场景使用）。
      *
-     * @param keyword 配套项目名称 / 出让宗地编号 模糊关键字，可空
-     * @param limit   最大返回条数
+     * @param keyword   配套项目名称 / 出让宗地编号 模糊关键字，可空
+     * @param limit     最大返回条数
+     * @param category  配套类别（{@code ptsslb}）模糊过滤，可空
+     * @param roadFirst true 时把「道路类」排到最前面
      */
     List<FacilityOptionVO> searchOptions(@Param("keyword") String keyword,
-                                         @Param("limit") int limit);
+                                         @Param("limit") int limit,
+                                         @Param("category") String category,
+                                         @Param("roadFirst") boolean roadFirst);
 
     /** 按配套项目名称取一条（旧数据迁移/兜底关联用） */
     Facility selectByPtxmmc(@Param("ptxmmc") String ptxmmc);

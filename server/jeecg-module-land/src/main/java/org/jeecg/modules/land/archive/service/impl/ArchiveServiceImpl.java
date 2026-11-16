@@ -1,5 +1,6 @@
 package org.jeecg.modules.land.archive.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -18,6 +19,7 @@ import org.jeecg.modules.land.archive.service.IArchiveCategoryService;
 import org.jeecg.modules.land.archive.service.IArchiveFileService;
 import org.jeecg.modules.land.archive.service.IArchiveLogService;
 import org.jeecg.modules.land.archive.service.IArchiveService;
+import org.jeecg.modules.land.archive.vo.ArchiveProjectVO;
 import org.jeecg.modules.land.archive.vo.ArchiveStatVO;
 import org.jeecgframework.poi.excel.ExcelExportUtil;
 import org.jeecgframework.poi.excel.entity.ExportParams;
@@ -120,6 +122,65 @@ public class ArchiveServiceImpl extends ServiceImpl<ArchiveMapper, Archive> impl
     @Override
     public List<ArchiveLog> queryLogs(String archiveId) {
         return archiveLogService.queryByArchiveId(archiveId);
+    }
+
+    // ==================================================================
+    // 按项目聚合（P2-07 树形：项目 → 案卷 → 材料类别 → 文件）
+    // ==================================================================
+
+    /**
+     * 按项目分页（分页口径 = 项目，不是案卷）。
+     *
+     * <p>总数单独查一次 {@code countProjectGroups}：分组查询交给 MyBatis-Plus 分页插件时，
+     * 插件生成的 count SQL 数的是「案卷」而不是「项目」，页数会虚高
+     * （5 个项目、12 个案卷 → 前端显示 2 页，翻到第 2 页却是空的）。
+     * 因此这里手工算 offset/limit，再把真实项目数塞回 Page。
+     */
+    @Override
+    public IPage<ArchiveProjectVO> queryProjectPage(ArchiveQueryDTO query, Integer pageNo, Integer pageSize) {
+        ArchiveQueryDTO condition = query == null ? new ArchiveQueryDTO() : query;
+        int no = pageNo == null || pageNo < 1 ? 1 : pageNo;
+        int size = pageSize == null || pageSize < 1 ? 10 : Math.min(pageSize, 200);
+
+        long total = baseMapper.countProjectGroups(condition);
+        Page<ArchiveProjectVO> page = new Page<>(no, size);
+        page.setTotal(total);
+        page.setSearchCount(false);
+        if (total <= 0) {
+            page.setRecords(new ArrayList<>());
+            return page;
+        }
+        int offset = (no - 1) * size;
+        List<ArchiveProjectVO> records = baseMapper.selectProjectGroups(condition, offset, size);
+        page.setRecords(records == null ? new ArrayList<>() : records);
+        return page;
+    }
+
+    /**
+     * 某个项目下的全部案卷（树形第二层）。
+     *
+     * <p>卷内文件在这里一并补齐：前端展开一个项目就要看到「案卷 → 类别 → 文件」，
+     * 若让前端按案卷逐个再请求一次，一个项目有 5 卷就是 5 次往返。
+     */
+    @Override
+    public List<Archive> queryProjectCaseFiles(ArchiveQueryDTO query, String projectKey) {
+        if (StringUtils.isBlank(projectKey)) {
+            return new ArrayList<>();
+        }
+        ArchiveQueryDTO condition = query == null ? new ArchiveQueryDTO() : query;
+        List<Archive> archives = baseMapper.selectCaseFilesByProject(condition, projectKey);
+        if (archives == null || archives.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<String> ids = new ArrayList<>(archives.size());
+        for (Archive archive : archives) {
+            ids.add(archive.getId());
+        }
+        Map<String, List<ArchiveFile>> filesByArchive = archiveFileService.queryByArchiveIds(ids);
+        for (Archive archive : archives) {
+            archive.setFiles(filesByArchive.getOrDefault(archive.getId(), new ArrayList<>()));
+        }
+        return archives;
     }
 
     // ==================================================================
@@ -332,6 +393,111 @@ public class ArchiveServiceImpl extends ServiceImpl<ArchiveMapper, Archive> impl
                 deleteArchive(id.trim());
             }
         }
+    }
+
+    // ==================================================================
+    // 收发文归档时复用同项目案卷（P2-07 第 4 条）
+    // ==================================================================
+
+    /**
+     * 查找同项目已有的案卷。
+     *
+     * <p><b>为什么按 facilityId 优先、crzdbh 兜底</b>：与「关联档案」既有口径一致
+     * （facility_id 精确，crzdbh 是历史冗余列的兜底），不要让同一次归档在两种匹配之间摇摆。
+     *
+     * <p><b>为什么不看 status</b>：归档中的空卷、已归档的卷都可能是在用的案卷；
+     * 挑「创建时间最早」的那一卷，是因为它通常就是中心当年建档的那一卷，
+     * 后面手工补录出来的重复卷反而更晚（<b>本次不去重、不删除任何历史卷</b>）。
+     */
+    @Override
+    public Archive findReuseCaseFile(String facilityId, String crzdbh) {
+        if (StringUtils.isNotBlank(facilityId)) {
+            Archive byFacility = firstArchive(new QueryWrapper<Archive>()
+                    .eq("del_flag", 0)
+                    .eq("facility_id", facilityId.trim()));
+            if (byFacility != null) {
+                return byFacility;
+            }
+        }
+        if (StringUtils.isNotBlank(crzdbh)) {
+            return firstArchive(new QueryWrapper<Archive>()
+                    .eq("del_flag", 0)
+                    .eq("crzdbh", crzdbh.trim()));
+        }
+        return null;
+    }
+
+    private Archive firstArchive(QueryWrapper<Archive> wrapper) {
+        wrapper.orderByAsc("create_time").orderByAsc("archive_no").last("LIMIT 1");
+        List<Archive> list = list(wrapper);
+        return list == null || list.isEmpty() ? null : list.get(0);
+    }
+
+    /**
+     * 追加卷内文件到已有案卷。
+     *
+     * <p>只追加，不动主表：档案号 / 档案名称 / 状态 / 密级都不改。
+     * 尤其是<b>不改状态</b>——把一个「归档中」的旧卷因为追加了文件就标成「已归档」，
+     * 等于替业务做了归档决定，且会让历史操作记录与库里的状态对不上。
+     *
+     * <p><b>★ P1-11：返回值必须是「库里真实多了几行」，不是入参大小。</b>
+     * 老写法 {@code return files.size()} 报的是「打算写几个」。一旦
+     * {@code saveFiles} 里某条因 {@code store_path} 为空被拦、或批量插入只成功了一部分，
+     * 归档结果弹窗照样显示「转换 3 → 落库 3」，用户看到的是绿字，档案文件页签却是 2 条 ——
+     * 这种「数字对不上但没人知道该查哪里」正是 P1-11 要消灭的东西。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int appendFiles(String archiveId, List<ArchiveFile> files) {
+        if (StringUtils.isBlank(archiveId)) {
+            throw new JeecgBootException("缺少档案ID，无法追加卷内文件");
+        }
+        Archive archive = getById(archiveId);
+        if (archive == null) {
+            throw new JeecgBootException("案卷不存在或已被删除，无法追加卷内文件");
+        }
+        if (files == null || files.isEmpty()) {
+            return 0;
+        }
+        // 续号要和已有序号接上，否则同一卷里会出现两个「01」
+        long beforeCount = baseMapper.countFilesByArchiveId(archiveId);
+        int seq = (int) beforeCount;
+        for (ArchiveFile file : files) {
+            seq++;
+            file.setSeqNo(seq);
+            file.setSortNo(seq);
+        }
+        archiveFileService.saveFiles(archiveId, files);
+        archiveFileService.refreshArchiveFileStats(archiveId);
+        // 归档前后各数一次库，差值才是「本次真实写进去的行数」
+        long afterCount = baseMapper.countFilesByArchiveId(archiveId);
+        int savedRows = (int) Math.max(0L, afterCount - beforeCount);
+        if (savedRows != files.size()) {
+            // 不抛异常：文件已经写进去了一部分，回滚会把那一部分也丢掉。
+            // 但必须用 warn 明确记下差额，让「落库 N 行」在结果里如实变小（见调用方）。
+            log.warn("案卷追加卷内文件行数与入参不一致：archiveId={}, archiveNo={}, 入参={}, 库内实际新增={}, "
+                            + "归档前行数={}, 归档后行数={}（差额通常是 store_path 为空被拦下的文件）",
+                    archiveId, archive.getArchiveNo(), files.size(), savedRows, beforeCount, afterCount);
+        }
+        archiveLogService.record(archiveId, null, ArchiveLog.ACTION_EDIT,
+                "追加卷内文件 " + savedRows + " 个（收发文归档归入本卷）", archive.getArchiveNo());
+        log.info("案卷追加卷内文件成功：archiveId={}, archiveNo={}, 入参={}, 库内实际新增行数={}",
+                archiveId, archive.getArchiveNo(), files.size(), savedRows);
+        return savedRows;
+    }
+
+    /**
+     * 某个案卷当前在库里真实存在的卷内文件行数。
+     *
+     * <p>新建案卷分支不经过 {@link #appendFiles}，但同样需要一个「库内事实」作为
+     * 第三段计数，所以单独开这个只读方法给收发文归档复用。
+     */
+    @Override
+    public int countFiles(String archiveId) {
+        if (StringUtils.isBlank(archiveId)) {
+            return 0;
+        }
+        return (int) baseMapper.countFilesByArchiveId(archiveId);
     }
 
     // ==================================================================

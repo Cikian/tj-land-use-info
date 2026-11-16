@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
+import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.common.system.vo.LoginUser;
@@ -22,6 +23,7 @@ import org.jeecg.modules.land.archive.entity.ArchiveLog;
 import org.jeecg.modules.land.archive.service.IArchiveFileService;
 import org.jeecg.modules.land.archive.service.IArchiveLogService;
 import org.jeecg.modules.land.archive.service.IArchiveService;
+import org.jeecg.modules.land.archive.vo.ArchiveProjectVO;
 import org.jeecg.modules.land.archive.vo.ArchiveStatVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -477,22 +479,80 @@ public class ArchiveController {
      * 需求原文：「在档案详情中，有一块需要关联展示该项目的收发文情况」。
      */
     @AutoLog(value = "档案-关联收发文情况")
-    @ApiOperation(value = "档案-关联收发文情况", notes = "按配套项目关联；未传项目时按宗地关联")
+    @ApiOperation(value = "档案-关联收发文情况",
+            notes = "传 archiveId 时按「归档到本卷的公文」精确匹配；否则按配套项目 / 宗地关联")
     @RequiresPermissions(value = {PERM_LIST, PERM_DOC_RECEIVE, PERM_DOC_SEND}, logical = Logical.OR)
     @GetMapping(value = "/relatedDocuments")
     public Result<Map<String, Object>> relatedDocuments(
             @RequestParam(name = "facilityId", required = false) String facilityId,
             @RequestParam(name = "landId", required = false) String landId,
             @RequestParam(name = "crzdbh", required = false) String crzdbh,
+            @RequestParam(name = "archiveId", required = false) String archiveId,
             @RequestParam(name = "limit", required = false) Integer limit) {
-        List<DocReceive> receives = docReceiveService.queryRelated(facilityId, landId, crzdbh, limit);
-        List<DocSend> sends = docSendService.queryRelated(facilityId, landId, crzdbh, limit);
-        Map<String, Object> result = new LinkedHashMap<>(4);
+        List<DocReceive> receives;
+        List<DocSend> sends;
+        /*
+         * ★ P1-11 第 3 条：档案详情里的「收发文情况」必须和「档案文件」按同一个 archiveId 加载。
+         *   只按 facilityId / crzdbh 查会把「同项目其它卷的公文」也拉进来，
+         *   于是用户看到「档案文件页签 3 个、收发文情况 5 条」，又是新的不一致。
+         *   这里先用 archive_id 精确匹配；一卷都没匹配上（历史数据没写 archive_id）
+         *   才退化为按项目的旧口径，保证老数据不是空白。
+         */
+        if (StringUtils.isNotBlank(archiveId)) {
+            receives = docReceiveService.queryByArchiveId(archiveId, limit);
+            sends = docSendService.queryByArchiveId(archiveId, limit);
+            if (receives.isEmpty() && sends.isEmpty()) {
+                Archive archive = archiveService.getById(archiveId);
+                if (archive != null) {
+                    receives = docReceiveService.queryRelated(
+                            archive.getFacilityId(), archive.getLandId(), archive.getCrzdbh(), limit);
+                    sends = docSendService.queryRelated(
+                            archive.getFacilityId(), archive.getLandId(), archive.getCrzdbh(), limit);
+                }
+            }
+        } else {
+            receives = docReceiveService.queryRelated(facilityId, landId, crzdbh, limit);
+            sends = docSendService.queryRelated(facilityId, landId, crzdbh, limit);
+        }
+        Map<String, Object> result = new LinkedHashMap<>(6);
         result.put("receives", receives);
         result.put("sends", sends);
         result.put("receiveCount", receives.size());
         result.put("sendCount", sends.size());
+        result.put("archiveId", archiveId);
         return Result.OK(result);
+    }
+
+    // ==================================================================
+    // 按项目聚合（P2-07 树形：项目 → 案卷 → 材料类别 → 文件）
+    // ==================================================================
+
+    /**
+     * 按项目分页聚合。
+     *
+     * <p><b>分页口径 = 项目</b>：一页 N 个项目，每个项目下带上它的案卷数、文件数、
+     * 总大小与材料类别摘要。不按案卷分页，否则同一个项目会被切到相邻两页。
+     */
+    @AutoLog(value = "档案-按项目聚合分页")
+    @ApiOperation(value = "档案-按项目聚合分页", notes = "一页 = 一页项目；含类别摘要 / 文件数 / 总大小")
+    @RequiresPermissions(PERM_LIST)
+    @GetMapping(value = "/projectPage")
+    public Result<IPage<ArchiveProjectVO>> projectPage(
+            ArchiveQueryDTO query,
+            @RequestParam(name = "pageNo", required = false) Integer pageNo,
+            @RequestParam(name = "pageSize", required = false) Integer pageSize) {
+        return Result.OK(archiveService.queryProjectPage(query, pageNo, pageSize));
+    }
+
+    /** 某个项目下的全部案卷（树形第二层，卷内文件已随案卷返回） */
+    @AutoLog(value = "档案-项目下的案卷")
+    @ApiOperation(value = "档案-项目下的案卷", notes = "projectKey 由 /projectPage 返回，原样回传")
+    @RequiresPermissions(PERM_LIST)
+    @GetMapping(value = "/projectCaseFiles")
+    public Result<List<Archive>> projectCaseFiles(
+            ArchiveQueryDTO query,
+            @RequestParam(name = "projectKey", required = true) String projectKey) {
+        return Result.OK(archiveService.queryProjectCaseFiles(query, projectKey));
     }
 
     // ==================================================================

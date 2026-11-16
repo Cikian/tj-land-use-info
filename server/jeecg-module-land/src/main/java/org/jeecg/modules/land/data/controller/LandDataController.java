@@ -162,9 +162,19 @@ public class LandDataController {
         return Result.OK(facilityService.queryOptions(crzdbh, keyword, limit));
     }
 
-    /** 跨宗地的配套项目搜索（档案查询页的项目名称条件用） */
+    /**
+     * 跨宗地的配套项目搜索（档案查询页的项目名称条件用；也是录入弹窗「道路类候选」的来源）。
+     *
+     * <p>P1-10 新增两个可选参数，都不传时行为与改动前完全一致：
+     * <ul>
+     *   <li>{@code category}：配套类别模糊过滤（传「道路」= ptsslb LIKE '%道路%'）；</li>
+     *   <li>{@code roadFirst}：true 时把名称/类别里带「道路」的排到最前。</li>
+     * </ul>
+     * 响应结构不变（仍是 {@code List<FacilityOptionVO>}）。
+     */
     @AutoLog(value = "数据管理-配套项目全局搜索")
-    @ApiOperation(value = "配套项目全局搜索", notes = "不限宗地，供查询条件使用")
+    @ApiOperation(value = "配套项目全局搜索",
+            notes = "不限宗地，供查询条件使用；可选 category（配套类别模糊）/ roadFirst（道路类优先）")
     @RequiresPermissions(value = {
             "land:archive:list", "land:archive:add", "land:archive:edit",
             "land:docReceive:list", "land:docReceive:add", "land:docReceive:edit",
@@ -174,8 +184,10 @@ public class LandDataController {
             "land:completion:list", "land:completion:add", "land:completion:edit"}, logical = Logical.OR)
     @GetMapping(value = "/facility/search")
     public Result<List<FacilityOptionVO>> facilitySearch(@RequestParam(name = "keyword", required = false) String keyword,
-                                                         @RequestParam(name = "limit", required = false) Integer limit) {
-        return Result.OK(facilityService.searchOptions(keyword, limit));
+                                                         @RequestParam(name = "limit", required = false) Integer limit,
+                                                         @RequestParam(name = "category", required = false) String category,
+                                                         @RequestParam(name = "roadFirst", required = false) Boolean roadFirst) {
+        return Result.OK(facilityService.searchOptions(keyword, limit, category, roadFirst));
     }
 
     /** 配套项目详情 */

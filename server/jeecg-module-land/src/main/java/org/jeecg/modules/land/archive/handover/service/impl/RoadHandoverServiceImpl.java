@@ -62,7 +62,13 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
     private static final int ARCHIVE_LIMIT_MAX = 200;
     private static final int ARCHIVE_PICK_DEFAULT = 30;
 
-    /** 「接收管养单位 Top N」统计的默认条数 */
+    /**
+     * 「接收管养单位 Top N」统计的默认条数。
+     *
+     * <p>★ P2-08 起该排行不再查询（页面已不展示，见 {@code queryStat} 里的说明）。
+     * 常量与 Mapper 一起保留：导出/后续报表若要恢复这个排行，
+     * 只需把那条被注释掉的调用放回来，不必再确认「原来取的是前几名」。
+     */
     private static final int RECEIVE_UNIT_TOP = 10;
 
     @Autowired
@@ -139,7 +145,22 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         stat.setByXzqh(baseMapper.selectStatByColumn(condition, "xzqh", "未填写"));
         stat.setByDldj(baseMapper.selectStatByColumn(condition, "dldj", "未填写"));
         stat.setByYear(baseMapper.selectStatByYear(condition));
-        stat.setByReceiveUnit(baseMapper.selectStatByReceiveUnit(condition, RECEIVE_UNIT_TOP));
+        /*
+         * ★ P2-08：「接收管养单位 Top10」不再查询。
+         *
+         * 判据（两端 src 全量 grep 过）：管理端没有任何地方消费 byReceiveUnit；
+         * 大屏 HandoverPanel.vue 里只剩一个没人读的 data 字段 byReceiveUnit: []，
+         * 原排行块已在 P2-08 前端改造中整块移除（改由 receiveUnitBlank 指标卡回答
+         * 「有多少条没填」）。也就是说这次查询的结果<b>没有任何消费者</b>，
+         * 却每次打开移交页面都要多跑一条 GROUP BY 排序查询 —— 属于纯浪费。
+         *
+         * 保留 Mapper 方法 selectStatByReceiveUnit 与 VO 字段 byReceiveUnit：
+         *   · 接口响应结构不变（字段仍在，值是空数组），不破坏任何现有集成；
+         *   · 导出/后续报表若要「谁接管得最多」，直接接上即可，不必重写 SQL。
+         */
+        // stat.setByReceiveUnit(baseMapper.selectStatByReceiveUnit(condition, RECEIVE_UNIT_TOP));
+        // P2-08：接收管养单位未填写数量（替代被空值污染的 Top10，作为数据质量指标）
+        stat.setReceiveUnitBlank(baseMapper.countReceiveUnitBlank(condition));
         return stat;
     }
 

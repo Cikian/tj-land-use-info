@@ -22,8 +22,12 @@ management:
 spring:
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # 与 dev / prod 对齐为 200MB：前端上传组件的 ALLOWED_EXT 里含 zip/rar/7z，
+      # 单文件上限就是 200MB；jeecg 默认的 10MB 会让「前端页面上传成功、到后端 500」
+      # 这类最难解释的问题出现在测试环境里。测试环境是验收/联调环境，配置必须和生产一致，
+      # 否则同一个档案包在 test 传不上去、prod 却能传。
+      max-file-size: 200MB
+      max-request-size: 200MB
   mail:
     host: smtp.163.com
     username: ${TJ_MAIL_USERNAME:}

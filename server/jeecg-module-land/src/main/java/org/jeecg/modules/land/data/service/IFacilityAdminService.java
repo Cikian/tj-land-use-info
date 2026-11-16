@@ -2,6 +2,7 @@ package org.jeecg.modules.land.data.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
+import org.jeecg.modules.land.data.dto.FacilityQueryDTO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
@@ -48,8 +49,14 @@ public interface IFacilityAdminService {
     // 一、查询
     // ==================================================================
 
-    /** 分页查询配套项目（按宗地编号 / 项目名称 / 类别 / 区划等条件） */
-    IPage<Facility> queryPage(LandAdminQueryDTO query);
+    /**
+     * 分页查询配套项目（按宗地编号 / 项目名称 / 类别 / 区划 / <b>功能区</b> 等条件）。
+     *
+     * <p>★ 形参是 {@link FacilityQueryDTO}（在通用条件之上多一个 {@code gnq}），
+     * 参数名与 {@link LandAdminQueryDTO} 完全兼容 —— 老的调用方传原 DTO 也能编过，
+     * 只是拿不到功能区过滤。
+     */
+    IPage<Facility> queryPage(FacilityQueryDTO query);
 
     /**
      * 铺图概览数据（<b>版本化增量</b>）——与经营性用地 queryGeoOverview 同一套协议，

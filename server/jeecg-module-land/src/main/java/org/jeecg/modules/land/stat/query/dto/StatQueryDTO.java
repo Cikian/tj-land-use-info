@@ -129,6 +129,19 @@ public class StatQueryDTO implements Serializable {
     /** 自定义展示列（字段 key 列表）；空=默认列 */
     private List<String> columns;
 
+    /**
+     * 「导出全部字段」模式（查询导出页签的「导出全部字段」按钮）。
+     *
+     * <p>★ 语义：<b>忽略 {@link #columns} 的勾选，只保留查询条件</b>，
+     * 由 {@code QueryFieldRegistry.allColumnKeys()} 按字段定义顺序输出全部业务列
+     * （剔除软删标记、迁移溯源 id 与超大几何文本，见该方法的类注释）。
+     *
+     * <p>★ 为什么用布尔开关而不是「前端直接把全部 key 拼进 columns」：
+     * 一是前端列数会随字段注册表增长而漂移（新增字段就要改前端）；
+     * 二是「全部字段」这个概念只有后端注册表说得清（哪些算业务字段、哪些是大文本）。
+     */
+    private Boolean allColumns;
+
     /** 分页页码（从 1 开始） */
     private Integer pageNo = 1;
 

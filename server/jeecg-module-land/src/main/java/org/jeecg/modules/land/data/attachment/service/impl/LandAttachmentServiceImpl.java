@@ -94,62 +94,91 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
                     DataSupport.BIZ_PROCESS)));
 
     /**
-     * 附件类型白名单：**宗地 / 环节**用这一套（码 → 中文名）。
+     * 附件类型白名单：**宗地**用这一套（码 → 中文名，共 4 类）。
      *
-     * <p>逐字对应 {@code sql/data/01_data_dict.sql} 的 {@code land_attach_type} 字典（5 项），
-     * 而字典的名称又逐字取自旧系统存储目录
-     * {@code docs/基础设施配套动态监管工作站/经营性用地附件/<项目>/} 下的类型目录名。
+     * <p>逐字对应 {@code sql/data/01_data_dict.sql} 的 {@code land_attach_type} 字典（4 项），
+     * 编码与顺序以《系统测试问题分级整改清单》P1-08 的报告图 3 为唯一基准
+     * （2026-11 整改：原来 5 类、且「配套方案」挤在 02，与报告图不符）。
      * 用 LinkedHashMap 保证顺序 = 字典的 {@code sort_order}，前端目录树直接照序渲染。
+     *
+     * <p>★ 「配套方案」为什么从宗地侧消失：它的业务内容并入了配套侧的
+     * {@code 07 专业配套方案}（同一份专业配套方案本来就是配套项目的过程资料）。
+     * 宗地侧历史数据里的 02 见 {@link #TYPE_NAMES_LEGACY}（迁到 99 其他，不丢附件）。
      */
     private static final Map<String, String> TYPE_NAMES_LAND;
 
     /**
-     * 附件类型白名单：**配套项目**用这一套（码 → 中文名）。
+     * 附件类型白名单：**配套项目（含环节进度）**用这一套（码 → 中文名，共 13 类）。
      *
-     * <p>逐字对应 {@code land_facility_attach_type} 字典（13 项），
-     * 名称取自 {@code 市政配套项目附件/<项目>/} 下的 13 个类型目录名。
+     * <p>逐字对应 {@code land_facility_attach_type} 字典（13 项），编码与顺序同报告图 3：
+     * 01 配套项目核定用地与地籍调查 → 13 移交文件。
      *
      * <p>★ 为什么宗地与配套要分成两套而不是共用一张表：
-     * 两者的材料清单本来就不一样（宗地是「土地整理计划 / 配套方案 / 出让宗地图形数据」，
-     * 配套是「项建批复文件 / 道路规划 / 竣工文件」…），
+     * 两者的材料清单本来就不一样（宗地只有立项与用地侧 4 类，配套是「核定用地 →
+     * 项建 → 可研 → 初设 → 规划 → 施工 → 竣工 → 移交」的全过程 13 类），
      * 混在一起会让用户在一个下拉里看到一半与自己无关的选项。
+     *
+     * <p>★ 为什么两套的 01~04 编码会重号（宗地 01=土地整理计划，配套 01=核定用地）：
+     * 编码只在**同一归属内**唯一，跨归属靠 biz_type 区分。因此
+     * {@link #typeText(String, String)} 必须带 bizType —— 只按码查名会把配套的
+     * 01 显示成「土地整理计划」，这正是 P1-08 投诉的「材料类型与归属类型不匹配」。
      */
     private static final Map<String, String> TYPE_NAMES_FACILITY;
+
+    /**
+     * 历史遗留码（不属于任何一套现行目录，**只读回显**用，不出现在上传下拉里）。
+     *
+     * <p>★ 为什么需要它：{@code sql/data/15_attachment_type_remap.sql} 把「归不了位」的
+     * 旧码统一迁到 {@code 99}（例如宗地侧原 02「配套方案」——它的内容归了配套侧
+     * {@code 07}，但附件的 biz_id 是宗地 id，改挂配套会指向不存在的配套项目）。
+     * 这些附件必须仍能看见、能下载，所以树与列表要给它一个中文名；
+     * 但它不参与上传白名单（新数据不允许再落到 99）。
+     */
+    private static final Map<String, String> TYPE_NAMES_LEGACY;
 
     static {
         Map<String, String> land = new LinkedHashMap<>();
         land.put("01", "土地整理计划");
-        land.put("02", "配套方案");
-        land.put("03", "配套情况函");
-        land.put("04", "配套筹备函");
-        land.put("05", "出让宗地图形数据（SHP）");
+        land.put("02", "配套情况函");
+        land.put("03", "配套筹备函");
+        land.put("04", "出让宗地图形数据（shp）");
         TYPE_NAMES_LAND = Collections.unmodifiableMap(land);
 
         Map<String, String> facility = new LinkedHashMap<>();
-        facility.put("01", "项建批复文件");
-        facility.put("02", "可研批复文件");
-        facility.put("03", "初设及概算批复文件");
-        facility.put("04", "道路规划");
-        facility.put("05", "专业配套方案");
-        facility.put("06", "施工许可");
-        facility.put("07", "专业管理意见");
-        facility.put("08", "配套项目核定用地与地籍调查");
-        facility.put("09", "规划工程许可");
-        facility.put("10", "规划用地许可与划拨手续办理");
+        facility.put("01", "配套项目核定用地与地籍调查");
+        facility.put("02", "项建批复");
+        facility.put("03", "可研批复");
+        facility.put("04", "初设及概算批复");
+        facility.put("05", "道路规划");
+        facility.put("06", "规划工程许可");
+        facility.put("07", "专业配套方案");
+        facility.put("08", "专业管理意见");
+        facility.put("09", "规划用地许可与划拨手续办理");
+        facility.put("10", "施工许可");
         facility.put("11", "不动产登记");
         facility.put("12", "竣工文件");
         facility.put("13", "移交文件");
         TYPE_NAMES_FACILITY = Collections.unmodifiableMap(facility);
+
+        Map<String, String> legacy = new LinkedHashMap<>();
+        legacy.put("99", "其他（历史）");
+        TYPE_NAMES_LEGACY = Collections.unmodifiableMap(legacy);
     }
 
     /**
      * 取某个业务类型可用的附件类型集合。
      *
-     * <p>环节进度（{@code process}）挂在配套项目下，但环节的佐证材料属于项目自身资料，
-     * 按宗地那一套走（产品口径：环节附件的类型与所属项目的用地侧资料一致）。
+     * <p>★ <b>环节进度（{@code process}）跟随它的挂靠侧，用配套那 13 类</b>：
+     * 环节进度存在 {@code t_facility_process}，其父级永远是配套项目
+     * （{@code t_supporting_facilities}），不存在「挂在宗地下」的环节。
+     * 2026-11 整改前这里是「环节统一用宗地 5 类」，与挂靠侧不一致 ——
+     * 表现是环节里传的材料名与配套详情页里的材料名对不上
+     * （同一份「项建批复」在两处叫不同名字）。
      */
     private static Map<String, String> typeNamesOf(String bizType) {
-        return DataSupport.BIZ_FACILITY.equals(bizType) ? TYPE_NAMES_FACILITY : TYPE_NAMES_LAND;
+        String type = DataSupport.clean(bizType);
+        return DataSupport.BIZ_FACILITY.equals(type) || DataSupport.BIZ_PROCESS.equals(type)
+                ? TYPE_NAMES_FACILITY : TYPE_NAMES_LAND;
     }
 
     @Autowired
@@ -281,7 +310,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             long totalSize = toLong(row.get("totalSize"));
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("fileType", code);
-            item.put("fileTypeText", typeText(code));
+            item.put("fileTypeText", typeText(type, code));
             item.put("num", toLong(row.get("num")));
             item.put("totalSize", totalSize);
             item.put("readableSize", formatSize(totalSize));
@@ -432,7 +461,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
      * <p>顺序按材料清单（审批流程顺序）而不是文件数：
      * 材料类型是流程的自然顺序（项建 → 可研 → 初设 → 施工 → 竣工），
      * 按文件数排会让不同项目看到的目录顺序都不一样，用户找位置靠猜。
-     * 清单外的码值（历史数据）追加在最后，不丢文件。
+     * 清单外的码值（历史数据，例如迁移留下的 {@code 99 其他（历史）}）追加在最后，不丢文件。
      */
     private AttachmentTreeVO buildTree(String type, List<LandAttachment> files) {
         AttachmentTreeVO result = new AttachmentTreeVO().setBizType(type);
@@ -466,7 +495,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
             }
         }
         for (Map.Entry<String, List<LandAttachment>> rest : buckets.entrySet()) {
-            groups.add(buildGroup(type, rest.getKey(), typeText(rest.getKey()), rest.getValue()));
+            groups.add(buildGroup(type, rest.getKey(), typeText(type, rest.getKey()), rest.getValue()));
         }
 
         result.setGroups(groups);
@@ -575,11 +604,11 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         // 附件上传留痕（挂在附件自己身上，bizKey 用文件名，方便在「操作履历」里按名字找）
         changeLogSupport.collector(DataSupport.BIZ_ATTACHMENT, entity.getId(), entity.getFileName())
                 .add("fileName", "文件名", null, entity.getFileName())
-                .add("fileType", "附件类型", null, typeText(code))
+                .add("fileType", "附件类型", null, typeText(type, code))
                 .add("fileSize", "文件大小", null, formatSize(entity.getFileSize()))
                 .add("bizKey", "所属业务", null, entity.getBizKey())
                 .save(DataChangeLog.ACTION_UPLOAD,
-                        "上传附件「" + entity.getFileName() + "」（" + typeText(code) + "）", null);
+                        "上传附件「" + entity.getFileName() + "」（" + typeText(type, code) + "）", null);
 
         log.info("附件保存成功：id={}, bizType={}, bizId={}, fileType={}, fileName={}, size={}, 操作人={}",
                 entity.getId(), type, id, code, entity.getFileName(), entity.getFileSize(),
@@ -634,7 +663,8 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         changeLogSupport.collector(DataSupport.BIZ_ATTACHMENT, entity.getId(), entity.getFileName())
                 .add("delFlag", "删除状态", "正常", "已删除")
                 .save(DataChangeLog.ACTION_ATTACH_DELETE,
-                        "删除附件「" + entity.getFileName() + "」（" + typeText(entity.getFileType())
+                        "删除附件「" + entity.getFileName() + "」（"
+                                + typeText(entity.getBizType(), entity.getFileType())
                                 + "，所属业务：" + StringUtils.defaultString(entity.getBizKey(), "—") + "）",
                         request);
 
@@ -689,7 +719,7 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
         }
         entity.setUrl(buildUrl(entity));
         entity.setReadableSize(formatSize(entity.getFileSize()));
-        entity.setFileTypeText(typeText(entity.getFileType()));
+        entity.setFileTypeText(typeText(entity.getBizType(), entity.getFileType()));
         String ext = entity.getFileExt();
         if (StringUtils.isBlank(ext)) {
             ext = extOf(entity.getFileName());
@@ -891,20 +921,47 @@ public class LandAttachmentServiceImpl extends ServiceImpl<LandAttachmentMapper,
     /**
      * 附件类型码 → 中文名（未登记时回退为码值本身，保证页面上不会出现空白）。
      *
-     * <p>两套清单都要查一遍：调用点常常只拿到附件实体（fileType），
-     * 而单个业务对象下的附件不会混用两套码值，所以「先按归属查、查不到再查另一套」
-     * 既准确又不需要调用方多传一个 bizType。
+     * <p>★ <b>必须带 bizType</b>（2026-11 P1-08 整改）：两套目录的 01~04 编码重号，
+     * 只按码查名必然把一侧的名字套到另一侧（配套的 01 曾经显示成「土地整理计划」）。
+     * 调用点手里都有归属，所以不再保留「先查宗地再查配套」的猜测式兜底 ——
+     * 猜错的后果比显示成码值更糟（用户看到的是错的分类名，不会去质疑）。
+     *
+     * @param bizType land / facility / process；为空时（历史数据的孤立调用）才退回逐套查
+     * @param code    材料类型码
      */
-    private static String typeText(String code) {
+    private static String typeText(String bizType, String code) {
         if (StringUtils.isBlank(code)) {
             return "未分类";
         }
         String key = code.trim();
-        String text = TYPE_NAMES_LAND.get(key);
-        if (text == null) {
-            text = TYPE_NAMES_FACILITY.get(key);
+        String side = typeNamesOfOrNull(bizType);
+        if (side != null) {
+            String text = typeNamesOf(side).get(key);
+            if (text != null) {
+                return text;
+            }
+        } else {
+            String text = TYPE_NAMES_LAND.get(key);
+            if (text == null) {
+                text = TYPE_NAMES_FACILITY.get(key);
+            }
+            if (text != null) {
+                return text;
+            }
         }
-        return text == null ? key : text;
+        String legacy = TYPE_NAMES_LEGACY.get(key);
+        return legacy == null ? key : legacy;
+    }
+
+    /**
+     * 业务类型 → 有效的归属侧（不认识就返回 null）。
+     *
+     * <p>与 {@link #cleanBizType} 的区别：那个是「查询入口的宽松清洗」（不合法即空），
+     * 这里要区分「没传」与「传了个不认识的」——前者允许退化，后者应保持码值原样显示。
+     */
+    private static String typeNamesOfOrNull(String bizType) {
+        String type = DataSupport.clean(bizType);
+        return ALLOWED_BIZ_TYPES.contains(type) ? type : null;
     }
 
     /** 允许类型的中文提示文案（错误信息里用，按业务类型取对应那套） */

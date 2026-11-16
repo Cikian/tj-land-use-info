@@ -20,21 +20,48 @@ import org.apache.commons.lang.StringUtils;
  * 同一段代码在「属性修改」接口里也是这么判的（旧库该表<b>没有唯一键</b>，
  * 唯一性完全靠应用层保证，所以这里必须做扎实）。
  *
- * <p><b>为什么做成三种策略而不是固定「跳过」</b>：
+ * <p><b>为什么做成多种策略而不是固定「跳过」</b>：
  * 旧系统对已存在的 (宗地, 名称) 一律跳过并计数。这在「日常补录新配套」时是对的，
  * 但在「年度台账更新」时就是灾难 —— 中心拿着一份改过投资估算、进度、六方单位的
  * 全量台账导进来，结果几百条全被跳过，还得逐条上页面手改。
- * 反过来，若默认覆盖，一次误传的模板会把已有数据抹掉。
- * 所以给三种策略让调用方按场景显式选，默认取最安全的
- * {@link #REJECT}（既不写也不改，只在回执里报出来）。
+ * 反过来，若只有覆盖、没有「只导新增」，一次误传的模板会把已有数据抹掉。
+ * 所以给多种策略让调用方按场景显式选。
+ *
+ * <p><b>★ 默认值从 {@link #REJECT} 改为 {@link #UPSERT}（2026-11 整改 P1-06）</b>：
+ * 实测中心交上来的台账<b>绝大多数是「既有新增、又有更新」的混合批次</b>
+ * （一块地上补几行新配套、同时改几行已有配套的进度与投资）。
+ * 原来默认「重复即报错」意味着这类文件必先被整批判红、再手工拆成两份表分别导入，
+ * 而拆表正是最容易拆错（丢行 / 重复行）的一步。
+ * 改为默认 upsert 后「一份文件一次导入」即可完成，且重复项<b>不会被重复插入</b>
+ * （判重键仍是 (crzdbh, ptxmmc)，命中就更新、没命中才新增）。
+ *
+ * <p>为什么可以不担心「误覆盖」：upsert 的更新口径是<b>按非空单元格更新</b>
+ * —— 文件里空着的列一律保持库内原值（见 {@link #UPSERT}）。
+ * 只要用户是按模板填的那几列，未填的六方单位、资金来源、录入人不会被动到。
+ * 「既不写也不改」的保守诉求仍由 {@link #REJECT} 提供（显式选它即可）。
+ *
+ * <p>另：默认策略变化<b>不影响</b>「宗地必须已存在」这条安全校验
+ * （{@code allowOrphan} 默认仍为 false），避免为了少点几下就放进一批孤儿配套。
  */
 public enum FacilityDuplicateStrategy {
 
     /**
-     * 报错（默认）：已存在的 (宗地编号, 配套项目名称) 作为错误回执到行，整批不入库
+     * 新增 + 更新（默认）：已存在的 (宗地编号, 配套项目名称) 按<b>非空单元格</b>更新，
+     * 库里没有的行新增；同一批文件可同时完成新增与更新，且不会重复插入。
+     *
+     * <p>★ 空单元格<b>不会</b>把库里的值清空 —— 与宗地导入模块同一口径：否则用户拿一份
+     * 只填了进度的补丁表导进去，会把六方单位、资金来源、录入人全部抹空。
+     *
+     * <p>这是默认档，理由见类注释「默认值从 REJECT 改为 UPSERT」。
+     */
+    UPSERT("upsert", "新增并更新已有配套（空单元格不改动）"),
+
+    /**
+     * 报错：已存在的 (宗地编号, 配套项目名称) 作为错误回执到行，整批不入库
      * （除非勾选跳过错误行）。
      *
-     * <p>这是最安全的一档：用户能明确看到「哪几行撞了」，自己决定改名称还是换策略。
+     * <p>最保守的一档：用户能明确看到「哪几行撞了」，自己决定改名称还是换策略。
+     * 2026-11 之前它是默认值，现在降级为可选项。
      */
     REJECT("reject", "重复即报错（不写库）"),
 
@@ -49,9 +76,10 @@ public enum FacilityDuplicateStrategy {
      * 覆盖更新：已存在的 (宗地编号, 配套项目名称) 按「单元格有值才覆盖」更新
      * （空单元格保持原值）。
      *
-     * <p>适合年度全量台账更新。★ 空单元格<b>不会</b>把库里的值清空 ——
-     * 与宗地导入模块同一口径：否则用户拿一份只填了进度的补丁表导进去，
-     * 会把六方单位、资金来源、录入人全部抹空。
+     * <p>语义与 {@link #UPSERT} 在「已存在的行」上完全一致，差别只在<b>名字与默认值</b>：
+     * 2026-11 之前它是「年度台账更新」的唯一选择，历史调用方（老前端 / 脚本 / 测试）
+     * 仍在传 {@code update}，因此<b>保留不删</b>——删掉会让这些调用方直接报
+     * 「不支持的重复处理策略」，而它们的意图与 upsert 完全相同。
      */
     UPDATE("update", "覆盖更新已有配套（空单元格不改动）");
 
@@ -74,12 +102,16 @@ public enum FacilityDuplicateStrategy {
     /**
      * 前端传参 → 枚举。
      *
-     * <p>兼容三种写法：{@code code}（reject/skip/update）、枚举名（REJECT/SKIP/UPDATE）、
-     * 以及空值（默认 {@link #REJECT}）。
+     * <p>兼容三种写法：{@code code}（upsert/reject/skip/update）、枚举名（UPSERT/REJECT/…）、
+     * 以及空值（默认 {@link #UPSERT}）。
+     *
+     * <p>★ 空值走 {@link #UPSERT} 与 Service 里的兜底（{@code normalize}）必须一致：
+     * 前端老版本、第三方脚本、curl 调用都可能不传这个参数，
+     * 「不传」与「传 upsert」必须是同一个业务动作，否则同一份文件用两种方式调用会得到两种结果。
      */
     public static FacilityDuplicateStrategy of(String value) {
         if (StringUtils.isBlank(value)) {
-            return REJECT;
+            return UPSERT;
         }
         String trimmed = value.trim();
         for (FacilityDuplicateStrategy strategy : values()) {
@@ -91,7 +123,7 @@ public enum FacilityDuplicateStrategy {
                 + "（可选 " + allCodes() + "）");
     }
 
-    /** 「reject / skip / update」，错误提示里用 */
+    /** 「upsert / reject / skip / update」，错误提示里用 */
     public static String allCodes() {
         StringBuilder sb = new StringBuilder();
         for (FacilityDuplicateStrategy strategy : values()) {

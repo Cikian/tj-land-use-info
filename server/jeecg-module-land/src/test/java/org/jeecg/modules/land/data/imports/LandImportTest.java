@@ -76,6 +76,9 @@ public class LandImportTest extends LandIntegrationTestBase {
     @Autowired
     private DataChangeLogExportServiceImpl changeLogExportService;
 
+    @Autowired
+    private org.jeecg.modules.land.data.service.IDataRecycleService recycleService;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -424,6 +427,43 @@ public class LandImportTest extends LandIntegrationTestBase {
     // 三、入库
     // ==================================================================
 
+    /**
+     * P1-05：行政区划仍是 16 个标准区 —— 滨海新区可导入，功能区写法（生态城）必须被拦下并给出取值提示。
+     *
+     * <p>★ 为什么这条要单独锁住：功能区（生态城/经开区/高新区/保税区/土地发展中心）在旧数据里
+     * 混进过 {@code xzqh}，而宗地表<b>没有</b> {@code gnq} 列，一旦放任它们进来，
+     * 「按 16 区统计」就会多出几行对不上总数的分类，而且再也分不清哪个区。
+     * 配套侧的功能区已单独成列（见 {@code 14_facility_gnq_and_dict.sql}），
+     * 宗地侧则<b>只认 16 区</b>，用户填错时得到的是「只能填哪 16 个」的明确提示，
+     * 而不是静默写进库。
+     */
+    @Test
+    public void xzqhKeepsSixteenDistrictsAndRejectsFunctionalZone() throws Exception {
+        String okNo = uniqueNo("xzqh-ok");
+        MockMultipartFile file = buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, okNo, "滨海新区测试地块");
+            setCell(sheet, 2, "xzqh", "滨海新区");
+            // 功能区不是行政区：必须被拦下
+            fillValidRow(sheet, 3, uniqueNo("xzqh-gnq"), "功能区误填地块");
+            setCell(sheet, 3, "xzqh", "生态城");
+        });
+
+        LandImportResultVO preview = importService.preview(file, LandDuplicateStrategy.REJECT);
+        assertEquals(2, preview.getTotalRows());
+        assertEquals(1, preview.getValidRows(), "只有 16 区标准值那一行合法：" + describe(preview));
+        assertEquals(1, preview.getErrorCount(), "生态城不是行政区，应报错：" + describe(preview));
+        LandImportResultVO.RowError error = preview.getErrors().get(0);
+        assertEquals(4, error.getRowNum(), "错误应定位到第 4 行（Excel 1 基）");
+        assertEquals("xzqh", error.getColumn(), "错误应挂在行政区划列上");
+        assertTrue(error.getMessage().contains("行政区划"), error.getMessage());
+        assertTrue(error.getMessage().contains("滨海新区"),
+                "错误提示应列出 16 个标准区，让用户知道该填什么：" + error.getMessage());
+
+        LandImportResultVO confirmed = importService.confirm(file, LandDuplicateStrategy.REJECT, true);
+        assertEquals(1, confirmed.getInsertedRows(), "勾选跳过错误行后只导入合法行");
+        assertEquals("滨海新区", landService.queryByCrzdbh(okNo).getXzqh(), "滨海新区原值落库");
+    }
+
     @Test
     public void confirmInsertsAllConvertedValues() throws Exception {
         String crzdbh = uniqueNo("insert");
@@ -649,6 +689,55 @@ public class LandImportTest extends LandIntegrationTestBase {
         assertEquals("删除后重录", second.getDkmc());
     }
 
+    /**
+     * 导入遇到「同编号的已移除记录」时必须<b>恢复并复用那一行</b>，而不是物理删除后重插。
+     *
+     * <p><b>为什么要锁住这条</b>：老实现在插入前 {@code removeSoftDeleted(crzdbh)}
+     * 把 {@code del_flag=1} 的行真删掉，然后插一条新 id 的记录。表面看「导入成功了」，
+     * 但回收站里那条记录凭空消失，而附件（{@code t_land_attachment}）、环节进度
+     * （{@code t_facility_process}）、变更留痕（{@code t_data_change_log}）都是按
+     * <b>land id</b> 挂的 —— 换一个 id，这些历史全部变成孤儿。
+     *
+     * <p>所以这里的断言顺序就是缺陷的四个面：id 不变（附件/环节/留痕不断链）、
+     * del_flag 回到 0（列表里能看到）、字段被导入值覆盖（不是只恢复不更新）、
+     * 回收站里不再返回它（用户视角「这条又回来了」，不该同时还在回收站里）。
+     */
+    @Test
+    public void reimportRestoresSoftDeletedRowAndKeepsSameId() throws Exception {
+        String crzdbh = uniqueNo("restore");
+        importService.confirm(buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, crzdbh, "首次导入名称");
+            setCell(sheet, 2, "srr", "原始受让人");
+        }), LandDuplicateStrategy.REJECT, false);
+        Land first = landService.queryByCrzdbh(crzdbh);
+        assertNotNull(first, "首次导入应落库");
+        String firstId = first.getId();
+
+        // 移除（软删）→ 应出现在回收站
+        landService.removeById(firstId);
+        assertNull(landService.queryByCrzdbh(crzdbh), "移除后按编号应查不到");
+        assertTrue(recycleIdsOf(crzdbh).contains(firstId),
+                "移除后该行应出现在回收站：" + recycleIdsOf(crzdbh));
+
+        // 导入同编号：恢复并复用
+        LandImportResultVO again = importService.confirm(buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, crzdbh, "恢复后覆盖名称");
+            setCell(sheet, 2, "srr", "覆盖后受让人");
+        }), LandDuplicateStrategy.REJECT, false);
+        assertEquals(1, again.getInsertedRows(),
+                "恢复复用对用户而言就是「新增了一条有效数据」：" + describe(again));
+
+        Land restored = landService.queryByCrzdbh(crzdbh);
+        assertNotNull(restored, "恢复后应能按编号查到");
+        assertEquals(firstId, restored.getId(),
+                "★ 必须复用原 id：附件 / 环节进度 / 变更留痕都按 land id 挂，换 id 就断链");
+        assertEquals(0, Integer.valueOf(0).compareTo(restored.getDelFlag()), "del_flag 必须回到 0");
+        assertEquals("恢复后覆盖名称", restored.getDkmc(), "导入值应覆盖原有字段");
+        assertEquals("覆盖后受让人", restored.getSrr(), "非空单元格同样要覆盖");
+        assertFalse(recycleIdsOf(crzdbh).contains(firstId),
+                "恢复后不应再出现在回收站（否则用户会以为它既在列表又在回收站）");
+    }
+
     // ==================================================================
     // 四、错误回执
     // ==================================================================
@@ -859,6 +948,27 @@ public class LandImportTest extends LandIntegrationTestBase {
     /** 生成一个测试专用的、不与库内冲突的出让宗地编号 */
     private String uniqueNo(String tag) {
         return TEST_PREFIX + tag + "-" + System.nanoTime();
+    }
+
+    /**
+     * 回收站里「编号/名称含该关键字」的宗地 id 列表。
+     *
+     * <p>回收站只能靠手写 SQL 查（{@code @TableLogic} 会让实体查询自动排除 del_flag=1 的行），
+     * 所以这里统一走 {@code IDataRecycleService#queryRecycleList}，而不是在测试里另写一条 SQL ——
+     * 断言用的就是用户在这个页面上看到的同一份数据。
+     */
+    private List<String> recycleIdsOf(String keyword) {
+        List<String> ids = new ArrayList<>();
+        List<java.util.Map<String, Object>> rows = recycleService.queryRecycleList(DataSupport.BIZ_LAND, keyword);
+        if (rows == null) {
+            return ids;
+        }
+        for (java.util.Map<String, Object> row : rows) {
+            if (row != null && row.get("id") != null) {
+                ids.add(String.valueOf(row.get("id")));
+            }
+        }
+        return ids;
     }
 
     /** 把错误清单拼成一句可读文本，断言失败时能直接看出问题 */

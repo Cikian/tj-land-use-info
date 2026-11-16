@@ -80,6 +80,12 @@ import java.util.regex.Pattern;
  * <p><b>⑥ 覆盖更新时「空单元格 = 不改动」。</b>
  * 选择 UPDATE 策略时，文件里没填的列保持库内原值 ——
  * 否则用户拿一份只填了面积的补丁表导进去，会把受让人、四至、录入人全部抹空。
+ *
+ * <p><b>⑦ 同编号存在「已移除（软删）」记录时：恢复并复用那一行，绝不物理删除。</b>
+ * 以前插入前会把 del_flag=1 的同编号行真删掉，结果是回收站里的记录消失、
+ * 挂在旧 id 上的附件 / 环节进度 / 变更留痕全部断链。现在改为把那一行
+ * del_flag 置回 0 再按导入值覆盖：id 不变、附件与留痕都还在、回收站里自然消失。
+ * 判重与 del_flag 语义不变（见 {@code write} 方法内的注释）。
  */
 @Slf4j
 @Service
@@ -110,6 +116,16 @@ public class LandImportServiceImpl implements ILandImportService {
     @Autowired
     private DataChangeLogMapper changeLogMapper;
 
+    /**
+     * 审计信息（当前登录人 + 部门）。
+     *
+     * <p>★ 为什么导入模块需要它：{@code lrdw / lrr} 已改为选填（P1-04），
+     * 用户不填时「谁、哪个部门导的这批数据」只能靠系统审计字段回答。
+     * 业务表没有部门列（不擅自加列），因此部门只写进变更留痕摘要与日志。
+     */
+    @Autowired
+    private DataSupport dataSupport;
+
     // ==================================================================
     // 一、模板
     // ==================================================================
@@ -139,7 +155,7 @@ public class LandImportServiceImpl implements ILandImportService {
                         + "错误 {} 条 / 策略 {} / 跳过错误行 {} / 操作人 {}",
                 result.getTotalRows(), result.getValidRows(), result.getInsertedRows(), result.getUpdatedRows(),
                 result.getSkippedDuplicates(), result.getErrorCount(), strategy.getCode(), skipErrorRows,
-                LandImportSupport.nameOrPlaceholder(support.currentRealname()));
+                dataSupport.currentAuditText());
         return result;
     }
 
@@ -687,18 +703,54 @@ public class LandImportServiceImpl implements ILandImportService {
         List<DataChangeLog> changeLogs = new ArrayList<>();
 
         for (RowData data : toInsert) {
+            /*
+             * ★ 同编号存在软删记录时：恢复并复用，不再物理删除（用户 2026-11-16 确认口径）。
+             *
+             * 老做法是 `removeSoftDeleted(crzdbh)` 把 del_flag=1 的行真删掉再插入新行。后果：
+             *   ① 回收站里那条记录凭空消失（用户没点过「彻底删除」）；
+             *   ② 挂在旧 land.id 上的附件、环节进度、变更留痕全部变成孤儿 ——
+             *      t_land_attachment / t_facility_process / t_data_change_log 都是按 id 挂的，
+             *      换一个 id 之后历史就断了，而「历史留痕」正是本系统被要求补上的能力。
+             *
+             * 现在改成：把 del_flag 置回 0（并刷新 update_by / update_time），
+             * 再按导入值覆盖字段。这样 id 不变、附件与留痕都还在、回收站里自然消失。
+             *
+             * ★ 判重与 del_flag 语义一字未改：loadExisting 仍然只看有效行（@TableLogic 自动带
+             *   del_flag = 0），所以「同编号有效行已存在」照旧走 SKIP / UPDATE / REJECT；
+             *   这里只处理「有效行不存在、但回收站里有一条同编号」的情形。
+             */
+            Land restored = landMapper.selectLatestSoftDeletedByCrzdbh(data.crzdbh);
+            if (restored != null) {
+                // 恢复前的快照：留痕要能说清「这条记录原来(被删前)长什么样、现在被覆盖成了什么」
+                Land beforeRestore = new Land();
+                org.springframework.beans.BeanUtils.copyProperties(restored, beforeRestore);
+                for (Map.Entry<String, Object> entry : data.values.entrySet()) {
+                    // 与覆盖更新同一口径：空单元格对应的列不在 values 里，因此保留原值
+                    applyValue(restored, entry.getKey(), entry.getValue());
+                }
+                restored.setCrzdbh(data.crzdbh);
+                // 显式设成 0：留痕与后续逻辑都要看到「这条现在是有效行」；
+                // 真正把列写回 0 靠下面的 restoreSoftDeletedById（updateById 写不动 del_flag）。
+                restored.setDelFlag(0);
+                restored.setUpdateBy(username);
+                restored.setUpdateTime(now);
+                int restoredRows = landMapper.restoreSoftDeletedById(restored.getId(), username, now);
+                if (restoredRows != 1) {
+                    // 只有「这一行刚被别人恢复/删掉」才会是 0 行：此时唯一键上已有有效行，
+                    // 继续 updateById 会写到一个不该动的 id 上，直接抛错让整批回滚更安全。
+                    throw new JeecgBootException("导入失败：出让宗地编号「" + data.crzdbh
+                            + "」的回收站记录状态已变化（可能被他人恢复），请刷新后重试");
+                }
+                landMapper.updateById(restored);
+                result.setInsertedRows(result.getInsertedRows() + 1);
+                log.info("导入时恢复并复用回收站记录：crzdbh={}, landId={}, Excel 第 {} 行",
+                        data.crzdbh, restored.getId(), data.rowNum);
+                collectImportChangeLog(changeLogs, result, data.rowNum, DataChangeLog.ACTION_RESTORE,
+                        beforeRestore, restored, restored.getId(), restored.getCrzdbh());
+                continue;
+            }
+
             Land land = new Land();
-            // 先清掉同编号的软删残留。
-            //
-            // ★ 实测结论（在 tj-jyxyd 上逐条验证过）：t_land 的唯一键是 (crzdbh, del_flag)，
-            //   所以「有一条 del_flag=1 的旧行」时，插入 del_flag=0 的新行**本来就允许**
-            //   （两者键值不同，不冲突）。换句话说这一步<b>并不是插入成功的前提</b>。
-            //   保留它的理由有两个：
-            //     ① 兜底：万一将来唯一键被人改成只按 crzdbh，这里不会突然插入失败；
-            //     ② 卫生：反复「录入→删除→重录」同一编号不会在 t_land 里堆一串
-            //        del_flag=1 的僵尸行（旧系统的表里就有不少这种残留）。
-            //   注意 delete(Wrapper) 不会自动带上逻辑删除条件，这里就是真删。
-            removeSoftDeleted(data.crzdbh);
             for (Map.Entry<String, Object> entry : data.values.entrySet()) {
                 applyValue(land, entry.getKey(), entry.getValue());
             }
@@ -740,10 +792,18 @@ public class LandImportServiceImpl implements ILandImportService {
         }
     }
 
+    /**
+     * 逐行变更留痕（与业务写入同一事务）。
+     *
+     * <p>摘要里带「批次号 / Excel 行号 / 操作人 + 部门」：批次号把留痕挂回本批导入，
+     * 行号让用户能回 Excel 定位，操作人+部门回答「谁导的」——
+     * 这三样是事后追溯一份几百行台账时的全部线索。
+     * 部门取不到名称时按「部门编码」如实标注（见 {@link DataSupport#currentAuditText()}）。
+     */
     private void collectImportChangeLog(List<DataChangeLog> logs, LandImportResultVO result, int rowNum,
                                         String action, Land before, Land after, String bizId, String bizKey) {
         String summary = "批次号：" + result.getBatchId() + "，Excel 第 " + rowNum + " 行，操作人："
-                + LandImportSupport.nameOrPlaceholder(support.currentRealname());
+                + dataSupport.currentAuditText();
         DataChangeLog record = changeLogSupport.collector(DataSupport.BIZ_LAND, bizId, bizKey)
                 .diff(before, after, DataFieldLabels.landLabels())
                 .buildRecord(action, summary, null);
@@ -759,20 +819,13 @@ public class LandImportServiceImpl implements ILandImportService {
         }
     }
 
-    /** 物理清掉同编号的软删残留（只在新增前调用） */
-    private void removeSoftDeleted(String crzdbh) {
-        try {
-            int deleted = landMapper.delete(new QueryWrapper<Land>()
-                    .eq("crzdbh", crzdbh)
-                    .eq("del_flag", 1));
-            if (deleted > 0) {
-                log.info("导入前清理了 {} 条同编号的软删记录：crzdbh={}", deleted, crzdbh);
-            }
-        } catch (Exception e) {
-            // 清理失败不阻断导入：真正的插入失败会在下面以明确异常暴露出来
-            log.warn("清理软删记录失败：crzdbh={}，{}", crzdbh, e.getMessage());
-        }
-    }
+    /*
+     * 说明：原 removeSoftDeleted(crzdbh) 已删除。
+     * 它会在插入前把同编号的 del_flag=1 行<b>物理删除</b>，导致回收站记录消失、
+     * 按 land id 挂的附件/环节/留痕变成孤儿。现在改由写库循环里的
+     * 「恢复并复用」分支处理（见 write 方法里的 restoreSoftDeletedById），
+     * 一行都不删。
+     */
 
     /**
      * 列名 → 实体字段（每个列名只在这里出现一次）。

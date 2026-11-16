@@ -44,6 +44,15 @@ public class HandoverStatVO implements Serializable {
     /** 宗地未匹配的条数（备注里带「无匹配记录」，需人工核对） */
     private long orphanCount;
 
+    /**
+     * 接收管养单位未填写的条数（数据质量指标，P2-08）。
+     *
+     * <p>口径：receive_unit 为 NULL / 空串 / 「未填写」「否」「无」等占位值。
+     * 这条指标替代了原来那个被空值污染的「接收管养单位 Top10」——
+     * 测试要的是「有多少条没填」这个可行动的数字，而不是一个叫「未填写」的假单位。
+     */
+    private long receiveUnitBlank;
+
     /** 按状态（待移交/移交中/已移交；服务端补齐 3 项） */
     private List<NameCount> byStatus;
 
@@ -56,8 +65,26 @@ public class HandoverStatVO implements Serializable {
     /** 按移交年度（从移交编号 YJ-{yyyy}- 段取） */
     private List<NameCount> byYear;
 
-    /** 按接收管养单位 Top N（谁接管得最多） */
-    private List<NameCount> byReceiveUnit;
+    /**
+     * 按接收管养单位 Top N（谁接管得最多；已排除空值与占位值，页面不再展示该排行）。
+     *
+     * <p><b>★ P2-08：字段保留、但不再有数据。</b>
+     * 两端页面已不消费它（大屏排行块整块移除，改由 {@link #receiveUnitBlank} 回答
+     * 「有多少条没填」）；{@code RoadHandoverServiceImpl#queryStat} 不再调用
+     * {@code selectStatByReceiveUnit}，省掉每次打开页面的一条 GROUP BY 排序查询。
+     *
+     * <p>为什么保留字段而不是删掉：
+     * <ol>
+     *   <li><b>不破坏接口结构</b>：{@code /stat} 的响应里这个 key 仍然存在，
+     *       任何按字段名读的调用方（含集成测试 {@code $.result.byReceiveUnit} 断言
+     *       「是数组」）都不会因为这次优化而挂掉；</li>
+     *   <li><b>保留给导出/后续报表</b>：真要做「谁接管得最多」时，
+     *       Mapper 与 SQL 都还在，放回一次调用即可。</li>
+     * </ol>
+     * 默认值刻意给空数组而不是 null：null 会被序列化成 {@code "byReceiveUnit": null}，
+     * 前端 {@code .map()} 或集成测试的 {@code isArray()} 都会炸。
+     */
+    private List<NameCount> byReceiveUnit = new java.util.ArrayList<>();
 
     /** 按道路等级 */
     private List<NameCount> byDldj;

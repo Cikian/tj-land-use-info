@@ -79,7 +79,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
         String fromUploadApi = "/facility/attachment/2026/10/1783009999_5a56a8ef2b65.png";
 
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05", meta(fromUploadApi));
+                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04", meta(fromUploadApi));
 
         assertNotNull(saved, "带前导斜杠的上传路径必须能落库（这正是用户报的故障）");
         assertNotNull(saved.getId());
@@ -98,7 +98,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void relativePathWithoutLeadingSlashStillWorks() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                 meta("facility/attachment/2026/10/1783009999_abc.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -110,7 +110,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void repeatedSlashesAreCollapsed() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                 meta("//facility//attachment//2026/10/a.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -127,7 +127,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void pathTraversalIsStillRejected() {
         String landId = createLand();
         JeecgBootException ex = assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                         meta("/facility/../../etc/passwd")));
         assertTrue(ex.getMessage().contains(".."), "应提示路径穿越，实际：" + ex.getMessage());
     }
@@ -137,7 +137,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void driveLetterPathIsStillRejected() {
         String landId = createLand();
         JeecgBootException ex = assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                         meta("C:/upFiles/facility/a.png")));
         assertTrue(ex.getMessage().contains("盘符"), "应提示盘符绝对路径，实际：" + ex.getMessage());
     }
@@ -147,7 +147,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void slashOnlyPathIsRejected() {
         String landId = createLand();
         assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                attachmentService.saveUploaded("land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                         meta("///")));
     }
 
@@ -161,7 +161,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void normalizedPathBuildsUsableUrl() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "05",
+                "land", landId, TEST_DATA_CRZDBH_PREFIX + "ATT-001", "04",
                 meta("/facility/attachment/2026/10/a.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -178,7 +178,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     @Test
     public void unknownBizIdIsStillRejected() {
         assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("land", "not-exist-id", "X", "05",
+                attachmentService.saveUploaded("land", "not-exist-id", "X", "04",
                         meta("facility/attachment/2026/10/a.png")));
     }
 
@@ -187,7 +187,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void unknownBizTypeIsRejected() {
         String landId = createLand();
         assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("unknown", landId, "X", "05",
+                attachmentService.saveUploaded("unknown", landId, "X", "04",
                         meta("facility/attachment/2026/10/a.png")));
     }
 
@@ -210,7 +210,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void bizKeyFallsBackToLandNameWhenClientOmitsIt() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, null, "05",
+                "land", landId, null, "04",
                 meta("facility/attachment/2026/10/a.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -232,7 +232,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void clientSuppliedBizKeyWins() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, "我自己的展示名", "05",
+                "land", landId, "我自己的展示名", "04",
                 meta("facility/attachment/2026/10/a.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -244,7 +244,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     public void blankBizKeyAlsoFallsBack() {
         String landId = createLand();
         LandAttachment saved = attachmentService.saveUploaded(
-                "land", landId, "   ", "05",
+                "land", landId, "   ", "04",
                 meta("facility/attachment/2026/10/a.png"));
 
         LandAttachment reloaded = attachmentService.queryById(saved.getId());
@@ -256,7 +256,7 @@ public class LandAttachmentPathTest extends LandIntegrationTestBase {
     @Test
     public void fallbackStillRejectsUnknownBiz() {
         assertThrows(JeecgBootException.class, () ->
-                attachmentService.saveUploaded("land", "no-such-id", null, "05",
+                attachmentService.saveUploaded("land", "no-such-id", null, "04",
                         meta("facility/attachment/2026/10/a.png")));
     }
 }

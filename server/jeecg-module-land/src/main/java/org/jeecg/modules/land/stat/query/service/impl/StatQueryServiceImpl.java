@@ -624,7 +624,18 @@ public class StatQueryServiceImpl implements IStatQueryService {
         }
     }
 
+    /**
+     * 明细要投影的列。
+     *
+     * <p>★ {@code allColumns=true}（查询导出的「导出全部字段」）必须走这里而不是
+     * 只改导出服务：行的取值是**本类**按 columns 投影出来的，
+     * 导出服务只负责把 row.get(key) 写进单元格 —— 这边不放开，
+     * 全量模式导出的就会是一整排空列。
+     */
     private List<String> resolveColumnKeys(StatQueryDTO q, DataSet dataSet) {
+        if (Boolean.TRUE.equals(q.getAllColumns())) {
+            return QueryFieldRegistry.allColumnKeys(dataSet);
+        }
         List<String> keys = new ArrayList<>();
         if (q.getColumns() != null) {
             for (String key : q.getColumns()) {

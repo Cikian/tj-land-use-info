@@ -97,7 +97,8 @@ public class EscalationRecordTest extends LandIntegrationTestBase {
         dto.setProjectNo(TEST_PREFIX + tag + "-" + System.nanoTime());
         dto.setProjectName(tag + "测试项目");
         dto.setDeclareDept("测试申报单位");
-        dto.setProjectType("基础设施类");
+        // 项目类型口径已改为「市级项目 / 区级项目」（清单 P2-10），测试数据同步新值
+        dto.setProjectType("市级项目");
         dto.setTotalInvestment(new BigDecimal("1.25"));
         dto.setBuildLocation("天津市测试地址");
         dto.setDeclareDate(new Date());

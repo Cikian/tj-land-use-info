@@ -22,8 +22,11 @@ management:
 spring:
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # 与 dev / prod 对齐为 200MB：前端 ALLOWED_EXT 含 zip/rar/7z，单文件上限 200MB；
+      # 这是 multipart 解析层的上限，与数据库换成达梦无关（达梦只影响 SQL 方言），
+      # 所以 dm8 这套部署同样要放开，否则同一份档案包在 dm8 环境传不上去。
+      max-file-size: 200MB
+      max-request-size: 200MB
   mail:
     host: smtp.163.com
     username: ${TJ_MAIL_USERNAME:}

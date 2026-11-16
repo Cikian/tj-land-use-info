@@ -86,6 +86,87 @@ public class DataSupport {
         return currentEditor();
     }
 
+    // ------------------------------------------------------------------
+    // 部门信息（P1-04：录入人/录入单位选填后，审计信息以「登录用户 + 部门」补全）
+    // ------------------------------------------------------------------
+
+    /**
+     * 当前登录用户所属部门名。
+     *
+     * <p><b>★ 现状：拿不到，返回 null（不是没实现，是登录上下文里确实没有这个字段）。</b>
+     * 三条依据，缺一条都该重新评估：
+     * <ol>
+     *   <li>登录信息类 {@code LoginUser} 只有 {@code orgCode}（部门<b>编码</b>）与
+     *       {@code departIds}（部门 id 串），<b>没有部门名称</b>；</li>
+     *   <li>按 id/编码换名称要走 {@code ISysBaseAPI.getDepartNamesByUsername}，
+     *       而它在 {@code jeecg-system-local-api} 模块里 —— 本业务模块的编译期依赖里
+     *       没有它（同一取舍见 {@code SysUserLookupMapper} 与
+     *       {@code LandAttachmentServiceImpl} 的类注释）；</li>
+     *   <li>直接查 {@code sys_depart} 需要新写只读 Mapper，且 Mapper 必须落在
+     *       {@code ...mapper*} 包里才会被 {@code @MapperScan} 扫到 —— 那是新增文件，
+     *       不在本次整改范围内。</li>
+     * </ol>
+     *
+     * <p>所以这里<b>刻意不做猜测</b>：不拿 {@code orgCode} 冒充部门名，也不填「未知部门」
+     * 之类的假数据。审计留痕走 {@link #currentAuditText()}，其中会把
+     * 「部门编码」如实标出来（见 {@link #currentDepartCode()}）。
+     *
+     * <p><b>后续接入点</b>：业务确认需要部门名称后，在本方法里查一次
+     * {@code sys_depart}（按 {@code LoginUser.orgCode} 或 {@code departIds}）即可
+     * —— 所有调用方都只认「返回 null 就没有名称」，不需要跟着改。
+     */
+    public String currentDepartName() {
+        return null;
+    }
+
+    /**
+     * 当前登录用户所属部门编码（{@code LoginUser.orgCode}），取不到返回 null。
+     *
+     * <p>为什么仍然记录它：{@code org_code} 是部门在系统里的唯一编码，
+     * 有了它就能在「系统管理 → 部门管理」里定位到人，审计意义上已经够用；
+     * 它与部门名只是「显示形式」不同，不是另一份数据。
+     */
+    public String currentDepartCode() {
+        LoginUser user = currentUser();
+        if (user == null) {
+            return null;
+        }
+        return StringUtils.isBlank(user.getOrgCode()) ? null : user.getOrgCode().trim();
+    }
+
+    /**
+     * 审计用「操作人 + 部门」一句话描述，供变更留痕摘要、导入日志等<b>已有落点</b>使用。
+     *
+     * <p>三条口径：
+     * <ul>
+     *   <li>部门名可得 → {@code 张三（zhangsan），部门：滨海新区分局}；</li>
+     *   <li>只有部门编码 → {@code 张三（zhangsan），部门编码：A01}（标签写明是编码，
+     *       不让人误读成名称）；</li>
+     *   <li>完全无登录上下文 → {@code 张三（zhangsan），部门：未获取}（定时任务/测试场景）。</li>
+     * </ul>
+     *
+     * <p>★ 为什么只写进留痕与日志、不写进业务表：{@code t_land} /
+     * {@code t_supporting_facilities} <b>没有部门列</b>，本次整改不擅自加列。
+     * 原始填报字段（{@code lrdw / lrr}）与系统审计字段也<b>必须分离</b> ——
+     * 用户填的「录入单位」是业务事实，登录人所在部门是系统事实，两者可以不同。
+     */
+    public String currentAuditText() {
+        String realname = nameOrPlaceholder(currentRealname());
+        String username = currentUsername();
+        StringBuilder sb = new StringBuilder(realname);
+        if (StringUtils.isNotBlank(username)) {
+            sb.append("（").append(username).append("）");
+        }
+        String departName = currentDepartName();
+        if (StringUtils.isNotBlank(departName)) {
+            sb.append("，部门：").append(departName);
+        } else {
+            String departCode = currentDepartCode();
+            sb.append("，部门").append(departCode == null ? "：未获取" : "编码：" + departCode);
+        }
+        return sb.toString();
+    }
+
     /**
      * 客户端 IP（变更留痕用）。
      *

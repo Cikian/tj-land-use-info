@@ -1,6 +1,7 @@
 package org.jeecg.modules.land.data.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -8,8 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.dto.FacilityGeoOverviewVO;
+import org.jeecg.modules.land.data.dto.FacilityQueryDTO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
-import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.entity.Facility;
 import org.jeecg.modules.land.data.entity.Land;
 import org.jeecg.modules.land.data.fieldconfig.DataFieldLabels;
@@ -243,8 +244,8 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
     }
 
     @Override
-    public IPage<Facility> queryPage(LandAdminQueryDTO query) {
-        LandAdminQueryDTO condition = query == null ? new LandAdminQueryDTO() : query;
+    public IPage<Facility> queryPage(FacilityQueryDTO query) {
+        FacilityQueryDTO condition = query == null ? new FacilityQueryDTO() : query;
         QueryWrapper<Facility> wrapper = new QueryWrapper<>();
         // ★ 手写软删条件：Facility 没有 @TableLogic，不写就会把已移除的配套也查出来
         wrapper.eq("delFlag", "0");
@@ -264,6 +265,12 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         }
         if (StringUtils.isNotBlank(condition.getXzqh())) {
             wrapper.eq("xzqh", condition.getXzqh().trim());
+        }
+        if (StringUtils.isNotBlank(condition.getGnq())) {
+            // ★ 功能区与行政区划是两个独立条件（2026-11 拆列）：只给 xzqh 加检索，
+            //   库里那批 gnq 有值的配套就「录得进、查不到」。精确匹配、单值，
+            //   风格与上面的 xzqh 完全一致（前端传 gnq=生态城 即可）。
+            wrapper.eq("gnq", condition.getGnq().trim());
         }
         if (StringUtils.isNotBlank(condition.getXmfl())) {
             wrapper.eq("xmfl", condition.getXmfl().trim());
@@ -701,8 +708,21 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
                             facility.getPtxmmc() + " / " + config.getName())
                     .diff(existing, target, DataFieldLabels.processLabels());
             facilityProcessMapper.updateById(target);
+            /*
+             * ★ P2-03：上面的 updateById 走 MyBatis-Plus 默认 FieldStrategy.NOT_NULL，
+             *   会把 null 字段当成「不更新」。于是用户把备注 / 问题类型清空后，
+             *   请求成功、提示成功，库里的旧值却一点没变 —— 这是典型的「假成功」。
+             *
+             *   这里只对**文本类可清空字段**补一次显式 set（见 writeClearableTextFields），
+             *   状态 / 日期 / 数值等其它字段仍然保持 updateById 的原有语义，不顺手全改：
+             *   日期的「不填 = 不改」是业务在用（预计结束时间会自动算），
+             *   一旦连带改成「不填 = 清空」，会自动把算出来的日期抹掉。
+             */
+            List<String> clearedFields = writeClearableTextFields(existing.getId(), target, data);
             collector.save(DataChangeLog.ACTION_UPDATE,
-                    "更新环节进度：" + facility.getPtxmmc() + " - " + config.getName(), request);
+                    "更新环节进度：" + facility.getPtxmmc() + " - " + config.getName()
+                            + (clearedFields.isEmpty() ? "" : "（显式覆盖文本字段：" + clearedFields + "）"),
+                    request);
         }
         log.info("保存环节进度成功：ptId={}, lcId={}, lcName={}, lcqk={}, 操作人={}",
                 ptId, lcId, config.getName(), lcqk,
@@ -713,6 +733,80 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         return target.getId();
     }
 
+    /**
+     * 把「文本类可清空字段」显式写进库（P2-03）。
+     *
+     * <p><b>为什么需要它</b>：{@code facilityProcessMapper.updateById(target)} 走 MyBatis-Plus
+     * 默认的 {@code FieldStrategy.NOT_NULL} —— 实体里为 null 的字段<b>不会出现在 SET 里</b>。
+     * 而 {@code DataSupport.cleanAndCap("")} 的结果正好就是 null，于是
+     * 「用户把问题类型 / 具体问题 / 工作建议 / 录入单位 / 录入人 / 联系电话清空后保存」
+     * 表现为：接口返回成功、页面提示成功、库里仍是旧值。P2-03 报的就是这个假成功。
+     *
+     * <p><b>★ 只处理这 6 个文本列，不碰其它字段</b>：
+     * {@code czwtlx / jtwt / gzjy / lrdw / lrr / lxdh}。
+     * 状态（lcqk）、日期（lckssj / lcjssj / yjjssj）、数值字段继续走 {@code updateById}，
+     * 因为它们的「不传 = 不改」是业务在用的语义（例如预计结束时间由后端按工作日自动推算，
+     * 一旦改成「不传 = 清空」，算好的日期会在下一次保存时被抹掉）。
+     *
+     * <p><b>★ 语义口径：缺字段 = 不改，显式空串（或 JSON null）= 清空</b>
+     * 用 {@code data.containsKey(key)} 判断，而不是看值是否为 null：
+     * <ul>
+     *   <li>请求体里根本没有这个 key（老前端、按需提交、批量保存里的精简项）→ 完全不写，
+     *       保持与改动前一致的「缺字段 = 不改」；</li>
+     *   <li>请求体里 key 存在、值是空串 / 纯空白 / JSON {@code null} → 明确清空，写 NULL。
+     *       之所以把 {@code null} 也算「显式清空」：大屏 {@code ProcessTreePanel.inlinePatch}
+     *       就是用 {@code row.jtwt || null} 表达空值的，它不会传空串；
+     *       若要求「必须传空串才清空」，大屏这条路径就永远清不掉。</li>
+     * </ul>
+     * 这样「前端整屏保存时某几项只传了 lcId」不会把没传的字段洗白，
+     * 而用户真的清空备注时又能落库。
+     *
+     * @return 本次被显式写库的字段名（用于日志与变更留痕摘要，空列表表示没有任何显式写入）
+     */
+    private List<String> writeClearableTextFields(String progressId, FacilityProcess target,
+                                                  Map<String, Object> data) {
+        List<String> written = new ArrayList<>();
+        if (StringUtils.isBlank(progressId) || data == null || data.isEmpty()) {
+            return written;
+        }
+        UpdateWrapper<FacilityProcess> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", progressId);
+        // 逐个字段判断 key 是否存在：这里刻意不写成循环 —— 列名是字面量，
+        // 写错列名在编译期就能看出来，而循环里拼字符串只能等运行时 SQL 报错。
+        if (data.containsKey("czwtlx")) {
+            wrapper.set("czwtlx", target.getCzwtlx());
+            written.add("czwtlx");
+        }
+        if (data.containsKey("jtwt")) {
+            wrapper.set("jtwt", target.getJtwt());
+            written.add("jtwt");
+        }
+        if (data.containsKey("gzjy")) {
+            wrapper.set("gzjy", target.getGzjy());
+            written.add("gzjy");
+        }
+        if (data.containsKey("lrdw")) {
+            wrapper.set("lrdw", target.getLrdw());
+            written.add("lrdw");
+        }
+        if (data.containsKey("lrr")) {
+            wrapper.set("lrr", target.getLrr());
+            written.add("lrr");
+        }
+        if (data.containsKey("lxdh")) {
+            wrapper.set("lxdh", target.getLxdh());
+            written.add("lxdh");
+        }
+        if (written.isEmpty()) {
+            return written;
+        }
+        // 传 null 实体 + UpdateWrapper：只按 wrapper 里的 set 生成 SQL，
+        // 这样 null 值也会被真正写进列（updateById 做不到这件事）。
+        facilityProcessMapper.update(null, wrapper);
+        log.info("环节进度文本字段已显式写库（含清空）：progressId={}, 字段={}", progressId, written);
+        return written;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> saveProcessBatch(String ptId, List<Map<String, Object>> items,
@@ -720,6 +814,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         Map<String, Object> result = new LinkedHashMap<>();
         int success = 0;
         List<Map<String, Object>> failures = new ArrayList<>();
+        // ★ P2-03：批量保存（整屏保存）逐项复用 saveProcess，因此「文本字段清空要落库」
+        //   这条口径只写在 saveProcess 里就同时覆盖了单条与批量 —— 两边共用同一套字段赋值，
+        //   不会出现「单条能清空、整屏保存清不掉」的两套语义。
         if (items != null) {
             for (Map<String, Object> item : items) {
                 String lcId = asString(item.get("lcId"));

@@ -213,9 +213,17 @@ public class StatQueryController {
      *
      * <p>走 GET 是为了配合前端的 {@code window.open(带 token 的下载地址)}（与档案导出同一套），
      * 高级查询条件以 {@code conditionsJson} 塞进查询串。
+     *
+     * <p><b>★ 两种导出模式（清单 P1-13）</b>，由查询参数 {@code allColumns} 区分：
+     * <ul>
+     *   <li>不带 / {@code allColumns=false}：只导 {@code columns} 勾选的列（两个普通查询页的行为）；</li>
+     *   <li>{@code allColumns=true}：查询导出页的「导出全部字段」——忽略 {@code columns}，
+     *       按字段注册表顺序输出全部业务列，<b>查询条件照常生效</b>。</li>
+     * </ul>
+     * 参数由 {@link StatQueryDTO} 接住并原样传给 Service，本方法不解析列。
      */
     @AutoLog(value = "查询统计-导出Excel")
-    @ApiOperation(value = "导出Excel", notes = "两个 sheet：查询结果（含自定义列）+ 统计指标")
+    @ApiOperation(value = "导出Excel", notes = "两个 sheet：查询结果（自定义列 / 全部字段）+ 统计指标")
     @GetMapping(value = "/exportXls")
     public void exportXls(StatQueryDTO query, HttpServletResponse response) {
         Workbook workbook = null;

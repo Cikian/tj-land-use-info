@@ -39,14 +39,17 @@ import java.util.Map;
  *   <tr>
  *     <td>必填</td><td>crzdbh / ptxmmc / lrdw / lrr / lxdh（旧代码这段校验被注释掉了，
  *         实际是「只要有一列能拼进 SQL 就插」，于是产生了大量无编号无名称的废行）</td>
- *     <td>同五项，<b>逐行回执</b>「第 N 行：xxx 不能为空」</td>
+ *     <td><b>只留 3 列</b>：crzdbh / ptxmmc / lxdh，逐行回执「第 N 行：xxx 不能为空」。
+ *         lrdw / lrr 改为选填 —— 实测这两个字段大量空缺，卡着它们等于整批导不进来</td>
  *     <td>静默插入半空行比拒绝导入危害大得多：页面上看起来「导入成功 800 条」，
- *         实际一堆行没有宗地编号，谁也没法用</td>
+ *         实际一堆行没有宗地编号，谁也没法用；反过来把录入单位/录入人设成必填，
+ *         是拿一张「填不全就废」的门槛去挡正常台账（P1-04 整改）</td>
  *   </tr>
  *   <tr>
  *     <td>重复数据</td><td>(crzdbh, ptxmmc) 已存在 → 固定跳过并计数</td>
- *     <td>三种策略可选：报错（默认）/ 跳过 / 覆盖更新</td>
- *     <td>日常补录要「别覆盖」，年度更新要「覆盖」，一种策略满足不了两种场景</td>
+ *     <td>四种策略可选：新增并更新（默认）/ 重复即报错 / 跳过重复 / 覆盖更新</td>
+ *     <td>日常补录要「别覆盖」，年度更新要「覆盖」，混合批次要「一份文件同时新增+更新」；
+ *         默认取 upsert，因为混合批次是常态（P1-06 整改）</td>
  *   </tr>
  *   <tr>
  *     <td>宗地是否存在</td><td><b>完全不校验</b>（旧代码只把 crzdbh 当字符串插进去）</td>
@@ -216,7 +219,17 @@ public final class FacilityImportField {
     public static final List<String> PTSSLB_OPTIONS = Collections.unmodifiableList(Arrays.asList(
             "道路", "排水", "供水", "中水", "燃气", "路灯", "绿化", "交通设施"));
 
-    /** 建设性质 */
+    /**
+     * 建设性质（★ 含「现状」）。
+     *
+     * <p>「现状」是业务实际在用的取值（滨海等片区的配套直接记现状，没有新建/改建动作），
+     * 2026-11 整改 P1-05 前它不在字典里，导致这类数据「页面能写、导入报错」。
+     *
+     * <p>★ <b>sys_dict（{@code land_jsxx}）与本数组同源</b>：改一处必须同步另一处
+     * —— 字典供界面下拉，本数组供导入校验与模板填表说明；
+     * 只改一边就会出现「下拉里有、导入说不在允许取值内」。同源脚本见
+     * {@code sql/data/17_facility_dict_jsxx_dldj_gnq.sql}，其末尾的核对查询会把两边比出来。
+     */
     public static final List<String> JSXX_OPTIONS = Collections.unmodifiableList(
             Arrays.asList("新建", "改建", "扩建", "翻建", "现状", "其他"));
 
@@ -227,9 +240,31 @@ public final class FacilityImportField {
      * 能唯一归位的（主干道系）放进别名表。「快速路」既不是主干路也不是次干路，
      * 早先<b>刻意不放进下拉</b>（硬归会改掉业务事实）；2026-11 业务确认它就是独立一档
      * → 补为第 4 个标准值，仍不做归位（别名表里只映射它自己）。
+     *
+     * <p>★ <b>sys_dict（{@code land_dldj}）与本数组同源</b>：改一处必须同步另一处
+     * （理由同 {@link #JSXX_OPTIONS}）。
      */
     public static final List<String> DLDJ_OPTIONS = Collections.unmodifiableList(
             Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路"));
+
+    /**
+     * 功能区（滨海的功能区不是行政区，2026-11 整改 P1-05 起与 {@code xzqh} 分列）。
+     *
+     * <p>★ 取值来自已确认的历史数据迁入口径（见
+     * {@code sql/data/14_facility_gnq_and_dict.sql}）：生态城 / 土地发展中心 / 经开区 /
+     * 高新区 / 保税区。
+     *
+     * <p>★ 与 {@link #JSXX_OPTIONS} 不同，本数组<b>不做导入校验</b>
+     * （{@code gnq} 的字段类型仍是 TEXT）：
+     * 功能区是按片区分设的，将来还会新增（如「临港经济区」），
+     * 把导入卡成「只能填这 5 个」会让新片区的第一批数据<b>根本录不进来</b>，
+     * 而这属于「拿狭窄枚举卡自由文本」——P1-04 明令禁止。
+     * 所以本数组的作用是<b>让字典与界面下拉有标准值</b>，导入侧只给提示不拦截。
+     *
+     * <p>★ <b>sys_dict（{@code land_gnq}）与本数组同源</b>：改一处必须同步另一处。
+     */
+    public static final List<String> GNQ_OPTIONS = Collections.unmodifiableList(
+            Arrays.asList("生态城", "土地发展中心", "经开区", "高新区", "保税区"));
 
     /** 资金来源 */
     public static final List<String> ZJLY_OPTIONS = Collections.unmodifiableList(
@@ -378,6 +413,8 @@ public final class FacilityImportField {
                 PTSSLB_OPTIONS, ptsslb, 100, "道路"));
         list.add(new FieldSpec("xzqh", "行政区划", FieldType.ENUM, false, true,
                 XZQH_OPTIONS, xzqh, 100, "西青区"));
+        // ★ 功能区刻意是 TEXT 而不是 ENUM：只给提示不拦截，新片区（如临港经济区）
+        //   才能照常导入。标准取值见 GNQ_OPTIONS（与 sys_dict.land_gnq 同源）。
         list.add(new FieldSpec("gnq", "功能区", FieldType.TEXT, false, true,
                 null, null, 50, "生态城"));
         list.add(new FieldSpec("xmfl", "项目分类", FieldType.ENUM, false, true,

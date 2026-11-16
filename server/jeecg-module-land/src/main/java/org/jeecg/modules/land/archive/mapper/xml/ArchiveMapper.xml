@@ -219,6 +219,67 @@
         LIMIT #{limit}
     </select>
 
+    <!-- ================= 按项目聚合（P2-07 树形：项目 → 案卷 → 材料类别 → 文件） ================= -->
+    <!--
+      项目分组键。
+      ★ 为什么写成 COALESCE(facility_id, 名称组合键)：
+        t_archive 的 facility_id 是历史冗余列，旧数据里有为空的行（当年只存了 ptxmmc/crzdbh）。
+        只按 facility_id 分组，这些历史档案会全部掉进同一个 "NULL" 组，
+        表现为「一个叫空的巨大项目」——比不聚合还难用。
+      名称组合键里带 crzdbh，是为了让「同名不同宗地」的两个项目不被合成一组。
+      ★ 前后端契约：这个表达式的结果原样回传给 selectCaseFilesByProject，
+        前端不解析它的结构，所以以后要改分组口径只改这一处。
+    -->
+    <sql id="projectKeyExpr">
+        COALESCE(NULLIF(a.`facility_id`, ''),
+                 CONCAT('ptxmmc:', COALESCE(a.`ptxmmc`, ''), '|', COALESCE(a.`crzdbh`, '')))
+    </sql>
+
+    <select id="countProjectGroups" resultType="long">
+        SELECT COUNT(DISTINCT <include refid="projectKeyExpr"/>)
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+    </select>
+
+    <!--
+      树形第一层：一页 = 一页「项目」，不是一页「案卷」。
+      材料类别摘要（categoryNames）在 SQL 里拼好，避免前端为每一行再发一次请求；
+      这也顺带回答了「后端是否真的返回多类别拼接」——是，见这里的 GROUP_CONCAT。
+      LEFT JOIN 卷内文件：没有文件的案卷也要出现在项目里（只是 fileCount = 0），
+      用 INNER JOIN 会让「刚建卷、还没传扫描件」的项目整组消失。
+    -->
+    <select id="selectProjectGroups" resultType="org.jeecg.modules.land.archive.vo.ArchiveProjectVO">
+        SELECT
+            <include refid="projectKeyExpr"/>                              AS projectKey,
+            MAX(a.`facility_id`)                                            AS facilityId,
+            MAX(a.`ptxmmc`)                                                 AS ptxmmc,
+            MAX(a.`crzdbh`)                                                 AS crzdbh,
+            MAX(a.`dkmc`)                                                   AS dkmc,
+            MAX(a.`xzqh`)                                                   AS xzqh,
+            COUNT(DISTINCT a.`id`)                                          AS archiveCount,
+            COUNT(DISTINCT CASE WHEN a.`status` = '已归档' THEN a.`id` END)  AS archivedCount,
+            COUNT(f.`id`)                                                   AS fileCount,
+            COALESCE(SUM(f.`file_size`), 0)                                 AS totalSize,
+            GROUP_CONCAT(DISTINCT f.`category_name` ORDER BY f.`category_name` SEPARATOR '、') AS categoryNames,
+            COUNT(DISTINCT f.`category_name`)                                AS categoryCount
+        FROM `t_archive` a
+        LEFT JOIN `t_archive_file` f ON f.`archive_id` = a.`id` AND f.`del_flag` = 0
+        WHERE <include refid="queryWhere"/>
+        GROUP BY <include refid="projectKeyExpr"/>
+        ORDER BY MAX(a.`create_time`) DESC, projectKey
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- 树形第二层：某个项目下的全部案卷（含类别聚合，卷内文件由 Service 用现有方法补齐） -->
+    <select id="selectCaseFilesByProject" resultType="org.jeecg.modules.land.archive.entity.Archive">
+        SELECT a.*,
+               <include refid="categoryAggColumns"/>
+        FROM `t_archive` a
+        WHERE <include refid="queryWhere"/>
+          AND <include refid="projectKeyExpr"/> = #{projectKey}
+        ORDER BY a.`archive_no`, a.`create_time`
+    </select>
+
     <!-- ================= 档案号 ================= -->
     <!--
       取某年度已用掉的最大流水号。
@@ -244,6 +305,24 @@
         <if test="excludeId != null and excludeId != ''">
             AND a.`id` &lt;&gt; #{excludeId}
         </if>
+    </select>
+
+    <!-- ================= 卷内文件真实行数（P1-11 第三段计数） ================= -->
+    <!--
+      口径：t_archive_file 中该档案下 del_flag = 0 的行数（就是库里真实存在的行）。
+      说明：
+        ① 必须显式带 del_flag = 0：本表有 @TableLogic，手写 SQL 不会自动加条件，
+           漏了会把已逻辑删除的文件也算进「落库行数」，反而比不统计更糟；
+        ② 统计的是「整卷现有的行数」而不是「本次新增的行数」——
+           复用案卷时前端文案是「落库 N 行」，N 需要能对上档案文件页签里看到的条数，
+           所以调用方用「归档前后两次计数之差」拿本次新增量（见 ArchiveServiceImpl#appendFiles）；
+        ③ 用 COUNT(1) 而不是查实体再 size()：只关心行数，不必要把整表字段拉回来。
+    -->
+    <select id="countFilesByArchiveId" resultType="long">
+        SELECT COUNT(1)
+        FROM `t_archive_file` f
+        WHERE f.`del_flag` = 0
+          AND f.`archive_id` = #{archiveId}
     </select>
 
 </mapper>

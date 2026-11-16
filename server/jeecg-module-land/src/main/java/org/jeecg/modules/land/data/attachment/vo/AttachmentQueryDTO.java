@@ -35,7 +35,14 @@ public class AttachmentQueryDTO implements Serializable {
     /** 业务可读键（模糊：宗地编号 / 配套项目名称） */
     private String bizKey;
 
-    /** 附件类型码（精确：01~13、99，见字典 land_attach_type） */
+    /**
+     * 附件类型码（精确）。
+     *
+     * <p>码值按归属分两套：宗地 01~04（字典 {@code land_attach_type}），
+     * 配套 / 环节 01~13（{@code land_facility_attach_type}）。
+     * ★ 两套的 01~04 重号，所以<b>同时按 bizType 过滤才有意义</b>；
+     * 迁移遗留的 {@code 99}（其他（历史））也允许作为检索值，用于把历史附件捞出来。
+     */
     private String fileType;
 
     /** 文件名关键字（模糊） */

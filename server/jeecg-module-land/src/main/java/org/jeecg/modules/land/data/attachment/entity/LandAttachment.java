@@ -80,11 +80,14 @@ public class LandAttachment implements Serializable {
      *
      * <p>取值来自两套字典（按 {@link #bizType} 区分）：
      * <ul>
-     *   <li>{@code land} / {@code process} → {@code land_attach_type}（宗地 5 类）</li>
-     *   <li>{@code facility} → {@code land_facility_attach_type}（配套 13 类）</li>
+     *   <li>{@code land} → {@code land_attach_type}（宗地 4 类：01~04）</li>
+     *   <li>{@code facility} / {@code process} → {@code land_facility_attach_type}
+     *       （配套 13 类：01~13；环节挂在配套下，跟随配套目录）</li>
      * </ul>
-     * 两套字典的名称逐字取自旧系统存储目录
-     * {@code docs/基础设施配套动态监管工作站/} 下的类型目录名。
+     * 两套目录的编码与顺序以《系统测试问题分级整改清单》P1-08 报告图 3 为唯一基准。
+     * <p>★ 例外：迁移遗留的 {@code 99}（其他（历史））只出现在历史行上，
+     * 不在任何一套目录里，也不允许新上传（见 {@code LandAttachmentServiceImpl} 的
+     * {@code TYPE_NAMES_LEGACY}）。
      */
     private String fileType;
 

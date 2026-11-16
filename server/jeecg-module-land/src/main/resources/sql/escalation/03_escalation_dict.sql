@@ -5,7 +5,7 @@
 -- 建立 3 个业务字典（★ 本模块是 land 域第一个使用 sys_dict 的子模块；
 -- 档案模块的状态/密级是前端硬编码 + t_archive_category 表，没有走字典）：
 --
---   land_escalation_project_type   提级论证-项目类型   产业类/基础设施类/民生类/其他
+--   land_escalation_project_type   提级论证-项目类型   市级项目/区级项目/待确认
 --   land_escalation_arg_result     提级论证-论证结果   通过/基本通过/需补充材料/需进一步论证/不通过
 --   land_escalation_material_type  提级论证-材料类型   申请材料/论证报告/支撑材料/其他
 --
@@ -49,7 +49,7 @@ INSERT INTO `sys_dict`
   (`id`, `dict_name`, `dict_code`, `description`, `del_flag`, `create_by`, `create_time`, `update_by`, `update_time`, `type`)
 VALUES
   ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '提级论证-项目类型', 'land_escalation_project_type',
-   '提级论证项目类型（方案 2.3.3 第 1 项；取值待中心确认，可后台调整）', 0, 'admin', NOW(), NULL, NULL, 0),
+   '提级论证项目类型（P2-10 口径：市级项目 / 区级项目 / 待确认；待确认为历史存量过渡值，不是业务分类）', 0, 'admin', NOW(), NULL, NULL, 0),
   ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4e02', '提级论证-论证结果', 'land_escalation_arg_result',
    '提级论证结果（方案 2.3.3 第 2 项查询条件与台账列；与审核意见快捷短语一致）', 0, 'admin', NOW(), NULL, NULL, 0),
   ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4e03', '提级论证-材料类型', 'land_escalation_material_type',
@@ -62,11 +62,10 @@ INSERT INTO `sys_dict_item`
   (`id`, `dict_id`, `item_text`, `item_value`, `description`, `sort_order`, `status`,
    `create_by`, `create_time`, `update_by`, `update_time`)
 VALUES
-  -- 项目类型（4 项）
-  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f01', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '产业类',     '产业类',     '产业类项目',     1, 1, 'admin', NOW(), NULL, NULL),
-  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f02', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '基础设施类', '基础设施类', '基础设施类项目', 2, 1, 'admin', NOW(), NULL, NULL),
-  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f03', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '民生类',     '民生类',     '民生类项目',     3, 1, 'admin', NOW(), NULL, NULL),
-  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f04', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '其他',       '其他',       '其他类型',       4, 1, 'admin', NOW(), NULL, NULL),
+  -- 项目类型（3 项：市级 / 区级两级 + 历史过渡值「待确认」，见 07_escalation_project_type_v2.sql）
+  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f01', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '市级项目',   '市级项目',   '市级项目（审批层级：市级）', 1, 1, 'admin', NOW(), NULL, NULL),
+  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f02', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '区级项目',   '区级项目',   '区级项目（审批层级：区级）', 2, 1, 'admin', NOW(), NULL, NULL),
+  ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4f03', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e01', '待确认',     '待确认',     '历史存量过渡值：原「产业类/基础设施类/民生类/其他」待业务确认归属', 3, 1, 'admin', NOW(), NULL, NULL),
 
   -- 论证结果（5 项，与审核意见的 5 个快捷短语同词表）
   ('e5c1d2e3f4a54b6c8d9e0f1a2b3c4g01', 'e5c1d2e3f4a54b6c8d9e0f1a2b3c4e02', '通过',         '通过',         '论证通过',           1, 1, 'admin', NOW(), NULL, NULL),
@@ -83,7 +82,7 @@ VALUES
 
 -- ---------------------------------------------------------------------------
 -- 4) 守卫查询
---    4.1 应输出 3 行字典，字典项数分别为 4 / 5 / 4
+--    4.1 应输出 3 行字典，字典项数分别为 3 / 5 / 4
 -- ---------------------------------------------------------------------------
 SELECT d.`dict_code` AS 字典编码, d.`dict_name` AS 字典名称, COUNT(i.`id`) AS 字典项数
 FROM `sys_dict` d
@@ -94,7 +93,7 @@ WHERE d.`dict_code` IN ('land_escalation_project_type',
 GROUP BY d.`id`, d.`dict_code`, d.`dict_name`
 ORDER BY d.`dict_code`;
 
---    4.2 应输出 13 行明细（供人工核对取值）
+--    4.2 应输出 12 行明细（供人工核对取值）
 SELECT d.`dict_code` AS 字典编码, i.`item_text` AS 文本, i.`item_value` AS 值, i.`sort_order` AS 排序, i.`status` AS 状态
 FROM `sys_dict` d
 JOIN `sys_dict_item` i ON i.`dict_id` = d.`id`

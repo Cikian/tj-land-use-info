@@ -15,6 +15,7 @@ import org.jeecg.modules.land.archive.document.entity.DocReceive;
 import org.jeecg.modules.land.archive.document.entity.DocReceiveFlow;
 import org.jeecg.modules.land.archive.document.service.IDocReceiveFlowService;
 import org.jeecg.modules.land.archive.document.service.IDocReceiveService;
+import org.jeecg.modules.land.archive.document.vo.DocArchiveResultVO;
 import org.jeecg.modules.land.archive.document.vo.DocStatVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -265,10 +266,12 @@ public class DocReceiveController {
     // ==================================================================
 
     @AutoLog(value = "收文-归档")
-    @ApiOperation(value = "收文-归档", notes = "必须选择档案类别；公文附件会成为该档案的卷内文件")
+    @ApiOperation(value = "收文-归档",
+            notes = "必须选择档案类别；公文附件成为卷内文件；同项目已有案卷时追加到该卷。"
+                    + "返回 archiveId 与「原附件数/转换数/落库行数」三段计数，供页面核对")
     @RequiresPermissions(PERM_ARCHIVE)
     @PostMapping(value = "/archive")
-    public Result<String> archive(@RequestBody DocArchiveDTO dto) {
+    public Result<DocArchiveResultVO> archive(@RequestBody DocArchiveDTO dto) {
         try {
             return Result.OK("归档成功！", docReceiveService.archive(dto));
         } catch (JeecgBootException e) {

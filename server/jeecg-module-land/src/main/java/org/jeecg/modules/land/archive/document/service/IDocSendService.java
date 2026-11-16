@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import org.jeecg.modules.land.archive.document.dto.DocArchiveDTO;
 import org.jeecg.modules.land.archive.document.dto.DocQueryDTO;
 import org.jeecg.modules.land.archive.document.entity.DocSend;
+import org.jeecg.modules.land.archive.document.vo.DocArchiveResultVO;
 
 import java.util.List;
 
@@ -28,6 +29,9 @@ public interface IDocSendService extends IService<DocSend> {
     /** 查与某项目 / 宗地相关的发文（档案详情页的「收发文情况」用） */
     List<DocSend> queryRelated(String facilityId, String landId, String crzdbh, Integer limit);
 
+    /** 查直接归档到某份档案的发文（口径同 IDocReceiveService#queryByArchiveId） */
+    List<DocSend> queryByArchiveId(String archiveId, Integer limit);
+
     /** 发文总数 / 已归档数（列表页统计条） */
     long countAll();
 
@@ -46,6 +50,12 @@ public interface IDocSendService extends IService<DocSend> {
     /** 批量删除 */
     void deleteDocs(List<String> ids);
 
-    /** 归档到档案管理模块（同样必须选择档案类别） */
-    String archive(DocArchiveDTO dto);
+    /**
+     * 归档到档案管理模块（同样必须选择档案类别）。
+     *
+     * <p>同项目已有案卷时追加文件到该卷（一项目一案卷），不新建、不删除历史案卷。
+     *
+     * @return 归档结果（档案ID + 三段计数，供页面与日志核对）
+     */
+    DocArchiveResultVO archive(DocArchiveDTO dto);
 }

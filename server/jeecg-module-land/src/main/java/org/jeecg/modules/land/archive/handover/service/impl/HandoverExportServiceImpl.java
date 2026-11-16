@@ -131,7 +131,7 @@ public class HandoverExportServiceImpl implements IHandoverExportService {
         row.put("ptsslb", value(handover.getPtsslb()));
         row.put("crzdbh", value(handover.getCrzdbh()));
         row.put("dkmc", value(handover.getDkmc()));
-        row.put("ptxmmc", value(handover.getPtxmmc()));
+        row.put("ptxmmc", distinctProjectName(handover.getRoadName(), handover.getPtxmmc()));
         row.put("handoverType", value(handover.getHandoverType()));
         row.put("agreementNo", value(handover.getAgreementNo()));
         row.put("agreementName", value(handover.getAgreementName()));
@@ -153,6 +153,24 @@ public class HandoverExportServiceImpl implements IHandoverExportService {
 
     private static Object value(String text) {
         return text == null || text.trim().isEmpty() ? EMPTY : text;
+    }
+
+    /**
+     * 配套项目名称与道路名称相同时不重复写一遍（P2-08 第 4 条）。
+     *
+     * <p>道路类配套项目的两个名称字段本来就是同一个东西（旧系统分两列录入导致的冗余）。
+     * 导出里两列都写同一串文字，等于让人工核对时误以为要去比对两个不同值。
+     * 这里只在<b>完全相等</b>时把「配套项目名称」留空（不是删除列，也不改道路名称），
+     * 名称不一致的历史记录照原样导出——那才是需要人工看的。
+     */
+    private static Object distinctProjectName(String roadName, String ptxmmc) {
+        if (ptxmmc == null || ptxmmc.trim().isEmpty()) {
+            return EMPTY;
+        }
+        if (roadName != null && roadName.trim().equals(ptxmmc.trim())) {
+            return EMPTY;
+        }
+        return ptxmmc;
     }
 
     private static String format(Date date, String pattern) {

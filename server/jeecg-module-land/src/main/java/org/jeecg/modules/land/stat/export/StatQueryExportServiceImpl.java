@@ -34,6 +34,26 @@ import java.util.Map;
  *   <li><b>统计指标</b>：分析结果面板上的全部数字（旧的 {@code exportStatisticsToExcel} 那份）。</li>
  * </ol>
  *
+ * <p><b>★ 「按自定义列导出」与「导出全部字段」是两条明确的路径</b>（清单 P1-13）：
+ * <ul>
+ *   <li>默认（{@code allColumns != true}）：只导用户勾选的列，勾选为空时退回旧系统默认列。
+ *       这是两个普通查询页（经营性用地 / 用地配套项目）的行为，<b>不要改</b>；</li>
+ *   <li>{@code allColumns=true}（查询导出页签的「导出全部字段」按钮）：
+ *       <b>忽略 columns 选择、但保留查询条件</b>，按
+ *       {@link QueryFieldRegistry#allColumnKeys(DataSet)} 的字段顺序输出全部业务列。</li>
+ * </ul>
+ *
+ * <p><b>★ 全部字段模式为什么必须排除几类列</b>（排除项与理由写在
+ * {@link QueryFieldRegistry} 的类注释里，此处只复述结论）：
+ * 软删标记 {@code delFlag/del_flag} 恒为 0，属噪声且容易被误读成业务状态；
+ * {@code sourceId} 是迁移溯源用的内部主键；{@code dkGeojson / dkGeojsonOverview}
+ * 是单条可达 30MB+ 的几何文本，塞进 Excel 既打不开也没意义。
+ * 反过来说，{@code gxzhslsj}（管线综合矢量数据 shp）在库里只是 varchar(100) 的
+ * 历史「是/否」标志位，<b>照常导出</b>，不要因为名字像几何就漏掉。
+ *
+ * <p><b>★ 两个 sheet 的结构保持不变</b>：「查询结果」在全量模式下是全部业务列，
+ * 「统计指标」的逻辑与列不变（清单 P1-13 第 3 条）。
+ *
  * <p><b>★ 必须显式 {@link ExcelType#XSSF}</b>：否则写出的是 .xls 内容配 .xlsx 文件名，
  * Excel 打开会报「文件格式或扩展名无效」——档案导出踩过同一个坑。
  *
@@ -193,7 +213,22 @@ public class StatQueryExportServiceImpl implements IStatQueryExportService {
         }
     }
 
+    /**
+     * 解析「查询结果」sheet 要导出的列。
+     *
+     * <p>三种情况，优先级从高到低：
+     * <ol>
+     *   <li><b>全部字段模式</b>（{@code allColumns=true}）：返回注册表登记的全部业务列，
+     *       <b>忽略前端传的 columns</b>（清单 P1-13 第 1 条）。查询条件不受影响 ——
+     *       条件走的是同一个 DTO 的其它字段与本文件的 count/query 调用，与这里无关；</li>
+     *   <li>用户勾选了列：按勾选顺序，白名单外的 key 丢弃（旧系统行为：少一列不报错）；</li>
+     *   <li>都没勾：退回默认列（旧系统写死的那 6 / 7 列）。</li>
+     * </ol>
+     */
     private List<String> resolveKeys(StatQueryDTO condition, DataSet dataSet) {
+        if (Boolean.TRUE.equals(condition.getAllColumns())) {
+            return QueryFieldRegistry.allColumnKeys(dataSet);
+        }
         List<String> keys = new ArrayList<>();
         if (condition.getColumns() != null) {
             for (String key : condition.getColumns()) {

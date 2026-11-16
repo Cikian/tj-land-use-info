@@ -95,7 +95,13 @@ public class EscalationProject implements Serializable {
     /** ★申报单位 */
     private String declareDept;
 
-    /** ★项目类型（字典 land_escalation_project_type：产业类/基础设施类/民生类/其他） */
+    /**
+     * ★项目类型（字典 land_escalation_project_type：市级项目 / 区级项目 / 待确认）
+     *
+     * <p>2026-11 口径变更（清单 P2-10）：旧的「产业类 / 基础设施类 / 民生类 / 其他」
+     * 与「市级 / 区级」不是同一分类维度，无法可靠映射，历史值统一置「待确认」后人工确认。
+     * 字典项与存量迁移见 sql/escalation/03_escalation_dict.sql 与 07_escalation_project_type_v2.sql。
+     */
     private String projectType;
 
     /** 项目规模 */

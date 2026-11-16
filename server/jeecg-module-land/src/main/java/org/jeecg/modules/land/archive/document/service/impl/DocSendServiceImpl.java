@@ -16,6 +16,7 @@ import org.jeecg.modules.land.archive.document.mapper.DocSendMapper;
 import org.jeecg.modules.land.archive.document.service.IDocAttachmentService;
 import org.jeecg.modules.land.archive.document.service.IDocSendService;
 import org.jeecg.modules.land.archive.document.support.DocSupport;
+import org.jeecg.modules.land.archive.document.vo.DocArchiveResultVO;
 import org.jeecg.modules.land.archive.entity.Archive;
 import org.jeecg.modules.land.archive.entity.ArchiveFile;
 import org.jeecg.modules.land.archive.service.IArchiveService;
@@ -81,6 +82,11 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
             return null;
         }
         doc.setAttachments(attachmentService.queryByDoc(DocAttachment.DOC_TYPE_SEND, id));
+        // 详情页「归档」标签按档案真实状态（无附件时档案是「归档中」）
+        if (StringUtils.isNotBlank(doc.getArchiveId())) {
+            Archive archive = archiveService.getById(doc.getArchiveId());
+            doc.setArchiveStatus(archive == null ? null : archive.getStatus());
+        }
         return doc;
     }
 
@@ -98,6 +104,19 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
         }
         wrapper.orderByDesc("issue_date").orderByDesc("create_time");
         int size = limit == null || limit <= 0 ? RELATED_LIMIT : Math.min(limit, 500);
+        return page(new Page<>(1, size, false), wrapper).getRecords();
+    }
+
+    @Override
+    public List<DocSend> queryByArchiveId(String archiveId, Integer limit) {
+        if (StringUtils.isBlank(archiveId)) {
+            return Collections.emptyList();
+        }
+        int size = limit == null || limit <= 0 ? RELATED_LIMIT : Math.min(limit, 500);
+        QueryWrapper<DocSend> wrapper = new QueryWrapper<DocSend>()
+                .eq("archive_id", archiveId.trim())
+                .orderByDesc("issue_date")
+                .orderByDesc("create_time");
         return page(new Page<>(1, size, false), wrapper).getRecords();
     }
 
@@ -163,6 +182,11 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
         if (old == null) {
             throw new JeecgBootException("发文不存在或已被删除");
         }
+        // ★ P1-11 第 2 条：已归档的发文只读（后端兜底，防止绕过页面直接调接口）
+        if (StringUtils.isNotBlank(old.getArchiveId())) {
+            throw new JeecgBootException("该发文已归档（档案ID：" + old.getArchiveId()
+                    + "），不能再编辑；如需更正请在档案维护里处理");
+        }
         String docNo = StringUtils.isNotBlank(doc.getDocNo()) ? doc.getDocNo() : old.getDocNo();
         checkDocNoUnique(docNo, old.getId());
 
@@ -222,7 +246,7 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public String archive(DocArchiveDTO dto) {
+    public DocArchiveResultVO archive(DocArchiveDTO dto) {
         if (dto == null || StringUtils.isBlank(dto.getDocId())) {
             throw new JeecgBootException("缺少发文ID");
         }
@@ -237,6 +261,7 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
             throw new JeecgBootException("该发文已归档，无需重复归档");
         }
 
+        // ① 原附件数 ② 转换文件数（两段都要暴露出来，见 DocArchiveResultVO 的说明）
         List<DocAttachment> attachments = attachmentService.queryByDoc(DocAttachment.DOC_TYPE_SEND, doc.getId());
         List<ArchiveFile> files = new ArrayList<>();
         int seq = 1;
@@ -258,29 +283,75 @@ public class DocSendServiceImpl extends ServiceImpl<DocSendMapper, DocSend> impl
             seq++;
         }
 
-        Archive archive = new Archive()
-                .setArchiveName(StringUtils.isNotBlank(dto.getArchiveName())
-                        ? dto.getArchiveName().trim()
-                        : doc.getDocTitle())
-                .setLandId(doc.getLandId())
-                .setCrzdbh(doc.getCrzdbh())
-                .setFacilityId(doc.getFacilityId())
-                .setPtxmmc(doc.getPtxmmc())
-                .setArchiveType(Archive.TYPE_ELECTRONIC)
-                .setSecretLevel(StringUtils.isNotBlank(dto.getSecretLevel())
-                        ? dto.getSecretLevel() : doc.getSecretLevel())
-                .setArchiveDate(parseDate(dto.getArchiveDate(), new Date()))
-                .setResponsibleUser(doc.getDrafter())
-                .setSourceType(Archive.SOURCE_DOC_SEND)
-                .setSourceId(doc.getId())
-                .setRemark("由发文【" + doc.getDocNo() + "】归档")
-                .setStatus(files.isEmpty() ? Archive.STATUS_ARCHIVING : Archive.STATUS_ARCHIVED);
-        fillArchiveAssociation(archive, doc);
+        String archiveId;
+        boolean reused = false;
+        // 第三段：落库行数。★ P1-11：必须是库内真实行数，不能用入参大小充数
+        int savedFileCount;
+        // ★ P2-07 第 4 条：同项目已有案卷则追加文件，不新建；不删除任何历史案卷。
+        Archive reuse = archiveService.findReuseCaseFile(doc.getFacilityId(), doc.getCrzdbh());
+        if (reuse != null) {
+            archiveId = reuse.getId();
+            // appendFiles 内部改成「保存后回查库、返回真实新增行数」
+            savedFileCount = archiveService.appendFiles(archiveId, files);
+            reused = true;
+            log.info("发文归档复用同项目案卷：docId={}, archiveId={}, archiveNo={}, 库内新增行数={}",
+                    doc.getId(), archiveId, reuse.getArchiveNo(), savedFileCount);
+        } else {
+            Archive archive = new Archive()
+                    .setArchiveName(StringUtils.isNotBlank(dto.getArchiveName())
+                            ? dto.getArchiveName().trim()
+                            : doc.getDocTitle())
+                    .setLandId(doc.getLandId())
+                    .setCrzdbh(doc.getCrzdbh())
+                    .setFacilityId(doc.getFacilityId())
+                    .setPtxmmc(doc.getPtxmmc())
+                    .setArchiveType(Archive.TYPE_ELECTRONIC)
+                    .setSecretLevel(StringUtils.isNotBlank(dto.getSecretLevel())
+                            ? dto.getSecretLevel() : doc.getSecretLevel())
+                    .setArchiveDate(parseDate(dto.getArchiveDate(), new Date()))
+                    .setResponsibleUser(doc.getDrafter())
+                    .setSourceType(Archive.SOURCE_DOC_SEND)
+                    .setSourceId(doc.getId())
+                    .setRemark("由发文【" + doc.getDocNo() + "】归档")
+                    // 无附件 → 归档中，不能标成已归档（P1-11 第 5 条）
+                    .setStatus(files.isEmpty() ? Archive.STATUS_ARCHIVING : Archive.STATUS_ARCHIVED);
+            fillArchiveAssociation(archive, doc);
+            archiveId = archiveService.createArchive(archive, files);
+            // ★ P1-11：建卷后回查 t_archive_file，第三段取「库里存了几个」而不是「转换出几个」
+            savedFileCount = archiveService.countFiles(archiveId);
+        }
+        if (savedFileCount < files.size()) {
+            // 不抛异常（已写入的部分不该被回滚），但必须 warn + 让 verifyText 如实变小
+            log.warn("发文归档落库行数小于转换文件数：docId={}, archiveId={}, reused={}, 转换={}, 落库={}，"
+                            + "缺失的通常是 store_path 为空的附件（见 ArchiveFileServiceImpl#saveFiles 的校验）",
+                    doc.getId(), archiveId, reused, files.size(), savedFileCount);
+        }
 
-        String archiveId = archiveService.createArchive(archive, files);
+        // 发文没有流转状态，这里只把 archiveId 指过去；「是否已归档」由档案真实状态决定
         updateById(new DocSend().setId(doc.getId()).setArchiveId(archiveId));
-        log.info("发文归档成功：docId={}, archiveId={}, 文件数={}", doc.getId(), archiveId, files.size());
-        return archiveId;
+
+        Archive saved = archiveService.getById(archiveId);
+        String archiveStatus = saved == null ? null : saved.getStatus();
+        DocArchiveResultVO result = new DocArchiveResultVO()
+                .setArchiveId(archiveId)
+                .setArchiveNo(saved == null ? null : saved.getArchiveNo())
+                .setReusedCaseFile(reused)
+                .setArchiveStatus(archiveStatus)
+                .setDocStatus(archiveStatus)
+                .setAttachmentCount(attachments.size())
+                .setConvertedFileCount(files.size())
+                .setSavedFileCount(savedFileCount)
+                // 第三段是库内真实行数；少于转换数时把差额写明，不假装一切正常
+                .setVerifyText("原附件 " + attachments.size() + " 个 → 转换 " + files.size()
+                        + " 个 → 落库 " + savedFileCount + " 行"
+                        + (savedFileCount < files.size()
+                        ? "（比转换数少 " + (files.size() - savedFileCount)
+                        + " 个，请查看后端日志定位缺失的附件）" : ""));
+        log.info("发文归档成功：docId={}, archiveId={}, reused={}, 原附件数={}, 转换文件数={}, "
+                        + "写入t_archive_file行数={}, 档案状态={}",
+                doc.getId(), archiveId, reused, attachments.size(), files.size(),
+                savedFileCount, archiveStatus);
+        return result;
     }
 
     private void fillArchiveAssociation(Archive archive, DocSend doc) {

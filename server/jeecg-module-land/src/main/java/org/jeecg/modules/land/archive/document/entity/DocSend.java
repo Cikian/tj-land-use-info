@@ -130,4 +130,8 @@ public class DocSend implements Serializable {
     /** 附件数（列表接口返回） */
     @TableField(exist = false)
     private Integer attachmentCount;
+
+    /** 关联档案的真实状态（列表接口带出，不是本表字段；口径同 DocReceive.archiveStatus） */
+    @TableField(exist = false)
+    private String archiveStatus;
 }

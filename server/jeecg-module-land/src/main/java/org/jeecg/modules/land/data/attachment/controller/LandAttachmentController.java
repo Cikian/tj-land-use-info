@@ -152,12 +152,12 @@ public class LandAttachmentController {
     /**
      * 允许的附件类型（材料类型），**按业务类型返回对应那套**。
      *
-     * <p>★ bizType 必传（或至少前端要传）：宗地 5 类与配套 13 类是两套清单，
+     * <p>★ bizType 必传（或至少前端要传）：宗地 4 类与配套 13 类是两套清单，
      * 不区分的话前端下拉会混进一半无关选项。
      */
     @AutoLog(value = "配套附件-允许类型")
     @ApiOperation(value = "配套附件-允许类型",
-            notes = "按 bizType 返回：land/process → 宗地 5 类；facility → 配套 13 类")
+            notes = "按 bizType 返回：land → 宗地 4 类；facility/process → 配套 13 类")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/allowedTypes")
     public Result<List<Map<String, String>>> allowedTypes(

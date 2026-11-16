@@ -58,9 +58,24 @@ public interface RoadHandoverMapper extends BaseMapper<RoadHandover> {
     /** 按移交年度统计（年度取自移交编号 YJ-{yyyy}- 段） */
     List<HandoverStatVO.NameCount> selectStatByYear(@Param("q") HandoverQueryDTO q);
 
-    /** 按接收管养单位统计（条形图，取 Top N） */
+    /**
+     * 按接收管养单位统计（Top N；已排除空值与「未填写/否/无」等占位值）。
+     *
+     * <p><b>★ P2-08 起不再被 Service 调用</b>：两端页面都不消费
+     * {@code byReceiveUnit} 了（大屏的排行块已移除，改为「未填写」数据质量指标卡）。
+     * <b>方法刻意保留</b>——它保留给导出/后续报表（「谁接管得最多」是迟早要回答的问题），
+     * 删掉就要重写这段带占位值排除的 SQL；当前页面不再展示它。
+     * 重新启用时同步恢复 {@code RoadHandoverServiceImpl#queryStat} 里被注释的那次调用。
+     */
     List<HandoverStatVO.NameCount> selectStatByReceiveUnit(@Param("q") HandoverQueryDTO q,
                                                            @Param("limit") Integer limit);
+
+    /**
+     * 接收管养单位未填写数量（数据质量指标，P2-08）。
+     *
+     * <p>与 {@link #selectStatByReceiveUnit} 严格互补：排行里排除的那些行，这里数出来。
+     */
+    long countReceiveUnitBlank(@Param("q") HandoverQueryDTO q);
 
     /** 状态计数（只返回库里存在的状态，缺失的由 Service 补 0） */
     List<HandoverStatVO.StatusCount> selectCountGroupByStatus(@Param("q") HandoverQueryDTO q);

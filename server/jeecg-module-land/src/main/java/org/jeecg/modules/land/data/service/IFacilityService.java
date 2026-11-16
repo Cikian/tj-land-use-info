@@ -17,8 +17,29 @@ public interface IFacilityService extends IService<Facility> {
     /** 指定宗地下的配套项目下拉（先选宗地 → 再选配套项目的第二步） */
     List<FacilityOptionVO> queryOptions(String crzdbh, String keyword, Integer limit);
 
-    /** 跨宗地的配套项目搜索 */
+    /**
+     * 跨宗地的配套项目搜索（原口径，两个新参数都取默认值）。
+     *
+     * <p>保留这个两参重载是为了「现有调用方零改动」：档案查询条件、旧页面都在用它，
+     * 多出来的能力（类别过滤 / 道路优先）必须是通过新增参数获得，
+     * 不能让老调用方跟着改一遍。
+     */
     List<FacilityOptionVO> searchOptions(String keyword, Integer limit);
+
+    /**
+     * 跨宗地的配套项目搜索（P1-10：支持「配套类别过滤」与「道路类优先」）。
+     *
+     * <p><b>为什么需要这两个参数</b>：1433 条配套里道路只占一小部分，按
+     * {@code crzdbh, ptxmmc} 排序取前 50 条时常常一条道路都没有，
+     * 前端只能对「已取回的 50 条」本地排序 —— 候选集本身就是错的，
+     * 于是「打开就有道路类候选」永远不成立。要解决必须在 SQL 的 LIMIT 之前就把道路挑出来。
+     *
+     * @param keyword   配套项目名称 / 出让宗地编号模糊，可空
+     * @param limit     返回条数上限
+     * @param category  配套类别（{@code ptsslb}）模糊匹配，可空；空 = 不过滤
+     * @param roadFirst 是否把道路类排到最前；null / false = 保持原有排序
+     */
+    List<FacilityOptionVO> searchOptions(String keyword, Integer limit, String category, Boolean roadFirst);
 
     /** 按主键取配套项目 */
     Facility queryById(String id);

@@ -6,6 +6,7 @@ import org.jeecg.modules.land.archive.dto.ArchiveQueryDTO;
 import org.jeecg.modules.land.archive.entity.Archive;
 import org.jeecg.modules.land.archive.entity.ArchiveFile;
 import org.jeecg.modules.land.archive.entity.ArchiveLog;
+import org.jeecg.modules.land.archive.vo.ArchiveProjectVO;
 import org.jeecg.modules.land.archive.vo.ArchiveStatVO;
 
 import java.io.File;
@@ -72,6 +73,73 @@ public interface IArchiveService extends IService<Archive> {
 
     /** 变更档案状态（改为「已归档」时会写一条「归档」操作记录） */
     void changeStatus(String id, String status);
+
+    // ------------------------------------------------------------------
+    // 按项目聚合（P2-07）
+    // ------------------------------------------------------------------
+
+    /**
+     * 按「配套项目」分页聚合（树形第一层：项目 → 案卷 → 材料类别 → 文件）。
+     *
+     * <p><b>分页口径：以「项目」为单位分页</b>，不是以案卷为单位分页。
+     * 原因：测试要的是「同一项目的档案集中展示」，若按案卷分页，
+     * 一个项目就会被切到相邻两页，用户反而更难看全。
+     * 分组键 = {@code facility_id}；没有 facility_id 的历史数据退化用
+     * {@code ptxmmc + crzdbh} 作键（这些数据本来就是按名称冗余存储的）。
+     *
+     * @param query    与列表完全相同的筛选条件（保证「聚合视图看到的」和「列表看到的是」同一批数据）
+     * @param pageNo   页码（项目序号）
+     * @param pageSize 每页项目数
+     */
+    IPage<ArchiveProjectVO> queryProjectPage(ArchiveQueryDTO query, Integer pageNo, Integer pageSize);
+
+    /**
+     * 取某个项目下的全部案卷（树形第二层）。
+     *
+     * @param query      与列表相同的筛选条件
+     * @param projectKey 分组键（{@code queryProjectPage} 返回的 projectKey，原样回传）
+     */
+    List<Archive> queryProjectCaseFiles(ArchiveQueryDTO query, String projectKey);
+
+    // ------------------------------------------------------------------
+    // 收发文归档时复用同项目案卷（P2-07 第 4 条）
+    // ------------------------------------------------------------------
+
+    /**
+     * 查找同项目已有的案卷（「一项目一案卷」口径下复用它追加文件）。
+     *
+     * <p>只读查找，<b>不删除、不合并任何历史案卷</b>：找不到就返回 null，由调用方新建。
+     * 选择规则：同 facilityId 优先，其次同 crzdbh；同类里取创建时间最早的一卷
+     * （最早那卷通常就是中心实际在用的案卷），并按档案号升序保证结果稳定。
+     */
+    Archive findReuseCaseFile(String facilityId, String crzdbh);
+
+    /**
+     * 往已有案卷追加卷内文件（收发文归档复用案卷时用）。
+     *
+     * <p>只做追加：不删除该案卷原有文件，也不改档案号/档案名称/状态等主表信息
+     * （改状态会影响历史记录的可核对性，需业务另行确认）。
+     *
+     * <p><b>返回的是「本次真实写入的行数」</b>（P1-11）：实现里在 {@code saveFiles}
+     * 之后重新 COUNT 一次 {@code t_archive_file}，取「归档后行数 − 归档前行数」。
+     * 不再直接返回入参 {@code files.size()} —— 那是「打算写几个」，
+     * 写入部分失败时它会照样等于入参，等于把缺陷掩盖成成功。
+     *
+     * @return 实际写入的 t_archive_file 行数
+     */
+    int appendFiles(String archiveId, List<ArchiveFile> files);
+
+    /**
+     * 某个案卷当前在库里真实存在的卷内文件行数（{@code del_flag = 0}）。
+     *
+     * <p><b>为什么收发文归档需要它（P1-11 第三段计数）</b>：新建案卷分支以前写
+     * {@code savedFileCount = files.size()}，这个数字来自入参、绕过了数据库，
+     * 「转换 3 个 → 落库 2 行」这种部分失败永远发现不了。新建后必须回查一次库，
+     * 让 {@code verifyText} 的第三段等于档案文件页签里能看到的条数。
+     *
+     * @param archiveId 档案ID；为空时返回 0（不抛异常，避免把「统计口径」问题变成归档失败）
+     */
+    int countFiles(String archiveId);
 
     // ------------------------------------------------------------------
     // 统计与导出
