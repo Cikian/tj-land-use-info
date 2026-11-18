@@ -43,19 +43,15 @@
         顶点（取不到退化拾取点）画「起点埋深 / 终点埋深」两个 Cesium
         文字标注，实体 id 记入 _depthLabels；「清除标注」按钮先清这批
         自绘标注，再切插件的删除模式删插件标注。
-      · 断面分析 sectionH / sectionV —— 插件 SectionalAnalysis 引擎
-        （与管线统计同族，同挂 __engine-host）。横断 / 纵断是同一组件的
-        内建双模式：卡片 → 引擎 btnClick（弹出模式清单）→ 经内嵌
-        PopSectionList 弹层 startDraw 直发对应模式 → 地图画线 → POST
-        VUE_DATA_JAVA_URL/pipeline/drawHSection 出图 → 结果浮层
-        .pop.bottom-table（1024×720，右下，自带导出 / 关闭）。出图接口
-        依赖部署侧 /pipeline/* 服务族（真机验证项）。
+      · 横 / 纵断面 sectionH / sectionV —— 共用 PipeManager 的
+        SectionalAnalysis 引擎：卡片弹出插件内嵌模式清单，程序选择对应模式；
+        横断面画切线，纵断面点选管线，结果由插件自身生成。
 
     待接入（爆管 / 开挖 / 流向 / 净距 / 覆土等）：引擎与弹窗组件
     同样全局注册自 stargis-function，按同款模式逐个补，写法参照本页
     pipeline / label 分支与 map/index.vue 的 PLUGIN_TOOLS 注册表。
   -->
-  <div class="analysis-screen" :style="panelStyle">
+  <div class="analysis-screen" :style="panelStyle" @pointerdown.capture="startSectionResultDrag">
     <!--
       左面板包装：铺满画布、自身不接事件的定位根（内部保持设计稿绝对坐标）。
       折叠 = 整块向左滑出屏幕（位移 = 面板宽 + 屏边 30，随拖宽变化）。
@@ -106,18 +102,6 @@
       v-show="false"
       ref="deleteLabelEngine"
       :config-min="pipePopConfig.DeleteLabel"
-      aria-hidden="true"
-    />
-    <!--
-      纵断面分析 = ProfileAnalysis（剖面分析，SpatialAnalysis 家族）：
-      road 式引擎 + ProfileAnalysisPop（带「绘制 / 清除」操作按钮的弹窗，
-      drawProfile / cleanProfile）。配置在 sysConfig['SpatialAnalysis']。
-    -->
-    <profile-analysis
-      v-if="profileConfig"
-      v-show="false"
-      ref="profileAnalysisEngine"
-      :config-min="profileConfig"
       aria-hidden="true"
     />
     <!--
@@ -206,7 +190,7 @@
         v-if="pipeConfig || sectionConfig"
         ref="engineHost"
         class="analysis-screen__engine-host stage-hit"
-        :class="{ 'is-idle': !pipeActive }"
+        :class="{ 'is-idle': !pipeActive && !activeSectionMode, 'is-front': !!activeSectionMode }"
       >
         <pipe-statistics v-if="pipeConfig" ref="pipeStatisticsEngine" :config-min="pipeConfig" />
         <sectional-analysis v-if="sectionConfig" ref="sectionalEngine" :config-min="sectionConfig" />
@@ -224,21 +208,33 @@
           <!-- ★ 管线统计：五个统计结果弹窗（自含，自行监听总线显隐）。
                弹窗无自己的配置就不挂载（v-if 守卫，同引擎口径）。 -->
           <template v-if="activeTool === 'pipeline'">
-            <property-pop v-if="pipePopConfig.xzanalyse" :config-min="pipePopConfig.xzanalyse" />
-            <diameter-pop v-if="pipePopConfig.gjanalyse" :config-min="pipePopConfig.gjanalyse" />
-            <material-pop v-if="pipePopConfig.czanalyse" :config-min="pipePopConfig.czanalyse" />
-            <diameterSect-pop v-if="pipePopConfig.gjfdanalyse" :config-min="pipePopConfig.gjfdanalyse" />
-            <depthSect-pop v-if="pipePopConfig.msfdanalyse" :config-min="pipePopConfig.msfdanalyse" />
+            <property-pop v-if="pipePopConfig.xzanalyse" ref="stat_xzanalyse" :config-min="pipePopConfig.xzanalyse" @hook:mounted="dockStatisticsResult('xzanalyse')" @hook:beforeDestroy="releaseStatisticsResult('xzanalyse')" />
+            <diameter-pop v-if="pipePopConfig.gjanalyse" ref="stat_gjanalyse" :config-min="pipePopConfig.gjanalyse" @hook:mounted="dockStatisticsResult('gjanalyse')" @hook:beforeDestroy="releaseStatisticsResult('gjanalyse')" />
+            <material-pop v-if="pipePopConfig.czanalyse" ref="stat_czanalyse" :config-min="pipePopConfig.czanalyse" @hook:mounted="dockStatisticsResult('czanalyse')" @hook:beforeDestroy="releaseStatisticsResult('czanalyse')" />
+            <diameterSect-pop v-if="pipePopConfig.gjfdanalyse" ref="stat_gjfdanalyse" :config-min="pipePopConfig.gjfdanalyse" @hook:mounted="dockStatisticsResult('gjfdanalyse')" @hook:beforeDestroy="releaseStatisticsResult('gjfdanalyse')" />
+            <depthSect-pop v-if="pipePopConfig.msfdanalyse" ref="stat_msfdanalyse" :config-min="pipePopConfig.msfdanalyse" @hook:mounted="dockStatisticsResult('msfdanalyse')" @hook:beforeDestroy="releaseStatisticsResult('msfdanalyse')" />
           </template>
           <!-- ★ 净距分析：DistanceAnalysisPop 结果弹窗（引擎拾取后经
                showDistancePop 拉起） -->
           <template v-else-if="activeTool === 'clearance'">
-            <distance-analysis-pop v-if="pipePopConfig.DistanceAnalysis" :config-min="pipePopConfig.DistanceAnalysis" />
+            <distance-analysis-pop
+              v-if="pipePopConfig.DistanceAnalysis"
+              ref="distancePop"
+              :config-min="pipePopConfig.DistanceAnalysis"
+              @hook:mounted="dockDistanceResult"
+              @hook:beforeDestroy="releaseDistanceResult"
+            />
           </template>
           <!-- ★ 覆土分析：CoverageAnalysisPop 结果弹窗（引擎拾取后经
                showCoveragePop 拉起） -->
           <template v-else-if="activeTool === 'cover'">
-            <coverage-analysis-pop v-if="pipePopConfig.CoverageAnalysis" :config-min="pipePopConfig.CoverageAnalysis" />
+            <coverage-analysis-pop
+              v-if="pipePopConfig.CoverageAnalysis"
+              ref="coveragePop"
+              :config-min="pipePopConfig.CoverageAnalysis"
+              @hook:mounted="dockCoverageResult"
+              @hook:beforeDestroy="releaseCoverageResult"
+            />
           </template>
           <!-- ★ 流向分析：FlowDirectionAnalysisPop 结果弹窗（引擎拾取后经
                showFlowDirectionAnalysisPop 拉起） -->
@@ -283,11 +279,12 @@
             <div v-else class="analysis-screen__maturity-empty">暂无成熟度图层，待图层服务接入后在此配置</div>
           </template>
           <!-- ★ 配套估算（页面自实现，前端复刻旧系统 ptgsManager 区间公式）：
-               拾取地块 → 读出让金 → 出配套费估算区间（出让金折半的
+               拾取地块 → 读出让金 → 出配套费估算区间（出让金的
                35% ~ 65%），结果显示在本面板。 -->
           <template v-else-if="activeTool === 'estimate'">
             <div class="analysis-screen__estimate">
-              <template v-if="estimateResult">
+              <div v-if="estimateLoading" class="analysis-screen__estimate-empty" role="status">正在读取地块及出让金…</div>
+              <template v-else-if="estimateResult">
                 <div class="analysis-screen__estimate-row">
                   <span>出让宗地编号</span>
                   <b>{{ estimateResult.crzdbh || '—' }}</b>
@@ -301,9 +298,13 @@
                   <b>{{ estimateResult.low }} ~ {{ estimateResult.high }}</b>
                   <i>万元</i>
                 </div>
-                <p class="analysis-screen__estimate-note">按出让金折半的 35% ~ 65% 区间估算（旧系统同款公式）</p>
+                <div class="analysis-screen__estimate-row">
+                  <span>出让金（亿元）</span>
+                  <b>{{ estimateResult.crj }}</b>
+                </div>
+                <p class="analysis-screen__estimate-note">按出让金的 35% ~ 65% 估算，结果单位为万元</p>
               </template>
-              <div v-else class="analysis-screen__estimate-empty">请在地图上点击一个出让地块</div>
+              <div v-else class="analysis-screen__estimate-empty" role="status">{{ estimateMessage || '请在地图上点击一个出让地块' }}</div>
             </div>
           </template>
         </div>
@@ -387,6 +388,7 @@
       与首页属性表 460 → 30 同口径）；默认收起成 47px 底条，与改造前逐像素一致。
     -->
     <screen-bottom-dock
+      keep-content
       :height="layout.bottom.size"
       :collapsed="layout.bottom.collapsed"
       :min="layout.bottom.min"
@@ -395,12 +397,35 @@
       :right-inset="bottomInsets.right"
       @update:height="layout.setSize('bottom', $event)"
       @update:collapsed="layout.setCollapsed('bottom', $event)"
-    />
+    >
+      <!-- 只停靠插件的结果表，右侧统计操作和单条管线详情仍由原组件显示。 -->
+      <div
+        v-show="coverageResultVisible"
+        ref="coverageResultHost"
+        class="analysis-screen__analysis-results"
+        :style="{ '--coverage-table-height': `${Math.max(40, layout.bottom.size - 220)}px` }"
+      ></div>
+      <div
+        v-show="distanceResultVisible"
+        ref="distanceResultHost"
+        class="analysis-screen__analysis-results"
+        :style="{ '--coverage-table-height': `${Math.max(40, layout.bottom.size - 220)}px` }"
+      ></div>
+      <div
+        v-show="statisticsResultVisible"
+        ref="statisticsResultHost"
+        class="analysis-screen__analysis-results"
+        :style="{ '--coverage-table-height': `${Math.max(40, layout.bottom.size - 220)}px` }"
+      ></div>
+      <p v-if="!coverageResultVisible && !distanceResultVisible && !statisticsResultVisible" class="analysis-screen__coverage-empty">暂无数据</p>
+    </screen-bottom-dock>
   </div>
 </template>
 
 <script>
 import AnalysisToolPanel, { ANALYSIS_TOOLS } from './AnalysisToolPanel.vue'
+import { queryLandAdminPage } from '@/api/land/landAdmin'
+import { estimateLandCode, readEstimateLand } from './estimate'
 import { hf } from '@/assets/screen-blue'
 import {
   ScreenResizeBar,
@@ -442,6 +467,11 @@ export default {
        * 右面板壳跟随它切换；再次点击同一卡片 = 退出（与地图管理一致）。
        */
       activeTool: '',
+      /** 与插件结果表开关同步，收起底部面板不销毁已有结果。 */
+      coverageResultVisible: false,
+      /** 净距分析表格停靠状态，表格数据仍由 DistanceAnalysisPop 持有。 */
+      distanceResultVisible: false,
+      statisticsResultVisible: false,
       /**
        * 管线统计引擎配置（sysConfig['PipeManager'] → PipeStatistics 项）。
        * 没配置时为 null：管线统计卡片点击只提示，不挂载引擎
@@ -458,16 +488,8 @@ export default {
        */
       sectionConfig: null,
       /**
-       * 纵断面分析引擎配置（sysConfig['SpatialAnalysis'] → ProfileAnalysis 项，
-       * 老系统 sectionZ 的「绘制 / 清除」弹窗就是 ProfileAnalysisPop）。
-       * 没配置时为 null：纵断面卡片点击只提示，不挂载引擎与弹窗。
-       */
-      profileConfig: null,
-      /**
        * 断面分析当前模式（'' = 无 / 'horizontal' 横断面 / 'vertical' 纵断面）。
-       * startDraw('horizontal' | 'vertical') 在引擎内嵌的 PopSectionList
-       * 弹层组件上（引擎本体只有 btnClick / checked / cancelChecked 契约，
-       * 混淆字符串表已核实），两枚断面卡片经弹层直发驱动两种模式。
+       * 两种模式均由 SectionalAnalysis 内嵌的 PopSectionList 选择。
        */
       activeSectionMode: '',
       /**
@@ -490,6 +512,8 @@ export default {
        * low/high 配套费估算区间（万元）}，拾取地块后填充。
        */
       estimateResult: null,
+      estimateLoading: false,
+      estimateMessage: '',
       /**
        * 五个统计类型入口：label 是界面文案，event 是对应统计弹窗监听的
        * 总线事件（= 中台配置键）。弹窗内部 $on(event, payload)，
@@ -576,19 +600,44 @@ export default {
     this.loadPipeConfig()
     // 自绘埋深标注的实体 id 列表（非响应式，避免 Vue 深度观察 Cesium 对象）
     this._depthLabels = []
+    this._estimatePickSequence = 0
   },
   mounted () {
     // 引擎随页面挂载（v-if pipeConfig），按钮可能已经渲染：先搬一次，
     // 没搬到（异步未渲染）再由 startTypeButtonCollector 轮询兜底
     if (this.pipeConfig) this.collectTypeButtons()
+    this._sectionPopupObserver = new window.MutationObserver(() => this.syncSectionPopupPosition())
+    if (this.$el) {
+      this._sectionPopupObserver.observe(this.$el, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+        attributeFilter: ['class', 'style']
+      })
+    }
+    this.syncSectionPopupPosition()
   },
   watch: {
     // 引擎激活后五枚类型入口才可能渲染出来，开一次搬运流程
     pipeActive (val) {
       if (val) this.startTypeButtonCollector()
+    },
+    activePopEvent () {
+      this.syncStatisticsResult()
+    },
+    activeSectionMode () {
+      this.endSectionResultDrag()
     }
   },
   beforeDestroy () {
+    this.releaseCoverageResult()
+    this.releaseDistanceResult()
+    this.releaseAllStatisticsResults()
+    this.endSectionResultDrag()
+    if (this._sectionPopupObserver) {
+      this._sectionPopupObserver.disconnect()
+      this._sectionPopupObserver = null
+    }
     if (this._btnCollectTimer) {
       clearInterval(this._btnCollectTimer)
       this._btnCollectTimer = null
@@ -603,6 +652,316 @@ export default {
     this.stopEstimatePick()
   },
   methods: {
+    /** 搬动原节点以保留插件的导出、双击定位及详情事件，不复制表格和数据。 */
+    dockCoverageResult () {
+      this.releaseCoverageResult()
+      const plugin = this.$refs.coveragePop
+      const host = this.$refs.coverageResultHost
+      const table = plugin && plugin.$el.querySelector('.bottom-table.info-table')
+      if (!table || !host) return
+      this._coverageTable = { node: table, parent: table.parentNode }
+      host.appendChild(table)
+      this._stopCoverageVisibility = plugin.$watch('pipeCoverageListShow', visible => {
+        const wasVisible = this.coverageResultVisible
+        this.coverageResultVisible = !!visible
+        // 新结果自动展开；用户手动收起后，再次展开仍显示原结果。
+        if (visible || wasVisible) this.layout.setCollapsed('bottom', !visible)
+      }, { immediate: true })
+    },
+
+    /** 工具切换/离页前归还节点，让插件按自己的生命周期销毁。 */
+    releaseCoverageResult () {
+      if (this._stopCoverageVisibility) this._stopCoverageVisibility()
+      this._stopCoverageVisibility = null
+      const table = this._coverageTable
+      if (table) table.parent.appendChild(table.node)
+      this._coverageTable = null
+      if (this.coverageResultVisible) this.layout.setCollapsed('bottom', true)
+      this.coverageResultVisible = false
+    },
+
+    /** 原样停靠五类统计结果，保留插件通过 DOM 生成表格及图表、导出事件。 */
+    dockStatisticsResult (key) {
+      this.$nextTick(() => {
+        const plugin = this.$refs[`stat_${key}`]
+        const host = this.$refs.statisticsResultHost
+        if (!plugin || !host || this._isBeingDestroyed) return
+        this.releaseStatisticsResult(key)
+        const header = plugin.$el.querySelector('.resultPanel')
+        const content = header && header.nextElementSibling
+        if (!content) return
+        const parent = header.parentNode
+        const next = content.nextSibling
+        const group = document.createElement('div')
+        group.className = 'analysis-screen__statistics-result-group'
+        host.appendChild(group)
+        group.appendChild(header)
+        group.appendChild(content)
+        const chart = plugin.$el.querySelector('.pop.bottom-table')
+        const chartParent = chart && chart.parentNode
+        const chartNext = chart && chart.nextSibling
+        const chartViewport = document.createElement('div')
+        chartViewport.className = 'analysis-screen__statistics-chart'
+        group.appendChild(chartViewport)
+        if (chart) chartViewport.appendChild(chart)
+        const dataKey = { xzanalyse: 'propertydata', gjanalyse: 'diameterdata', czanalyse: 'materialdata', gjfdanalyse: 'diametersectdata', msfdanalyse: 'depthdata' }[key]
+        const chartKey = { xzanalyse: 'pipePropertyAnaShow', gjanalyse: 'pipeDiameterAnaShow', czanalyse: 'pipeMaterialAnaShow', gjfdanalyse: 'pipeDiameterSectAnaShow', msfdanalyse: 'pipeDepthAnaShow' }[key]
+        const entry = { plugin, header, content, parent, next, group, chart, chartParent, chartNext, chartViewport, chartKey, hasResult: false }
+        if (!this._statisticsResults) this._statisticsResults = {}
+        this._statisticsResults[key] = entry
+        const resultPanel = content.querySelector('[id$="Panel"]') || content
+        const update = (resultChanged = false) => {
+          const data = plugin[dataKey]
+          // 分段统计直接写 innerHTML，生成 div/a-row/a-col，不更新 *data，也没有 table。
+          const hasResult = (Array.isArray(data) && data.length > 0) ||
+            !!resultPanel.textContent.trim() || !!resultPanel.querySelector('table, canvas, svg')
+          const wasResult = entry.hasResult
+          entry.hasResult = hasResult
+          this.syncStatisticsResult(hasResult && (resultChanged || !wasResult) && this.activePopEvent === key)
+        }
+        // 只监听结果区内容；重算时同步清空再写入会合并为一次通知，也应重新展开。
+        entry.observer = new window.MutationObserver(() => update(true))
+        entry.observer.observe(resultPanel, { childList: true, subtree: true, characterData: true })
+        entry.stopWatch = plugin.$watch(dataKey, () => this.$nextTick(update), { deep: true })
+        entry.stopChartWatch = plugin.$watch(chartKey, shown => {
+          this.$nextTick(() => this.syncStatisticsResult(shown && this.activePopEvent === key))
+        })
+        // 插件内置另一份 ECharts，无法从页面获取实例 resize；按原画布比例适配，保留交互。
+        entry.resizeObserver = new window.ResizeObserver(() => this.fitStatisticsChart(entry))
+        entry.resizeObserver.observe(chartViewport)
+        update()
+      })
+    },
+
+    syncStatisticsResult (open) {
+      const entries = this._statisticsResults || {}
+      const current = entries[this.activePopEvent]
+      Object.keys(entries).forEach(key => {
+        const entry = entries[key]
+        entry.group.style.display = key === this.activePopEvent ? '' : 'none'
+        const chartShown = !!entry.plugin[entry.chartKey]
+        entry.content.style.display = chartShown ? 'none' : ''
+        entry.chartViewport.style.display = chartShown ? '' : 'none'
+      })
+      const visible = this.activeTool === 'pipeline' && !!(current && (current.hasResult || current.plugin[current.chartKey]))
+      const wasVisible = this.statisticsResultVisible
+      this.statisticsResultVisible = visible
+      if (visible && (open || !wasVisible)) this.layout.setCollapsed('bottom', false)
+      else if (!visible && wasVisible) this.layout.setCollapsed('bottom', true)
+      if (visible) this.$nextTick(() => this.fitStatisticsChart(current))
+    },
+
+    fitStatisticsChart (entry) {
+      if (!entry.chart || !entry.plugin[entry.chartKey]) return
+      const canvas = entry.chart.querySelector('[id^="main"]')
+      if (!canvas || !entry.chartViewport.clientWidth) return
+      const scale = Math.min(1, entry.chartViewport.clientWidth / canvas.offsetWidth)
+      canvas.style.transformOrigin = 'left top'
+      canvas.style.transform = `scale(${scale})`
+      entry.chart.style.setProperty('--statistics-chart-height', `${canvas.offsetHeight * scale + 34}px`)
+    },
+
+    releaseStatisticsResult (key) {
+      const entries = this._statisticsResults
+      const entry = entries && entries[key]
+      if (!entry) return
+      entry.observer.disconnect()
+      entry.stopWatch()
+      entry.stopChartWatch()
+      entry.resizeObserver.disconnect()
+      entry.content.style.display = ''
+      if (entry.chart) {
+        const canvas = entry.chart.querySelector('[id^="main"]')
+        if (canvas) {
+          canvas.style.transform = ''
+          canvas.style.transformOrigin = ''
+        }
+        entry.chart.style.removeProperty('--statistics-chart-height')
+        entry.chartParent.insertBefore(entry.chart, entry.chartNext && entry.chartNext.parentNode === entry.chartParent ? entry.chartNext : null)
+      }
+      if (entry.next && entry.next.parentNode === entry.parent) {
+        entry.parent.insertBefore(entry.header, entry.next)
+        entry.parent.insertBefore(entry.content, entry.next)
+      } else {
+        entry.parent.appendChild(entry.header)
+        entry.parent.appendChild(entry.content)
+      }
+      entry.group.remove()
+      delete entries[key]
+      this.syncStatisticsResult()
+    },
+
+    releaseAllStatisticsResults () {
+      Object.keys(this._statisticsResults || {}).forEach(key => this.releaseStatisticsResult(key))
+    },
+
+    /** 净距结果由 distancedata 驱动，观察插件异步渲染后停靠原表格节点。 */
+    dockDistanceResult () {
+      this.releaseDistanceResult()
+      const plugin = this.$refs.distancePop
+      const host = this.$refs.distanceResultHost
+      if (!plugin || !host) return
+      const syncTable = () => {
+        const table = plugin.$el.querySelector('.distance-control.property-panel-color')
+        const header = table && table.previousElementSibling
+        if (table && header && table.parentNode !== host) {
+          const parent = table.parentNode
+          const next = table.nextSibling
+          const resultGroup = document.createElement('div')
+          resultGroup.className = 'analysis-screen__distance-result-group'
+          this._distanceTable = { header, table, parent, next, resultGroup }
+          host.appendChild(resultGroup)
+          resultGroup.appendChild(header)
+          resultGroup.appendChild(table)
+        }
+        const visible = Array.isArray(plugin.distancedata) && plugin.distancedata.length > 0
+        this.distanceResultVisible = visible
+        if (visible && !this._distanceWasVisible) this.layout.setCollapsed('bottom', false)
+        else if (this.layout.bottom.collapsed === false && this._distanceWasVisible) this.layout.setCollapsed('bottom', true)
+        this._distanceWasVisible = visible
+      }
+      this._distanceResultObserver = new window.MutationObserver(syncTable)
+      this._distanceResultObserver.observe(plugin.$el, { childList: true, subtree: true })
+      this._stopDistanceWatch = plugin.$watch('distancedata', () => this.$nextTick(syncTable), { deep: true })
+      syncTable()
+    },
+
+    /** 切换工具或离页前归还 Vue 所属节点，避免插件更新时留下脱离组件的弹层。 */
+    releaseDistanceResult () {
+      if (this._stopDistanceWatch) this._stopDistanceWatch()
+      this._stopDistanceWatch = null
+      if (this._distanceResultObserver) this._distanceResultObserver.disconnect()
+      this._distanceResultObserver = null
+      if (this._distanceTable) {
+        const { header, table, parent, next, resultGroup } = this._distanceTable
+        if (next && next.parentNode === parent) {
+          parent.insertBefore(header, next)
+          parent.insertBefore(table, next)
+        } else {
+          parent.appendChild(header)
+          parent.appendChild(table)
+        }
+        resultGroup.remove()
+      }
+      this._distanceTable = null
+      if (this.distanceResultVisible) this.layout.setCollapsed('bottom', true)
+      this.distanceResultVisible = false
+      this._distanceWasVisible = false
+    },
+
+    /** 插件异步显示出图时将结果窗居中；同一显示周期只定位一次，用户拖动不受影响。 */
+    syncSectionPopupPosition () {
+      const root = this.$el
+      const popups = root && this.activeSectionMode ? Array.from(root.querySelectorAll('.pop')) : []
+      const isVisible = popup => popup.getClientRects().length && window.getComputedStyle(popup).display !== 'none'
+      const popup = popups.find(item => item.classList.contains('bottom-table') && isVisible(item)) || popups.find(isVisible)
+      const visible = !!popup
+      if (!visible) {
+        this._sectionPopupWasVisible = false
+        return
+      }
+      if (this._sectionPopupWasVisible) return
+      this._sectionPopupWasVisible = true
+      this.$nextTick(() => {
+        if (popup.isConnected && popup.getClientRects().length) this.centerSectionResultPopup(popup)
+      })
+    },
+
+    centerSectionResultPopup (popup) {
+      const rect = popup.getBoundingClientRect()
+      const pageRect = this.$el.getBoundingClientRect()
+      const style = window.getComputedStyle(popup)
+      const scaleX = rect.width / popup.offsetWidth
+      const scaleY = rect.height / popup.offsetHeight
+      if (!scaleX || !scaleY) return
+      const dx = pageRect.left + (pageRect.width - rect.width) / 2 - rect.left
+      const dy = pageRect.top + (pageRect.height - rect.height) / 2 - rect.top
+      const right = parseFloat(style.right) || 0
+      const bottom = parseFloat(style.bottom) || 0
+      popup.style.setProperty('right', `${right - dx / scaleX}px`, 'important')
+      popup.style.setProperty('bottom', `${bottom - dy / scaleY}px`, 'important')
+    },
+
+    /** 插件没有开放拖动配置，宿主委托标题栏事件，兼容异步出图和重新出图。 */
+    startSectionResultDrag (event) {
+      if (event.button !== 0 || this._sectionResultDrag) return
+      const target = event.target
+      if (!target || !target.closest) return
+      const title = target.closest('.bottom-table-title, .pop-header, .pop-title, .pop-title-bar')
+      const resultPopup = title && title.closest('.pop')
+      if (!resultPopup || !this.$el.contains(resultPopup) || !this.activeSectionMode) return
+      if (target.closest('.pop-title-btn, button, a, input, select, textarea, [role="button"]')) return
+
+      const dragPopup = resultPopup
+      const dragRect = dragPopup.getBoundingClientRect()
+      if (!dragPopup.offsetWidth || !dragPopup.offsetHeight) return
+      const style = window.getComputedStyle(dragPopup)
+      const pageRect = this.$el.getBoundingClientRect()
+      const bounds = {
+        left: Math.max(0, pageRect.left),
+        top: Math.max(0, pageRect.top),
+        right: Math.min(window.innerWidth, pageRect.right),
+        bottom: Math.min(window.innerHeight, pageRect.bottom)
+      }
+      this._sectionResultDrag = {
+        popup: dragPopup,
+        title,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        right: parseFloat(style.right) || 0,
+        bottom: parseFloat(style.bottom) || 0,
+        rect: dragRect,
+        bounds,
+        // client 坐标是屏幕像素，right / bottom 是画布像素，必须按轴换算。
+        scaleX: dragRect.width / dragPopup.offsetWidth,
+        scaleY: dragRect.height / dragPopup.offsetHeight,
+        titleHeight: title.getBoundingClientRect().height
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      try { title.setPointerCapture(event.pointerId) } catch (error) { /* window 监听兜底 */ }
+      window.addEventListener('pointermove', this.moveSectionResultDrag, { passive: false })
+      window.addEventListener('pointerup', this.endSectionResultDrag)
+      window.addEventListener('pointercancel', this.endSectionResultDrag)
+      window.addEventListener('blur', this.endSectionResultDrag)
+      window.addEventListener('resize', this.endSectionResultDrag)
+    },
+
+    moveSectionResultDrag (event) {
+      const state = this._sectionResultDrag
+      if (!state || event.pointerId !== state.pointerId) return
+      if (!state.popup.isConnected) return this.endSectionResultDrag()
+      event.preventDefault()
+      const { rect, bounds } = state
+      // 放得下时保留完整窗口；窗口大于视口时，至少保留可抓取的标题栏。
+      const visibleWidth = Math.min(rect.width, bounds.right - bounds.left, 80)
+      const fitsWidth = rect.width <= bounds.right - bounds.left
+      const minX = fitsWidth ? bounds.left - rect.left : bounds.left + visibleWidth - rect.right
+      const maxX = fitsWidth ? bounds.right - rect.right : bounds.right - visibleWidth - rect.left
+      const visibleHeight = rect.height <= bounds.bottom - bounds.top ? rect.height : state.titleHeight
+      const minY = bounds.top - rect.top
+      const maxY = Math.max(minY, bounds.bottom - visibleHeight - rect.top)
+      const dx = Math.min(Math.max(event.clientX - state.startX, minX), maxX)
+      const dy = Math.min(Math.max(event.clientY - state.startY, minY), maxY)
+      // 原定位带 !important，内联也需同优先级；只移动锚点，保留插件原生图幅。
+      state.popup.style.setProperty('right', `${state.right - dx / state.scaleX}px`, 'important')
+      state.popup.style.setProperty('bottom', `${state.bottom - dy / state.scaleY}px`, 'important')
+    },
+
+    endSectionResultDrag (event) {
+      const state = this._sectionResultDrag
+      if (!state) return
+      if (event && event.type.indexOf('pointer') === 0 && event.pointerId !== state.pointerId) return
+      this._sectionResultDrag = null
+      window.removeEventListener('pointermove', this.moveSectionResultDrag)
+      window.removeEventListener('pointerup', this.endSectionResultDrag)
+      window.removeEventListener('pointercancel', this.endSectionResultDrag)
+      window.removeEventListener('blur', this.endSectionResultDrag)
+      window.removeEventListener('resize', this.endSectionResultDrag)
+      try { state.title.releasePointerCapture(state.pointerId) } catch (error) { /* 捕获可能已自动释放 */ }
+    },
+
     /**
      * 把插件渲染的五枚统计类型入口（.analyse-pipe）搬进 __plugin-parking
      * 停靠区隐藏保存：浮层入口不再出现在页头 / 面板里。搬移前只清停靠区
@@ -660,29 +1019,56 @@ export default {
     },
 
     /**
-     * 配置摊平：管线统计与标注管理的配置分属中台两个模块——
-     * PipeManager（统计五弹窗 + 管线标注 / 清除标注）与 Common
-     * （坐标标注），按 componentname 递归摊平进同一张表。
-     * 引擎 / 弹窗逐个取自己的键：PipeStatistics、gjanalyse / czanalyse /
-     * gjfdanalyse / msfdanalyse / xzanalyse、PipeMark、DeleteLabel、
-     * CoordinateLabel。
+     * GIS 配置接口返回的是场景功能树，业务组可能多层嵌套、也可能没有
+     * nodetype 标记。整树按 componentname 摊平，避免只扫固定模块名时漏掉
+     * 插件配置，导致对应引擎和结果弹窗被 v-if 一起挡掉。
      */
     loadPipeConfig () {
       const sysConfig = this.$store.getters.sysConfig || {}
       const map = {}
-      const walk = (items) => {
-        (items || []).forEach((item) => {
-          map[item.componentname] = item
-          if (item.nodetype === 'group') walk(item.children)
+      const walk = (nodes) => {
+        const items = Array.isArray(nodes)
+          ? nodes
+          : (nodes && typeof nodes === 'object' ? Object.keys(nodes).map((key) => nodes[key]) : [])
+        items.forEach((item) => {
+          if (!item || typeof item !== 'object') return
+          const componentName = item.componentname || item.componentName
+          if (componentName) map[String(componentName)] = item
+          if (item.children) walk(item.children)
         })
       }
-      walk(sysConfig.PipeManager && sysConfig.PipeManager.children)
-      walk(sysConfig.Common && sysConfig.Common && sysConfig.Common.children)
-      walk(sysConfig.SpatialAnalysis && sysConfig.SpatialAnalysis.children)
+      walk(sysConfig)
+
+      // 有些旧配置的 componentname 仅大小写不同，统一补成页面使用的标准键。
+      const findComponent = (name) => {
+        const target = name.toLowerCase()
+        const key = Object.keys(map).find((item) => item.toLowerCase() === target)
+        return key ? map[key] : null
+      }
+      ;[
+        'PipeStatistics', 'SectionalAnalysis', 'PipeMark',
+        'CoordinateLabel', 'DeleteLabel', 'DistanceAnalysis', 'CoverageAnalysis',
+        'FlowDirectionAnalysis', 'BurstAnalysis', 'ExcavationAnalysis',
+        'xzanalyse', 'gjanalyse', 'czanalyse', 'gjfdanalyse', 'msfdanalyse'
+      ].forEach((name) => {
+        const config = findComponent(name)
+        if (config) map[name] = config
+      })
+      if (map.deletelable && !map.DeleteLabel) map.DeleteLabel = map.deletelable
+      // ★ 标注三件套兜底（用户实测：配置树里这三个键常对不上，标注管理整个哑火）。
+      //   GIS 配置里这三个节点的 ServerURL/DataURL 本来就是空（库里实测 {} / null），
+      //   插件表单的接口全走 window._CONFIG.VUE_DATA_JAVA_URL（backend-service）——
+      //   配置节点只是引擎/弹窗的「挂载门票」，缺了就用最小配置补齐。
+      //   另：库里「删除标注」的组件名是小写 deletelable，前端按 DeleteLabel 取，补别名。
+      const labelFallbacks = ['PipeMark', 'CoordinateLabel', 'DeleteLabel']
+      labelFallbacks.forEach((key) => {
+        if (!map[key]) {
+          map[key] = { componentname: key, name: key === 'PipeMark' ? '管线标注' : key === 'CoordinateLabel' ? '坐标标注' : '删除标注', ServerURL: '', DataURL: '', children: [] }
+        }
+      })
       this.pipePopConfig = map
       this.pipeConfig = map.PipeStatistics || null
       this.sectionConfig = map.SectionalAnalysis || null
-      this.profileConfig = map.ProfileAnalysis || null
     },
 
     /**
@@ -855,16 +1241,7 @@ export default {
       this.activeTool = this.activeTool === key ? '' : key
     },
 
-    /**
-     * 横 / 纵断面分析（两个不同的功能，按旧系统的交互拆开）：
-     *   · 横断面（sectionH）→ SectionalAnalysis：右侧不弹任何面板，
-     *     点卡片直接在地图上画切线（引擎面板隐藏在宿主里，模式按钮由
-     *     代码程序化点中——display:none 的 DOM 照常派发 click）；
-     *   · 纵断面（sectionV）→ ProfileAnalysis + ProfileAnalysisPop：
-     *     右侧弹出带「绘制 / 清除」操作按钮的弹窗（老系统 sectionZ 的
-     *     交互），由引擎经 showProfilePop 总线事件拉起。
-     * 再点同一枚卡片 = 退出。
-     */
+    /** 横 / 纵断面共用插件引擎，卡片负责自动选择内嵌模式项；再点退出。 */
     toggleSectional (mode) {
       if (mode === 'vertical') {
         this.toggleVerticalProfile()
@@ -884,6 +1261,10 @@ export default {
         this.$screenToast.info('当前 stargis-function 包未包含断面分析组件，待插件升级后接入')
         return
       }
+      if (this.activeSectionMode && this.activeSectionMode !== 'horizontal') {
+        try { if (engine.checked) engine.cancelChecked() } catch (error) { /* 忽略 */ }
+        this.activeSectionMode = ''
+      }
       if (this.activeSectionMode === 'horizontal') {
         // 再点同一枚 = 退出：复位引擎
         try { if (engine.checked) engine.cancelChecked() } catch (error) { /* 忽略 */ }
@@ -893,8 +1274,7 @@ export default {
       }
       this.resetEngineStates('sectional')
       try {
-        // 激活后右侧面板保持隐藏（宿主 is-idle），模式按钮在隐藏 DOM 里
-        // 照常可点：程序化点中「横断面分析」直接进入绘制
+        // 从插件模式清单选择横断面。结果浮层保留，右侧旧操作面板由样式隐藏。
         engine.btnClick()
         let tries = 0
         const timer = setInterval(() => {
@@ -906,8 +1286,8 @@ export default {
               this.$screenToast.info('横断面分析：请在地图上画一条切线（点两个点）')
             } else {
               this.$screenToast.info('已进入断面分析，如未开始绘制请稍候重试')
-              this.hidePluginFloat('断面分析')
             }
+            this.hidePluginFloat('断面分析')
             this.activeSectionMode = 'horizontal'
             this.activeTool = 'sectionH'
           }
@@ -917,16 +1297,10 @@ export default {
       }
     },
 
-    /**
-     * 纵断面分析（老系统 enablePipeSectionAnalysis 的交互）：拾取管线——
-     * 点卡片后进入拾取模式，在地图上点一条管线，出该管线沿走向的纵断面
-     * 图（埋深起伏）。实现走 SectionalAnalysis 的纵断面模式：激活后自动
-     * 点面板里的「纵断面分析」模式按钮（老系统 sectionZ 对话框的
-     * 「开始分析 / 清除分析」就是这个面板的后续操作），面板随引擎宿主显示。
-     */
+    /** 纵断面分析：复用断面分析插件，自动点击其「纵断面分析」模式项。 */
     toggleVerticalProfile () {
       const engine = this.$refs.sectionalEngine
-      if (!engine) {
+      if (!engine || !this.sectionConfig) {
         this.$screenToast.info('「纵断面分析」未配置数据源，请在 GIS 功能配置「管线管理 → 断面分析」里配置后使用')
         return
       }
@@ -934,8 +1308,12 @@ export default {
         this.$screenToast.info('当前 stargis-function 包未包含断面分析组件，待插件升级后接入')
         return
       }
+      if (this.activeSectionMode && this.activeSectionMode !== 'vertical') {
+        try { if (engine.checked) engine.cancelChecked() } catch (error) { /* 忽略 */ }
+        this.activeSectionMode = ''
+      }
       if (this.activeSectionMode === 'vertical') {
-        // 再点同一枚 = 退出：复位引擎并收面板
+        // 再点同一枚 = 退出：复位纵断面引擎并收面板
         try { if (engine.checked) engine.cancelChecked() } catch (error) { /* 忽略 */ }
         this.activeSectionMode = ''
         this.activeTool = ''
@@ -943,7 +1321,6 @@ export default {
       }
       this.resetEngineStates('sectional')
       try {
-        // 激活后自动点中面板里的「纵断面分析」模式按钮进入拾取
         engine.btnClick()
         let tries = 0
         const timer = setInterval(() => {
@@ -953,10 +1330,10 @@ export default {
             if (btn) {
               btn.click()
               this.$screenToast.info('纵断面分析：请在地图上点击一条管线')
-              this.hidePluginFloat('断面分析')
             } else {
-              this.$screenToast.info('已打开断面分析，如未进入纵断面请点面板中的「纵断面分析」按钮')
+              this.$screenToast.info('已打开断面分析，如未进入纵断面请稍候重试')
             }
+            this.hidePluginFloat('断面分析')
             this.activeSectionMode = 'vertical'
             this.activeTool = 'sectionV'
           }
@@ -1057,11 +1434,18 @@ export default {
      */
     extractPickInfo (picked) {
       const Cesium = window.Cesium
-      const target = (picked && (picked.id || picked.primitive)) || picked
+      const target = picked && typeof picked.getProperty === 'function'
+        ? picked : (picked && (picked.id || picked.primitive)) || picked
       let props = null
       if (target && typeof target.getProperty === 'function') {
         props = {}
-        ;['QSMS', 'qsms', 'ZZMS', 'zzms', 'QSDH', 'ZZDH', '起点埋深', '终点埋深'].forEach((n) => {
+        const names = ['QSMS', 'qsms', 'ZZMS', 'zzms', 'QSDH', 'ZZDH', '起点埋深', '终点埋深',
+          'crzdbh', 'CRZDBH', '出让宗地编号', '宗地编号', 'dkmc', 'DKMC', '地块名称',
+          'crj', 'CRJ', 'crzj', 'CRZJ', '出让金', '出让金（亿元）', '出让金(亿元)']
+        if (typeof target.getPropertyNames === 'function') {
+          try { names.push(...target.getPropertyNames()) } catch (error) { /* 旧版插件只支持按名读取 */ }
+        }
+        ;[...new Set(names)].forEach((n) => {
           try { props[n] = target.getProperty(n) } catch (error) { /* 忽略 */ }
         })
       } else if (target && target.properties) {
@@ -1420,50 +1804,109 @@ export default {
     },
 
     stopEstimatePick () {
+      // 地图跨页共享，退出工具后仍在途的切片/业务请求不得写回结果。
+      this._estimatePickSequence++
+      this.estimateLoading = false
       if (this._estimateHandler) {
         try { this._estimateHandler.destroy() } catch (error) { /* 已销毁则忽略 */ }
         this._estimateHandler = null
       }
     },
 
-    handleEstimatePick (position) {
+    async pickEstimateMvt (position, requestId) {
+      const Cesium = window.Cesium
       const viewer = window.viewer
-      let picked = null
-      try { picked = viewer.scene.pick(position) } catch (error) { return }
-      if (!picked) {
-        this.$screenToast.info('未拾取到要素，请点击出让地块')
-        return
+      const ray = viewer.camera.getPickRay(position)
+      const hit = (ray && viewer.scene.globe.pick(ray, viewer.scene)) || viewer.camera.pickEllipsoid(position, viewer.scene.globe.ellipsoid)
+      if (!hit) return null
+      const cartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(hit)
+      const hit2 = viewer.camera.pickEllipsoid(new Cesium.Cartesian2(position.x + 100, position.y), viewer.scene.globe.ellipsoid)
+      let level = 16
+      if (hit2) {
+        const c2 = viewer.scene.globe.ellipsoid.cartesianToCartographic(hit2)
+        const degreesPerPixel = Math.abs(c2.longitude - cartographic.longitude) * 180 / Math.PI / 100
+        if (degreesPerPixel > 0) level = Math.max(0, Math.min(22, Math.round(Math.log2(360 / (degreesPerPixel * 256)))))
       }
-      const info = this.extractPickInfo(picked)
-      const props = info.props || {}
-      // 字段名宽松匹配（别名可能是中文名 / 编码，全半角括号不定）
-      const findVal = (patterns) => {
-        const key = Object.keys(props).find((k) => patterns.some((ptn) => k.indexOf(ptn) > -1))
-        const v = key ? props[key] : null
-        return (v === undefined || v === null || v === '') ? null : String(v)
+      let pickError = null
+      for (let i = viewer.imageryLayers.length - 1; i >= 0; i--) {
+        const layer = viewer.imageryLayers.get(i)
+        const provider = layer && (layer.imageryProvider || layer._imageryProvider)
+        if (!layer || !layer.show || layer.alpha === 0 || !layer._mvtResourceId || !provider ||
+            typeof provider.pickFeatures !== 'function' || !provider.tilingScheme) continue
+        const maximum = Number.isFinite(provider.maximumLevel) ? provider.maximumLevel : 22
+        const minimum = Number.isFinite(provider.minimumLevel) ? provider.minimumLevel : 0
+        const pickLevel = Math.max(minimum, Math.min(level, maximum))
+        const tile = provider.tilingScheme.positionToTileXY(cartographic, pickLevel)
+        if (!tile) continue
+        try {
+          const features = await provider.pickFeatures(tile.x, tile.y, pickLevel, cartographic.longitude, cartographic.latitude)
+          if (requestId !== this._estimatePickSequence) return null
+          const candidates = (features || []).map(feature => readEstimateLand(feature.data || {}))
+          const land = candidates.find(item => item.crzdbh || item.crj !== null) || candidates.find(item => item.dkmc)
+          if (land) return land
+        } catch (error) {
+          // 上层服务失败仍可拾取下层地块；所有图层均未命中时再说明服务错误。
+          pickError = error
+        }
       }
-      const crzdbh = findVal(['出让宗地编号', 'CRZDBH', 'crzdbh'])
-      const dkmc = findVal(['地块名称', 'DKMC', 'dkmc'])
-      const crzjRaw = findVal(['出让金'])
-      if (crzjRaw === null) {
-        this.$screenToast.info('该地块属性中没有出让金字段，请确认点击的是经营性用地地块')
-        return
+      if (pickError) throw new Error('地块拾取失败，请检查 MVT 服务后重试')
+      return null
+    },
+
+    async loadEstimateLand (code, requestId) {
+      const normalized = estimateLandCode(code)
+      // 列表接口使用 LIKE，取首条可能误用另一宗地的金额，必须核对完整编号。
+      const keywords = [...new Set([normalized, code])]
+      for (const keyword of keywords) {
+        let pageNo = 1
+        let total = 0
+        do {
+          const res = await queryLandAdminPage({ pageNo, pageSize: 100, crzdbh: keyword })
+            .catch(() => { throw new Error('业务出让金查询失败，请检查业务服务及访问权限') })
+          if (requestId !== this._estimatePickSequence) return null
+          if (!res || !res.success) throw new Error('业务出让金查询失败，请检查业务服务及访问权限')
+          const page = res.result || {}
+          const records = page.records || []
+          const matches = records.filter(row => estimateLandCode(row.crzdbh) === normalized)
+          if (matches.length > 1) throw new Error('业务表中有多条同编号地块，请先核对宗地编号')
+          if (matches.length) return readEstimateLand(matches[0])
+          total = Number(page.total) || 0
+          if (!records.length) break
+          pageNo++
+        } while ((pageNo - 1) * 100 < total)
       }
-      const crzj = Number(crzjRaw)
-      if (isNaN(crzj) || crzj <= 0) {
-        this.$screenToast.info('出让金字段不是有效数值：' + crzjRaw)
-        return
-      }
-      // 旧系统 ptgsManager 同款公式：ptf = 出让金（亿元）× 10000（万元），
-      // 估算区间 = ptf/2 ∓ ptf/2 × 0.3（即 ptf 的 35% ~ 65%）
-      const ptf = crzj * 10000
-      const num = ptf / 2 * 0.3
-      const fmt = (v) => Math.round(v).toLocaleString('zh-CN')
-      this.estimateResult = {
-        crzdbh: crzdbh || '',
-        dkmc: dkmc || '',
-        low: fmt(ptf / 2 - num),
-        high: fmt(ptf / 2 + num)
+      throw new Error('业务表未找到宗地「' + code + '」，请核对地块编号')
+    },
+
+    async handleEstimatePick (position) {
+      const requestId = ++this._estimatePickSequence
+      this.estimateResult = null
+      this.estimateMessage = ''
+      this.estimateLoading = true
+      try {
+        let picked = null
+        try { picked = window.viewer.scene.pick(position) } catch (error) { /* 影像图层继续走 MVT 拾取 */ }
+        let land = readEstimateLand(this.extractPickInfo(picked).props || {})
+        if (!land.crzdbh && land.crj === null) land = await this.pickEstimateMvt(position, requestId)
+        if (requestId !== this._estimatePickSequence) return
+        if (!land) throw new Error('未拾取到可估算地块，请点击已加载的出让地块图层')
+        if (land.crj === null) {
+          if (!land.crzdbh) throw new Error('地块没有出让金和宗地编号，无法查询业务出让金')
+          const businessLand = await this.loadEstimateLand(land.crzdbh, requestId)
+          if (requestId !== this._estimatePickSequence) return
+          land = { ...land, ...businessLand, dkmc: businessLand.dkmc || land.dkmc }
+        }
+        if (land.crj === null) throw new Error('该宗地未填写有效出让金，请在经营性用地业务信息中补录')
+        // 沿用旧公式：出让金（亿元）×10000，按 35%～65% 输出万元。
+        const ptf = land.crj * 10000
+        const fmt = value => Math.round(value).toLocaleString('zh-CN')
+        this.estimateResult = { ...land, low: fmt(ptf * 0.35), high: fmt(ptf * 0.65) }
+      } catch (error) {
+        if (requestId !== this._estimatePickSequence) return
+        this.estimateMessage = (error && error.message) || '配套估算失败，请检查地块及业务服务后重试'
+        this.$screenToast.info(this.estimateMessage)
+      } finally {
+        if (requestId === this._estimatePickSequence) this.estimateLoading = false
       }
     },
 
@@ -1635,6 +2078,165 @@ export default {
     background-size: 100% 100%;
   }
 
+  // 插件结果表脱离右侧宿主后，填满底部属性表；滚动高度随面板拖高变化。
+  &__analysis-results {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    pointer-events: auto;
+
+    /deep/ .pop.bottom-table {
+      position: absolute !important;
+      top: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      padding: 0 0 28px !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      overflow: hidden;
+    }
+
+    // 外壳已有「属性表」标题，原标题栏仅保留导出和关闭操作。
+    /deep/ .bottom-table-title {
+      height: 30px !important;
+      margin-bottom: 4px;
+      background: transparent !important;
+      font-size: 0;
+      cursor: default;
+      touch-action: auto;
+
+      .pop-title-logo { display: none; }
+      .pop-title-btn { font-size: 14px; }
+    }
+
+    /deep/ .ant-table-body {
+      max-height: var(--coverage-table-height) !important;
+      overflow: auto !important;
+    }
+
+    /deep/ .analysis-screen__statistics-result-group {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      overflow: hidden;
+
+      // 去掉标题与空栅格，操作按钮按实际文字宽度靠右排列。
+      > .resultPanel {
+        display: flex;
+        flex: 0 0 34px;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        margin: 0;
+
+        > .ant-col { width: auto !important; }
+        > .ant-col:first-child,
+        > .ant-col:empty { display: none; }
+        .export-btn { width: auto; padding: 0 14px; white-space: nowrap; }
+      }
+      .resultPanel + div { flex: 1; min-height: 0; width: 100%; overflow: hidden; }
+      .resultPanel + div > [id$="Panel"] {
+        width: 100%;
+        height: 100% !important;
+        overflow: auto !important;
+
+        .material-control { width: 100%; margin-top: 0 !important; }
+        .row-div {
+          display: flex;
+          width: 100%;
+          height: auto !important;
+          min-height: 30px;
+          margin: 0 !important;
+        }
+        .row-div > a-col,
+        .row-div > .ant-col {
+          display: block;
+          flex: 1 1 0;
+          width: auto !important;
+          min-width: 0;
+          float: none;
+        }
+        .row-div > a-col:empty { display: none; }
+        .row-div .option-btn {
+          width: 100% !important;
+          height: auto;
+          min-height: 30px;
+          line-height: 30px;
+        }
+      }
+      table { width: 100% !important; }
+    }
+
+    /deep/ .analysis-screen__statistics-chart {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
+
+      .pop.bottom-table {
+        position: relative !important;
+        height: var(--statistics-chart-height, 584px) !important;
+        padding: 0 !important;
+      }
+      .bottom-table-title {
+        cursor: default;
+        touch-action: auto;
+        .pop-title-btn { position: absolute; right: 8px; top: 6px; }
+      }
+    }
+
+    /deep/ .analysis-screen__distance-result-group {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    // 隐藏重复标题，保留右侧导出操作。
+    /deep/ .analysis-screen__distance-result-group > .resultPanel > .ant-col-9 {
+      visibility: hidden;
+    }
+
+    /deep/ .distance-control.property-panel-color {
+      height: calc(100% - 34px) !important;
+      overflow: hidden;
+    }
+
+    // 插件为右侧窄面板设置了固定列宽和空列，底部表格按四列均分宽度。
+    /deep/ .distance-control.property-panel-color table {
+      width: 100% !important;
+    }
+
+    /deep/ .distance-control.property-panel-color colgroup col:nth-child(-n+4) {
+      width: 25% !important;
+      min-width: 0 !important;
+    }
+
+    /deep/ .distance-control.property-panel-color colgroup col:nth-child(n+5) {
+      display: none;
+    }
+
+    /deep/ .distance-control.property-panel-color .ant-table-body {
+      max-height: var(--coverage-table-height) !important;
+    }
+  }
+
+  &__coverage-empty {
+    margin: 0;
+    color: var(--screen-text-mute);
+    font-size: var(--screen-font-sm);
+  }
+
   /* ---------------- 管线统计：引擎宿主 + 老式浮层壳压平 ----------------
    * 引擎闲置时只剩一个老工具栏按钮壳，整块藏掉（is-idle）；激活后引擎
    * 自画的表单/面板与五个统计结果弹窗都在本面板框内。
@@ -1661,6 +2263,15 @@ export default {
     &.is-front {
       z-index: 5;
     }
+
+    // 出图浮层挂在引擎子树里；断面绘制期间隐藏旧操作窗和模式清单，保留结果图。
+    &.is-front /deep/ .list-section {
+      display: none !important;
+    }
+
+    &.is-front /deep/ .pop:not(.bottom-table) {
+      display: none !important;
+    }
   }
 
   // ★ 断面出图浮层（.pop.bottom-table）专属定位：保持插件原生尺寸
@@ -1675,6 +2286,20 @@ export default {
     bottom: 50px !important;
     width: auto !important;
     height: auto !important;
+    pointer-events: auto !important;
+  }
+
+  /deep/ .pop .bottom-table-title,
+  /deep/ .pop .pop-header,
+  /deep/ .pop .pop-title,
+  /deep/ .pop .pop-title-bar {
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+
+    .pop-title-btn {
+      cursor: pointer;
+    }
   }
 
   // ★ 断面模式清单（PopSectionList 弹层的 .list-section，横断 / 纵断
@@ -1689,8 +2314,8 @@ export default {
   // ★ 断面出图浮层（.pop.bottom-table，1024×720 结果面板 + 导出/关闭）
   //   也带 .pop 类——下面的压平规则把它按 :not(.bottom-table) 豁免：
   //   400px 面板装不下 1024px 出图，压平会把图片挤爆。专属定位规则见
-  //   is-front 块之后。
-  &__host /deep/ .pop,
+  //   本段之后。
+  &__host /deep/ .pop:not(.bottom-table),
   &__engine-host /deep/ .pop:not(.bottom-table) {
     position: absolute !important;
     top: 0 !important;
