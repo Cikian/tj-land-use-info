@@ -44,7 +44,7 @@
     </button>
 
     <!-- 内容区：默认空态；有数据时由页面通过默认插槽填入 -->
-    <div v-if="!collapsed" class="screen-bottom-dock__body">
+    <div v-if="keepContent || !collapsed" v-show="!collapsed" class="screen-bottom-dock__body">
       <slot>
         <p class="screen-bottom-dock__empty">{{ emptyText }}</p>
       </slot>
@@ -84,6 +84,8 @@ export default {
     max: { type: Number, default: 700 },
     /** 是否已折叠（只剩 47px 底部条） */
     collapsed: { type: Boolean, default: true },
+    /** 插件停靠节点需要保留实例与事件，收起时只隐藏内容。 */
+    keepContent: { type: Boolean, default: false },
     /** 左右内缩（设计画布像素）：随两侧面板拖宽 / 折叠变化 */
     leftInset: { type: Number, default: 460 },
     rightInset: { type: Number, default: 460 },
