@@ -459,6 +459,7 @@ public class StatQueryServiceImpl implements IStatQueryService {
      */
     private StatQueryDTO prepare(StatQueryDTO raw) {
         StatQueryDTO q = raw == null ? new StatQueryDTO() : raw;
+        q.setCrzdbh(normalizeCodes(q.getCrzdbh()));
         q.setDkmc(normalizeNames(q.getDkmc()));
         q.setSrr(normalizeNames(q.getSrr()));
         q.setPtxmmc(normalizeNames(q.getPtxmmc()));
@@ -478,6 +479,19 @@ public class StatQueryServiceImpl implements IStatQueryService {
         q.setCsjgspfwc(trimToNull(q.getCsjgspfwc()));
         q.setZjlsqk(trimToNull(q.getZjlsqk()));
         return q;
+    }
+
+    /** 编号与写入侧同口径归一，避免手工输入缺末尾「号」时查不到已存在的宗地/配套。 */
+    private static List<String> normalizeCodes(List<String> values) {
+        List<String> result = normalizeList(values, false);
+        List<String> normalized = new ArrayList<>(result.size());
+        for (String value : result) {
+            String code = DataSupport.normalizeCode(value).getCode();
+            if (!isBlank(code) && !normalized.contains(code)) {
+                normalized.add(code);
+            }
+        }
+        return normalized;
     }
 
     private static List<String> normalizeNames(List<String> values) {

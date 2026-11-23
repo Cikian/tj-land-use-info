@@ -12,6 +12,9 @@ import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.data.attachment.entity.LandAttachment;
 import org.jeecg.modules.land.data.attachment.service.ILandAttachmentService;
 import org.jeecg.modules.land.data.attachment.vo.AttachmentQueryDTO;
+import org.jeecg.modules.land.data.service.IFacilityAdminService;
+import org.jeecg.modules.land.data.service.IFacilityService;
+import org.jeecg.modules.land.data.service.ILandService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -92,6 +95,18 @@ public class LandAttachmentController {
     @Autowired
     private ILandAttachmentService attachmentService;
 
+    /*
+     * 候选查询仍复用现有业务 Service，但入口必须留在附件权限域内。
+     * 直接从前端调 land/options、facilityAdmin/byLand、facilityAdmin/processList 时，
+     * 只有 land:data:attachment 的角色会分别被档案/收发文权限和 land:data:facility 拦住。
+     */
+    @Autowired
+    private ILandService landService;
+    @Autowired
+    private IFacilityService facilityService;
+    @Autowired
+    private IFacilityAdminService facilityAdminService;
+
     // ==================================================================
     // 一、查询
     // ==================================================================
@@ -163,6 +178,50 @@ public class LandAttachmentController {
     public Result<List<Map<String, String>>> allowedTypes(
             @RequestParam(name = "bizType", required = false) String bizType) {
         return Result.OK(attachmentService.allowedFileTypes(bizType));
+    }
+
+    /**
+     * 上传弹窗的归属候选。该入口只要求附件权限，避免“能打开附件页却选不了归属对象”。
+     *
+     * <p>target=land/facility 对应普通归属；processFacility/process 分别加载环节所属配套
+     * 与环节候选。业务查询逻辑仍由原 Service 提供，本接口不复制 SQL 或进度组装规则。
+     */
+    @AutoLog(value = "配套附件-上传归属候选")
+    @ApiOperation(value = "配套附件-上传归属候选",
+            notes = "target=land/facility/processFacility/process；只要求 land:data:attachment")
+    @RequiresPermissions(PERM)
+    @GetMapping(value = "/objectOptions")
+    public Result<?> objectOptions(
+            @RequestParam(name = "target") String target,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "crzdbh", required = false) String crzdbh,
+            @RequestParam(name = "ptId", required = false) String ptId) {
+        try {
+            if ("land".equals(target)) {
+                return Result.OK(landService.queryOptions(keyword, null, limit));
+            }
+            if ("facility".equals(target)) {
+                return Result.OK(facilityService.searchOptions(keyword, limit));
+            }
+            if ("processFacility".equals(target)) {
+                if (StringUtils.isBlank(crzdbh)) {
+                    return Result.error("请选择所属宗地");
+                }
+                return Result.OK(facilityAdminService.queryByLand(crzdbh));
+            }
+            if ("process".equals(target)) {
+                if (StringUtils.isBlank(ptId)) {
+                    return Result.error("请选择所属配套");
+                }
+                return Result.OK(facilityAdminService.queryProcessList(ptId));
+            }
+            return Result.error("不支持的候选类型：" + target);
+        } catch (Exception e) {
+            log.warn("查询附件上传归属候选失败：target={}, crzdbh={}, ptId={}, 原因={}",
+                    target, crzdbh, ptId, e.getMessage());
+            return Result.error("候选加载失败：" + e.getMessage());
+        }
     }
 
     /**
@@ -309,6 +368,15 @@ public class LandAttachmentController {
         LandAttachment entity = attachmentService.queryById(id);
         if (entity == null) {
             return Result.error("附件不存在或已被删除");
+        }
+        // 列表里有元数据不等于文件仍能读取。提前在这里失败，前端才能显示真实原因，
+        // 而不是把必然 404 的地址交给 iframe/kkFileView，最后只表现成空白或“预览失败”。
+        String absolutePath = attachmentService.resolveAbsolutePath(entity);
+        File source = absolutePath == null ? null : new File(absolutePath);
+        if (source == null || !source.isFile()) {
+            log.warn("附件预览失败：文件不存在或存储路径无效，id={}, storePath={}",
+                    entity.getId(), entity.getStorePath());
+            return Result.error("文件在服务器上不存在或存储路径无效，请重新上传后再预览");
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", entity.getId());

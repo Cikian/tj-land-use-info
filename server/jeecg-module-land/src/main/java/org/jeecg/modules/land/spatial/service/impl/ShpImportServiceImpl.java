@@ -496,11 +496,11 @@ public class ShpImportServiceImpl implements IShpImportService {
             throw new IllegalArgumentException("登记的连接串无法解析：" + reg.get("db_url"));
         }
         String quotedTable = "\"" + table.replace("\"", "\"\"") + "\"";
-        String quotedField = "\"" + field.replace("\"", "\"\"") + "\"";
         try (Connection pg = PgSupport.connect(m.group(1), Integer.parseInt(m.group(2)),
                 resolveDbName(reg, m),
                 resolveRegField(reg, "db_username"), resolveRegField(reg, "db_password"), PROBE_TIMEOUT_SECS);
              java.sql.Statement st = pg.createStatement()) {
+            String quotedField = quoteIdent(resolveGroupField(st, table, field));
             // 几何列动态取：shp2pgsql 导入的表是 geom、geotools 引擎是 SHAPE，两套引擎可差异
             String geomCol = null;
             try (java.sql.ResultSet rs = st.executeQuery(
@@ -525,6 +525,10 @@ public class ShpImportServiceImpl implements IShpImportService {
                 ps.setString(3, value);
                 try (java.sql.ResultSet rs = ps.executeQuery()) {
                     if (!rs.next() || rs.getObject(1) == null) {
+                        long damaged = countEncodingDamagedRows(st, quotedTable, quotedField);
+                        if (damaged > 0) {
+                            throw new IllegalArgumentException(encodingDamagedMessage(quotedTable, damaged, value));
+                        }
                         throw new IllegalArgumentException("切片图层中未找到该记录的图形（唯一值：" + value + "）");
                     }
                     java.util.List<Double> bounds = new java.util.ArrayList<>();
@@ -647,6 +651,27 @@ public class ShpImportServiceImpl implements IShpImportService {
     }
 
     /**
+     * 把接口的逻辑字段名解析成切片表里的真实列名（大小写不敏感）。
+     *
+     * <p>SHP 导入会保留 DBF 列名的大小写；现有地块表就是 {@code CRZDBH}，而前端契约
+     * 统一传小写 {@code crzdbh}。PostgreSQL 双引号标识符区分大小写，直接 quote 入参会让
+     * 图形回显、整组保存和定位一起报「column crzdbh does not exist」。以 pg_attribute
+     * 的真实列名为准，接口字段契约不变，也不允许模糊匹配到其它列。
+     */
+    static String resolveGroupField(java.sql.Statement st, String table, String field) throws SQLException {
+        String sql = "SELECT a.attname FROM pg_attribute a"
+                + " WHERE a.attrelid = ('public." + table.replace("'", "''") + "')::regclass"
+                + " AND a.attnum > 0 AND NOT a.attisdropped"
+                + " AND LOWER(a.attname) = LOWER('" + field.replace("'", "''") + "') LIMIT 1";
+        try (java.sql.ResultSet rs = st.executeQuery(sql)) {
+            if (rs.next()) {
+                return rs.getString(1);
+            }
+        }
+        throw new IllegalArgumentException("切片源表没有唯一值字段：" + field);
+    }
+
+    /**
      * 唯一值匹配的统一 WHERE（读写路径共用，占位符恰好 3 个，按 value/value/value 传参）：
      *   f = v
      *   OR RTRIM(v,'号') = f   —— 业务值多「号」尾时命中源表值（实测主口径差）
@@ -657,6 +682,43 @@ public class ShpImportServiceImpl implements IShpImportService {
     private static String matchGroupWhere(String quotedField) {
         return quotedField + " = ? OR RTRIM(?, '号') = " + quotedField
                 + " OR RTRIM(" + quotedField + ", '号') = ?";
+    }
+
+    /**
+     * 编码损坏时的统一报错文案：说清「是什么问题 + 怎么修」，不让人以为是地图/定位功能坏了。
+     */
+    private static String encodingDamagedMessage(String quotedTable, long damaged, String value) {
+        return "切片库「" + quotedTable + "」有 " + damaged + " 行编号中文已损坏（显示为「\uFFFD」），"
+                + "与业务编号「" + value + "」无法匹配，因此定位/图形同步会找不到要素。"
+                + "这是 SHP 导入时的字符编码丢失（不可逆），请按原始 DBF 编码（一般为 GBK）"
+                + "重新导入该 SHP 后再操作。";
+    }
+
+    /**
+     * 匹配 0 行时判定「是不是切片库存量中文编码损坏」。
+     *
+     * <p><b>为什么需要这一步</b>：1118 报告的「双击宗地定位报错」「移除后地图图形不消失」
+     * 都是同一个现象——切片源表的编号列里存的是 U+FFFD（'�'，编码转换失败的替换字符），
+     * 例如 {@code 娲ヨ摕锛堟寕锛�2017-025}，与业务库的「津东丽方（挂）2024-40号」
+     * 永远不可能相等。此时读（定位、图形回显）命中 0 行，写（整组替换/删除）也命中 0 行，
+     * 表面看像"功能坏了"，实际是**存量数据在导入时丢了编码**，且 U+FFFD 不可逆。
+     *
+     * <p>所以这里只在"没匹配到"的分支多查一次，把结论直接写进报错里：
+     * 让用户知道要重新导入 SHP，而不是反复重试定位或怀疑地图组件。
+     *
+     * @return 损坏行数；0 表示不是编码问题（正常"该记录没有图形"）
+     */
+    private long countEncodingDamagedRows(java.sql.Statement st, String quotedTable, String quotedField) {
+        try (java.sql.ResultSet rs = st.executeQuery(
+                "SELECT count(*) FROM " + quotedTable + " WHERE " + quotedField + " LIKE '%\uFFFD%'")) {
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+        } catch (SQLException e) {
+            // 探测失败不能盖掉主流程的真实报错
+            log.debug("探测切片源编码损坏失败：{}", e.getMessage());
+        }
+        return 0L;
     }
 
     /**
@@ -671,8 +733,9 @@ public class ShpImportServiceImpl implements IShpImportService {
         try (Connection pg = openSliceSource(source);
              java.sql.Statement st = pg.createStatement()) {
             String[] geom = findGeomColumnAndSrid(st, table);
+            String actualField = resolveGroupField(st, table, field);
             String sql = "SELECT ST_AsGeoJSON(ST_Transform(" + quoteIdent(geom[0]) + ",4326)) FROM " + quoteIdent(table)
-                    + " WHERE " + matchGroupWhere(quoteIdent(field));
+                    + " WHERE " + matchGroupWhere(quoteIdent(actualField));
             List<String> result = new ArrayList<>();
             try (java.sql.PreparedStatement ps = pg.prepareStatement(sql)) {
                 ps.setString(1, value);
@@ -682,6 +745,12 @@ public class ShpImportServiceImpl implements IShpImportService {
                     while (rs.next()) {
                         result.add(rs.getString(1));
                     }
+                }
+            }
+            if (result.isEmpty()) {
+                long damaged = countEncodingDamagedRows(st, quoteIdent(table), quoteIdent(actualField));
+                if (damaged > 0) {
+                    throw new IllegalArgumentException(encodingDamagedMessage(quoteIdent(table), damaged, value));
                 }
             }
             return result;
@@ -703,14 +772,24 @@ public class ShpImportServiceImpl implements IShpImportService {
         try (Connection pg = openSliceSource(source);
              java.sql.Statement st = pg.createStatement()) {
             String[] geom = findGeomColumnAndSrid(st, table);
+            String actualField = resolveGroupField(st, table, field);
             pg.setAutoCommit(false);
             try {
                 try (java.sql.PreparedStatement del = pg.prepareStatement(
-                        "DELETE FROM " + quoteIdent(table) + " WHERE " + matchGroupWhere(quoteIdent(field)))) {
+                        "DELETE FROM " + quoteIdent(table) + " WHERE " + matchGroupWhere(quoteIdent(actualField)))) {
                     del.setString(1, value);
                     del.setString(2, value);
                     del.setString(3, value);
-                    del.executeUpdate();
+                    int removed = del.executeUpdate();
+                    if (removed == 0) {
+                        // 同 deleteSliceFeatureGroup：0 行可能是"本来没有"，也可能是编号乱码删不掉。
+                        // 后者会让「编辑后旧图形仍在」看起来像保存失败，日志里必须留证据。
+                        long damaged = countEncodingDamagedRows(st, quoteIdent(table), quoteIdent(actualField));
+                        if (damaged > 0) {
+                            log.warn("整组替换前删除旧图形命中 0 行：{}",
+                                    encodingDamagedMessage(quoteIdent(table), damaged, value));
+                        }
+                    }
                 }
                 if (!geoms.isEmpty()) {
                     // ★ 按列真实 typmod 的 Z/M 标志对齐写入几何维度（见
@@ -728,7 +807,7 @@ public class ShpImportServiceImpl implements IShpImportService {
                     } else {
                         geomExpr = "ST_Force2D(" + geomExpr + ")";
                     }
-                    String insert = "INSERT INTO " + quoteIdent(table) + " (" + quoteIdent(field) + ", "
+                    String insert = "INSERT INTO " + quoteIdent(table) + " (" + quoteIdent(actualField) + ", "
                             + quoteIdent(geom[0]) + ") VALUES (?, " + geomExpr + ")";
                     try (java.sql.PreparedStatement ins = pg.prepareStatement(insert)) {
                         for (String g : geoms) {
@@ -773,12 +852,22 @@ public class ShpImportServiceImpl implements IShpImportService {
         try (Connection pg = openSliceSource(source);
              java.sql.Statement st = pg.createStatement()) {
             findGeomColumnAndSrid(st, table);
+            String actualField = resolveGroupField(st, table, field);
             try (java.sql.PreparedStatement ps = pg.prepareStatement(
-                    "DELETE FROM " + quoteIdent(table) + " WHERE " + matchGroupWhere(quoteIdent(field)))) {
+                    "DELETE FROM " + quoteIdent(table) + " WHERE " + matchGroupWhere(quoteIdent(actualField)))) {
                 ps.setString(1, value);
                 ps.setString(2, value);
                 ps.setString(3, value);
-                return ps.executeUpdate();
+                int deleted = ps.executeUpdate();
+                if (deleted == 0) {
+                    // 删除 0 行有两种可能：本来就没有图形（正常），或切片库编号已乱码删不掉。
+                    // 后者正是 1118「移除后地图地块仍在」的现象来源 —— 至少要在日志里说清楚。
+                    long damaged = countEncodingDamagedRows(st, quoteIdent(table), quoteIdent(actualField));
+                    if (damaged > 0) {
+                        log.warn("删除切片要素命中 0 行：{}", encodingDamagedMessage(quoteIdent(table), damaged, value));
+                    }
+                }
+                return deleted;
             }
         } catch (SQLException e) {
             throw new Exception("删除切片要素失败：" + e.getMessage(), e);

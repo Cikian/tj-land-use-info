@@ -68,6 +68,9 @@ public class LandImportTest extends LandIntegrationTestBase {
     private ILandService landService;
 
     @Autowired
+    private org.jeecg.modules.land.data.service.ILandAdminService landAdminService;
+
+    @Autowired
     private DataChangeLogMapper changeLogMapper;
 
     @Autowired
@@ -465,6 +468,33 @@ public class LandImportTest extends LandIntegrationTestBase {
     }
 
     @Test
+    public void freeTextAndBooleanColumnsKeepTheirOwnValidationRules() throws Exception {
+        assertEquals(LandImportField.FieldType.TEXT, LandImportField.of("tdzljhxdwjh").getType(),
+                "土地整理计划下达文件号是自由文本，不得被误收窄成是/否");
+        assertEquals(LandImportField.FieldType.TEXT, LandImportField.of("ptjsnr").getType());
+        assertEquals(LandImportField.FieldType.TEXT, LandImportField.of("zlqsnrsm").getType());
+        assertEquals(LandImportField.FieldType.TEXT, LandImportField.of("beizhu").getType());
+        for (String column : Arrays.asList("tdzljh", "ptsfqq", "ptqkh", "ptcbh", "crzdtxsj")) {
+            assertEquals(LandImportField.FieldType.YES_NO, LandImportField.of(column).getType(),
+                    "权威字段表中的真实是/否列必须保留枚举校验：" + column);
+        }
+
+        MockMultipartFile file = buildTemplateFile(sheet -> {
+            fillValidRow(sheet, 2, uniqueNo("text-boundary"), "文本边界地块");
+            setCell(sheet, 2, "tdzljhxdwjh", "示范小城镇无整理计划");
+            setCell(sheet, 2, "ptjsnr", "道路、排水及现状保留管线");
+            setCell(sheet, 2, "zlqsnrsm", "待中心补充说明");
+            setCell(sheet, 2, "ptqkh", "尚未出具但已沟通");
+        });
+        LandImportResultVO result = importService.preview(file, LandDuplicateStrategy.REJECT);
+        assertEquals(1, result.getErrorCount(), "只有真实布尔列的非标准值应被拦截：" + describe(result));
+        assertEquals("ptqkh", result.getErrors().get(0).getColumn());
+        assertFalse(result.getErrors().stream().anyMatch(error ->
+                        Arrays.asList("tdzljhxdwjh", "ptjsnr", "zlqsnrsm").contains(error.getColumn())),
+                "自由文本内容不得触发是/否校验");
+    }
+
+    @Test
     public void confirmInsertsAllConvertedValues() throws Exception {
         String crzdbh = uniqueNo("insert");
         MockMultipartFile file = buildTemplateFile(sheet -> {
@@ -588,10 +618,11 @@ public class LandImportTest extends LandIntegrationTestBase {
         assertEquals("原始地块名", landService.queryByCrzdbh(crzdbh).getDkmc(), "不应被改动");
 
         // ③ UPDATE：同一文件包含已有编号更新与新编号新增，且**空单元格不清空原值**
+        String newCrzdbh = uniqueNo("dup-strategy-new");
         MockMultipartFile updateBatch = buildTemplateFile(sheet -> {
             fillValidRow(sheet, 2, crzdbh, "改名后地块");
             setCell(sheet, 2, "crj", "2.00");
-            fillValidRow(sheet, 3, uniqueNo("dup-strategy-new"), "本批新增地块");
+            fillValidRow(sheet, 3, newCrzdbh, "本批新增地块");
         });
         LandImportResultVO updated = importService.confirm(updateBatch, LandDuplicateStrategy.UPDATE, false);
         assertEquals(1, updated.getInsertedRows(), "同一批次中的新编号应正常新增");
@@ -626,6 +657,40 @@ public class LandImportTest extends LandIntegrationTestBase {
         assertNotNull(crjDiff, "必须记录出让金字段 diff");
         assertEquals("1.00", String.valueOf(crjDiff.get("before")));
         assertEquals("2.00", String.valueOf(crjDiff.get("after")));
+
+        // 1118 P1-01：不能只证明 selectByBatch 有日志，还要沿两个页面实际查询入口验证。
+        DataChangeLog createLog = null;
+        for (DataChangeLog log : batchLogs) {
+            if (DataChangeLog.ACTION_CREATE.equals(log.getAction())) {
+                createLog = log;
+            }
+        }
+        assertNotNull(createLog, "同批新增也必须进入变更留痕");
+        assertTrue(createLog.getChangeSummary().contains(updated.getBatchId()));
+        assertTrue(createLog.getChangeSummary().contains("Excel 第 4 行"));
+        assertTrue(createLog.getChangeCount() > 0, "新增记录必须带字段明细，而不是只有一句摘要");
+
+        // lambda 只能捕获 effectively final：先落到 final 局部变量再断言
+        final String updateLogId = updateLog.getId();
+        final String createLogId = createLog.getId();
+        List<java.util.Map<String, Object>> adminHistory = landAdminService.queryHistory(after.getId(), 50);
+        assertTrue(adminHistory.stream().anyMatch(item -> updateLogId.equals(item.get("id"))),
+                "管理端详情操作记录必须能按宗地 id 查到批量更新");
+        Land inserted = landService.queryByCrzdbh(newCrzdbh);
+        assertNotNull(inserted);
+        List<DataChangeLog> screenHistory = recycleService.queryHistory(
+                DataSupport.BIZ_LAND, inserted.getId(), 50);
+        assertTrue(screenHistory.stream().anyMatch(item -> createLogId.equals(item.getId())),
+                "大屏详情操作记录必须能按宗地 id 查到批量新增");
+
+        java.util.Map<String, Object> changePage = recycleService.queryChangeLogPage(
+                DataSupport.BIZ_LAND, null, null, updated.getBatchId(), 1, 20);
+        assertEquals(2, ((Number) changePage.get("total")).intValue(),
+                "变更页按本批批次号检索应同时得到新增与更新");
+        @SuppressWarnings("unchecked")
+        List<DataChangeLog> pageRecords = (List<DataChangeLog>) changePage.get("records");
+        assertTrue(pageRecords.stream().anyMatch(item -> DataChangeLog.ACTION_CREATE.equals(item.getAction())));
+        assertTrue(pageRecords.stream().anyMatch(item -> DataChangeLog.ACTION_UPDATE.equals(item.getAction())));
 
         // 导出必须逐字段展开同一批日志，不能拿业务表最终值拼一份导出。
         Workbook export = changeLogExportService.buildBatchExport(updated.getBatchId());

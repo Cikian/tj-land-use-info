@@ -16,7 +16,7 @@
 --
 -- ★ 菜单行不配权限码（perms 留空）：接口权限统一登记为 sys_permission 里
 --   menu_type=2 的「按钮权限」，见同目录 04_ledger_permission_buttons.sql。
---   原因见 docs/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单授权只认 menu_type=2。
+--   原因见 docs/模块实现说明/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单授权只认 menu_type=2。
 --
 -- ★ is_leaf 规则：菜单下面挂了按钮权限时必须为 0，否则 jeecg 建树不会递归到按钮，
 --   菜单管理与角色授权里都看不到它们（见档案模块坑 7B.0）。

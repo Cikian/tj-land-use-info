@@ -28,7 +28,9 @@
             AND f.`ptxmmc` LIKE CONCAT('%', #{keyword}, '%')
         </if>
         ORDER BY f.`ptxmmc`
-        LIMIT #{limit}
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
     <!--
@@ -76,7 +78,10 @@
                 ORDER BY f.`crzdbh`, f.`ptxmmc`
             </otherwise>
         </choose>
-        LIMIT #{limit}
+        <!-- limit=0 是移交/台账下拉的全量契约；缺省仍由 Service 截到 50 条。 -->
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
     </select>
 
     <select id="selectByPtxmmc" resultType="org.jeecg.modules.land.data.entity.Facility">

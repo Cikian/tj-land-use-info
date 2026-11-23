@@ -354,6 +354,30 @@ public class StatQueryTest extends LandIntegrationTestBase {
     // ==================================================================
 
     @Test
+    public void facilityQueryFiltersByNormalizedLandCode() {
+        String tag = uniqueTag();
+        String rawCodeA = TEST_PREFIX + "code-a-" + tag;
+        String rawCodeB = TEST_PREFIX + "code-b-" + tag;
+        landAdminService.createLand(buildLand(rawCodeA, "编号筛选地块甲", "市级项目",
+                TEST_PREFIX + "编号筛选-区-" + tag, null), null);
+        landAdminService.createLand(buildLand(rawCodeB, "编号筛选地块乙", "市级项目",
+                TEST_PREFIX + "编号筛选-区-" + tag, null), null);
+        facilityAdminService.createFacility(buildFacility(storedCode(rawCodeA),
+                TEST_PREFIX + "编号筛选配套甲-" + tag, "新建", null, null), null);
+        facilityAdminService.createFacility(buildFacility(storedCode(rawCodeB),
+                TEST_PREFIX + "编号筛选配套乙-" + tag, "新建", null, null), null);
+
+        StatQueryDTO query = new StatQueryDTO();
+        query.setDataType("facility");
+        // 故意不带末尾「号」：基础条件与写入/候选接口必须共用同一编号归一口径。
+        query.setCrzdbh(Collections.singletonList(rawCodeA));
+        QueryPageVO page = statQueryService.queryPage(query);
+
+        assertEquals(1, page.getTotal(), "出让宗地编号基础条件必须精确过滤配套");
+        assertEquals(storedCode(rawCodeA), page.getRows().get(0).get("crzdbh"));
+    }
+
+    @Test
     public void facilityQueryAndSummary() {
         String tag = uniqueTag();
         String xzqh = TEST_PREFIX + "配套-区-" + tag;
@@ -527,6 +551,75 @@ public class StatQueryTest extends LandIntegrationTestBase {
         } finally {
             try {
                 workbook.close();
+            } catch (Exception ignore) {
+                // 关闭失败不影响断言
+            }
+        }
+    }
+
+    @Test
+    public void exportAllColumnsUses36And59ColumnContract() {
+        String tag = uniqueTag();
+        String xzqh = TEST_PREFIX + "全量导出-区-" + tag;
+        String rawCode = TEST_PREFIX + "all-columns-" + tag;
+        String ptxmmc = TEST_PREFIX + "全量导出配套-" + tag;
+        landAdminService.createLand(buildLand(rawCode, "全量导出测试地块", "市级项目", xzqh, null), null);
+        facilityAdminService.createFacility(
+                buildFacility(storedCode(rawCode), ptxmmc, "新建", "否", "否"), null);
+
+        StatQueryDTO land = landQuery(xzqh);
+        land.setAllColumns(true);
+        land.setColumns(Collections.singletonList("crzdbh"));
+        Workbook landBook = statQueryExportService.exportQuery(land);
+        try {
+            Sheet result = landBook.getSheetAt(0);
+            assertEquals(36, result.getRow(1).getLastCellNum(),
+                    "经营性用地全量导出 = 序号 + 35 个业务字段");
+            assertEquals("出让宗地编号", result.getRow(1).getCell(1).getStringCellValue());
+            assertEquals("创建时间", result.getRow(1).getCell(35).getStringCellValue());
+            assertEquals(2, result.getLastRowNum(), "全量字段模式仍须保留行政区划筛选");
+            assertEquals(storedCode(rawCode), result.getRow(2).getCell(1).getStringCellValue(),
+                    "行投影也必须走全量字段，不能只有表头没有值");
+        } finally {
+            try {
+                landBook.close();
+            } catch (Exception ignore) {
+                // 关闭失败不影响断言
+            }
+        }
+
+        StatQueryDTO facility = new StatQueryDTO();
+        facility.setDataType("facility");
+        facility.setCrzdbh(Collections.singletonList(storedCode(rawCode)));
+        facility.setAllColumns(true);
+        facility.setColumns(Collections.singletonList("ptxmmc"));
+        Workbook facilityBook = statQueryExportService.exportQuery(facility);
+        try {
+            Sheet result = facilityBook.getSheetAt(0);
+            assertEquals(59, result.getRow(1).getLastCellNum(),
+                    "配套全量导出 = 序号 + 58 个业务字段");
+            assertEquals("出让宗地编号", result.getRow(1).getCell(1).getStringCellValue());
+            assertEquals("创建时间", result.getRow(1).getCell(58).getStringCellValue());
+            assertEquals(2, result.getLastRowNum(), "全量字段模式仍须保留宗地编号筛选");
+            assertEquals(ptxmmc, result.getRow(2).getCell(2).getStringCellValue());
+        } finally {
+            try {
+                facilityBook.close();
+            } catch (Exception ignore) {
+                // 关闭失败不影响断言
+            }
+        }
+
+        // 普通查询页不传 allColumns：配套仍按自定义列导出，不被查询导出页的全量契约污染。
+        facility.setAllColumns(null);
+        facility.setColumns(Arrays.asList("ptxmmc", "dldj"));
+        Workbook customBook = statQueryExportService.exportQuery(facility);
+        try {
+            assertEquals(3, customBook.getSheetAt(0).getRow(1).getLastCellNum(),
+                    "普通自定义列导出 = 序号 + 勾选的 2 列");
+        } finally {
+            try {
+                customBook.close();
             } catch (Exception ignore) {
                 // 关闭失败不影响断言
             }

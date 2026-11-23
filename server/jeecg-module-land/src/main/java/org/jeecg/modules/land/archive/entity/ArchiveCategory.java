@@ -120,8 +120,8 @@ public class ArchiveCategory implements Serializable {
     private String fullPathName;
 
     /**
-     * 该类别（不含子类别）下已归档的档案数量。
-     * 档案管理模块的 t_archive 表尚未建立时为 null，前端据此提示「档案校验未启用」。
+     * 该类别及其全部子类别下的有效档案文件数量；父类别计数为整棵子树的合计。
+     * 无法读取 t_archive_file 时为 null，前端据此提示「档案校验未启用」。
      */
     @TableField(exist = false)
     private Long archiveCount;

@@ -25,7 +25,7 @@ public interface FacilityMapper extends BaseMapper<Facility> {
      */
     List<FacilityOptionVO> selectOptions(@Param("crzdbh") String crzdbh,
                                          @Param("keyword") String keyword,
-                                         @Param("limit") int limit);
+                                         @Param("limit") Integer limit);
 
     /**
      * 全局配套项目搜索（不限宗地，供跨宗地检索场景使用）。
@@ -36,7 +36,7 @@ public interface FacilityMapper extends BaseMapper<Facility> {
      * @param roadFirst true 时把「道路类」排到最前面
      */
     List<FacilityOptionVO> searchOptions(@Param("keyword") String keyword,
-                                         @Param("limit") int limit,
+                                         @Param("limit") Integer limit,
                                          @Param("category") String category,
                                          @Param("roadFirst") boolean roadFirst);
 

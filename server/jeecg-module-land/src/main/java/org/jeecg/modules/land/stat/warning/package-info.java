@@ -24,11 +24,11 @@
  *
  * <p><b>与 {@code stat/entity}、{@code stat/mapper}、{@code stat/service} 三个占位包的关系</b>：
  * 那三个包保留不动（它们的 javadoc 记录的是最初的分层计划），
- * 实际落点以 {@code docs/分级预警-实现契约.md} §4 为准 —— 与 {@code stat.home}、
+ * 实际落点以 {@code docs/模块实现说明/分级预警-实现说明.md 附录 A} §4 为准 —— 与 {@code stat.home}、
  * {@code stat.query} 的做法一致：一个业务域用自己的子包，
  * 免得统计功能越加越多时 {@code stat/entity} 变成几十个类的堆栈。
  *
  * <p>所属工程：jeecg-module-land（JEECG-Boot 3.4.3 / JDK 1.8）
- * <p>参考文档：docs/分级预警-实现契约.md、docs/升级改造工作内容清单.md
+ * <p>参考文档：docs/模块实现说明/分级预警-实现说明.md 附录 A、docs/升级改造工作内容清单.md
  */
 package org.jeecg.modules.land.stat.warning;

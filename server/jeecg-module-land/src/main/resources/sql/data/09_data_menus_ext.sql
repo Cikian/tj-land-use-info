@@ -21,7 +21,7 @@
 --
 -- ★ 菜单行不配权限码（perms 必须为 NULL）：接口权限统一登记为 sys_permission 里
 --   menu_type=2 的「按钮权限」，见同目录 08_data_permission_buttons.sql。
---   原因见 docs/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单授权只认 menu_type=2。
+--   原因见 docs/模块实现说明/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单授权只认 menu_type=2。
 --
 -- ★★ 主键长度必须正好 32 位（sys_permission.id 是 varchar(32)）
 --   本模块前缀 = 7a1f0d2c4e5b4d8a9c3f6b1e （28 位），后缀 4 位：

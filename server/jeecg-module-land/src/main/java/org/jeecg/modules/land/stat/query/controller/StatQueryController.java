@@ -61,7 +61,7 @@ import java.util.Map;
  * 大屏端从不下发按钮权限清单（加了 {@code v-has} 会把按钮从 DOM 删掉，见 AGENTS §3.6），
  * 若后端硬挂一个尚未在 {@code sys_permission} 里登记并授权的码，
  * 会让「已授权进菜单」的角色整页 403。待中心的权限清单落定后再补，
- * 记在 {@code docs/查询统计-实现说明.md} 的「待确认」一节。
+ * 记在 {@code docs/模块实现说明/查询统计-实现说明.md} 的「待确认」一节。
  */
 @Slf4j
 @Api(tags = "查询统计")

@@ -105,7 +105,8 @@ public class RoadAcceptanceLedgerServiceImpl
             return null;
         }
         LedgerSupport.fillMaterialStats(ledger);
-        ledger.setRelatedArchives(queryRelatedArchivesByEntity(ledger, ARCHIVE_LIMIT_DEFAULT));
+        // 详情需覆盖全部符合归属条件的档案；0 表示显式取消 LIMIT。
+        ledger.setRelatedArchives(queryRelatedArchivesByEntity(ledger, 0));
         return ledger;
     }
 
@@ -186,6 +187,7 @@ public class RoadAcceptanceLedgerServiceImpl
         if (StringUtils.isBlank(ledger.getStatus())) {
             ledger.setStatus(LedgerStatus.defaultValue());
         }
+        checkRoadNotDuplicated(ledger.getRoadName(), null);
         ledger.setId(IdWorker.getIdStr());
         ledger.setDelFlag(0);
         ledger.setCreateBy(ledgerSupport.currentUsername());
@@ -247,6 +249,11 @@ public class RoadAcceptanceLedgerServiceImpl
         update.setLedgerNo(StringUtils.isNotBlank(dto.getLedgerNo())
                 ? dto.getLedgerNo().trim() : old.getLedgerNo());
         update.setStatus(StringUtils.isNotBlank(dto.getStatus()) ? dto.getStatus().trim() : old.getStatus());
+        boolean roadChanged = !StringUtils.equals(trimToNull(old.getRoadName()), trimToNull(update.getRoadName()));
+        if (roadChanged || LedgerStatus.ACCEPTING.getValue().equals(update.getStatus())
+                || LedgerStatus.HANDED_OVER.getValue().equals(update.getStatus())) {
+            checkRoadNotDuplicated(update.getRoadName(), old.getId());
+        }
         // ★ 非空归一化：13 个勾选列 null → 0，否则显式 UPDATE 会把 null 写进 NOT NULL 列
         normalizeFlags(update);
         LedgerSupport.fillMaterialStats(update);
@@ -277,6 +284,10 @@ public class RoadAcceptanceLedgerServiceImpl
         RoadAcceptanceLedger old = getById(id);
         if (old == null) {
             throw new JeecgBootException("台账不存在或已被删除");
+        }
+        if (LedgerStatus.ACCEPTING.getValue().equals(status.trim())
+                || LedgerStatus.HANDED_OVER.getValue().equals(status.trim())) {
+            checkRoadNotDuplicated(old.getRoadName(), old.getId());
         }
         int rows = baseMapper.updateStatus(id, status.trim(),
                 ledgerSupport.currentUsername(), new Date());
@@ -368,7 +379,8 @@ public class RoadAcceptanceLedgerServiceImpl
     @Override
     public List<RelatedArchiveVO> queryArchivesForPick(String facilityId, String crzdbh,
                                                        String keyword, Integer limit) {
-        int size = limit == null || limit < 1 ? ARCHIVE_PICK_DEFAULT : Math.min(limit, ARCHIVE_LIMIT_MAX);
+        Integer size = limit != null && limit == 0 ? null
+                : (limit == null || limit < 0 ? ARCHIVE_PICK_DEFAULT : Math.min(limit, ARCHIVE_LIMIT_MAX));
         return baseMapper.selectArchivesForPick(trimToNull(facilityId), trimToNull(crzdbh),
                 trimToNull(keyword), size);
     }
@@ -480,7 +492,7 @@ public class RoadAcceptanceLedgerServiceImpl
     }
 
     /** 台账的关联档案（配套项目ID 优先，宗地编号兜底；两者都空时返回空表） */
-    private List<RelatedArchiveVO> queryRelatedArchivesByEntity(RoadAcceptanceLedger ledger, int limit) {
+    private List<RelatedArchiveVO> queryRelatedArchivesByEntity(RoadAcceptanceLedger ledger, Integer limit) {
         if (ledger == null) {
             return new ArrayList<>();
         }
@@ -503,8 +515,11 @@ public class RoadAcceptanceLedgerServiceImpl
         return baseMapper.countRelatedArchives(fid, crzdbhValue);
     }
 
-    private int resolveArchiveLimit(Integer limit) {
-        if (limit == null || limit < 1) {
+    private Integer resolveArchiveLimit(Integer limit) {
+        if (limit != null && limit == 0) {
+            return null;
+        }
+        if (limit == null || limit < 0) {
             return ARCHIVE_LIMIT_DEFAULT;
         }
         return Math.min(limit, ARCHIVE_LIMIT_MAX);
@@ -546,6 +561,17 @@ public class RoadAcceptanceLedgerServiceImpl
     private void checkRequired(LedgerSaveDTO dto) {
         if (StringUtils.isBlank(dto.getRoadName())) {
             throw new JeecgBootException("道路名称不能为空");
+        }
+    }
+
+    /** 同一道路已有验收中/已移交台账时禁止重复登记；编辑排除当前记录。 */
+    private void checkRoadNotDuplicated(String roadName, String excludeId) {
+        String value = trimToNull(roadName);
+        if (value == null) {
+            return;
+        }
+        if (baseMapper.countActiveByRoadName(value, excludeId) > 0) {
+            throw new JeecgBootException("道路「" + value + "」已有「验收中/已移交」台账，禁止重复移交登记");
         }
     }
 

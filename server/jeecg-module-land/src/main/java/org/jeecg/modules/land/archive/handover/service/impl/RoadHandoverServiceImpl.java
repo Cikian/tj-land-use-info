@@ -97,7 +97,8 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         if (handover == null) {
             return null;
         }
-        handover.setRelatedArchives(queryRelatedArchivesByEntity(handover, ARCHIVE_LIMIT_DEFAULT));
+        // 详情用于识别本项目全部可归集档案；0 是不限量，不能只识别前 50 条。
+        handover.setRelatedArchives(queryRelatedArchivesByEntity(handover, 0));
         return handover;
     }
 
@@ -184,6 +185,7 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         if (StringUtils.isBlank(handover.getStatus())) {
             handover.setStatus(HandoverStatus.defaultValue());
         }
+        checkRoadNotDuplicated(handover.getRoadName(), null);
         handover.setId(IdWorker.getIdStr());
         handover.setDelFlag(0);
         handover.setCreateBy(handoverSupport.currentUsername());
@@ -235,6 +237,11 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         update.setHandoverNo(StringUtils.isNotBlank(dto.getHandoverNo())
                 ? dto.getHandoverNo().trim() : old.getHandoverNo());
         update.setStatus(StringUtils.isNotBlank(dto.getStatus()) ? dto.getStatus().trim() : old.getStatus());
+        boolean roadChanged = !StringUtils.equals(trimToNull(old.getRoadName()), trimToNull(update.getRoadName()));
+        if (roadChanged || HandoverStatus.PROCESSING.getValue().equals(update.getStatus())
+                || HandoverStatus.HANDED_OVER.getValue().equals(update.getStatus())) {
+            checkRoadNotDuplicated(update.getRoadName(), old.getId());
+        }
         update.setArchiveCount(countRelatedArchives(update.getFacilityId(), update.getCrzdbh()));
         update.setUpdateBy(handoverSupport.currentUsername());
         update.setUpdateTime(new Date());
@@ -259,6 +266,10 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         RoadHandover old = getById(id);
         if (old == null) {
             throw new JeecgBootException("移交事项不存在或已被删除");
+        }
+        if (HandoverStatus.PROCESSING.getValue().equals(status.trim())
+                || HandoverStatus.HANDED_OVER.getValue().equals(status.trim())) {
+            checkRoadNotDuplicated(old.getRoadName(), old.getId());
         }
         if (baseMapper.updateStatus(id, status.trim(), handoverSupport.currentUsername(), new Date()) <= 0) {
             throw new JeecgBootException("状态变更失败（记录可能已被删除）");
@@ -340,7 +351,8 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
     @Override
     public List<RelatedArchiveVO> queryArchivesForPick(String facilityId, String crzdbh,
                                                        String keyword, Integer limit) {
-        int size = limit == null || limit < 1 ? ARCHIVE_PICK_DEFAULT : Math.min(limit, ARCHIVE_LIMIT_MAX);
+        Integer size = limit != null && limit == 0 ? null
+                : (limit == null || limit < 0 ? ARCHIVE_PICK_DEFAULT : Math.min(limit, ARCHIVE_LIMIT_MAX));
         return baseMapper.selectArchivesForPick(trimToNull(facilityId), trimToNull(crzdbh),
                 trimToNull(keyword), size);
     }
@@ -423,7 +435,7 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         return result;
     }
 
-    private List<RelatedArchiveVO> queryRelatedArchivesByEntity(RoadHandover handover, int limit) {
+    private List<RelatedArchiveVO> queryRelatedArchivesByEntity(RoadHandover handover, Integer limit) {
         if (handover == null) {
             return new ArrayList<>();
         }
@@ -445,8 +457,11 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
         return baseMapper.countRelatedArchives(fid, crzdbhValue);
     }
 
-    private int resolveArchiveLimit(Integer limit) {
-        if (limit == null || limit < 1) {
+    private Integer resolveArchiveLimit(Integer limit) {
+        if (limit != null && limit == 0) {
+            return null;
+        }
+        if (limit == null || limit < 0) {
             return ARCHIVE_LIMIT_DEFAULT;
         }
         return Math.min(limit, ARCHIVE_LIMIT_MAX);
@@ -462,6 +477,17 @@ public class RoadHandoverServiceImpl extends ServiceImpl<RoadHandoverMapper, Roa
                 continue;
             }
             row.setSeq(seq++);
+        }
+    }
+
+    /** 同一道路已有在办/已完成事项时，不允许再次发起；编辑排除当前记录。 */
+    private void checkRoadNotDuplicated(String roadName, String excludeId) {
+        String value = trimToNull(roadName);
+        if (value == null) {
+            return;
+        }
+        if (baseMapper.countActiveByRoadName(value, excludeId) > 0) {
+            throw new JeecgBootException("道路「" + value + "」已有「移交中/已移交」记录，禁止重复移交");
         }
     }
 

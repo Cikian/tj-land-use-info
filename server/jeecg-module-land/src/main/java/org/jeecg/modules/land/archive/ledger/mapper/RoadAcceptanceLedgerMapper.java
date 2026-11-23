@@ -92,6 +92,9 @@ public interface RoadAcceptanceLedgerMapper extends BaseMapper<RoadAcceptanceLed
      */
     int countByLedgerNo(@Param("ledgerNo") String ledgerNo, @Param("excludeId") String excludeId);
 
+    /** 同一道路是否已有验收中/已移交台账（验收中对应移交模块的在办口径） */
+    int countActiveByRoadName(@Param("roadName") String roadName, @Param("excludeId") String excludeId);
+
     // ==================================================================
     // 一·B、写入（为什么不用 MyBatis-Plus 的 updateById，见下）
     // ==================================================================

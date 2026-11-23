@@ -3,6 +3,7 @@ package org.jeecg.modules.land.data.imports.facility;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.shiro.mgt.DefaultSecurityManager;
 import org.apache.shiro.mgt.SecurityManager;
 import org.apache.shiro.SecurityUtils;
@@ -23,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -261,6 +263,55 @@ public class FacilityImportTest extends LandIntegrationTestBase {
         }
         assertTrue(foundUpdated, "应能找到被更新的那条");
         assertTrue(foundInserted, "应能找到新增的那条");
+    }
+
+    @Test
+    public void errorReportRoundTripKeepsFieldErrorsAndOrphanSheet() throws Exception {
+        MockMultipartFile file = file(sheet -> {
+            fillValidRow(sheet, 2, TEST_PREFIX + "receipt-error-" + System.nanoTime(), "回执错误配套");
+            setCell(sheet, 2, "lxdh", "1390000000");
+            fillValidRow(sheet, 3, TEST_PREFIX + "receipt-orphan-" + System.nanoTime(), "回执孤儿配套");
+        });
+        Workbook report = importService.buildErrorReport(file, FacilityDuplicateStrategy.REJECT, true);
+        try {
+            assertEquals(1, report.getSheet("错误回执").getLastRowNum(), "字段错误应进入错误回执");
+            Sheet orphan = report.getSheet("孤儿清单");
+            assertNotNull(orphan, "允许孤儿时也必须随回执携带孤儿清单");
+            assertEquals(4, (int) orphan.getRow(1).getCell(0).getNumericCellValue());
+            assertEquals("回执孤儿配套", orphan.getRow(1).getCell(2).getStringCellValue());
+
+            // 模拟 Controller 的先完整序列化，再从真实字节重开，排除只生成内存对象但 xlsx 已损坏的假绿。
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            report.write(out);
+            byte[] bytes = out.toByteArray();
+            assertTrue(bytes.length > 4);
+            assertEquals(0x50, bytes[0] & 0xff);
+            assertEquals(0x4b, bytes[1] & 0xff);
+            try (Workbook reopened = WorkbookFactory.create(new java.io.ByteArrayInputStream(bytes))) {
+                assertNotNull(reopened.getSheet("错误回执"));
+                assertNotNull(reopened.getSheet("孤儿清单"));
+                assertNotNull(reopened.getSheet("回执说明"));
+            }
+        } finally {
+            report.close();
+        }
+    }
+
+    @Test
+    public void confirmedDistrictFunctionAreaAndRoadLevelDefinitionsStayAligned() {
+        assertEquals(Arrays.asList(
+                        "和平区", "河东区", "河西区", "南开区", "河北区", "红桥区",
+                        "东丽区", "西青区", "津南区", "北辰区", "武清区", "宝坻区",
+                        "滨海新区", "宁河区", "静海区", "蓟州区"),
+                FacilityImportField.XZQH_OPTIONS, "行政区划只含已确认的 16 区");
+        assertEquals(Arrays.asList("生态城", "土地发展中心", "经开区", "高新区", "保税区"),
+                FacilityImportField.GNQ_OPTIONS, "功能区单列，不混入 xzqh");
+        assertEquals(Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路"),
+                FacilityImportField.DLDJ_OPTIONS, "道路等级含已确认的快速路");
+        assertEquals(FacilityImportField.FieldType.ENUM, FacilityImportField.of("xzqh").getType());
+        assertEquals(FacilityImportField.FieldType.ENUM, FacilityImportField.of("dldj").getType());
+        assertEquals(FacilityImportField.FieldType.TEXT, FacilityImportField.of("gnq").getType(),
+                "功能区只提示标准字典值，导入仍允许未来新片区，不误加枚举拦截");
     }
 
     private MockMultipartFile file(Consumer<Sheet> filler) throws Exception {

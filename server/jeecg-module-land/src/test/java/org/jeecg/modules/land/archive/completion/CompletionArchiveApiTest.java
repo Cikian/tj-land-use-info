@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jeecg.common.exception.JeecgBootExceptionHandler;
 import org.jeecg.modules.land.LandIntegrationTestBase;
 import org.jeecg.modules.land.archive.completion.controller.CompletionArchiveController;
+import org.jeecg.modules.land.archive.completion.dto.CompletionBatchLinkDTO;
 import org.jeecg.modules.land.archive.completion.dto.CompletionSaveDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

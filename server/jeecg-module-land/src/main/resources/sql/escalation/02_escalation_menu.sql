@@ -16,7 +16,7 @@
 -- ★ 菜单行不配权限码（perms 留空）：
 --   接口权限统一登记为 sys_permission 里 menu_type=2 的「按钮权限」，
 --   见同目录 04_escalation_permission_buttons.sql（含给 admin 角色授权）。
---   原因见 docs/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单管理的按钮授权
+--   原因见 docs/模块实现说明/档案管理-实现说明.md 7B 节：jeecg 的前端 v-has 与菜单管理的按钮授权
 --   只认 menu_type=2 的行，权限码写在菜单行上会「看不见、授不了」。
 --
 -- 脚本可重复执行：先按固定主键清除旧记录，再插入。

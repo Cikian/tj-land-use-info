@@ -43,7 +43,7 @@ public class FacilityServiceImpl extends ServiceImpl<FacilityMapper, Facility> i
             // 宗地没选就不该列配套项目；返回空列表而不是全表，避免前端误用
             return Collections.emptyList();
         }
-        int size = normalizeLimit(limit);
+        Integer size = normalizeLimit(limit);
         return baseMapper.selectOptions(crzdbh.trim(), trimToNull(keyword), size);
     }
 
@@ -171,8 +171,12 @@ public class FacilityServiceImpl extends ServiceImpl<FacilityMapper, Facility> i
         return null;
     }
 
-    private static int normalizeLimit(Integer limit) {
-        return limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
+    private static Integer normalizeLimit(Integer limit) {
+        // 0 是调用方显式请求全量；缺省/负数仍沿用旧接口的 50 条上限。
+        if (limit != null && limit == 0) {
+            return null;
+        }
+        return limit == null || limit < 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
     }
 
     private static String trimToNull(String value) {
