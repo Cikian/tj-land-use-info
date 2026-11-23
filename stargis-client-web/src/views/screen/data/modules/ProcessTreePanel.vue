@@ -464,7 +464,9 @@ export default {
       loading: false,
       saving: false,
       flatLoading: false,
-      view: 'tree',
+      // 1118 P2-01：单位是按表格整批填报的，不逐环节上报时间 —— 默认落在平铺表格直填。
+      // 树视图仍保留（看阶段进度、追溯预警用），切换不改任何业务口径。
+      view: 'flat',
       facility: {},
       tree: null,
       flatRows: [],

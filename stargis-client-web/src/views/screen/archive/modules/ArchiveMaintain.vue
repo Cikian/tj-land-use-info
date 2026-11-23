@@ -398,10 +398,13 @@ export default {
           const page = res.result || {}
           const rows = page.records || []
           this.projectTotal = page.total || 0
-          // 保留已展开项目的案卷，避免翻页回来又要重新点一次
-          this.projectRows = rows.map((row) => {
-            const cached = this.projectRows.filter((item) => item.projectKey === row.projectKey)[0]
-            return cached && cached.caseFiles ? Object.assign({}, row, { caseFiles: cached.caseFiles }) : row
+          // 项目行刷新后，案卷缓存已经过期：保存可能改状态/文件，新增也可能落进已有项目。
+          // 只重拉当前仍展开的项目，既保证详情与列表同源，也避免整页预取。
+          this.projectRows = rows
+          this.projectRows.forEach((row) => {
+            if (row.projectKey && this.expandedProjects[row.projectKey]) {
+              this.loadProjectCaseFiles(row)
+            }
           })
           if (!rows.length && this.projectTotal > 0 && this.pagination.current > 1) {
             this.pagination.current -= 1
@@ -554,7 +557,17 @@ export default {
      * <p>只刷列表会出现「列表已是新值、详情还是旧值」——这正是测试看到的
      * 「详情状态与列表不一致」。详情弹窗暴露 refresh()（不重置页签、不重开弹窗）。
      */
-    handleSaved () {
+    handleSaved (result) {
+      // 新增不能被保存前的状态/类别/项目过滤和旧页码藏起来；编辑仍保留用户当前检索上下文。
+      if (result && result.created) {
+        this.query = {}
+        this.pagination = Object.assign({}, this.pagination, { current: 1 })
+        this.selectedRowKeys = []
+        this.expandedProjects = {}
+        if (this.$refs.search && typeof this.$refs.search.setQuery === 'function') {
+          this.$refs.search.setQuery({})
+        }
+      }
       this.loadData()
       const detail = this.$refs.detailModal
       if (detail && typeof detail.refresh === 'function') detail.refresh()

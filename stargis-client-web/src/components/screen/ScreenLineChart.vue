@@ -104,7 +104,7 @@
         <!-- x 轴标签 -->
         <g>
           <text
-            v-for="point in points"
+            v-for="point in xLabelPoints"
             :key="`x-${point.key}`"
             class="screen-line-chart__axis-text"
             :x="point.x"
@@ -145,7 +145,7 @@ const FLAT_RATIO = 0.55
 const TONE_COLORS = {
   accent: { stroke: 'var(--screen-accent)', from: 'var(--screen-accent)', to: 'var(--screen-viz-mint)' },
   cyan: { stroke: 'var(--screen-viz-cyan)', from: 'var(--screen-viz-cyan)', to: 'var(--screen-viz-blue)' },
-  warning: { stroke: 'var(--screen-viz-amber)', from: 'var(--screen-viz-amber)', to: 'var(--screen-viz-amber)' },
+  warning: { stroke: 'var(--screen-viz-amber)', from: 'var(--screen-viz-amber)', to: 'var(--screen-viz-amber)' }
 }
 
 export default {
@@ -172,7 +172,7 @@ export default {
     /** 空数据文案 */
     emptyText: { type: String, default: '暂无数据' },
     /** 是否入场动画（画线 + 面积淡入） */
-    animated: { type: Boolean, default: true },
+    animated: { type: Boolean, default: true }
   },
   data () {
     return {
@@ -184,7 +184,7 @@ export default {
       /** 保存观察器与监听函数，beforeDestroy 里必须清理 */
       observer: null,
       resizeHandler: null,
-      pad: PAD,
+      pad: PAD
     }
   },
   computed: {
@@ -204,7 +204,7 @@ export default {
           key: `${name || 'i'}-${index}`,
           name,
           value,
-          display: formatNumber(value, this.precision),
+          display: formatNumber(value, this.precision)
         }
       })
     },
@@ -256,9 +256,26 @@ export default {
           label,
           display: item.display,
           x: Number(x.toFixed(2)),
-          y: Number(y.toFixed(2)),
+          y: Number(y.toFixed(2))
         }
       })
+    },
+    /**
+     * x 轴只抽稀文字，不删数据点：首末刻度必留，其余按实际可用宽度均匀取样。
+     * 这样既保留完整趋势，又避免长时间范围内所有月份挤在一起。
+     */
+    xLabelPoints () {
+      const count = this.points.length
+      if (count <= 2 || !this.plotWidth) return this.points
+      const labelWidth = this.rotateLabels ? 52 : 64
+      const limit = Math.max(2, Math.floor(this.plotWidth / labelWidth) + 1)
+      if (count <= limit) return this.points
+      const indexes = []
+      for (let i = 0; i < limit; i += 1) {
+        const index = Math.round((i * (count - 1)) / (limit - 1))
+        if (indexes[indexes.length - 1] !== index) indexes.push(index)
+      }
+      return indexes.map((index) => this.points[index])
     },
     linePoints () {
       return this.points.map((point) => `${point.x},${point.y}`).join(' ')
@@ -292,7 +309,7 @@ export default {
         const ratio = index / 4
         return {
           y: Number((baseY - this.plotHeight * ratio).toFixed(2)),
-          label: formatNumber(hasScale ? this.scaleMax * ratio : 0, this.precision),
+          label: formatNumber(hasScale ? this.scaleMax * ratio : 0, this.precision)
         }
       })
     },
@@ -332,7 +349,7 @@ export default {
       if (!this.normalized.length) return `${this.seriesLabel}，${this.emptyText}`
       const parts = this.normalized.map((item) => `${item.name} ${item.display}`)
       return `${this.seriesLabel}：${parts.join('，')}，共 ${this.normalized.length} 个数据点，最大 ${formatNumber(this.maxValue, this.precision)}`
-    },
+    }
   },
   watch: {
     // 数据变化后重新播放一次画线动画（仅在允许动效时）
@@ -347,7 +364,7 @@ export default {
           this.ready = true
         })
       })
-    },
+    }
   },
   mounted () {
     this.measure()
@@ -397,8 +414,8 @@ export default {
         window.removeEventListener('resize', this.resizeHandler)
         this.resizeHandler = null
       }
-    },
-  },
+    }
+  }
 }
 </script>
 

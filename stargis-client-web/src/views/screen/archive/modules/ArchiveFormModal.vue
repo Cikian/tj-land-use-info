@@ -199,7 +199,7 @@ import {
   ScreenRadioGroup,
   ScreenDateInput,
   ScreenButton,
-  ScreenIcon,
+  ScreenIcon
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import ProjectPicker from './ProjectPicker.vue'
@@ -215,7 +215,7 @@ import {
   buildBizPath,
   today,
   yearOf,
-  formatDate,
+  formatDate
 } from '../constants'
 
 export default {
@@ -230,7 +230,7 @@ export default {
     ScreenButton,
     ScreenIcon,
     ProjectPicker,
-    ArchiveFileTable,
+    ArchiveFileTable
   },
   data () {
     return {
@@ -246,7 +246,7 @@ export default {
       files: [],
       errors: {},
       fileError: '',
-      ARCHIVE_TYPES,
+      ARCHIVE_TYPES
     }
   },
   computed: {
@@ -264,7 +264,7 @@ export default {
     },
     statusOptions () {
       return toOptions(ARCHIVE_STATUSES)
-    },
+    }
   },
   methods: {
     /** 新档案的初始值：与后端 fillDefaults 保持一致，避免保存后字段被后端改掉 */
@@ -281,7 +281,7 @@ export default {
         responsibleUser: '',
         archiveDate: today(),
         status: '未归档',
-        remark: '',
+        remark: ''
       }
     },
 
@@ -369,7 +369,7 @@ export default {
             responsibleUser: data.responsibleUser || '',
             archiveDate: data.archiveDate || today(),
             status: data.status || '未归档',
-            remark: data.remark || '',
+            remark: data.remark || ''
           }
           this.association = {
             landId: data.landId || null,
@@ -378,7 +378,7 @@ export default {
             ptxmmc: data.ptxmmc || null,
             dkmc: data.dkmc || null,
             xzqh: data.xzqh || null,
-            ptsslb: data.ptsslb || null,
+            ptsslb: data.ptsslb || null
           }
           this.files = (data.files || []).map((item) => Object.assign({}, item))
         })
@@ -481,8 +481,8 @@ export default {
           storeType: item.storeType || 'local',
           storePath: item.storePath,
           status: item.status || '已归档',
-          sortNo: item.sortNo || index + 1,
-        })),
+          sortNo: item.sortNo || index + 1
+        }))
       })
     },
 
@@ -499,7 +499,8 @@ export default {
           }
           toast.success(res.message || '保存成功')
           this.visible = false
-          this.$emit('ok', payload.id)
+          // 新增接口的 result 是新档案 ID；连同 created 一并交给列表，避免继续套用旧筛选和页码。
+          this.$emit('ok', { id: payload.id || res.result, created: !payload.id })
         })
         .catch(() => {
           // 请求层已经弹过错误提示，这里只负责不把弹窗留在 loading 状态
@@ -522,8 +523,8 @@ export default {
       return info.realname || info.username || ''
     },
 
-    formatDate,
-  },
+    formatDate
+  }
 }
 </script>
 

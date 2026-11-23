@@ -174,6 +174,15 @@
 
         <screen-button
           size="sm"
+          icon="link"
+          :disabled="!selectedRowKeys.length"
+          @click="handleBatchLink"
+        >
+          批量关联{{ selectedRowKeys.length ? `（${selectedRowKeys.length}）` : '' }}
+        </screen-button>
+
+        <screen-button
+          size="sm"
           icon="download"
           :disabled="!total"
           @click="handleExport"
@@ -188,6 +197,9 @@
         :data-source="dataSource"
         :loading="loading"
         empty-text="没有符合条件的历史档案，试试放宽检索条件"
+        selectable
+        :selected-row-keys="selectedRowKeys"
+        @select-change="handleSelectChange"
         @detail="handleDetail"
         @edit="handleEdit"
         @link="handleLinkFromRow"
@@ -207,6 +219,7 @@
 
     <!-- ================= 弹窗 ================= -->
     <completion-form-modal ref="formModal" @ok="handleSaved" />
+    <completion-batch-link-modal ref="batchLinkModal" @changed="handleBatchLinked" />
     <completion-detail-modal
       ref="detailModal"
       @edit="handleEditFromDetail"
@@ -229,6 +242,7 @@ import { toast } from '@/components/screen/toast'
 import CompletionSearchForm from './CompletionSearchForm.vue'
 import CompletionTable from './CompletionTable.vue'
 import CompletionFormModal from './CompletionFormModal.vue'
+import CompletionBatchLinkModal from './CompletionBatchLinkModal.vue'
 import CompletionDetailModal from './CompletionDetailModal.vue'
 import {
   deleteCompletion,
@@ -285,6 +299,7 @@ export default {
     CompletionSearchForm,
     CompletionTable,
     CompletionFormModal,
+    CompletionBatchLinkModal,
     CompletionDetailModal
   },
   props: {
@@ -298,6 +313,7 @@ export default {
       query: {},
       dataSource: [],
       total: 0,
+      selectedRowKeys: [],
       pagination: defaultPagination(20),
       /** 三维固定状态计数（后端固定返回 3 项，缺的补 0） */
       statusCounts: { 未数字化: 0, 数字化中: 0, 已数字化: 0 },
@@ -340,6 +356,10 @@ export default {
     },
     retentionChart () {
       return toChartData(this.stat.byRetention)
+    },
+    selectedRows () {
+      const selected = new Set(this.selectedRowKeys)
+      return this.dataSource.filter((row) => selected.has(row.id))
     },
     archivedRate () {
       if (!this.stat.total) return 0
@@ -428,6 +448,8 @@ export default {
           }
           const page = res.result || {}
           this.dataSource = page.records || []
+          // 选择仅对当前页有效，刷新/翻页后清掉，避免对不可见行执行批量写入。
+          this.selectedRowKeys = []
           this.total = page.total || 0
           this.pagination = Object.assign({}, this.pagination, { total: this.total })
           // 删到当前页空了就回退一页，避免停在空白页
@@ -549,6 +571,19 @@ export default {
     },
 
     /* ---------------- 行操作 ---------------- */
+
+    handleSelectChange (keys) {
+      this.selectedRowKeys = keys || []
+    },
+
+    handleBatchLink () {
+      this.$refs.batchLinkModal.open(this.selectedRows)
+    },
+
+    handleBatchLinked () {
+      this.selectedRowKeys = []
+      this.refresh()
+    },
 
     handleAdd () {
       this.$refs.formModal.showAdd()

@@ -169,7 +169,7 @@
               {{ selected.isLeaf === 1 ? '末级类别（可挂文件）' : `含 ${childCount} 个子类别` }}
             </screen-tag>
             <screen-tag v-if="showArchiveCount" tone="accent" size="sm">
-              本类别文件数 {{ selected.archiveCount === null || selected.archiveCount === undefined ? '—' : selected.archiveCount }}
+              类别文件数（含子类） {{ selected.archiveCount === null || selected.archiveCount === undefined ? '—' : selected.archiveCount }}
             </screen-tag>
           </div>
         </div>
@@ -434,7 +434,7 @@ export default {
       if (!this.selected) return ''
       if (this.childCount) return `该类别下存在 ${this.childCount} 个子类别，请先移除子类别`
       const count = this.selected.archiveCount
-      if (count) return `该类别下存在 ${count} 份档案，无法移除`
+      if (count) return `该类别及子类下存在 ${count} 个档案文件，无法移除`
       return ''
     },
     deleteTitle () {
@@ -453,7 +453,7 @@ export default {
         { key: 'childCount', label: '直接子类别', value: `${this.childCount} 个` },
         {
           key: 'archiveCount',
-          label: '本类别文件数',
+          label: '类别文件数（含子类）',
           value: node.archiveCount === null || node.archiveCount === undefined ? '—' : node.archiveCount
         },
         { key: 'createInfo', label: '创建信息', value: this.joinInfo(node.createTime, node.createBy) },

@@ -59,23 +59,18 @@
         text="正在加载移交事项详情…"
         :overlay="false"
       >
-        <!-- ================= 状态切换条 ================= -->
-        <!-- 与列表「状态」列是同一个动作（都打 /land/archive/handover/status），
-             这里用 3 值分段单选，因为弹窗里横向空间足够、也不需要挤在表格单元格里 -->
+        <!-- ================= 状态（只读） ================= -->
+        <!--
+          ★ 1118 P1-05 第 6 条：详情页为只读，移交状态变更只允许走「编辑」或正式流程入口。
+            原来这里是可切换的分段单选，等于开了一个绕过编辑表单与留痕的后门。
+        -->
         <section class="handover-detail__status-bar">
           <span class="handover-detail__status-label">
             <screen-icon name="check-circle" :size="13" />
             移交状态
           </span>
-          <screen-radio-group
-            v-model="statusValue"
-            :options="statusOptions"
-            aria-label="移交状态"
-            @change="handleStatusChange"
-          />
-          <span class="handover-detail__status-hint">
-            {{ statusSaving ? '正在保存…' : '切换后立即保存' }}
-          </span>
+          <screen-tag :tone="statusTone(statusValue)" size="sm">{{ statusValue || '待移交' }}</screen-tag>
+          <span class="handover-detail__status-hint">如状态有误，请在列表中打开「编辑」修改</span>
         </section>
 
         <!-- ================= 业务提示 ================= -->

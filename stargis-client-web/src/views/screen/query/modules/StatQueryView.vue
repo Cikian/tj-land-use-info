@@ -47,8 +47,10 @@
             :options="field.options"
             :placeholder="field.placeholder || '全部'"
             :searchable="field.searchable !== false"
+            :filter-local="field.filterLocal !== false"
             clearable
             :aria-label="field.label"
+            @search="handleOptionSearch(field.key, $event)"
           />
           <screen-input
             v-else
@@ -180,6 +182,7 @@ import {
   ScreenSelect
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
+import { queryLandOptions } from '@/api/land/landData'
 import {
   buildExportUrl,
   queryAdvancedPage,
@@ -236,6 +239,8 @@ export default {
       columns: [],
       /** 条件候选值 */
       options: {},
+      /** 宗地编号远程搜索防抖；只用于配套查询页 */
+      landSearchTimer: null,
       /** 当前条件（值是字符串；空串表示不限） */
       conditions: {},
       /** 自定义条件（与「查询导出」页签同一个构造器的输出） */
@@ -283,7 +288,15 @@ export default {
           //   走 POST 合并自定义条件时必须发数组；其余字段是单值标量。
           this.selectField('ptxmmc', '配套项目名称', this.multiOptions('ptxmmc'), { searchable: true, labelWidth: 104, multiple: true }),
           this.selectField('ptsslb', '配套设施类别', this.multiOptions('ptsslb'), { multiple: true }),
-          this.selectField('dkmc', '地块名称', this.multiOptions('dkmc'), { searchable: true, multiple: true }),
+          // 候选必须来自宗地表：配套表的 dkmc 可为空，且 /options?dataType=facility 本就不返回 dkmc。
+          // 远程搜索而不是一次拉全表，200 条只是每批上限，全部编号都可按关键字检索到。
+          this.selectField('crzdbh', '出让宗地编号', this.multiOptions('crzdbh'), {
+            searchable: true,
+            labelWidth: 112,
+            multiple: true,
+            filterLocal: false,
+            placeholder: '输入编号搜索'
+          }),
           this.selectField('xzqh', '行政区划', this.multiOptions('xzqh'), { multiple: true }),
           // 功能区与行政区划并列：2026-11 拆列后，生态城/经开区等记录只能按 gnq 检索
           this.selectField('gnq', '功能区', this.multiOptions('gnq'), { labelWidth: 88, multiple: true }),
@@ -356,6 +369,8 @@ export default {
      *   放进 data 会被 Vue 递归 observe，白搭性能还可能报警告。
      */
     this.geoLayer = createGeoLayer(this.dataType === 'facility' ? 'facility' : 'land')
+    // 非响应式序号：丢弃较慢的旧搜索响应，避免后输入的关键字被旧候选覆盖。
+    this.landOptionRequest = 0
     this.loadMeta()
   },
   /** 切走页签（keep-alive 缓存）时清掉定位实体与高亮，避免污染数据管理页的地图 */
@@ -364,6 +379,10 @@ export default {
   },
   beforeDestroy () {
     this.clearLocate()
+    if (this.landSearchTimer) {
+      clearTimeout(this.landSearchTimer)
+    }
+    this.landOptionRequest += 1
   },
   methods: {
     /** 空条件对象（key 取当前数据集的条件字段） */
@@ -379,6 +398,45 @@ export default {
     },
     selectField (key, label, options, extra) {
       return Object.assign({ key, label, options }, extra || {})
+    },
+
+    /** 只有宗地编号走远程搜索；其它下拉仍由 ScreenSelect 在本地过滤。 */
+    handleOptionSearch (key, keyword) {
+      if (key !== 'crzdbh' || this.dataType !== 'facility') {
+        return
+      }
+      if (this.landSearchTimer) {
+        clearTimeout(this.landSearchTimer)
+      }
+      this.landSearchTimer = setTimeout(() => {
+        this.loadLandOptions(keyword)
+      }, 300)
+    },
+
+    /**
+     * 复用数据管理已有宗地候选接口，候选值与筛选值都统一为 crzdbh。
+     * 接口每次最多返回 200 条，因此保留远程搜索入口，不能把首批当成全部数据。
+     */
+    async loadLandOptions (keyword) {
+      const request = ++this.landOptionRequest
+      try {
+        const res = await queryLandOptions({ keyword: keyword || undefined, limit: 200 })
+        if (request !== this.landOptionRequest) {
+          return
+        }
+        if (!res || !res.success) {
+          toast.error((res && res.message) || '出让宗地编号候选加载失败')
+          return
+        }
+        const codes = (res.result || [])
+          .map((item) => item && item.crzdbh)
+          .filter((code) => code !== null && code !== undefined && String(code).trim() !== '')
+        this.$set(this.options, 'crzdbh', codes)
+      } catch (e) {
+        if (request === this.landOptionRequest) {
+          toast.error('出让宗地编号候选加载失败：' + (e && e.message ? e.message : '网络异常'))
+        }
+      }
     },
 
     /**
@@ -402,6 +460,9 @@ export default {
           .filter((column) => column.defaultColumn)
           .map((column) => column.key)
         this.options = (optRes && optRes.result) || {}
+        if (this.dataType === 'facility') {
+          await this.loadLandOptions('')
+        }
         // 配套字段元数据：宗地页签的「地块配套详情」与配套页签的「配套项目详情」都用它取中文名，
         // 所以两个数据集都取（配套页签只是恰好与主 columns 相同）。
         const facilityRes = await queryColumns('facility')

@@ -17,11 +17,9 @@
       `window.open` 只能发 GET，所以条件要能塞进查询串；
       后端会把它反序列化成同一套结构再落到同一个 Service。
 
-    ★ 两个导出按钮（清单 P1-13 第 1 条）：
-       「按自定义列导出」= 结果表勾了哪些列就导哪些（两个普通查询页的行为）；
-       「导出全部字段」  = 忽略列选择、保留查询条件，后端按字段注册表顺序输出全部业务列。
-       做成两个按钮而不是一个带状态的开关：开关会留在界面上，下一个人点导出时
-       根本不知道自己正在用哪种模式。
+    ★ 查询导出页只走全量字段契约（1118 清单 P1-12）：
+       页头与结果表的导出入口都传 allColumns=true，忽略列选择、保留查询条件；
+       自定义列只控制当前表格展示。普通两个查询页仍保留按勾选列导出的能力。
   -->
   <div class="advanced-query">
     <!-- ---------- 条件构造 ---------- -->
@@ -58,22 +56,12 @@
             查询
           </screen-button>
 
-          <!-- 两种导出是两条明确路径，不做成一个会记住状态的开关（清单 P1-13 第 1 条） -->
-          <screen-button
-            size="sm"
-            icon="download"
-            :disabled="!pagination.total"
-            @click="handleExport(false)"
-          >
-            按自定义列导出
-          </screen-button>
-
           <screen-button
             size="sm"
             icon="download"
             :disabled="!pagination.total"
             :loading="exportingAll"
-            @click="handleExport(true)"
+            @click="handleExport"
           >
             导出全部字段
           </screen-button>
@@ -319,31 +307,23 @@ export default {
     /**
      * 导出。
      *
-     * @param {boolean} allFields true = 「导出全部字段」（忽略列选择、保留查询条件）
-     *
-     * ★ 全部字段模式**不传 columns**：不是省流量，而是让请求本身就表达清楚
-     *   「这次导的是全部字段」—— 后端看到 allColumns=true 会直接按注册表出列，
-     *   但日志/抓包里少一个可能误导人的 columns 参数更省事。
-     * ★ 查询条件照常带上（conditionsJson），否则「全量导出」会变成「忽略筛选的全表导出」，
-     *   那正是清单要求里明确不做的。
+     * ★ 不传 columns：后端看到 allColumns=true 会按注册表输出宗地 35 + 序号、
+     *   配套 58 + 序号，即契约要求的 36 / 59 列。
+     * ★ 查询条件照常带上（conditionsJson），全量指的是字段全量，不是忽略筛选导出全表。
      */
-    handleExport (allFields) {
+    handleExport () {
       if (!this.checkConditions()) {
         return
       }
       const payload = this.buildPayload(1)
       const params = {
         dataType: payload.dataType,
-        conditionsJson: JSON.stringify(payload.conditions)
+        conditionsJson: JSON.stringify(payload.conditions),
+        allColumns: true
       }
-      if (allFields) {
-        params.allColumns = true
-        this.exportingAll = true
-        // window.open 拿不到「下载完成」的回调，1.5 秒后放掉 loading 只为避免按钮一直转
-        window.setTimeout(() => { this.exportingAll = false }, 1500)
-      } else {
-        params.columns = payload.columns.join(',')
-      }
+      this.exportingAll = true
+      // window.open 拿不到「下载完成」的回调，1.5 秒后放掉 loading 只为避免按钮一直转
+      window.setTimeout(() => { this.exportingAll = false }, 1500)
       window.open(buildExportUrl(params), '_blank')
     }
   }

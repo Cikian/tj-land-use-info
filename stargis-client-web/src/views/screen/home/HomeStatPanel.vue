@@ -226,7 +226,7 @@
                 aria-hidden="true"
               />
               <span class="home-stat__rank-no">{{ pad(index + 1) }}</span>
-              <span class="home-stat__rank-name">{{ item.name }}</span>
+              <span class="home-stat__rank-name" :title="item.name">{{ item.name }}</span>
               <span class="home-stat__rank-bar">
                 <i :style="{ width: `${barWidth(item.value)}%` }" />
               </span>
@@ -911,10 +911,21 @@ export default {
   &__rank-name {
     position: absolute;
     left: 52px;
-    top: 16px;
+    // 右缘严格停在条形图之前；长名称最多两行，超出省略，完整值由 title 提供。
+    right: 58.8889%;
+    top: 7px;
+    box-sizing: border-box;
+    max-height: 32px;
+    padding-right: 8px;
+    overflow: hidden;
     font-size: 14px;
+    line-height: 16px;
     color: #66afd4;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   &__rank-bar {

@@ -18,6 +18,9 @@
     row-key="id"
     :min-width="1578"
     :empty-text="emptyText"
+    :selectable="selectable"
+    :selected-keys="selectedRowKeys"
+    @select-change="handleSelectChange"
     @cell-click="handleCellClick"
   >
     <!-- 序号：用后端下发的 seq（跨页连续），比按当前页重新编号更可信 -->
@@ -93,7 +96,9 @@ export default {
     /** 行数据 */
     dataSource: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
-    emptyText: { type: String, default: '暂无历史档案' }
+    emptyText: { type: String, default: '暂无历史档案' },
+    selectable: { type: Boolean, default: false },
+    selectedRowKeys: { type: Array, default: () => [] }
   },
   data () {
     return {
@@ -116,6 +121,9 @@ export default {
   },
   methods: {
     formatCount,
+    handleSelectChange (keys) {
+      this.$emit('select-change', keys || [])
+    },
     /** 表格内可点单元格（目前只有档案编号）：统一按「点档案编号=看详情」处理 */
     handleCellClick (row, col) {
       if (col && col.key === 'archiveNo') {

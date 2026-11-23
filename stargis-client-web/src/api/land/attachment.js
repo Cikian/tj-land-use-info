@@ -44,6 +44,7 @@ export const attachmentUrl = {
   summary: '/land/data/attachment/summary',
   typeDistribution: '/land/data/attachment/typeDistribution',
   allowedTypes: '/land/data/attachment/allowedTypes',
+  objectOptions: '/land/data/attachment/objectOptions',
   save: '/land/data/attachment/save',
   download: '/land/data/attachment/download',
   previewUrl: '/land/data/attachment/previewUrl',
@@ -67,6 +68,13 @@ export const attachmentUrl = {
  */
 export function queryAttachmentTree (bizType, bizId) {
   return javaGetAction(attachmentUrl.tree, { bizType, bizId })
+}
+
+/**
+ * 上传弹窗归属候选。入口在附件权限域内，避免附件角色被档案/配套 Admin 权限拦截。
+ */
+export function queryAttachmentObjectOptions (target, params) {
+  return javaGetAction(attachmentUrl.objectOptions, Object.assign({}, params, { target }))
 }
 
 /**
@@ -308,6 +316,7 @@ export default {
   queryAttachmentSummary,
   queryAttachmentTypeDistribution,
   queryAllowedAttachmentTypes,
+  queryAttachmentObjectOptions,
   queryAttachmentTree,
   queryAttachmentTreeByProject,
   saveAttachment,

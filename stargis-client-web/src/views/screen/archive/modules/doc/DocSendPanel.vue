@@ -483,10 +483,13 @@ export default {
       this.selectedRowKeys = keys || []
     },
 
-    /** 统计卡快捷筛选：'' 全部 / 'true' 已归档 / 'false' 未归档 */
+    /** 统计卡快捷筛选：统计是全量口径，其它检索条件一并清空，避免数字与结果数不一致。 */
     handleStatClick (key) {
       this.activeStat = this.activeStat === key ? '' : key
+      this.query = buildEmptyQuery()
       this.query.archived = this.activeStat
+      this.dateRange = []
+      this.selectedRowKeys = []
       this.pagination.current = 1
       this.loadData()
     },

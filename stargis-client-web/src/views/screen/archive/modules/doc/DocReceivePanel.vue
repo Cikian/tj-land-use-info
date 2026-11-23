@@ -433,14 +433,15 @@ export default {
         { key: '待承办', label: '待承办', value: this.stat.pending || 0, tone: 'warn' },
         { key: '承办中', label: '承办中', value: this.stat.handling || 0, tone: 'info' },
         { key: '已退回', label: '已退回', value: this.stat.rejected || 0, tone: 'danger' },
-        { key: '已办结', label: '已办结', value: this.stat.finished || 0, tone: 'ok' }
+        { key: '已办结', label: '已办结', value: this.stat.finished || 0, tone: 'ok' },
+        { key: '已归档', label: '已归档', value: this.stat.archived || 0, tone: 'info' }
       ]
     },
     /** 给读屏的完整语义播报，避免只念出裸数字 */
     statAnnouncement () {
       return `收文统计已更新：共 ${this.stat.total || 0} 条，我的待办 ${this.stat.myTodo || 0} 条，` +
         `待承办 ${this.stat.pending || 0} 条，承办中 ${this.stat.handling || 0} 条，` +
-        `已退回 ${this.stat.rejected || 0} 条，已办结 ${this.stat.finished || 0} 条`
+        `已退回 ${this.stat.rejected || 0} 条，已办结 ${this.stat.finished || 0} 条，已归档 ${this.stat.archived || 0} 条`
     },
     /**
      * 是否有文件没落库（P1-11）。
@@ -564,15 +565,19 @@ export default {
       this.selectedRowKeys = keys || []
     },
 
-    /** 点统计卡做快捷筛选（再点一次取消） */
+    /** 统计是全量口径；清掉其它条件后，卡片数字才与点击后的列表 total 一致。 */
     handleStatClick (key) {
-      if (key === 'mine') {
-        this.activeStat = this.activeStat === 'mine' ? '' : 'mine'
-        this.query.onlyMine = this.activeStat === 'mine' ? true : undefined
-      } else {
-        this.activeStat = this.activeStat === key ? '' : key
-        this.query.status = this.activeStat || ''
+      const active = this.activeStat === key ? '' : key
+      const query = buildEmptyQuery()
+      if (active === 'mine') {
+        query.onlyMine = true
+      } else if (active) {
+        query.status = active
       }
+      this.activeStat = active
+      this.query = query
+      this.dateRange = []
+      this.selectedRowKeys = []
       this.pagination.current = 1
       this.loadData()
     },
@@ -719,7 +724,7 @@ export default {
   /* ---------------- 统计卡 ---------------- */
   &__stats {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: var(--screen-space-2);
     flex: 0 0 auto;
   }

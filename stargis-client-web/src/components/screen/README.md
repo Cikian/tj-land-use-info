@@ -1,7 +1,7 @@
 # 大屏基础组件库 · Screen UI
 
 > 设计来源：UI 同事交付的高保真模型
-> `docs/高保真/市政-天津市经营性用地市政配套设施动态监管工作站/首页.html`
+> `docs/原型与设计/高保真/市政-天津市经营性用地市政配套设施动态监管工作站/首页.html`
 > （Axure 导出；配色取自 `files/首页/styles.css` 的文字色 + 切图实测底色，
 > 切图已复制到 `src/assets/screen-blue/`，见该目录 `index.js` 的映射表）
 > 主题：**深海蓝科技风**（固化主题，不随项目 `blue/green` 皮肤切换）
@@ -867,7 +867,7 @@ src/components/screen/
 - `GET /land/stat/home/landOverview` —— 出让地块情况统计（总数、市级/区级、按区分组）
 - `GET /land/stat/home/pendingFacility` —— 待落实配套统计（宗地数、配套总数/已完成、7 项预警）
 
-口径、旧系统对照与已知缺口见 **`docs/首页看板-实现说明.md`**。其中区级子表按
+口径、旧系统对照与已知缺口见 **`docs/模块实现说明/首页看板-实现说明.md`**。其中区级子表按
 `t_land.xzqh2` 分组是**旧系统口径**（该列实际是「录入单位简称」，数据质量遗留），
 不是笔误；不要「顺手统一」成 `xzqh`。
 
@@ -877,7 +877,7 @@ src/components/screen/
 2. 旧首页的「配套费总额」「立项率/开工率/竣工率」未实现（D-602）。
 3. 「地块预警信息」弹窗的明细接口本轮未扩展（属方案 5-06）。
 
-高保真切图资源：`src/assets/screen-blue/`（来源为本仓 `docs/高保真/.../images/首页/`，
+高保真切图资源：`src/assets/screen-blue/`（来源为本仓 `docs/原型与设计/高保真/.../images/首页/`，
 复制时统一改为 ASCII 文件名；`index.js` 是唯一映射入口，组件里只引用 `hf.xxx`）。
 
 ### 档案模块

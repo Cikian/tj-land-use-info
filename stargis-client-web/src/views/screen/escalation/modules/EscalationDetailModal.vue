@@ -231,9 +231,28 @@
         </div>
       </screen-loading>
     </div>
+
+    <!--
+      打印区（屏幕上隐藏，@media print 时只显示它）。
+      ★ 1118 P1-09：原来按钮只调 window.print()，弹窗里没有可打印内容，
+        打印出来是空的整页 —— 这才是报告里「选择打印无相关信息」的真实原因。
+    -->
+    <div class="escalation-detail__print">
+      <h1 class="escalation-detail__print-title">提级论证项目详情</h1>
+      <p class="escalation-detail__print-meta">
+        打印时间：{{ printTime }} ｜ 项目编号：{{ (detail && detail.projectNo) || '—' }}
+      </p>
+      <table class="escalation-detail__print-table">
+        <tbody>
+          <tr v-for="field in printFields" :key="`p-${field.key}`">
+            <th>{{ field.label }}</th>
+            <td>{{ field.value }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </screen-modal>
 </template>
-
 <script>
 import {
   ScreenModal,
@@ -259,7 +278,8 @@ import {
   // 项目类型三值口径（市级项目 / 区级项目 / 待确认），历史四类显示为「待确认」
   projectTypeText,
   parseAttachments,
-  isClosedWithoutResult
+  isClosedWithoutResult,
+  nowText
 } from '../constants'
 
 /** 详情里统一用「—」占位；注意 0 是合法值，不能用 `value || '—'` */
@@ -290,6 +310,8 @@ export default {
       activeTab: 'base',
       detail: null,
       records: [],
+      /** 打印抬头时间（点「打印」时写入，屏幕上不可见） */
+      printTime: '',
       tabs: [
         { key: 'base', label: '基本信息' },
         { key: 'materials', label: '提级论证材料' },
@@ -377,6 +399,16 @@ export default {
     },
     closedWithoutResult () {
       return isClosedWithoutResult(this.detail)
+    },
+    /**
+     * 打印字段：与详情页「基本信息 + 关联地块 + 论证结果」同一份数据，
+     * 空值直接跳过（打印件上不该出现一片「—」）。
+     */
+    printFields () {
+      const items = [].concat(this.baseItems, this.landItems, this.argItems, this.resultItems)
+      return items
+        .filter((item) => item && !isBlank(item.value) && item.value !== '—')
+        .map((item) => ({ key: item.key, label: item.label, value: String(item.value) }))
     }
   },
   methods: {
@@ -444,7 +476,14 @@ export default {
     },
 
     handlePrint () {
-      window.print()
+      if (!this.detail) {
+        toast.warning('项目详情还没加载完成，无法打印')
+        return
+      }
+      this.printTime = nowText().slice(0, 16)
+      this.$nextTick(() => {
+        window.print()
+      })
     },
 
     handleClose () {
@@ -756,6 +795,11 @@ export default {
     cursor: pointer;
     .screen-link-action();
   }
+
+  /* 打印区在屏幕上隐藏（真正的打印规则放在非 scoped 的 style 块里） */
+  &__print {
+    display: none;
+  }
 }
 
 /*
@@ -791,6 +835,76 @@ export default {
 @media (max-width: 900px) {
   .escalation-detail__section {
     --sd-cols: 1;
+  }
+}
+</style>
+
+<!--
+  打印样式必须放在**非 scoped** 的 style 块里：
+  ① 要命中 body 与弹窗外壳（顶栏 / 侧栏），scoped 属性选择器匹配不到；
+  ② 打印时把 body 下所有内容设为不可见，只让详情打印区可见
+     （visibility 不影响布局宽度，照台账打印的既有做法）。
+  打印件是白纸黑字，因此用颜色关键字而不是暗色令牌。
+-->
+<style lang="less">
+@detail-print-ink: black;
+@detail-print-paper: white;
+@detail-print-line: gray;
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .escalation-detail__print,
+  .escalation-detail__print * {
+    visibility: visible;
+  }
+
+  .escalation-detail__print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block !important;
+    width: 100%;
+    padding: 0 8mm;
+    color: @detail-print-ink;
+    background: @detail-print-paper;
+  }
+
+  .escalation-detail__print-title {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .escalation-detail__print-meta {
+    margin: 0 0 10px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .escalation-detail__print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+
+    th,
+    td {
+      padding: 5px 8px;
+      border: 1px solid @detail-print-line;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    th {
+      width: 140px;
+      font-weight: 600;
+      text-align: left;
+      background: @detail-print-paper;
+    }
   }
 }
 </style>

@@ -48,6 +48,7 @@ export const completionUrl = {
   relatedArchives: '/land/archive/completion/relatedArchives',
   archivePick: '/land/archive/completion/archive/pick',
   linkArchive: '/land/archive/completion/linkArchive',
+  linkArchiveBatch: '/land/archive/completion/linkArchiveBatch',
   unlinkArchive: '/land/archive/completion/unlinkArchive',
   exportXls: '/land/archive/completion/exportXls'
 }
@@ -144,6 +145,11 @@ export function linkCompletionArchive (id, archiveId) {
   return javaPostAction(withQuery(completionUrl.linkArchive, { id, archiveId }), {})
 }
 
+/** 多条历史档案批量关联到同一扫描件；后端整批成功或整批回滚 */
+export function linkCompletionArchivesBatch (ids, archiveId) {
+  return javaPostAction(completionUrl.linkArchiveBatch, { ids, archiveId })
+}
+
 /** 取消关联（只清本模块的指针，不删除档案本身） */
 export function unlinkCompletionArchive (id) {
   return javaPostAction(withQuery(completionUrl.unlinkArchive, { id }), {})
@@ -177,6 +183,7 @@ export default {
   queryRelatedArchives,
   pickArchives,
   linkCompletionArchive,
+  linkCompletionArchivesBatch,
   unlinkCompletionArchive,
   exportCompletionXls
 }
