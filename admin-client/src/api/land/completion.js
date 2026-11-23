@@ -52,6 +52,7 @@ export const completionUrl = {
   relatedArchives: '/land/archive/completion/relatedArchives',
   archivePick: '/land/archive/completion/archive/pick',
   linkArchive: '/land/archive/completion/linkArchive',
+  linkArchiveBatch: '/land/archive/completion/linkArchiveBatch',
   unlinkArchive: '/land/archive/completion/unlinkArchive',
   exportXls: '/land/archive/completion/exportXls'
 }
@@ -128,6 +129,11 @@ export function pickArchives (params) {
 /** 关联扫描件 */
 export function linkCompletionArchive (id, archiveId) {
   return postAction(`${completionUrl.linkArchive}?id=${encodeURIComponent(id)}&archiveId=${encodeURIComponent(archiveId)}`)
+}
+
+/** 多条历史档案批量关联到同一扫描件；后端整批成功或整批回滚 */
+export function linkCompletionArchivesBatch (ids, archiveId) {
+  return postAction(completionUrl.linkArchiveBatch, { ids, archiveId })
 }
 
 /** 取消关联扫描件 */
@@ -308,6 +314,7 @@ export default {
   queryRelatedArchives,
   pickArchives,
   linkCompletionArchive,
+  linkCompletionArchivesBatch,
   unlinkCompletionArchive,
   exportCompletionXls,
   loadDictItems,

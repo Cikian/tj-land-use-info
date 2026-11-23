@@ -360,7 +360,8 @@
           if (res.success) {
             this.$message.success(res.message || '保存成功')
             this.visible = false
-            this.$emit('ok')
+            // 新增时后端把新档案 ID 放在 result；列表据此区分新增与编辑并复位旧筛选。
+            this.$emit('ok', { id: payload.id || res.result, created: !payload.id })
           } else {
             this.$message.warning(res.message)
           }

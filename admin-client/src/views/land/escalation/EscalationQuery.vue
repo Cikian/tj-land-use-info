@@ -75,7 +75,7 @@
       </div>
     </a-spin>
 
-    <escalation-detail-modal ref="detail" />
+    <escalation-detail-modal ref="detail" @edit="handleReadonlyEdit" />
   </a-card>
 </template>
 
@@ -260,15 +260,19 @@
       handleDetail (record) {
         this.$refs.detail.open(record)
       },
+      handleReadonlyEdit (record) {
+        this.$message.info('查询结果为只读；如需修改，请到「项目录入」页编辑：' + ((record && record.projectNo) || ''))
+      },
       handleExport () {
         exportProjectXls(this.query)
         this.$message.success('已开始导出，请稍候…')
       },
-      /** ★ 图表下钻：带着条件跳到台账页（台账页 created 时读取 $route.query） */
+      /** 图元条件与页面当前条件一起带入台账，不能只带图表维度而丢掉统计口径。 */
       drill (query) {
         const clean = {}
-        Object.keys(query || {}).forEach(key => {
-          const value = query[key]
+        const merged = Object.assign({}, this.query, query || {})
+        Object.keys(merged).forEach(key => {
+          const value = merged[key]
           if (value !== undefined && value !== null && value !== '') {
             clean[key] = value
           }

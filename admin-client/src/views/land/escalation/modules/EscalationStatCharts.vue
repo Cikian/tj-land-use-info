@@ -140,7 +140,7 @@
                 stroke="#2e7cf6"
                 stroke-width="2" />
               <text :x="point.x" :y="point.y - 10" text-anchor="middle" class="stat-trend__value">{{ point.count }}</text>
-              <text :x="point.x" :y="trendHeight - 6" text-anchor="middle" class="stat-trend__label">{{ point.name }}</text>
+              <text v-if="point.showLabel" :x="point.x" :y="trendHeight - 6" text-anchor="middle" class="stat-trend__label">{{ point.name }}</text>
             </g>
           </svg>
         </div>
@@ -354,11 +354,21 @@
         const innerHeight = this.trendHeight - this.trendPadding.top - this.trendPadding.bottom
         const max = rows.reduce((m, item) => Math.max(m, item.count), 0) || 1
         const step = rows.length > 1 ? innerWidth / (rows.length - 1) : 0
-        return rows.map((item, index) => ({
+        const points = rows.map((item, index) => ({
           name: item.name,
           count: item.count,
           x: rows.length > 1 ? this.trendPadding.left + step * index : this.trendPadding.left + innerWidth / 2,
           y: this.trendPadding.top + innerHeight - (item.count / max) * innerHeight
+        }))
+        // 数据点全保留，只抽稀 x 轴文字；首末月份必留，避免长区间刻度互相覆盖。
+        const labelLimit = Math.min(points.length, 8)
+        const labelIndexes = []
+        for (let i = 0; i < labelLimit; i += 1) {
+          const index = Math.round((i * (points.length - 1)) / Math.max(labelLimit - 1, 1))
+          if (labelIndexes[labelIndexes.length - 1] !== index) labelIndexes.push(index)
+        }
+        return points.map((point, index) => Object.assign({}, point, {
+          showLabel: labelIndexes.indexOf(index) > -1
         }))
       },
       trendPolyline () {

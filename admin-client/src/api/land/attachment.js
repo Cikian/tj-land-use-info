@@ -43,6 +43,7 @@ export const attachmentUrl = {
   summary: '/land/data/attachment/summary',
   typeDistribution: '/land/data/attachment/typeDistribution',
   allowedTypes: '/land/data/attachment/allowedTypes',
+  objectOptions: '/land/data/attachment/objectOptions',
   save: '/land/data/attachment/save',
   download: '/land/data/attachment/download',
   previewUrl: '/land/data/attachment/previewUrl',
@@ -87,6 +88,14 @@ export function queryTypeDistribution (bizType) {
  */
 export function queryAllowedTypes (bizType) {
   return getAction(attachmentUrl.allowedTypes, compact({ bizType }))
+}
+
+/**
+ * 上传弹窗归属候选。必须走附件权限域，不能借用档案/配套 Admin 的只读接口：
+ * 只有 land:data:attachment 的角色调用那些接口会被 Shiro 拦成空候选。
+ */
+export function queryAttachmentObjectOptions (target, params) {
+  return getAction(attachmentUrl.objectOptions, compact(Object.assign({}, params, { target })))
 }
 
 /**
@@ -363,6 +372,7 @@ export default {
   queryAttachmentSummary,
   queryTypeDistribution,
   queryAllowedTypes,
+  queryAttachmentObjectOptions,
   queryAttachmentTree,
   queryAttachmentTreeByProject,
   uploadUrl,

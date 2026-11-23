@@ -30,7 +30,7 @@
             <a-button
               size="small"
               icon="export"
-              :disabled="!onlinePreviewUrl && !staticUrl"
+              :disabled="!onlinePreviewUrl"
               @click="handleOpenInNewWindow">新窗口打开</a-button>
             <!-- ★ 下载永远给：预览失败、格式不支持、Office 打不开，最后都要落到「下载来看」 -->
             <a-button size="small" type="primary" icon="download" @click="handleDownload">下载</a-button>
@@ -44,7 +44,14 @@
           show-icon
           :message="loadError" />
 
-        <!-- ============ 统一由 kkFileView 预览 ============ -->
+        <!-- 压缩包只作为普通文件保存与下载，绝不交服务端解压或展开目录。 -->
+        <div v-else-if="mode === 'archive'" class="attach-preview__body attach-preview__body--plain">
+          <a-empty description="压缩包已保存为普通附件，不支持在线解压预览，请下载后查看">
+            <a-button type="primary" icon="download" @click="handleDownload">下载原文件</a-button>
+          </a-empty>
+        </div>
+
+        <!-- ============ 其余格式统一由 kkFileView 预览 ============ -->
         <div v-else class="attach-preview__body attach-preview__body--office">
           <iframe
             v-if="onlinePreviewUrl"

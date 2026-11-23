@@ -69,7 +69,7 @@
                   <span
                     v-if="showArchiveCount && node.archiveCount"
                     class="cat-node__count"
-                    :title="`该类别下 ${node.archiveCount} 份档案`">{{ node.archiveCount }}</span>
+                    :title="`该类别及子类下 ${node.archiveCount} 个档案文件`">{{ node.archiveCount }}</span>
                 </span>
               </template>
             </a-tree>
@@ -158,7 +158,7 @@
                 <a-descriptions-item label="层级">第 {{ selected.level }} 级</a-descriptions-item>
                 <a-descriptions-item label="同级排序">{{ selected.sortNo }}</a-descriptions-item>
                 <a-descriptions-item label="直接子类别">{{ childCount }}</a-descriptions-item>
-                <a-descriptions-item label="本类别档案数">
+                <a-descriptions-item label="类别文件数（含子类）">
                   <span v-if="showArchiveCount">{{ selected.archiveCount }}</span>
                   <a-tooltip v-else title="档案管理模块尚未落地，暂无法统计">
                     <span class="detail-desc__muted">暂不可用</span>
@@ -354,7 +354,7 @@
           return `该类别下存在 ${this.childCount} 个子类别，请先移除子类别`
         }
         if (this.showArchiveCount && this.selected.archiveCount > 0) {
-          return `该类别下存在 ${this.selected.archiveCount} 份档案，无法移除`
+          return `该类别及子类下存在 ${this.selected.archiveCount} 个档案文件，无法移除`
         }
         return ''
       },
@@ -586,7 +586,7 @@
             }
             this.loadTree()
           } else {
-            // 前置校验不通过时，后端返回「该类别下存在 N 份档案，无法移除」等业务提示
+            // 前置校验不通过时，后端返回「该类别（含子类别）下存在 N 个档案文件，无法移除」等业务提示
             this.$message.warning(res.message)
           }
         })

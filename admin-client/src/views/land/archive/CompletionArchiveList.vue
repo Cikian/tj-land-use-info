@@ -69,6 +69,16 @@
       </div>
       <div class="completion-bar__right">
         <a-button
+          v-has="'land:completion:edit'"
+          size="small"
+          type="primary"
+          ghost
+          icon="link"
+          :disabled="!selectedRowKeys.length"
+          @click="handleBatchLink">
+          批量关联{{ selectedRowKeys.length ? '（' + selectedRowKeys.length + '）' : '' }}
+        </a-button>
+        <a-button
           v-has="'land:completion:delete'"
           size="small"
           type="danger"
@@ -111,6 +121,7 @@
     <!-- ============ 弹窗 ============ -->
     <completion-modal ref="modal" @ok="handleSaved" />
     <completion-detail-modal ref="detail" @edit="handleEditFromDetail" @changed="refresh" />
+    <completion-batch-link-modal ref="batchLink" @changed="handleBatchLinked" />
 
     <!-- ============ 打印区（屏幕上隐藏，打印时只显示这一块） ============ -->
     <div class="completion-print">
@@ -140,6 +151,7 @@
   import CompletionTable from './modules/CompletionTable'
   import CompletionModal from './modules/CompletionModal'
   import CompletionDetailModal from './modules/CompletionDetailModal'
+  import CompletionBatchLinkModal from './modules/CompletionBatchLinkModal'
   import resetOnActivate from '../mixins/resetOnActivate'
   import {
     DIGITIZE_STATUS,
@@ -170,7 +182,7 @@
    */
   export default {
     name: 'CompletionArchiveList',
-    components: { CompletionSearchForm, CompletionTable, CompletionModal, CompletionDetailModal },
+    components: { CompletionSearchForm, CompletionTable, CompletionModal, CompletionDetailModal, CompletionBatchLinkModal },
     /*
      * 普通离开再进入时清条件、页码回 1、重查（清单 P2-01）。
      * 本页的隐性条件是「数字化状态」（同时驱动状态页签）与「是否已挂扫描件 hasArchive」，
@@ -201,6 +213,7 @@
         dataSource: [],
         total: 0,
         selectedRowKeys: [],
+        selectedRows: [],
         printTime: '',
         printFields: [
           { key: 'seq', label: '序号' },
@@ -481,6 +494,7 @@
           this.total = page.total || 0
           this.pagination = Object.assign({}, this.pagination, { total: this.total })
           this.selectedRowKeys = []
+          this.selectedRows = []
           if (!this.dataSource.length && this.total > 0 && this.pagination.current > 1) {
             this.pagination.current -= 1
             return this.loadData()
@@ -589,8 +603,17 @@
         })
         this.loadData()
       },
-      handleSelectChange (selectedRowKeys) {
+      handleSelectChange (selectedRowKeys, selectedRows) {
         this.selectedRowKeys = selectedRowKeys
+        this.selectedRows = selectedRows || []
+      },
+      handleBatchLink () {
+        this.$refs.batchLink.open(this.selectedRows)
+      },
+      handleBatchLinked () {
+        this.selectedRowKeys = []
+        this.selectedRows = []
+        this.refresh()
       },
 // ------------------------------------------------------------------
       // 行操作
@@ -864,7 +887,9 @@
     margin: 12px 0;
 
     &__right {
+      display: flex;
       flex: none;
+      gap: 8px;
     }
   }
 

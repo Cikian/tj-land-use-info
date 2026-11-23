@@ -160,6 +160,26 @@
         </a-tabs>
       </template>
     </a-spin>
+
+    <!--
+      打印区（屏幕上隐藏，@media print 时只显示它）。
+      ★ 1118 P1-09：原来「打印」只调 window.print()，弹窗里没有可打印内容，
+        打印结果是空白整页 —— 这就是报告里「选择打印无相关信息」的成因。
+    -->
+    <div class="escalation-detail-print">
+      <h1 class="escalation-detail-print__title">提级论证项目详情</h1>
+      <p class="escalation-detail-print__meta">
+        打印时间：{{ printTime }} ｜ 项目编号：{{ (detail && detail.projectNo) || '—' }}
+      </p>
+      <table class="escalation-detail-print__table">
+        <tbody>
+          <tr v-for="field in printFields" :key="'p-' + field.key">
+            <th>{{ field.label }}</th>
+            <td>{{ field.value }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </a-modal>
 </template>
 
@@ -199,7 +219,45 @@
         loading: false,
         activeTab: 'base',
         detail: null,
-        records: []
+        records: [],
+        /** 打印抬头时间（点「打印」时写入） */
+        printTime: ''
+      }
+    },
+    computed: {
+      /**
+       * 打印字段：与基本信息页签同一份数据，空值跳过（打印件上不出现一片「—」）。
+       */
+      printFields () {
+        const d = this.detail || {}
+        const rows = [
+          { key: 'projectNo', label: '项目编号', value: d.projectNo },
+          { key: 'projectName', label: '项目名称', value: d.projectName },
+          { key: 'declareDept', label: '申报单位', value: d.declareDept },
+          { key: 'projectType', label: '项目类型', value: projectTypeText(d.projectType, d.projectType_dictText) },
+          { key: 'totalInvestment', label: '总投资（亿元）', value: this.investmentText(d.totalInvestment) },
+          { key: 'buildLocation', label: '建设地点', value: d.buildLocation },
+          { key: 'declareDate', label: '申报时间', value: d.declareDate },
+          { key: 'projectSummary', label: '项目概述', value: d.projectSummary },
+          { key: 'xzqh', label: '行政区划', value: d.xzqh },
+          { key: 'gnq', label: '功能区', value: d.gnq },
+          { key: 'crzdbh', label: '关联出让宗地编号', value: d.crzdbh },
+          { key: 'ptxmmc', label: '关联配套项目', value: d.ptxmmc },
+          { key: 'argReason', label: '提级论证事由', value: d.argReason },
+          { key: 'argBasis', label: '提级论证依据', value: d.argBasis },
+          { key: 'argNecessity', label: '必要性说明', value: d.argNecessity },
+          { key: 'argFeasibility', label: '可行性说明', value: d.argFeasibility },
+          { key: 'argContent', label: '论证事项内容', value: d.argContent },
+          { key: 'status', label: '办理状态', value: d.status },
+          { key: 'argResult', label: '论证结果', value: d.argResult },
+          { key: 'argConclusion', label: '论证结论', value: d.argConclusion },
+          { key: 'argOrg', label: '论证组织单位', value: d.argOrg },
+          { key: 'argMeetingDate', label: '论证会日期', value: d.argMeetingDate },
+          { key: 'argDate', label: '论证完成日期', value: d.argDate },
+          { key: 'argExpertList', label: '论证专家名单', value: d.argExpertList },
+          { key: 'remark', label: '备注', value: d.remark }
+        ]
+        return rows.filter(v => v.value !== null && v.value !== undefined && v.value !== '' && v.value !== '—')
       }
     },
     methods: {
@@ -267,7 +325,16 @@
         })
       },
       handlePrint () {
-        window.print()
+        if (!this.detail) {
+          this.$message.warning('项目详情还没加载完成，无法打印')
+          return
+        }
+        const d = new Date()
+        const pad = n => String(n).padStart(2, '0')
+        this.printTime = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+        this.$nextTick(() => {
+          window.print()
+        })
       },
       close () {
         this.visible = false
@@ -549,6 +616,74 @@
       &:hover,
       &:focus {
         color: #2e7cf6;
+      }
+    }
+  }
+
+  /* 打印区在屏幕上隐藏（真正的打印规则放在文件末尾的非 scoped 块里） */
+  .escalation-detail-print {
+    display: none;
+  }
+</style>
+
+<!--
+  打印样式必须放在非 scoped 的 style 里：需要命中 body 与弹窗外壳，
+  scoped 属性选择器匹配不到；visibility 不影响布局宽度（照台账打印的既有做法）。
+-->
+<style lang="less">
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+
+    .escalation-detail-print,
+    .escalation-detail-print * {
+      visibility: visible;
+    }
+
+    .escalation-detail-print {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: block !important;
+      width: 100%;
+      padding: 0 8mm;
+      color: #000;
+      background: #fff;
+    }
+
+    .escalation-detail-print__title {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .escalation-detail-print__meta {
+      margin-bottom: 10px;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .escalation-detail-print__table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+
+      th,
+      td {
+        padding: 5px 8px;
+        border: 1px solid #333;
+        vertical-align: top;
+        word-break: break-word;
+      }
+
+      th {
+        width: 140px;
+        font-weight: 600;
+        text-align: left;
+        background: #f1f5f9;
       }
     }
   }
