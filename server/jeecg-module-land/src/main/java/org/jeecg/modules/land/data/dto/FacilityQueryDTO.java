@@ -38,4 +38,7 @@ public class FacilityQueryDTO extends LandAdminQueryDTO {
      * 加检索会让库里那批功能区记录「录得进、查不到」。
      */
     private String gnq;
+
+    /** 配套设施类别（精确匹配，对应 t_supporting_facilities.ptsslb）。 */
+    private String ptsslb;
 }

@@ -241,6 +241,18 @@
         </if>
     </select>
 
+    <!-- 台账没有「移交中」状态，活跃口径为「验收中 / 已移交」。 -->
+    <select id="countActiveByRoadName" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_road_acceptance_ledger` p
+        WHERE p.`del_flag` = 0
+          AND TRIM(p.`road_name`) = TRIM(#{roadName})
+          AND p.`status` IN ('验收中', '已移交')
+        <if test="excludeId != null and excludeId != ''">
+            AND p.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
     <!-- ================= 写入 ================= -->
     <!--
       编辑台账：整体覆盖全部可编辑列。

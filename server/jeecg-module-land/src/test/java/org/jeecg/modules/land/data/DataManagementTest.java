@@ -3,6 +3,7 @@ package org.jeecg.modules.land.data;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import org.jeecg.common.exception.JeecgBootException;
 import org.jeecg.modules.land.LandIntegrationTestBase;
+import org.jeecg.modules.land.data.dto.FacilityQueryDTO;
 import org.jeecg.modules.land.data.dto.FacilitySaveDTO;
 import org.jeecg.modules.land.data.dto.LandAdminQueryDTO;
 import org.jeecg.modules.land.data.dto.LandSaveDTO;
@@ -57,8 +58,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       否则一次编辑会产生 30 多条「未变化」的假履历；</li>
  *   <li>{@link #restoreBlocksWhenCrzdbhOccupied()} —— 恢复被删宗地时若不检测唯一键冲突，
  *       用户看到的是 {@code Duplicate entry} 这种数据库异常；</li>
- *   <li>{@link #facilityMustAttachToExistingLand()} —— 旧系统不校验宗地存在性，
- *       设计文档实测产生了 60 行「孤儿配套」。</li>
+ *   <li>{@link #facilityCanExistIndependentlyAndRemainVisible()} —— 1118 起单条配套
+ *       与宗地解耦，但按编号回查与列表可见性必须保持。</li>
  * </ul>
  */
 public class DataManagementTest extends LandIntegrationTestBase {
@@ -408,14 +409,53 @@ public class DataManagementTest extends LandIntegrationTestBase {
     // ==================================================================
 
     @Test
-    public void facilityMustAttachToExistingLand() {
-        // ★ 旧系统只校验 crzdbh 非空，不校验宗地是否存在，
-        //   设计文档实测产生了 60 行「孤儿配套」
-        FacilitySaveDTO dto = buildFacility(uniqueNo("orphan-land"), "孤儿配套");
-        JeecgBootException error = assertThrows(JeecgBootException.class,
-                () -> facilityAdminService.createFacility(dto, null));
-        assertTrue(error.getMessage().contains("不存在"),
-                "★ 宗地不存在时必须拒绝并说明：" + error.getMessage());
+    public void facilityCanExistIndependentlyAndRemainVisible() {
+        String crzdbh = uniqueNo("orphan-land");
+        String id = facilityAdminService.createFacility(buildFacility(crzdbh, "独立配套"), null);
+
+        Facility saved = facilityAdminService.queryDetail(id);
+        assertNotNull(saved, "关联宗地未登记时配套自身仍应保存");
+        assertEquals(storedCode(crzdbh), saved.getCrzdbh());
+        assertNotNull(saved.getUpdateTime(), "新增必须继续刷新配套图形版本");
+        assertEquals(1, facilityAdminService.queryByLand(crzdbh).size(),
+                "新增后按原宗地编号回查必须立即可见");
+        Map<String, Object> check = facilityAdminService.checkPtxmmc(crzdbh, "另一条独立配套", null);
+        assertEquals(Boolean.TRUE, check.get("available"));
+        assertEquals(Boolean.FALSE, check.get("landExists"), "界面可提示关联缺失，但不能拦截保存");
+    }
+
+    @Test
+    public void facilityRemainEditableAfterLandIsRemoved() {
+        String crzdbh = uniqueNo("removed-land");
+        String landId = landAdminService.createLand(buildLand(crzdbh, "即将移除的宗地"), null);
+        String facilityId = facilityAdminService.createFacility(buildFacility(crzdbh, "宗地移除后的道路"), null);
+        landAdminService.removeLand(landId, "验证配套解耦", null);
+
+        FacilitySaveDTO dto = buildFacility(crzdbh, "宗地移除后的道路");
+        dto.setId(facilityId);
+        dto.setDkmc("宗地移除后编辑道路");
+        facilityAdminService.updateFacility(dto, null);
+
+        Facility saved = facilityAdminService.queryDetail(facilityId);
+        assertEquals("宗地移除后编辑道路", saved.getDkmc());
+        assertNotNull(saved.getUpdateTime(), "编辑仍须刷新配套图形版本");
+    }
+
+    @Test
+    public void facilityPageFiltersByCategory() {
+        String crzdbh = uniqueNo("category");
+        landAdminService.createLand(buildLand(crzdbh, "类别检索地"), null);
+        facilityAdminService.createFacility(buildFacility(crzdbh, "道路项目"), null);
+        FacilitySaveDTO water = buildFacility(crzdbh, "排水项目");
+        water.setPtsslb("排水");
+        facilityAdminService.createFacility(water, null);
+
+        FacilityQueryDTO query = new FacilityQueryDTO();
+        query.setCrzdbh(storedCode(crzdbh));
+        query.setPtsslb("道路");
+        IPage<Facility> page = facilityAdminService.queryPage(query);
+        assertEquals(1, page.getTotal(), "ptsslb 必须真正进入 SQL，而不是只停留在界面");
+        assertEquals("道路项目", page.getRecords().get(0).getPtxmmc());
     }
 
     @Test
@@ -575,6 +615,29 @@ public class DataManagementTest extends LandIntegrationTestBase {
         List<FacilityProcess> rows = facilityProcessMapper.selectByFacility(facilityId);
         assertEquals(1, rows.size(), "同一配套的同一环节只能有一条进度记录");
         assertEquals("已完成", facilityProcessMapper.selectById(processId).getLcqk());
+
+        // 保存后重新取树：整体、阶段和平铺接口必须来自同一批最新状态，不能各算各的。
+        FacilityProcessTreeVO updatedTree = facilityAdminService.queryProcessTree(facilityId);
+        List<String> allStatuses = new ArrayList<>();
+        for (FacilityProcessTreeVO.StageNode stageItem : updatedTree.getStages()) {
+            for (FacilityProcessTreeVO.ItemNode itemNode : stageItem.getItems()) {
+                allStatuses.add(itemNode.getLcqk());
+            }
+        }
+        assertEquals(ProcessStatus.stagePercent(allStatuses), updatedTree.getPercent(),
+                "整体完成度 = 已完成 ÷ 剔除不涉及后的事项数");
+        FacilityProcessTreeVO.StageNode updatedStage = updatedTree.getStages().get(0);
+        List<String> stageStatuses = new ArrayList<>();
+        for (FacilityProcessTreeVO.ItemNode itemNode : updatedStage.getItems()) {
+            stageStatuses.add(itemNode.getLcqk());
+        }
+        assertEquals(ProcessStatus.stagePercent(stageStatuses), updatedStage.getPercent());
+        for (Map<String, Object> row : facilityAdminService.queryProcessList(facilityId)) {
+            if (item.getId().equals(row.get("lcId"))) {
+                assertEquals(updatedStage.getPercent(), row.get("stagePercent"),
+                        "平铺接口的阶段进度必须与树视图一致");
+            }
+        }
     }
 
     @Test

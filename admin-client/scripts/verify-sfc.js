@@ -49,6 +49,8 @@ const files = [
   'src/views/land/archive/modules/CompletionTable.vue',
   'src/views/land/archive/modules/CompletionModal.vue',
   'src/views/land/archive/modules/CompletionDetailModal.vue',
+  // 1118 P2-06 竣工验收历史档案「批量关联档案」（多选 + 事务提交，2026-11-19 新增）
+  'src/views/land/archive/modules/CompletionBatchLinkModal.vue',
   'src/views/land/archive/modules/ArchiveDetailModal.vue',
   'src/views/land/archive/modules/ArchiveFileTable.vue',
   // 档案卷内文件在线预览（Office/WPS 走 kkFileView）

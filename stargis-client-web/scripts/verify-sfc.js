@@ -71,6 +71,8 @@ const FILES = [
   'src/views/screen/archive/modules/completion/CompletionTable.vue',
   'src/views/screen/archive/modules/completion/CompletionFormModal.vue',
   'src/views/screen/archive/modules/completion/CompletionDetailModal.vue',
+  // 1118 P2-06 竣工验收历史档案「批量关联档案」（多选 + 事务提交，2026-11-19 新增）
+  'src/views/screen/archive/modules/completion/CompletionBatchLinkModal.vue',
 
   // ===== 数据管理（方案 2.3.1（三）第 1/2/3/6 项 + 配套导入/附件）=====
   // ★ 与上面同一约定：新增模块必须登记到这里，否则模板/less/import 路径三类问题

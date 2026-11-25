@@ -15,18 +15,16 @@
     </div>
 
     <div class="stat-cards">
-      <div class="stat-card">
-        <span class="stat-card__label">发文总数</span>
-        <span class="stat-card__value">{{ stat.total }}</span>
-      </div>
-      <div class="stat-card stat-card--ok">
-        <span class="stat-card__label">已归档</span>
-        <span class="stat-card__value">{{ stat.archived }}</span>
-      </div>
-      <div class="stat-card stat-card--warn">
-        <span class="stat-card__label">未归档</span>
-        <span class="stat-card__value">{{ Math.max(0, (stat.total || 0) - (stat.archived || 0)) }}</span>
-      </div>
+      <button
+        v-for="card in statCards"
+        :key="card.key || 'all'"
+        type="button"
+        class="stat-card"
+        :class="[{ 'stat-card--active': activeStat === card.key }, 'stat-card--' + card.tone]"
+        @click="handleStatClick(card.key)">
+        <span class="stat-card__label">{{ card.label }}</span>
+        <span class="stat-card__value">{{ card.value }}</span>
+      </button>
     </div>
 
     <div class="query-panel">
@@ -188,6 +186,7 @@
         expanded: false,
         dateRange: [],
         query: this.buildEmptyQuery(),
+        activeStat: '',
         stat: { total: 0, archived: 0 },
         dataSource: [],
         total: 0,
@@ -213,6 +212,17 @@
           pageSizeOptions: ['10', '20', '50'],
           showTotal: total => `共 ${total} 条`
         }
+      }
+    },
+    computed: {
+      statCards () {
+        const total = this.stat.total || 0
+        const archived = this.stat.archived || 0
+        return [
+          { key: '', label: '发文总数', value: total, tone: 'default' },
+          { key: 'true', label: '已归档', value: archived, tone: 'ok' },
+          { key: 'false', label: '未归档', value: Math.max(0, total - archived), tone: 'warn' }
+        ]
       }
     },
     created () {
@@ -266,6 +276,7 @@
       handleReset () {
         this.query = this.buildEmptyQuery()
         this.dateRange = []
+        this.activeStat = ''
         this.pagination.current = 1
         this.loadData()
       },
@@ -286,6 +297,15 @@
           this.query.beginDate = undefined
           this.query.endDate = undefined
         }
+      },
+      /** 点统计卡时按全量统计口径重置条件，保证归档/未归档数字与列表 total 一致。 */
+      handleStatClick (key) {
+        this.activeStat = this.activeStat === key ? '' : key
+        this.query = this.buildEmptyQuery()
+        this.query.archived = this.activeStat || undefined
+        this.dateRange = []
+        this.pagination.current = 1
+        this.loadData()
       },
       handleTableChange (pagination) {
         this.pagination = Object.assign({}, this.pagination, {
@@ -406,6 +426,14 @@
     border: 1px solid @border-color;
     border-left: 3px solid #2e7cf6;
     border-radius: 8px;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+
+    &--active {
+      border-color: #2e7cf6;
+      box-shadow: 0 0 0 2px rgba(46, 124, 246, 0.16);
+    }
 
     &__label {
       font-size: 12px;

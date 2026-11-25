@@ -3,7 +3,7 @@ import { getAction, postAction, deleteAction } from '@/api/manage'
 /**
  * 统计预警 · 预警等级 / 决策意见维护 接口（方案 2.3.1（五）· 差异清单 D-603）
  *
- * 对应后端三个 Controller（契约 docs/分级预警-实现契约.md §5.6 / §5.7 / §5.3）：
+ * 对应后端三个 Controller（契约 docs/模块实现说明/分级预警-实现说明.md 附录 A §5.6 / §5.7 / §5.3）：
  *   org.jeecg.modules.land.stat.warning.controller.WarningLevelController     → /land/stat/warning/level
  *   org.jeecg.modules.land.stat.warning.controller.DecisionOpinionController  → /land/stat/warning/opinion
  *   org.jeecg.modules.land.stat.warning.controller.WarningController          → /land/stat/warning/options

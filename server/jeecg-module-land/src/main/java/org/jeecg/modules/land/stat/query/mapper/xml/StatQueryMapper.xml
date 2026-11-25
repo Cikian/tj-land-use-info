@@ -21,7 +21,7 @@
       3) 高级查询条件（conds）的列名与比较符是 Service 侧白名单化后的产物，
          用户输入只以 #{c.value} 形式出现。详见 ResolvedCondition 的类注释。
 
-      口径核对入口：docs/查询统计-实现说明.md 的「口径对照表」一节。
+      口径核对入口：docs/模块实现说明/查询统计-实现说明.md 的「口径对照表」一节。
     -->
 
     <!-- ================================================================
@@ -29,6 +29,13 @@
          ================================================================ -->
     <sql id="landWhere">
         l.`del_flag` = 0
+        <!-- 出让宗地编号（多值精确），与配套查询页共用同一关联键 -->
+        <if test="q.crzdbh != null and q.crzdbh.size() > 0">
+            AND l.`crzdbh` IN
+            <foreach collection="q.crzdbh" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
         <!-- 地块名称（多值 OR 模糊） -->
         <if test="q.dkmc != null and q.dkmc.size() > 0">
             AND (
@@ -211,6 +218,13 @@
          ================================================================ -->
     <sql id="facilityWhere">
         COALESCE(f.`delFlag`, '0') = '0'
+        <!-- 出让宗地编号是配套与宗地的关联键；基础条件与高级条件都按精确值查询 -->
+        <if test="q.crzdbh != null and q.crzdbh.size() > 0">
+            AND f.`crzdbh` IN
+            <foreach collection="q.crzdbh" item="v" open="(" close=")" separator=",">
+                #{v}
+            </foreach>
+        </if>
         <if test="q.ptxmmc != null and q.ptxmmc.size() > 0">
             AND (
             <foreach collection="q.ptxmmc" item="v" separator=" OR ">

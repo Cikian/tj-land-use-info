@@ -8,7 +8,7 @@ import {
  * 分级预警（D-603）· 大屏端「预警信息查询」接口
  * ===============================================================
  * 后端：org.jeecg.modules.land.stat.warning.controller.WarningController
- *       统一前缀 `/land/stat/warning`，契约见 `docs/分级预警-实现契约.md` §5。
+ *       统一前缀 `/land/stat/warning`，契约见 `docs/模块实现说明/分级预警-实现说明.md 附录 A` §5。
  *
  * 【为什么全部走 manageJava】
  * 本工程有三个后端地址（见 public/static/config.js）：中台 4548、

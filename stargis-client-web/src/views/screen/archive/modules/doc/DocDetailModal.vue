@@ -236,14 +236,19 @@ export default {
     /* ---------------- 操作 ---------------- */
 
     handleOpenFlow () {
+      // ScreenModal 同层挂载到 body；先收起详情，再打开后续窗口，避免同 z-index 下相互遮挡。
+      this.close()
       this.$emit('open-flow', this.doc)
-      this.visible = false
     },
     handleEdit () {
-      this.$emit('edit', this.doc)
+      const doc = this.doc
+      this.close()
+      this.$emit('edit', doc)
     },
     handleArchive () {
-      this.$emit('archive', this.doc)
+      const doc = this.doc
+      this.close()
+      this.$emit('archive', doc)
     }
   }
 }

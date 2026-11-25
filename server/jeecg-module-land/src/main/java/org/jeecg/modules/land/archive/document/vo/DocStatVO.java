@@ -30,7 +30,7 @@ public class DocStatVO implements Serializable {
     /** 已退回 */
     private long rejected;
 
-    /** 已办结（含已归档） */
+    /** 已办结（仅 status=已办结，不含已归档；与列表状态筛选同口径） */
     private long finished;
 
     /** 已归档 */

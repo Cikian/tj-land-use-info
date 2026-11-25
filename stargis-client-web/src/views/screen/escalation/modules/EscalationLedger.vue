@@ -117,6 +117,7 @@
               <span>{{ item.latestOpinionTime || item.updateTime || '—' }}</span>
               <span class="escalation-ledger__card-actions">
                 <button type="button" class="escalation-ledger__link" @click.stop="openDetail(item)">查看</button>
+                <button type="button" class="escalation-ledger__link" @click.stop="handleMaterials(item)">下载</button>
                 <button type="button" class="escalation-ledger__link" @click.stop="handlePrintRow(item)">打印</button>
               </span>
             </footer>

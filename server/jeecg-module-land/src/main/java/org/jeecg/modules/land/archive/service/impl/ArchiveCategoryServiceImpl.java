@@ -37,8 +37,7 @@ import java.util.Set;
  *   <li><b>path 用主键串</b>（顶级 /id，下级 父.path + "/" + id）。改名不动 path，
  *       所以「更名」不需要级联更新任何东西；只有「移动」才需要重算子树 path/level。</li>
  *   <li><b>移除前置校验</b>：先查子类别，再查档案文件数（口径 = t_archive_file 上
- *       该类别及其整棵子树下的文件数）。t_archive_file 表不存在时自动跳过档案校验，
- *       并在日志中告警，接口返回的 archiveCount 为 null，前端据此提示「档案校验未启用」。</li>
+ *       该类别及其整棵子树下的文件数）。无法完成引用校验时拒绝移除，不能跳过校验后误删。</li>
  *   <li><b>停用级联</b>：停用父类别会连同整棵子树一起停用；启用不级联，且要求上级已启用。</li>
  * </ul>
  */
@@ -149,7 +148,8 @@ public class ArchiveCategoryServiceImpl
         ArchiveCategory detail = new ArchiveCategory();
         BeanUtils.copyProperties(row, detail);
         detail.setChildren(null);
-        fillArchiveCount(java.util.Collections.singletonList(detail));
+        // 详情也要按整棵子树计数；只传 detail 自身会把父类别重新算成 0。
+        fillArchiveCount(java.util.Collections.singletonList(detail), list());
         detail.setFullPathName(buildFullPathName(row));
         if (StringUtils.isNotBlank(row.getParentId())) {
             ArchiveCategory parent = getById(row.getParentId());
@@ -307,18 +307,19 @@ public class ArchiveCategoryServiceImpl
             throw new JeecgBootException("该类别下存在 " + childCount + " 个子类别，请先移除子类别");
         }
 
-        // 前置校验 ②：该类别（含全部子类别）下不能有档案文件
-        if (archiveTableExists()) {
-            Long archiveCount = queryArchiveCountOfSubtree(id, category.getPath());
-            if (archiveCount != null && archiveCount > 0) {
-                throw new JeecgBootException("该类别（含子类别）下存在 " + archiveCount + " 份档案，无法移除");
-            }
-        } else {
-            log.warn("t_archive_file 表尚未建立（档案管理模块未落地），类别移除跳过「类别下有档案」校验：id={}, name={}",
-                    id, category.getName());
+        // 前置校验 ②：该类别（含全部子类别）下不能有档案文件。
+        // 引用校验不可用时必须拒绝，不能把「没查到」误当成「没有引用」。
+        if (!archiveTableExists()) {
+            throw new JeecgBootException("暂时无法校验该类别下的档案文件引用，请稍后重试");
+        }
+        Long archiveCount = queryArchiveCountOfSubtree(id, category.getPath());
+        if (archiveCount != null && archiveCount > 0) {
+            throw new JeecgBootException("该类别（含子类别）下存在 " + archiveCount + " 个档案文件，无法移除");
         }
 
-        removeById(id);
+        if (!removeById(id)) {
+            throw new JeecgBootException("类别移除失败，请刷新后重试");
+        }
         String parentId = normalizeParentId(category.getParentId());
         if (parentId != null) {
             refreshParentFlags(parentId);
@@ -589,20 +590,41 @@ public class ArchiveCategoryServiceImpl
 
     /** 填充 archiveCount；t_archive_file 未建立时保持 null（前端据此提示校验未启用） */
     private void fillArchiveCount(List<ArchiveCategory> categories) {
+        fillArchiveCount(categories, categories);
+    }
+
+    /**
+     * 按类别 path 把叶子文件的直接计数汇总到自身与全部祖先。
+     * 文件只允许挂叶子，若只按 category_id 填本节点，所有父类别都会永远显示 0。
+     */
+    private void fillArchiveCount(List<ArchiveCategory> categories, List<ArchiveCategory> allCategories) {
         if (categories == null || categories.isEmpty() || !archiveTableExists()) {
             return;
         }
-        Map<String, Long> counts = new HashMap<>();
+        Map<String, ArchiveCategory> byId = new HashMap<>();
+        for (ArchiveCategory category : allCategories) {
+            byId.put(category.getId(), category);
+        }
+        Map<String, Long> directCounts = new HashMap<>();
         for (Map<String, Object> row : baseMapper.countArchiveGroupByCategory()) {
             Object id = row.get("categoryId");
             if (id == null) {
                 continue;
             }
             Object cnt = row.get("cnt");
-            counts.put(String.valueOf(id), cnt == null ? 0L : Long.valueOf(String.valueOf(cnt)));
+            directCounts.put(String.valueOf(id), cnt == null ? 0L : Long.valueOf(String.valueOf(cnt)));
         }
         for (ArchiveCategory category : categories) {
-            category.setArchiveCount(counts.getOrDefault(category.getId(), 0L));
+            long total = 0L;
+            for (Map.Entry<String, Long> entry : directCounts.entrySet()) {
+                ArchiveCategory fileCategory = byId.get(entry.getKey());
+                // 优先用类别表的权威 path 判断子孙关系；历史脏数据找不到类别时只保留精确自身计数。
+                if ((fileCategory != null && isSelfOrDescendant(fileCategory, category.getPath()))
+                        || (fileCategory == null && category.getId().equals(entry.getKey()))) {
+                    total += entry.getValue();
+                }
+            }
+            category.setArchiveCount(total);
         }
     }
 

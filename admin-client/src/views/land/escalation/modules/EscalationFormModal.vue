@@ -371,6 +371,8 @@
           ],
           declareDate: [{ required: true, message: '请选择申报时间', trigger: 'change' }],
           projectNo: [{ max: 64, message: '项目编号不能超过 64 个字符', trigger: 'blur' }],
+          projectType: [{ required: true, message: '请选择项目类型', trigger: 'change' }],
+          xzqh: [{ required: true, message: '请选择行政区划', trigger: 'change' }],
           status: [{ required: true, message: '请选择办理状态', trigger: 'change' }],
           projectSummary: [{ max: 2000, message: '项目概述不能超过 2000 个字符', trigger: 'blur' }],
           argReason: [{ max: 2000, message: '提级论证事由不能超过 2000 个字符', trigger: 'blur' }],

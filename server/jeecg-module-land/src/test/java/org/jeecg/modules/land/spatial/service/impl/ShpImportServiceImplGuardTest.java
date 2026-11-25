@@ -1,7 +1,6 @@
-package org.jeecg.modules.land.spatial;
+package org.jeecg.modules.land.spatial.service.impl;
 
 import org.jeecg.modules.land.spatial.config.SpatialProperties;
-import org.jeecg.modules.land.spatial.service.impl.ShpImportServiceImpl;
 import org.jeecg.modules.land.spatial.vo.SpatialSourceStatsVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,6 +18,9 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 管理动作的服务端防线（纯单测，不依赖真实库）：
@@ -65,6 +67,30 @@ class ShpImportServiceImplGuardTest {
         row.put("db_password", "x");
         row.put("remark", remark);
         return row;
+    }
+
+    @Test
+    void groupFieldUsesActualUppercaseColumnFromPostgresMetadata() throws Exception {
+        java.sql.Statement st = mock(java.sql.Statement.class);
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(st.executeQuery(contains("pg_attribute"))).thenReturn(rs);
+        when(rs.next()).thenReturn(true);
+        when(rs.getString(1)).thenReturn("CRZDBH");
+
+        assertEquals("CRZDBH", ShpImportServiceImpl.resolveGroupField(st, "地块0922", "crzdbh"),
+                "SHP 保留的大写列名必须能承接前端小写逻辑字段");
+    }
+
+    @Test
+    void groupFieldRejectsMissingColumnInsteadOfFallingBackToAnotherField() throws Exception {
+        java.sql.Statement st = mock(java.sql.Statement.class);
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(st.executeQuery(contains("pg_attribute"))).thenReturn(rs);
+        when(rs.next()).thenReturn(false);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> ShpImportServiceImpl.resolveGroupField(st, "地块0922", "crzdbh"));
+        assertTrue(error.getMessage().contains("没有唯一值字段"));
     }
 
     @Test

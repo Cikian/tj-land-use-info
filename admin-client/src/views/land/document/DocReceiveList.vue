@@ -276,7 +276,8 @@
           { key: '待承办', label: '待承办', value: this.stat.pending, tone: 'warn' },
           { key: '承办中', label: '承办中', value: this.stat.handling, tone: 'info' },
           { key: '已退回', label: '已退回', value: this.stat.rejected, tone: 'danger' },
-          { key: '已办结', label: '已办结', value: this.stat.finished, tone: 'ok' }
+          { key: '已办结', label: '已办结', value: this.stat.finished, tone: 'ok' },
+          { key: '已归档', label: '已归档', value: this.stat.archived, tone: 'info' }
         ]
       }
     },
@@ -362,15 +363,18 @@
           this.query.endDate = undefined
         }
       },
-      /** 点统计卡做快捷筛选 */
+      /** 统计是全量口径；点卡片时清掉其它条件，保证卡片数字与列表 total 一致。 */
       handleStatClick (key) {
-        if (key === 'mine') {
-          this.activeStat = this.activeStat === 'mine' ? '' : 'mine'
-          this.query.onlyMine = this.activeStat === 'mine' ? true : undefined
-        } else {
-          this.activeStat = this.activeStat === key ? '' : key
-          this.query.status = this.activeStat || undefined
+        const active = this.activeStat === key ? '' : key
+        const query = this.buildEmptyQuery()
+        if (active === 'mine') {
+          query.onlyMine = true
+        } else if (active) {
+          query.status = active
         }
+        this.activeStat = active
+        this.query = query
+        this.dateRange = []
         this.pagination.current = 1
         this.loadData()
       },

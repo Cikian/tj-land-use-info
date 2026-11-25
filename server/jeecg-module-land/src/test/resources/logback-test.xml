@@ -20,6 +20,9 @@
 
     <!-- 测试框架的摘要与回滚信息保留在 INFO -->
     <logger name="org.springframework.test" level="INFO"/>
+    <!-- 审核意见回归需直接看到上一轮约定的入口、写入行数与前置校验日志判据；不打印请求口令。 -->
+    <logger name="org.jeecg.modules.land.escalation.controller.EscalationRecordController" level="INFO"/>
+    <logger name="org.jeecg.modules.land.escalation.service.impl.EscalationRecordServiceImpl" level="INFO"/>
     <!-- MyBatis / MyBatis-Plus 的 SQL 明细默认关掉 -->
     <logger name="org.jeecg.modules.land" level="WARN"/>
     <logger name="org.mybatis" level="WARN"/>

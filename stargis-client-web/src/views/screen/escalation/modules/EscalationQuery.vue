@@ -198,7 +198,7 @@
       </screen-panel>
     </div>
 
-    <escalation-detail-modal ref="detailModal" />
+    <escalation-detail-modal ref="detailModal" @edit="handleReadonlyEdit" />
   </div>
 </template>
 
@@ -434,6 +434,10 @@ export default {
       this.$refs.detailModal.open(record)
     },
 
+    handleReadonlyEdit (record) {
+      toast.info(`查询结果为只读；如需修改，请到「项目录入」页编辑：${(record && record.projectNo) || ''}`)
+    },
+
     handleExport () {
       exportProjectXls(this.query)
       toast.info('已开始导出，请稍候…')
@@ -441,11 +445,12 @@ export default {
 
     /* ---------------- 下钻 ---------------- */
 
-    /** 统一出口：空的条件下钻没有意义（那和直接切页签一样），所以过滤掉空值再抛 */
+    /** 图元条件与页面当前条件一起下发，保证下钻台账条数与统计图元一致。 */
     drill (query) {
       const clean = {}
-      Object.keys(query || {}).forEach((key) => {
-        const value = query[key]
+      const merged = Object.assign({}, this.query, query || {})
+      Object.keys(merged).forEach((key) => {
+        const value = merged[key]
         if (value === undefined || value === null || value === '') return
         clean[key] = value
       })

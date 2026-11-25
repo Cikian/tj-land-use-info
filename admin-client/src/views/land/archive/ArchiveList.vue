@@ -191,8 +191,14 @@
        * 只刷列表会出现「列表已是新值、详情还是旧值」——测试看到的
        * 「详情状态与列表不一致」有一半来自这里。详情弹窗的 refresh() 不重开弹窗、不重置页签。
        */
-      handleSaved () {
-        this.loadData()
+      handleSaved (result) {
+        // 新增回到全量第 1 页，避免被保存前的状态/类别过滤或旧页码挡住；编辑保留检索上下文。
+        if (result && result.created && this.$refs.search &&
+          typeof this.$refs.search.handleReset === 'function') {
+          this.$refs.search.handleReset()
+        } else {
+          this.loadData()
+        }
         if (this.$refs.detail && typeof this.$refs.detail.refresh === 'function') {
           this.$refs.detail.refresh()
         }

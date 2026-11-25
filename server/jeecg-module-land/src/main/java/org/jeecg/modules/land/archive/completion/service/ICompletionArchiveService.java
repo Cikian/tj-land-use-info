@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import org.jeecg.modules.land.archive.completion.dto.CompletionQueryDTO;
 import org.jeecg.modules.land.archive.completion.dto.CompletionSaveDTO;
 import org.jeecg.modules.land.archive.completion.entity.CompletionArchive;
+import org.jeecg.modules.land.archive.completion.vo.CompletionBatchLinkResultVO;
 import org.jeecg.modules.land.archive.completion.vo.CompletionStatVO;
 import org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO;
 
@@ -87,6 +88,14 @@ public interface ICompletionArchiveService extends IService<CompletionArchive> {
 
     /** 关联一个扫描件档案（写 archive_id + 重算 archive_count） */
     void linkArchive(String id, String archiveId);
+
+    /**
+     * 多条历史档案批量关联到同一个扫描件档案。
+     *
+     * <p>整批一个事务：任一 ID 无效或更新失败均整批回滚，不产生部分成功；
+     * 每条仍按自己的 facilityId/crzdbh 重算 archive_count。
+     */
+    CompletionBatchLinkResultVO linkArchives(List<String> ids, String archiveId);
 
     /** 取消关联（archive_id 置空 + archive_count 重算） */
     void unlinkArchive(String id);

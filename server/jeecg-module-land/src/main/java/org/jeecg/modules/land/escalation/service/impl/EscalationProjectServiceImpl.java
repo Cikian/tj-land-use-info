@@ -207,6 +207,10 @@ public class EscalationProjectServiceImpl extends ServiceImpl<EscalationProjectM
             throw new JeecgBootException("缺少提级论证项目数据");
         }
         checkRequired(dto);
+        // 新增不传 status 时沿用 DDL 默认「未办理」（接口契约），表单层仍要求必选。
+        String status = StringUtils.isBlank(dto.getStatus())
+                ? EscalationStatus.defaultValue() : dto.getStatus();
+        checkBusinessRequired(dto.getXzqh(), dto.getProjectType(), status, dto.getArgConclusion());
         checkArgResult(dto.getArgResult());
         checkStatus(dto.getStatus());
 
@@ -259,6 +263,12 @@ public class EscalationProjectServiceImpl extends ServiceImpl<EscalationProjectM
         if (old == null) {
             throw new JeecgBootException("提级论证项目不存在或已被删除");
         }
+        // 编辑按“原值 + 本次值”的合并结果校验，既拦截清空必填项，也不误伤缺字段的部分更新。
+        checkBusinessRequired(
+                dto.getXzqh() == null ? old.getXzqh() : dto.getXzqh(),
+                dto.getProjectType() == null ? old.getProjectType() : dto.getProjectType(),
+                dto.getStatus() == null ? old.getStatus() : dto.getStatus(),
+                dto.getArgConclusion() == null ? old.getArgConclusion() : dto.getArgConclusion());
         if (StringUtils.isNotBlank(dto.getProjectName())) {
             checkArgResult(dto.getArgResult());
             checkStatus(dto.getStatus());
@@ -482,6 +492,25 @@ public class EscalationProjectServiceImpl extends ServiceImpl<EscalationProjectM
         }
         if (StringUtils.isBlank(dto.getProjectSummary())) {
             throw new JeecgBootException("项目概述不能为空");
+        }
+    }
+
+    /**
+     * 1118 确认口径：行政区划、项目类型、办理状态始终必填；
+     * 论证结论只在办结时必填，避免在办项目因尚未形成结论而无法保存。
+     */
+    private void checkBusinessRequired(String xzqh, String projectType, String status, String argConclusion) {
+        if (StringUtils.isBlank(xzqh)) {
+            throw new JeecgBootException("行政区划不能为空");
+        }
+        if (StringUtils.isBlank(projectType)) {
+            throw new JeecgBootException("项目类型不能为空");
+        }
+        if (StringUtils.isBlank(status)) {
+            throw new JeecgBootException("办理状态不能为空");
+        }
+        if (EscalationStatus.FINISHED.getValue().equals(status) && StringUtils.isBlank(argConclusion)) {
+            throw new JeecgBootException("办理状态为已办结时，论证结论不能为空");
         }
     }
 

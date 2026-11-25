@@ -80,13 +80,15 @@
             AND EXISTS (
                 SELECT 1 FROM `t_archive_file` cf
                 WHERE cf.`archive_id` = a.`id` AND cf.`del_flag` = 0
-                <if test="q.categoryPath != null and q.categoryPath != ''">
-                    AND (cf.`category_path` = #{q.categoryPath}
-                         OR cf.`category_path` LIKE CONCAT(#{q.categoryPath}, '/%'))
-                </if>
-                <if test="q.categoryId != null and q.categoryId != ''">
-                    AND cf.`category_id` = #{q.categoryId}
-                </if>
+                <choose>
+                    <when test="q.categoryPath != null and q.categoryPath != ''">
+                        AND (cf.`category_path` = #{q.categoryPath}
+                             OR cf.`category_path` LIKE CONCAT(#{q.categoryPath}, '/%'))
+                    </when>
+                    <otherwise>
+                        AND cf.`category_id` = #{q.categoryId}
+                    </otherwise>
+                </choose>
             )
         </if>
         <!-- 按文件名检索 -->

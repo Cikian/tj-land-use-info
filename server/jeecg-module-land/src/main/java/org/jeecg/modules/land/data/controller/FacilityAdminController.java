@@ -139,7 +139,7 @@ public class FacilityAdminController {
 
     @AutoLog(value = "配套地块录入-名称与宗地校验")
     @ApiOperation(value = "配套地块录入-名称与宗地校验",
-            notes = "同时校验：宗地是否存在、同一宗地下配套项目名称是否重复")
+            notes = "校验同一宗地下名称是否重复，并返回 landExists 提示关联状态；宗地缺失不阻断独立配套")
     @RequiresPermissions(PERM)
     @GetMapping(value = "/checkPtxmmc")
     public Result<Map<String, Object>> checkPtxmmc(
@@ -151,7 +151,7 @@ public class FacilityAdminController {
 
     @AutoLog(value = "配套地块录入-新增")
     @ApiOperation(value = "配套地块录入-新增",
-            notes = "必须挂到已有宗地（旧系统不校验，产生了 60 行孤儿配套）")
+            notes = "宗地存在时自动带出关联信息；宗地已移除/未登记时允许配套独立保存")
     @RequiresPermissions(PERM)
     @PostMapping(value = "/add")
     public Result<String> add(@RequestBody FacilitySaveDTO dto, HttpServletRequest request) {

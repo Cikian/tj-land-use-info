@@ -66,15 +66,10 @@ import java.util.Set;
  *       {@code @TableField} 显式映射，见 {@link Facility}。</li>
  * </ol>
  *
- * <p><b>★ 相对旧系统的两处收紧</b>：
- * <ol>
- *   <li><b>必须挂到真实存在的宗地</b>。旧 {@code createSpecial} 只校验 {@code crzdbh}
- *       非空，不校验宗地是否存在，于是产生了设计文档实测的
- *       <b>60 行「孤儿配套」</b>（配套表里有、宗地表里查不到）——
- *       档案/收发文按宗地关联时这些配套永远挂不上。这里在写入前硬校验。</li>
- *   <li><b>预计结束时间按工作日推算</b>，且算法重写（见
- *       {@link WorkdayCalculator} 的类注释：旧递归算法在长假跨区间时会滚雪球）。</li>
- * </ol>
+ * <p><b>★ 单条配套与宗地解耦（1118 P0-05）</b>：宗地存在时自动带出地块名称、区划和分类；
+ * 宗地已移除或编号未登记时仍允许配套独立新增/编辑，避免删除宗地后道路无法维护。
+ * 批量导入的 {@code allowOrphan} 默认安全闸门不变。预计结束时间仍按工作日推算（见
+ * {@link WorkdayCalculator} 的类注释）。
  */
 @Slf4j
 @Service
@@ -311,6 +306,10 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (StringUtils.isNotBlank(condition.getXmfl())) {
             wrapper.eq("xmfl", condition.getXmfl().trim());
         }
+        if (StringUtils.isNotBlank(condition.getPtsslb())) {
+            // 配套设施类别是独立业务字段；前端一直传 ptsslb，漏接会让该条件静默失效。
+            wrapper.eq("ptsslb", condition.getPtsslb().trim());
+        }
         if (StringUtils.isNotBlank(condition.getSrr())) {
             // 受让人字段在配套表里没有，这里复用它承载「配套项目名称」的模糊条件（前端同一个输入框）
             if ("fold".equals(condition.getSrrMode())) {
@@ -415,13 +414,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (ptxmmc == null) {
             throw new JeecgBootException("配套项目名称不能为空");
         }
-        // ★ 宗地存在性硬校验：旧系统不校验，造出了 60 行「孤儿配套」
+        // 宗地存在时继续沿用自动带出；已移除/未登记的编号不再阻断配套独立保存。
+        // 批量导入的 allowOrphan 安全闸门不变，这里只调整单条 Admin 录入契约（1118 P0-05）。
         Land land = landService.queryByCrzdbh(crzdbh);
-        if (land == null) {
-            throw new JeecgBootException("出让宗地编号「" + crzdbh
-                    + "」在系统中不存在，无法挂接配套项目。请先在「经营性用地信息录入」里录入该宗地，"
-                    + "或核对编号是否写错（注意全角/半角括号与末尾的「号」字）");
-        }
         Facility duplicated = findByName(crzdbh, ptxmmc, null);
         if (duplicated != null) {
             throw new JeecgBootException("同一宗地下的配套项目名称「" + ptxmmc + "」已存在");
@@ -431,14 +426,14 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         copyBusinessFields(dto, facility);
         facility.setCrzdbh(crzdbh);
         facility.setPtxmmc(ptxmmc);
-        if (StringUtils.isBlank(facility.getDkmc())) {
+        if (land != null && StringUtils.isBlank(facility.getDkmc())) {
             // 地块名称留空时用宗地表的，省用户一次输入（旧录入页面也是这么联动的）
             facility.setDkmc(land.getDkmc());
         }
-        if (StringUtils.isBlank(facility.getXzqh())) {
+        if (land != null && StringUtils.isBlank(facility.getXzqh())) {
             facility.setXzqh(land.getXzqh());
         }
-        if (StringUtils.isBlank(facility.getXmfl())) {
+        if (land != null && StringUtils.isBlank(facility.getXmfl())) {
             facility.setXmfl(land.getXmfl());
         }
         facility.setDelFlag("0");
@@ -475,9 +470,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (ptxmmc == null) {
             throw new JeecgBootException("配套项目名称不能为空");
         }
-        if (landService.queryByCrzdbh(crzdbh) == null) {
-            throw new JeecgBootException("出让宗地编号「" + crzdbh + "」在系统中不存在，无法挂接");
-        }
+        // 关联宗地可能已被移除；保留原编号与配套自身字段，允许继续编辑道路及图形。
         if (!crzdbh.equals(before.getCrzdbh()) || !ptxmmc.equals(before.getPtxmmc())) {
             Facility duplicated = findByName(crzdbh, ptxmmc, before.getId());
             if (duplicated != null) {
@@ -968,17 +961,14 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
             result.put("message", "配套项目名称不能为空");
             return result;
         }
-        // 宗地存在性一起给前端（表单里选完宗地就能立刻知道编号对不对）
         if (code == null) {
             result.put("available", false);
-            result.put("message", "请先选择出让宗地");
+            result.put("message", "请先填写出让宗地编号");
             return result;
         }
-        if (landService.queryByCrzdbh(code) == null) {
-            result.put("available", false);
-            result.put("message", "出让宗地编号「" + code + "」不存在，请先录入该宗地");
-            return result;
-        }
+        // 返回关联状态供界面提示，但 missing 不再是 available=false：配套可独立存在。
+        boolean landExists = landService.queryByCrzdbh(code) != null;
+        result.put("landExists", landExists);
         Facility hit = findByName(code, name, excludeId);
         if (hit != null) {
             result.put("available", false);
@@ -987,7 +977,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
             return result;
         }
         result.put("available", true);
-        result.put("message", "该名称可以使用");
+        result.put("message", landExists ? "该名称可以使用" : "关联宗地不存在或已移除，配套项目将独立保存");
         return result;
     }
 

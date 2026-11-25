@@ -177,9 +177,8 @@ public class DocReceiveServiceImpl extends ServiceImpl<DocReceiveMapper, DocRece
             } else if (DocReceive.STATUS_FINISHED.equals(status)) {
                 stat.setFinished(cnt);
             } else if (DocReceive.STATUS_ARCHIVED.equals(status)) {
+                // 已办结与已归档是两个互斥的列表状态；统计卡与 status 精确筛选必须使用同一口径。
                 stat.setArchived(cnt);
-                // 已归档是从「已办结」走过来的，统计「已办结」时应把它算进去
-                stat.setFinished(stat.getFinished() + cnt);
             }
         }
         stat.setTotal(total);

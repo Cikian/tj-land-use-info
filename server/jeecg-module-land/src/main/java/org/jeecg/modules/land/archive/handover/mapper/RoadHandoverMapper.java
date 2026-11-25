@@ -83,6 +83,9 @@ public interface RoadHandoverMapper extends BaseMapper<RoadHandover> {
     /** 移交编号重复校验（唯一键 uk_rh_no 是单列） */
     int countByHandoverNo(@Param("handoverNo") String handoverNo, @Param("excludeId") String excludeId);
 
+    /** 同一道路是否已有移交中/已移交记录；编辑时排除自身 */
+    int countActiveByRoadName(@Param("roadName") String roadName, @Param("excludeId") String excludeId);
+
     /** 取某年度已用掉的最大流水号（编号自动生成用） */
     Integer selectMaxSeqOfYear(@Param("prefix") String prefix);
 

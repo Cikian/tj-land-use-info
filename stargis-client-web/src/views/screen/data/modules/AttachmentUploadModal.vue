@@ -342,12 +342,11 @@ import {
   saveAttachment,
   queryAttachmentTree,
   queryAllowedAttachmentTypes,
+  queryAttachmentObjectOptions,
   attachmentUploadAction,
   attachmentUploadHeaders,
   ATTACHMENT_BIZ_TYPES
 } from '@/api/land/attachment'
-import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
-import { queryFacilityByLand, queryProcessList } from '@/api/land/facilityAdmin'
 import { buildBizPath, formatSize, dictToOptions, resolveExt } from '../constants'
 
 /**
@@ -663,11 +662,10 @@ export default {
         return
       }
       this.objectSearching = true
-      const request = type === 'land'
-        ? queryLandOptions({ keyword, limit: 50 })
-        : searchFacilityOptions({ keyword, limit: 50 })
+      const request = queryAttachmentObjectOptions(type, { keyword, limit: 50 })
       request.then((res) => {
-        const rows = (res && res.success && res.result) ? res.result : []
+        if (!res || !res.success) throw new Error((res && res.message) || '归属对象候选加载失败')
+        const rows = res.result || []
         const options = rows.map((row) => (type === 'land'
           ? { value: row.id, label: `${row.crzdbh || ''}${row.dkmc ? '　' + row.dkmc : ''}`, raw: row }
           : { value: row.id, label: `${row.ptxmmc || ''}${row.crzdbh ? '（' + row.crzdbh + '）' : ''}`, raw: row }
@@ -677,10 +675,11 @@ export default {
           options.unshift({ value: this.form.bizId, label: this.pickedName || this.form.bizId, raw: null })
         }
         this.objectOptions = options
-      }).catch(() => {
+      }).catch((e) => {
         this.objectOptions = this.form.bizId
           ? [{ value: this.form.bizId, label: this.pickedName || this.form.bizId, raw: null }]
           : []
+        this.errorMessage = `归属对象候选加载失败：${(e && e.message) || '未知错误'}`
       }).finally(() => {
         this.objectSearching = false
       })
@@ -692,8 +691,9 @@ export default {
 
     loadProcessLandOptions (keyword) {
       this.objectSearching = true
-      return queryLandOptions({ keyword, limit: 50 }).then((res) => {
-        const rows = (res && res.success && res.result) ? res.result : []
+      return queryAttachmentObjectOptions('land', { keyword, limit: 50 }).then((res) => {
+        if (!res || !res.success) throw new Error((res && res.message) || '宗地候选加载失败')
+        const rows = res.result || []
         const options = rows.map((row) => ({
           value: row.id,
           label: `${row.crzdbh || ''}${row.dkmc ? '　' + row.dkmc : ''}`,
@@ -703,8 +703,9 @@ export default {
           options.unshift({ value: this.processLandId, label: keyword || this.processLandId, raw: null })
         }
         this.landOptions = options
-      }).catch(() => {
+      }).catch((e) => {
         this.landOptions = []
+        this.errorMessage = `宗地候选加载失败：${(e && e.message) || '未知错误'}`
       }).finally(() => {
         this.objectSearching = false
       })
@@ -729,8 +730,9 @@ export default {
         this.facilityOptions = []
         return Promise.resolve()
       }
-      return queryFacilityByLand(crzdbh).then((res) => {
-        const rows = (res && res.success && res.result) ? res.result : []
+      return queryAttachmentObjectOptions('processFacility', { crzdbh }).then((res) => {
+        if (!res || !res.success) throw new Error((res && res.message) || '配套候选加载失败')
+        const rows = res.result || []
         const options = rows.map((row) => ({
           value: row.id,
           label: `${row.ptxmmc || ''}${row.crzdbh ? '（' + row.crzdbh + '）' : ''}`,
@@ -740,8 +742,9 @@ export default {
           options.unshift({ value: this.processFacilityId, label: this.processFacilityId, raw: null })
         }
         this.facilityOptions = options
-      }).catch(() => {
+      }).catch((e) => {
         this.facilityOptions = []
+        this.errorMessage = `配套候选加载失败：${(e && e.message) || '未知错误'}`
       })
     },
 
@@ -760,8 +763,9 @@ export default {
         return Promise.resolve()
       }
       this.objectSearching = true
-      return queryProcessList(this.processFacilityId).then((res) => {
-        const rows = (res && res.success && res.result) ? res.result : []
+      return queryAttachmentObjectOptions('process', { ptId: this.processFacilityId }).then((res) => {
+        if (!res || !res.success) throw new Error((res && res.message) || '环节候选加载失败')
+        const rows = res.result || []
         const options = rows.map((row) => ({
           // 配置项 lcId 不是附件外键；只有真实进度表主键 progressId 才允许提交。
           value: row.progressId || `unregistered:${row.lcId}`,
@@ -773,8 +777,9 @@ export default {
           options.unshift({ value: this.form.bizId, label: this.pickedName || this.form.bizId, raw: null })
         }
         this.objectOptions = options
-      }).catch(() => {
+      }).catch((e) => {
         this.objectOptions = []
+        this.errorMessage = `环节候选加载失败：${(e && e.message) || '未知错误'}`
       }).finally(() => {
         this.objectSearching = false
       })
@@ -992,11 +997,12 @@ export default {
       if (!file || !storePath || !typeCode) {
         return
       }
-      this.doneCount += 1
       this.saveMeta(file, typeCode, storePath).then((record) => {
         if (!record) {
           return
         }
+        // 只有字节落盘且元数据登记成功才计入成功数，不能把“盘上有文件”当成上传闭环完成。
+        this.doneCount += 1
         // ★ 用**服务端返回的那条记录**（带 id、带它算出的字节数）记「刚上传」，
         //   而不是用本地 file 对象拼一条：
         //   本地 file.size 与服务端存的字节可能差一点点，两份记录并列显示时

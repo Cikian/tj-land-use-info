@@ -65,6 +65,8 @@ import javax.sql.DataSource;
         "org.jeecg.modules.land.archive.completion.service.impl",
         "org.jeecg.modules.land.archive.completion.support",
         // 提级论证：项目、材料与审核意见登记共用同一套真实事务与数据库字段
+        // Controller 仅供 MockMvc 验证真实 JSON 入口；standaloneSetup 不装 Shiro 过滤器链。
+        "org.jeecg.modules.land.escalation.controller",
         "org.jeecg.modules.land.escalation.service.impl",
         "org.jeecg.modules.land.escalation.support",
         // ★ 数据管理 · 经营性用地批量导入（方案 2.3.1（三）第 3 项）

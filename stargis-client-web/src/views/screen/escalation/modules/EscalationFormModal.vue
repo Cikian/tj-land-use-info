@@ -9,9 +9,7 @@
       第二步 提级论证信息与结果（第 17–28 项）
       第三步 提级论证材料（材料类型必选 + 至少 1 个文件）
 
-    ★ 为什么第 9–16 项单独成组、不与基本信息混排：
-      设计文档 1.3 考证过——论证对象是「项目」，地块信息只是可选的上下文，
-      全部可以留空。混排会让用户以为地块信息也必须填。
+    ★ 关联地块仍单独成组；1118 确认行政区划为必填，其余关联字段按业务需要填写。
 
     ★ 项目编号：新增时调 genProjectNo 预生成 TJ-{yyyy}-{4位}，**允许手工改写**，
       失焦与保存前都做一次 checkNo 唯一性校验（后端在 add/edit 里也会再校验一次）。
@@ -137,10 +135,17 @@
               />
             </screen-field>
 
-            <screen-field class="escalation-form__field" label="项目类型" label-width="104px">
+            <screen-field
+              class="escalation-form__field"
+              label="项目类型"
+              required
+              label-width="104px"
+              :error="errors.projectType"
+            >
               <screen-select
                 v-model="model.projectType"
                 :options="projectTypeOptions"
+                :invalid="!!errors.projectType"
                 placeholder="请选择项目类型"
                 aria-label="项目类型"
               />
@@ -226,11 +231,18 @@
           </h4>
 
           <div class="escalation-form__grid">
-            <screen-field class="escalation-form__field" label="行政区划" label-width="104px">
+            <screen-field
+              class="escalation-form__field"
+              label="行政区划"
+              required
+              label-width="104px"
+              :error="errors.xzqh"
+            >
               <screen-select
                 v-model="model.xzqh"
                 :options="xzqhOptions"
-                placeholder="全部区划"
+                :invalid="!!errors.xzqh"
+                placeholder="请选择行政区划"
                 aria-label="行政区划"
               />
             </screen-field>
@@ -401,14 +413,22 @@
               />
             </screen-field>
 
-            <screen-field class="escalation-form__field is-full" label="论证结论" label-width="104px" html-for="esc-argConclusion">
+            <screen-field
+              class="escalation-form__field is-full"
+              label="论证结论"
+              :required="model.status === '已办结'"
+              label-width="104px"
+              html-for="esc-argConclusion"
+              :error="errors.argConclusion"
+            >
               <screen-input
                 id="esc-argConclusion"
                 v-model="model.argConclusion"
                 type="textarea"
                 :rows="2"
                 :maxlength="2000"
-                placeholder="不超过 2000 字"
+                :invalid="!!errors.argConclusion"
+                :placeholder="model.status === '已办结' ? '已办结时必须填写' : '不超过 2000 字'"
               />
             </screen-field>
 
@@ -874,9 +894,9 @@ export default {
       const errors = Object.assign({}, this.errors)
       let keys = []
       if (target === 0) {
-        keys = ['projectName', 'declareDept', 'declareDate', 'totalInvestment', 'buildLocation', 'projectSummary']
+        keys = ['projectName', 'declareDept', 'declareDate', 'projectType', 'xzqh', 'totalInvestment', 'buildLocation', 'projectSummary']
       } else if (target === 1) {
-        keys = ['status']
+        keys = ['status', 'argConclusion']
       } else {
         keys = ['materials']
       }
@@ -890,6 +910,8 @@ export default {
         if (!String(model.projectName || '').trim()) errors.projectName = '请输入项目名称'
         if (!String(model.declareDept || '').trim()) errors.declareDept = '请输入申报单位'
         if (!model.declareDate) errors.declareDate = '请选择申报时间'
+        if (!String(model.projectType || '').trim()) errors.projectType = '请选择项目类型'
+        if (!String(model.xzqh || '').trim()) errors.xzqh = '请选择行政区划'
         const investment = model.totalInvestment
         if (investment === '' || investment === null || investment === undefined) {
           errors.totalInvestment = '请输入总投资'
@@ -900,8 +922,11 @@ export default {
         if (!String(model.projectSummary || '').trim()) errors.projectSummary = '请输入项目概述'
       }
 
-      if (target === 1 && !this.model.status) {
-        errors.status = '请选择办理状态'
+      if (target === 1) {
+        if (!this.model.status) errors.status = '请选择办理状态'
+        if (this.model.status === '已办结' && !String(this.model.argConclusion || '').trim()) {
+          errors.argConclusion = '已办结时必须填写论证结论'
+        }
       }
 
       if (target === 2) {
@@ -934,7 +959,7 @@ export default {
       }
       if (!step1Ok) {
         this.step = 1
-        toast.warning('请选择办理状态')
+        toast.warning(this.errors.status || this.errors.argConclusion || '请完善办理状态与论证结论')
         return
       }
       if (!step2Ok) {

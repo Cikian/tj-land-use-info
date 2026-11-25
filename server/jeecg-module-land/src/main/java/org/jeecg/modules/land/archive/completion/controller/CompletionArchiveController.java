@@ -9,11 +9,13 @@ import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
 import org.jeecg.common.exception.JeecgBootException;
+import org.jeecg.modules.land.archive.completion.dto.CompletionBatchLinkDTO;
 import org.jeecg.modules.land.archive.completion.dto.CompletionQueryDTO;
 import org.jeecg.modules.land.archive.completion.dto.CompletionSaveDTO;
 import org.jeecg.modules.land.archive.completion.entity.CompletionArchive;
 import org.jeecg.modules.land.archive.completion.service.ICompletionArchiveService;
 import org.jeecg.modules.land.archive.completion.service.ICompletionExportService;
+import org.jeecg.modules.land.archive.completion.vo.CompletionBatchLinkResultVO;
 import org.jeecg.modules.land.archive.completion.vo.CompletionStatVO;
 import org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +57,7 @@ import java.util.stream.Collectors;
  *   land:completion:export    导出档案信息 Excel
  * </pre>
  *
- * <p>接口清单（本类 16 个）：
+ * <p>接口清单（本类 17 个）：
  * <pre>
  *   GET    /land/archive/completion/list            档案分页（档案页/查询共用）
  *   GET    /land/archive/completion/queryById       详情（含数字化进度 + 关联扫描件）
@@ -70,7 +72,8 @@ import java.util.stream.Collectors;
  *   GET    /land/archive/completion/checkNo         档案编号唯一校验
  *   GET    /land/archive/completion/relatedArchives 该档案的关联扫描件
  *   GET    /land/archive/completion/archive/pick    挑档案（关联时用）
- *   POST   /land/archive/completion/linkArchive     关联扫描件
+ *   POST   /land/archive/completion/linkArchive      关联扫描件
+ *   POST   /land/archive/completion/linkArchiveBatch 批量关联扫描件（整批事务）
  *   POST   /land/archive/completion/unlinkArchive   取消关联
  *   GET    /land/archive/completion/exportXls       导出档案信息 Excel
  * </pre>
@@ -362,6 +365,24 @@ public class CompletionArchiveController {
         } catch (Exception e) {
             log.error("历史档案关联扫描件失败", e);
             return Result.error("关联失败：" + e.getMessage());
+        }
+    }
+
+    @AutoLog(value = "竣工验收历史档案-批量关联扫描件")
+    @ApiOperation(value = "竣工验收历史档案-批量关联扫描件",
+            notes = "多条历史档案关联到同一个扫描件；整批成功或整批回滚，每条独立按项目重算 archive_count")
+    @RequiresPermissions(PERM_EDIT)
+    @PostMapping(value = "/linkArchiveBatch")
+    public Result<CompletionBatchLinkResultVO> linkArchiveBatch(@RequestBody CompletionBatchLinkDTO dto) {
+        try {
+            CompletionBatchLinkResultVO result = completionService.linkArchives(
+                    dto == null ? null : dto.getIds(), dto == null ? null : dto.getArchiveId());
+            return Result.OK("批量关联成功，共 " + result.getSuccessCount() + " 条；本次为整批保存", result);
+        } catch (JeecgBootException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.error("历史档案批量关联扫描件失败", e);
+            return Result.error("批量关联失败，整批未保存：" + e.getMessage());
         }
     }
 

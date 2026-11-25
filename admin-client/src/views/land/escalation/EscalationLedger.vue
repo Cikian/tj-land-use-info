@@ -97,6 +97,8 @@
                 <span class="ledger-card__actions">
                   <a @click.stop="openDetail(item)">查看</a>
                   <a-divider type="vertical" />
+                  <a @click.stop="handleMaterials(item)">下载</a>
+                  <a-divider type="vertical" />
                   <a @click.stop="handlePrintRow(item)">打印</a>
                 </span>
               </div>

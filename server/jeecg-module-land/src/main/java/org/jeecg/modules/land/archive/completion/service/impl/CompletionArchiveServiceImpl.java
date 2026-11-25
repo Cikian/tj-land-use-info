@@ -14,6 +14,7 @@ import org.jeecg.modules.land.archive.completion.enums.DigitizeStatus;
 import org.jeecg.modules.land.archive.completion.mapper.CompletionArchiveMapper;
 import org.jeecg.modules.land.archive.completion.service.ICompletionArchiveService;
 import org.jeecg.modules.land.archive.completion.support.CompletionSupport;
+import org.jeecg.modules.land.archive.completion.vo.CompletionBatchLinkResultVO;
 import org.jeecg.modules.land.archive.completion.vo.CompletionStatVO;
 import org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO;
 import org.springframework.beans.BeanUtils;
@@ -26,7 +27,9 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 /**
@@ -76,6 +79,9 @@ public class CompletionArchiveServiceImpl
 
     /** 挑档案时给「查全部」的通配上限（没有过滤条件时不允许无限拉） */
     private static final int ARCHIVE_PICK_DEFAULT = 30;
+
+    /** 单次批量关联上限，避免请求体过大或长事务占用连接 */
+    private static final int BATCH_LINK_MAX = 100;
 
     @Autowired
     private CompletionSupport completionSupport;
@@ -389,6 +395,71 @@ public class CompletionArchiveServiceImpl
         }
         log.info("历史档案关联扫描件：completionId={}, archiveNo={}, archiveId={}, 操作人={}",
                 archive.getId(), archive.getArchiveNo(), archiveId.trim(), completionSupport.currentUsername());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CompletionBatchLinkResultVO linkArchives(List<String> ids, String archiveId) {
+        String targetArchiveId = trimToNull(archiveId);
+        if (targetArchiveId == null) {
+            throw new JeecgBootException("请选择要关联的扫描件档案");
+        }
+        Set<String> uniqueIds = new LinkedHashSet<>();
+        if (ids != null) {
+            for (String id : ids) {
+                String value = trimToNull(id);
+                if (value != null) {
+                    uniqueIds.add(value);
+                }
+            }
+        }
+        if (uniqueIds.isEmpty()) {
+            throw new JeecgBootException("请选择要批量关联的历史档案");
+        }
+        if (uniqueIds.size() > BATCH_LINK_MAX) {
+            throw new JeecgBootException("单次最多批量关联 " + BATCH_LINK_MAX + " 条历史档案");
+        }
+        if (baseMapper.countArchiveById(targetArchiveId) <= 0) {
+            throw new JeecgBootException("档案不存在或已被删除，整批未保存");
+        }
+
+        /*
+         * 先校验完整批次再开始写，常见的“其中一条已删除”不会留下前半批。
+         * 真正更新时若仍遇到并发删除或 SQL 异常，则由本方法事务整体回滚；
+         * 接口不返回部分成功，调用方无需猜测哪些行已经写入。
+         */
+        List<CompletionArchive> archives = new ArrayList<>(uniqueIds.size());
+        for (String id : uniqueIds) {
+            CompletionArchive archive = getById(id);
+            if (archive == null) {
+                throw new JeecgBootException("历史档案「" + id + "」不存在或已被删除，整批未保存");
+            }
+            archives.add(archive);
+        }
+
+        String operator = completionSupport.currentUsername();
+        Date updateTime = new Date();
+        for (CompletionArchive archive : archives) {
+            // archive_count 是项目归属下扫描件总数，不是本批条数，也不因跨项目指定指针而加一。
+            int archiveCount = countRelatedArchives(archive.getFacilityId(), archive.getCrzdbh());
+            int rows = baseMapper.updateArchiveLink(archive.getId(), targetArchiveId,
+                    archiveCount, operator, updateTime);
+            if (rows <= 0) {
+                throw new JeecgBootException("历史档案「" + archive.getArchiveNo()
+                        + "」关联失败，整批已回滚");
+            }
+        }
+
+        // 每条保留与单关联相同的操作人/时间及可定位日志；只有整批写完才记成功留痕。
+        for (CompletionArchive archive : archives) {
+            log.info("历史档案批量关联扫描件：completionId={}, archiveNo={}, archiveId={}, 操作人={}",
+                    archive.getId(), archive.getArchiveNo(), targetArchiveId, operator);
+        }
+        log.info("历史档案批量关联完成：archiveId={}, 共 {} 条，整批提交", targetArchiveId, archives.size());
+        return new CompletionBatchLinkResultVO()
+                .setRequestedCount(archives.size())
+                .setSuccessCount(archives.size())
+                .setArchiveId(targetArchiveId);
     }
 
     @Override

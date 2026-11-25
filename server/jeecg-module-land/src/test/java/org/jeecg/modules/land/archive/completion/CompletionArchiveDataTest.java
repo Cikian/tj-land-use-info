@@ -14,6 +14,7 @@ import org.jeecg.modules.land.archive.completion.mapper.CompletionArchiveMapper;
 import org.jeecg.modules.land.archive.completion.service.ICompletionArchiveService;
 import org.jeecg.modules.land.archive.completion.service.ICompletionExportService;
 import org.jeecg.modules.land.archive.completion.support.CompletionSupport;
+import org.jeecg.modules.land.archive.completion.vo.CompletionBatchLinkResultVO;
 import org.jeecg.modules.land.archive.completion.vo.CompletionStatVO;
 import org.jeecg.modules.land.archive.completion.vo.RelatedArchiveVO;
 import org.junit.jupiter.api.MethodOrderer;
@@ -530,6 +531,54 @@ public class CompletionArchiveDataTest extends LandIntegrationTestBase {
 
         completionService.unlinkArchive(id);
         assertNull(completionService.queryDetail(id).getArchiveId());
+    }
+
+    @Test
+    public void batchLinkIsAllOrNothingAndKeepsProjectCount() {
+        List<RelatedArchiveVO> candidates = completionService.queryArchivesForPick(null, null, null, 5);
+        if (candidates == null || candidates.isEmpty()) {
+            System.out.println("[跳过] 库里没有档案数据，无法验证批量关联");
+            return;
+        }
+        RelatedArchiveVO target = candidates.get(0);
+        String firstId = createTestArchiveWithNo(TEST_ARCHIVE_NO_PREFIX + "2101", "批量关联-同项目");
+        String secondId = createTestArchiveWithNo(TEST_ARCHIVE_NO_PREFIX + "2102", "批量关联-无项目归属");
+
+        // 第一条带项目归属，第二条刻意不带：批量不能拿同一数字覆盖两条的项目口径计数。
+        CompletionSaveDTO belong = new CompletionSaveDTO();
+        belong.setId(firstId);
+        belong.setArchiveNo(TEST_ARCHIVE_NO_PREFIX + "2101");
+        belong.setProjectName("批量关联-同项目");
+        belong.setFacilityId(target.getFacilityId());
+        belong.setCrzdbh(target.getCrzdbh());
+        completionService.updateArchive(belong);
+        int expectedProjectCount = completionMapper.countRelatedArchives(target.getFacilityId(), target.getCrzdbh());
+
+        CompletionBatchLinkResultVO result = completionService.linkArchives(
+                Arrays.asList(firstId, secondId), target.getId());
+        assertEquals(2, result.getRequestedCount());
+        assertEquals(2, result.getSuccessCount());
+        assertEquals(target.getId(), result.getArchiveId());
+
+        CompletionArchive first = completionService.queryDetail(firstId);
+        CompletionArchive second = completionService.queryDetail(secondId);
+        assertEquals(target.getId(), first.getArchiveId());
+        assertEquals(target.getId(), second.getArchiveId());
+        assertEquals(Integer.valueOf(expectedProjectCount), first.getArchiveCount());
+        assertEquals(Integer.valueOf(0), second.getArchiveCount(),
+                "跨项目指定扫描件不能反向改变项目归属计数");
+
+        // 批次中混入失效 ID：预检阶段即失败，第一条已经存在的关联也不得被改写。
+        String otherTarget = candidates.size() > 1 ? candidates.get(1).getId() : target.getId();
+        try {
+            completionService.linkArchives(Arrays.asList(firstId, "missing-completion-id"), otherTarget);
+            fail("批量中任一历史档案失效时必须整批失败");
+        } catch (JeecgBootException e) {
+            assertTrue(e.getMessage().contains("整批未保存"));
+        }
+        CompletionArchive afterFailure = completionService.queryDetail(firstId);
+        assertEquals(target.getId(), afterFailure.getArchiveId(), "失败批次不得留下部分成功");
+        assertEquals(first.getArchiveCount(), afterFailure.getArchiveCount());
     }
 
     // ==================================================================

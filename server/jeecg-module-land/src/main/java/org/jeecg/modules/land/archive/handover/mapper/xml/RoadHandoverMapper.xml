@@ -231,6 +231,18 @@
         </if>
     </select>
 
+    <!-- 待移交只是计划，可继续补录；同一道路已有在办/已完成事项时才禁止再次发起。 -->
+    <select id="countActiveByRoadName" resultType="int">
+        SELECT COUNT(1)
+        FROM `t_road_handover` h
+        WHERE h.`del_flag` = 0
+          AND TRIM(h.`road_name`) = TRIM(#{roadName})
+          AND h.`status` IN ('移交中', '已移交')
+        <if test="excludeId != null and excludeId != ''">
+            AND h.`id` &lt;&gt; #{excludeId}
+        </if>
+    </select>
+
     <!-- ================= 写入 ================= -->
     <update id="updateHandoverAll">
         UPDATE `t_road_handover`

@@ -245,13 +245,12 @@
   import {
     buildUploadBiz,
     queryAllowedTypes,
+    queryAttachmentObjectOptions,
     queryAttachmentTree,
     saveAttachmentMeta,
     uploadFileBytes
   } from '@/api/land/attachment'
   import { BIZ_TYPE_REQUIRED_OPTIONS } from '@/api/land/dataRecycle'
-  import { queryLandOptions, searchFacilityOptions } from '@/api/land/landData'
-  import { queryFacilityByLand, queryProcessList } from '@/api/land/facilityAdmin'
 
   /** 允许的扩展名（与后端白名单同源口径；这里只用于文件框的 accept 提示与前端预校验） */
   const ALLOWED_EXT = [
@@ -548,10 +547,12 @@
 
       loadProcessLandOptions (keyword) {
         this.bizLoading = true
-        return queryLandOptions({ keyword, limit: 50 }).then(res => {
-          this.processLandOptions = res && res.success ? (res.result || []) : []
-        }).catch(() => {
+        return queryAttachmentObjectOptions('land', { keyword, limit: 50 }).then(res => {
+          if (!res || !res.success) throw new Error((res && res.message) || '宗地候选加载失败')
+          this.processLandOptions = res.result || []
+        }).catch(e => {
           this.processLandOptions = []
+          this.errorMessage = `宗地候选加载失败：${(e && e.message) || '未知错误'}`
         }).finally(() => {
           this.bizLoading = false
         })
@@ -570,10 +571,12 @@
       },
 
       loadProcessFacilities (crzdbh) {
-        return queryFacilityByLand(crzdbh).then(res => {
-          this.processFacilityOptions = res && res.success ? (res.result || []) : []
-        }).catch(() => {
+        return queryAttachmentObjectOptions('processFacility', { crzdbh }).then(res => {
+          if (!res || !res.success) throw new Error((res && res.message) || '配套候选加载失败')
+          this.processFacilityOptions = res.result || []
+        }).catch(e => {
           this.processFacilityOptions = []
+          this.errorMessage = `配套候选加载失败：${(e && e.message) || '未知错误'}`
         })
       },
 
@@ -592,10 +595,12 @@
           return Promise.resolve()
         }
         this.bizLoading = true
-        return queryProcessList(this.processFacilityId).then(res => {
-          this.bizOptions = res && res.success ? (res.result || []) : []
-        }).catch(() => {
+        return queryAttachmentObjectOptions('process', { ptId: this.processFacilityId }).then(res => {
+          if (!res || !res.success) throw new Error((res && res.message) || '环节候选加载失败')
+          this.bizOptions = res.result || []
+        }).catch(e => {
           this.bizOptions = []
+          this.errorMessage = `环节候选加载失败：${(e && e.message) || '未知错误'}`
         }).finally(() => {
           this.bizLoading = false
         })
@@ -611,11 +616,12 @@
           return
         }
         this.bizLoading = true
-        const fetcher = this.bizType === 'land' ? queryLandOptions : searchFacilityOptions
-        fetcher({ keyword, limit: 50 }).then(res => {
-          this.bizOptions = res && res.success ? (res.result || []) : []
-        }).catch(() => {
+        queryAttachmentObjectOptions(this.bizType, { keyword, limit: 50 }).then(res => {
+          if (!res || !res.success) throw new Error((res && res.message) || '归属对象候选加载失败')
+          this.bizOptions = res.result || []
+        }).catch(e => {
           this.bizOptions = []
+          this.errorMessage = `归属对象候选加载失败：${(e && e.message) || '未知错误'}`
         }).finally(() => {
           this.bizLoading = false
         })
@@ -898,9 +904,13 @@
             if (success) {
               ok += 1
             } else {
-              failed.push(file.name)
+              failed.push(`${file.name}（附件登记未返回记录）`)
             }
             // 进度按「已完成份数 / 本批总数」推进：上传接口没有字节级进度可给
+            this.percent = Math.round(((ok + failed.length) / total) * 100)
+          }).catch(e => {
+            // 保留落盘/登记接口的真实原因；统一吞成“失败”会让权限与目录问题无法定位。
+            failed.push(`${file.name}（${(e && e.message) || '上传失败'}）`)
             this.percent = Math.round(((ok + failed.length) / total) * 100)
           }).then(step)
         }
@@ -916,7 +926,7 @@
             }
             return !!record
           })
-        }).catch(() => false)
+        })
       },
 
       /**

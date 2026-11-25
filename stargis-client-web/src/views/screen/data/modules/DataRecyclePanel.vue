@@ -324,6 +324,14 @@ export default {
     // keep-alive 激活时重新取权威数据；首次挂载也会触发，覆盖「移除后再回来」的场景。
     this.ensureLoaded()
   },
+  watch: {
+    /** 页签只替换模板，不会触发 mounted/activated；切到留痕时必须立即取数。 */
+    activeTab (current, previous) {
+      if (current !== previous) {
+        this.loadActiveTab()
+      }
+    }
+  },
   methods: {
     /**
      * 首次挂载与 keep-alive 激活统一入口。

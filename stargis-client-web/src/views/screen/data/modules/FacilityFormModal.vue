@@ -113,18 +113,18 @@
               type="button"
               class="facility-form__map-pick-btn"
               :disabled="!mapEnabled"
-              :aria-label="mapEnabled ? '管理地块图形：查看、定位、新增或移除该项目的地块块' : '地图未加载，无法管理地块图形'"
+              :aria-label="mapEnabled ? `管理${geometryNoun}图形：查看、定位、新增或移除该项目的图形块` : `地图未加载，无法管理${geometryNoun}图形`"
               @click="handleOpenGroup"
             >
               <screen-icon name="grid" :size="16" />
-              <span>管理地块图形</span>
+              <span>管理{{ geometryNoun }}图形</span>
             </button>
             <!-- 组状态：dirty 优先（有未保存变更），其次 legacy（旧字段待迁移），再次已存块数 -->
             <span v-if="partCount" class="facility-form__map-pick-drawn">
               {{ partSummary }}
             </span>
             <span class="facility-form__map-pick-tip">
-              {{ mapEnabled ? (partCount ? '' : '尚未绘制；点击后可按块新增/移除/定位，随表单保存一并落库') : '地图未加载（?map=0 预览模式），暂不能管理地块图形' }}
+              {{ mapEnabled ? (partCount ? '' : '尚未绘制；点击后可按块新增/移除/定位，随表单保存一并落库') : `地图未加载（?map=0 预览模式），暂不能管理${geometryNoun}图形` }}
             </span>
           </div>
 
@@ -626,6 +626,10 @@ export default {
     }
   },
   computed: {
+    /** 道路类按报告口径称「配套道路」，其它类别称「配套设施」，不再沿用宗地「地块」。 */
+    geometryNoun () {
+      return String(this.model.ptsslb || '').indexOf('道路') > -1 ? '配套道路' : '配套设施'
+    },
     /** 图形组块数（状态行显隐） */
     partCount () {
       return (this.geoParts || []).length
@@ -845,12 +849,12 @@ export default {
      */
     handleOpenGroup () {
       if (!this.mapEnabled) {
-        toast.warning('地图尚未加载，无法管理地块图形')
+        toast.warning(`地图尚未加载，无法管理${this.geometryNoun}图形`)
         return
       }
       const value = String(this.model.ptxmmc || '').trim()
       if (!value) {
-        toast.warning('请先填写「配套项目名称」，地块图形以名称关联切片源表')
+        toast.warning(`请先填写「配套项目名称」，${this.geometryNoun}图形以名称关联切片源表`)
         return
       }
       this.$refs.groupModal.open({
@@ -870,14 +874,14 @@ export default {
       const value = String(this.model.ptxmmc || '').trim()
       if (!ctx || !value) {
         if (value) {
-          toast.warning('切片图层尚未就绪，地块图形本次未同步；稍后重新打开该记录编辑并保存即可同步')
+          toast.warning(`切片图层尚未就绪，${this.geometryNoun}图形本次未同步；稍后重新打开该记录编辑并保存即可同步`)
         }
         return
       }
       // ★ 防清库闸门：图形组没从切片库真实拉到过、此刻又是空组 —— 说明「空」
       //   只是回显失败的回退态，绝不能当「用户主动清空」提交（与 LandFormModal 同口径）
       if (!this.geoPartsLoaded && this.geoParts.length === 0) {
-        toast.warning('地块图形状态未知（切片源未就绪），本次未同步图形；重新打开该记录编辑并保存即可同步')
+        toast.warning(`${this.geometryNoun}图形状态未知（切片源未就绪），本次未同步图形；重新打开该记录编辑并保存即可同步`)
         return
       }
       const base = { source: ctx.info.source, table: ctx.info.table, field: ctx.field }
@@ -892,15 +896,15 @@ export default {
       chain
         .then((res) => {
           if (!res || !res.success) {
-            toast.error('属性已保存，但地块图形同步失败：' + ((res && res.message) || '未知错误') +
+            toast.error(`属性已保存，但${this.geometryNoun}图形同步失败：` + ((res && res.message) || '未知错误') +
               '。重新打开该记录编辑并保存即可重试')
             return
           }
-          toast.success(`地块图形已同步到切片库（${this.geoParts.length} 块）`)
+          toast.success(`${this.geometryNoun}图形已同步到切片库（${this.geoParts.length} 块）`)
           reloadModuleLayers('facility')
         })
         .catch((e) => {
-          toast.error('属性已保存，但地块图形同步失败：' + (e && e.message ? e.message : e) +
+          toast.error(`属性已保存，但${this.geometryNoun}图形同步失败：` + (e && e.message ? e.message : e) +
             '。重新打开该记录编辑并保存即可重试')
         })
     },
@@ -1017,7 +1021,7 @@ export default {
     validateForm () {
       const errors = {}
       if (!String(this.model.crzdbh || '').trim()) {
-        errors.crzdbh = '请选择出让宗地（配套必须挂在已录入的宗地下）'
+        errors.crzdbh = '请填写出让宗地编号（宗地已移除时配套仍可独立保存）'
       }
       if (!String(this.model.ptxmmc || '').trim()) {
         errors.ptxmmc = '配套项目名称不能为空'
