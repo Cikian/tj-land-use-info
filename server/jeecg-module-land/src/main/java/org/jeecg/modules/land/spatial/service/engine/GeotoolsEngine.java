@@ -8,6 +8,7 @@ import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 
+import java.io.File;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -41,8 +42,16 @@ public class GeotoolsEngine implements IShpImportEngine {
 
     @Override
     public int doImport(ShpImportContext ctx) throws Exception {
+        // ★ 编码自动探测（2026-11-17）：配置默认 GBK 对 GBK 的 DBF 是对的，
+        //   但遇到 UTF-8 编码的 DBF 就反向乱码——与 shp2pgsql 引擎共用同一套
+        //   字节级探测（严格 UTF-8 试解码 + GBK 中文佐证），不再依赖手填编码。
+        File dbfFile = new File(ctx.shpFile.getParentFile(),
+                ctx.shpFile.getName().substring(0, ctx.shpFile.getName().lastIndexOf('.')) + ".dbf");
+        String dbfCharset = DbfEncodingDetector.detect(dbfFile, ctx.props.getDbfCharset());
+        log.info("[geotools] DBF 编码探测结果：{}", dbfCharset);
+
         ShapefileDataStore store = new ShapefileDataStore(ctx.shpFile.toURI().toURL());
-        store.setCharset(Charset.forName(ctx.props.getDbfCharset()));
+        store.setCharset(Charset.forName(dbfCharset));
 
         SimpleFeatureType schema = store.getSchema();
         List<AttributeDescriptor> attrs = schema.getAttributeDescriptors();
