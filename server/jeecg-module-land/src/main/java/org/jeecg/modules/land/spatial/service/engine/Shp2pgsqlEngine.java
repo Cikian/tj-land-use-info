@@ -84,11 +84,25 @@ public class Shp2pgsqlEngine implements IShpImportEngine {
         // 瓦片出图的直接来源，无空间索引时大表低层级瓦片全表扫描会撞 10 秒查询超时。
         // 生成的建索引语句和建表/插数一起走本引擎的逐句执行，同事务提交，失败整体回退
         cmd.add("-I");
-        // 编码：shp 同目录有 .cpg 声明时交给 shp2pgsql 自动读取（声明什么用什么）；
-        // 没有 .cpg 才传 -W 按配置解码。强制 GBK 解码 UTF-8 的 dbf 会报
-        // "Illegal byte sequence"（iconv 严格校验）。ASCII 副本与原件同目录，.cpg 随行
+        // 编码（2026-11-17 加固）：不再信任 .cpg 声明与手填编码——GBK 的 DBF 被按
+        // UTF-8 解码是「经营性用地信息」678 行编号损坏（不可逆）的根因。改为
+        // **自动探测**：DBF 头部语言 ID + 严格 UTF-8 试解码（失败=不是 UTF-8）
+        // + GBK 试解码出中文佐证，探测结果显式传 -W（可覆盖 .cpg 的错误声明）。
+        // 探测失败（文件读不了）才回退旧逻辑：有 .cpg 交给它，没有用配置编码。
+        File asciiDbf = new File(asciiDir, asciiBase + ".dbf");
         File cpg = new File(asciiDir, asciiBase + ".cpg");
-        if (!cpg.isFile()) {
+        String detectedCharset = null;
+        try {
+            detectedCharset = DbfEncodingDetector.detect(asciiDbf, ctx.props.getDbfCharset());
+        } catch (Exception e) {
+            log.warn("[shp2pgsql] DBF 编码探测失败，回退 .cpg/配置编码：{}", e.getMessage());
+        }
+        if (detectedCharset != null) {
+            log.info("[shp2pgsql] DBF 编码探测结果：{}（{}）", detectedCharset,
+                    cpg.isFile() ? "存在 .cpg 声明，与探测不一致时以探测为准" : "无 .cpg 声明");
+            cmd.add("-W");
+            cmd.add(detectedCharset);
+        } else if (!cpg.isFile()) {
             cmd.add("-W");
             cmd.add(ctx.props.getDbfCharset());
         }
