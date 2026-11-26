@@ -17,7 +17,14 @@
     ★ 上传入口就在分组头上：「上传到该类型」→ 材料类型自动定死，
       用户不需要在下拉里选类型（这是本次需求的核心便利点）。
 
+    ★ 展开/收起是**受控**的（expanded prop + toggle 事件），不在这里自己存：
+      删除一个附件后，附件管理页会重拉整棵树（loadTree 期间 loading=true，
+      模板切到「加载中…」），本组件实例会被销毁重建 —— 状态放在组件内部的话，
+      用户刚展开的目录会随着每次删除自己收起来（实测反馈的就是这个现象）。
+      状态交给父级 AttachmentTreeView（按 group.key 记），实例重建后展开态照旧。
+
     事件：
+      toggle ()        切换展开/收起（状态由父级持有）
       upload (group)   上传到该材料类型
       preview (file)   预览附件
       download (file)  下载附件
@@ -30,7 +37,7 @@
         class="type-group__toggle"
         :aria-expanded="expanded ? 'true' : 'false'"
         :title="group.fileTypeName"
-        @click="expanded = !expanded"
+        @click="$emit('toggle')"
       >
         <screen-icon :name="expanded ? 'chevron-down' : 'chevron-right'" :size="12" />
         <screen-icon :name="expanded ? 'folder-open' : 'folder'" :size="13" class="type-group__folder" />
@@ -89,18 +96,13 @@ export default {
   props: {
     /** { key, fileType, fileTypeName, files:[附件], fileCount, totalSize } */
     group: { type: Object, required: true },
-    editable: { type: Boolean, default: true }
-  },
-  data () {
-    return {
-      /**
-       * 是否展开。
-       * ★ 默认**收起**：一个项目的材料类型可能十几个，默认全展开会把列表拉得
-       *   很长（用户第一眼看到的是一屏文件名，而不是「有哪些材料类型」）。
-       *   收起来先给出目录全貌，要看文件再点开。
-       */
-      expanded: false
-    }
+    editable: { type: Boolean, default: true },
+    /**
+     * 是否展开（受控）。
+     * ★ 状态不放在本组件：整棵树每次重拉都会重建本组件，
+     *   内部状态会被重置 —— 见模板顶部注释（删除附件后目录自己收起来）。
+     */
+    expanded: { type: Boolean, default: false }
   },
   methods: {
     formatSize

@@ -7,23 +7,18 @@
     为什么把它做成「先选宗地，再展开配套」而不是一张平表：
       中心的工作次序就是「这块地 → 配套落实了哪些」。旧系统两个页面
       （宗地列表 / 配套列表）各自独立，用户在两边来回找；这里把入口收成一条线索：
-      检索条件里选一个出让宗地 → 该宗地下的全部配套 + 每个配套的六大阶段状态
-      一次性铺开（`/byLand` 一次返回，含 stageStatus 汇总）。
+      检索条件里选一个出让宗地 → 该宗地下的全部配套一次性铺开
+      （`/byLand` 一次返回，含每条配套的进度汇总与阶段汇总）。
 
     两种模式（由「出让宗地」这个条件是否**精确命中一条**决定）：
-      · 宗地模式（crzdbh 非空且列表命中 1 条）：表格行带 `stageStatus`，
-        「六大阶段」列展开六段状态标签 + 完成度，并可按需切到只看这一宗地的配套。
-      · 总览模式（未指定宗地 / 匹配多条）：走分页列表 `/facilityAdmin/list`，
-        该接口返回的是 Facility 实体，**没有**阶段汇总 —— 表格里那列会显示
-        「点开配套流程」，点进去是权威视图。不假装「未开启」。
+      · 宗地模式（crzdbh 非空且列表命中 1 条）：不分页，该宗地的配套一次列全；
+      · 总览模式（未指定宗地 / 匹配多条）：走分页列表 `/facilityAdmin/list`。
 
-    ★ 为什么两个模式不做成一个接口：
-      后端明确把「按宗地取配套 + 阶段汇总」（/byLand）与「跨宗地分页检索」
-      （/list）分开：前者为这条主线服务、不带分页；后者是给「我要找某条配套」
-      用的。硬合成一个接口会让分页口径与汇总口径互相牵制。
-
-    事件：
-      drill (payload)  跳到别的面板（如 { tab: 'attachment', bizType, bizKey }）
+    ★ 2026-11-24：列表只保留「详情」一个查看入口。
+      「六大阶段」列已从表格删除，配套流程 / 附件 / 操作记录都收进详情弹窗的页签
+      （配套流程是页签里的实视图，不再单开整屏弹窗）—— 同一行开三个入口，
+      用户得先判断点哪个，而它们打开的都是同一条配套。
+      因此本组件不再向外抛下钻事件（原先的「附件」入口会 `drill` 到附件面板）。
   -->
   <div class="facility-entry" :class="{ 'is-search-collapsed': layout.right.collapsed }">
     <div class="facility-entry__search">
@@ -45,7 +40,7 @@
           <screen-field
             label="快速定位出让宗地"
             stacked
-            tip="选中后只看这一宗地下的配套，并展开六大阶段进度"
+            tip="选中后只看这一宗地下的配套"
           >
             <screen-select
               v-model="query.crzdbh"
@@ -62,7 +57,7 @@
 
           <span class="facility-entry__mode">
             <screen-tag :tone="isLandMode ? 'success' : 'muted'" size="sm">
-              {{ isLandMode ? '已定位到 1 宗地，显示该宗地配套与阶段进度' : '总览模式（分页），阶段进度需逐条点开' }}
+              {{ isLandMode ? '已定位到 1 宗地，只看该宗地配套' : '总览模式（分页），跨宗地检索' }}
             </screen-tag>
             <screen-button v-if="isLandMode" size="sm" icon="close" @click="handleClearLand">
               退出定位
@@ -105,7 +100,7 @@
           </screen-popconfirm>
 
           <screen-button size="sm" icon="layers" :disabled="!isLandMode" @click="handleOpenFirstProcess">
-            打开配套流程管理
+            打开配套流程
           </screen-button>
 
           <screen-button size="sm" icon="reload" :loading="loading" @click="loadData">刷新</screen-button>
@@ -120,9 +115,6 @@
           @select-change="handleSelectChange"
           @byLand="handleByLand"
           @detail="handleDetail"
-          @process="handleProcess"
-          @history="handleHistory"
-          @attachments="handleAttachments"
           @edit="handleEdit"
           @remove="handleRemove"
           @locate="handleLocate"
@@ -130,7 +122,7 @@
 
         <template #footer>
           <span v-if="isLandMode" class="facility-entry__footer-hint">
-            当前是「按宗地」视图，不分页 —— 该宗地下的全部配套一次列出，便于横向比较各阶段的进展。
+            当前是「按宗地」视图，不分页 —— 该宗地下的全部配套一次列出，便于横向比较各配套的进展。
           </span>
           <screen-pagination
             v-else
@@ -147,18 +139,15 @@
     <facility-form-modal ref="formModal" @ok="handleSaved" />
     <facility-geo-import-modal ref="geoImportModal" @ok="handleGeoImported" />
     <!--
-      详情弹窗只上抛 open-process，**面板本体必须挂在这里**（P1-01）：
-      本页签是常驻组件，而详情弹窗的根节点随 visible 销毁 ——
-      面板挂在详情里就会被「先关详情」一起销毁，表现是点了没反应。
+      详情弹窗是本页唯一的查看入口：基本信息 / 配套流程 / 附件 / 操作记录都是它的页签，
+      其中「配套流程」（29 环节进度）是内嵌在页签里的实视图，不再另开整屏弹窗。
     -->
     <facility-detail-modal
       ref="detailModal"
       @edit="handleEdit"
       @remove="handleRemove"
-      @open-process="handleProcess"
-      @changed="loadData"
+      @changed="handleDetailChanged"
     />
-    <process-tree-panel ref="processPanel" @changed="handleProcessChanged" />
 
     <!--
       移除原因：软删必须留一句「为什么」。
@@ -221,7 +210,6 @@ import FacilitySearchForm from './FacilitySearchForm.vue'
 import FacilityTable from './FacilityTable.vue'
 import FacilityFormModal from './FacilityFormModal.vue'
 import FacilityDetailModal from './FacilityDetailModal.vue'
-import ProcessTreePanel from './ProcessTreePanel.vue'
 import {
   queryFacilityAdminPage,
   queryFacilityByLand,
@@ -285,8 +273,7 @@ export default {
     FacilityTable,
     FacilityFormModal,
     FacilityGeoImportModal,
-    FacilityDetailModal,
-    ProcessTreePanel
+    FacilityDetailModal
   },
   props: {
     /** 下钻条件（例如从宗地表点「该宗地配套」带 crzdbh 过来） */
@@ -329,7 +316,7 @@ export default {
     },
     listTitle () {
       if (this.isLandMode && this.dataSource.length) {
-        return `该宗地下 ${this.dataSource.length} 个配套项目与六大阶段进展`
+        return `该宗地下 ${this.dataSource.length} 个配套项目`
       }
       return '配套项目列表'
     },
@@ -590,7 +577,8 @@ export default {
 
     handleEdit (record) {
       if (!record || !record.id) return
-      if (this.$refs.detailModal) this.$refs.detailModal.close()
+      // 详情里可能还有未保存的环节进度，close() 会先确认；用户点「取消」就别再开表单
+      if (this.$refs.detailModal && this.$refs.detailModal.close() === false) return
       this.$refs.formModal.showEdit(record)
     },
 
@@ -828,46 +816,26 @@ export default {
       this.$refs.detailModal.open(record, 'base')
     },
 
-    handleHistory (record) {
-      this.$refs.detailModal.open(record, 'history')
-    },
-
-    /** 附件：跳到附件面板并按该配套过滤（这是「配套 ↔ 附件」最自然的往返） */
-    handleAttachments (record) {
-      if (!record) return
-      this.$emit('drill', {
-        tab: 'attachment',
-        bizType: 'facility',
-        bizId: record.id,
-        bizKey: record.ptxmmc || '',
-        // 显式给名称：上传弹窗用它回显「这个附件挂到哪个配套」
-        bizName: record.ptxmmc || ''
-      })
+    /**
+     * 详情里的配套流程进度已落库：重拉列表。
+     * 整体完成度与逾期数都从后端汇总而来，改完环节必须让列表跟着变。
+     */
+    handleDetailChanged () {
+      this.loadData()
     },
 
     /**
-     * 打开配套流程管理（列表行「配套流程」与详情页「配套流程管理」共用本方法）。
-     * ★ 顺序固定：先关详情再开面板 —— 两层都是同层 fixed 弹窗，
-     *   详情留着不收会截获面板上的点击（看起来像面板点不动）。
+     * 标题栏的「打开配套流程」：宗地模式下默认打开第一个配套的详情，并直接落在
+     * 「配套流程」页签上。
+     * ★ 2026-11-24 起配套流程不再单独开弹窗，它只是详情弹窗的一页 ——
+     *   所以这里不能再 open 一个流程面板，而是按页签打开详情。
      */
-    handleProcess (record) {
-      if (!record || !record.id) return
-      if (this.$refs.detailModal) this.$refs.detailModal.close()
-      this.$refs.processPanel.open(record)
-    },
-
-    /** 标题栏的「打开配套流程管理」：宗地模式下默认打开第一个配套 */
     handleOpenFirstProcess () {
       if (!this.dataSource.length) {
         toast.warning('该宗地还没有配套项目')
         return
       }
-      this.handleProcess(this.dataSource[0])
-    },
-
-    /** 环节进度落库后重拉列表：整体完成度与逾期数都该跟着变 */
-    handleProcessChanged () {
-      this.loadData()
+      this.$refs.detailModal.open(this.dataSource[0], 'process')
     },
 
     /* ---------------- 移除 ---------------- */

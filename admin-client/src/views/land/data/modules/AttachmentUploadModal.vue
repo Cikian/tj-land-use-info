@@ -420,10 +420,6 @@
         return !!this.uploadingType
       }
     },
-    beforeDestroy () {
-      // 弹窗被父组件销毁时摘掉 window 上的兜底监听：它是全局的，留着会指向已销毁的实例
-      this.clearCancelWatch()
-    },
     methods: {
       formatSize (bytes) {
         const size = Number(bytes || 0)
@@ -731,7 +727,6 @@
           this.resetPickState()
           return
         }
-        this.armPickerCancel(group.fileType)
         this.$nextTick(() => {
           // 每次唤起前清空 value：否则「取消后再选同一个文件/同一个文件夹」不会触发 change，
           // 表现就是点了没反应（P0-04 的第二个症状）
@@ -741,39 +736,21 @@
       },
 
       /**
-       * 兜底监听「选择器被取消」。
+       * 取消「这一次选择」的临时状态（还没起传时调用）。
        *
-       * ★ 为什么需要兜底：原生 input 的 cancel 事件只有较新版本 Chromium 才派发，
-       *   老版本取消时**什么事件都没有**（change 不触发、focus 不一定有）。
-       *   所以两条腿都要有：模板上的 @cancel（精确）+ window focus（兜底）。
-       *   延时 400ms 是为了让 change 先到达 —— 正常选完文件时 change 会同步执行并
-       *   清掉 pendingType，这个定时器醒来就什么都不做。
-       */
-      armPickerCancel (typeCode) {
-        this.clearCancelWatch()
-        this._cancelFocusHandler = () => {
-          this._cancelTimer = window.setTimeout(() => {
-            if (!this.batchRunning && !this.uploadingType && this.pendingType === typeCode) {
-              this.resetPickState()
-            }
-          }, 400)
-        }
-        window.addEventListener('focus', this._cancelFocusHandler)
-      },
-
-      clearCancelWatch () {
-        if (this._cancelFocusHandler) {
-          window.removeEventListener('focus', this._cancelFocusHandler)
-          this._cancelFocusHandler = null
-        }
-        if (this._cancelTimer) {
-          window.clearTimeout(this._cancelTimer)
-          this._cancelTimer = null
-        }
-      },
-
-      /**
-       * 上传态的唯一复位入口。
+       * ★ 这里**不要**再用 window focus + 延时定时器去猜「用户是不是取消了」。
+       *   曾经有过一版兜底（`armPickerCancel`：窗口重新获得焦点 400ms 后若还没开始上传就复位），
+       *   理由是「老版本 Chromium 取消时不派发 input cancel」。
+       *   它在**目录上传上必然误伤**：选完文件夹后 Chromium 会先弹一次
+       *   「此网站要上传 N 个文件」的确认框，用户点「上传」之前 focus 事件早就到过页面了 ——
+       *   于是 400ms 后 pendingType 被清空，随后到达的 change 拿不到目标类型，
+       *   只能报「未能确定材料类型」并放弃这一批。选单个文件时没有这个确认框，
+       *   所以只有「选择文件夹」会撞上（表现就是选了文件夹却什么都没发生）。
+       *
+       * ★ 现在只由两条**确定的**信号复位：原生 input 的 cancel 事件、
+       *   以及 change 里拿到 0 个文件。其余情况下 pendingType 一直留着 ——
+       *   它不影响任何界面状态（按钮是否禁用只看 uploadingType / busy 那一对），
+       *   只是「这一批归到哪个材料类型」的答案，留到 change 到达为止。
        *
        * ★ 为什么必须收口成一个方法：正常完成 / 全部被校验拒绝 / 网络失败 /
        *   主动中止 / 用户取消，这五条路径以前各写一遍赋值，漏一处就是
@@ -781,14 +758,13 @@
        *   现在五处都调它，清 pendingType/uploadingType/batchRunning/percent 四件套。
        */
       resetPickState () {
-        this.clearCancelWatch()
         this.pendingType = ''
         this.uploadingType = ''
         this.batchRunning = false
         this.percent = 0
       },
 
-      /** 原生 input 的 cancel 事件（选择器被取消）：有它就不必等 focus 兜底 */
+      /** 原生 input 的 cancel 事件（选择器被取消） */
       handlePickerCancel () {
         if (!this.batchRunning) {
           this.resetPickState()
@@ -800,8 +776,6 @@
         const fallback = mode === 'folder' ? this.$refs.dirInput : this.$refs.fileInput
         const input = event && event.target ? event.target : fallback
         const selected = input && input.files ? Array.prototype.slice.call(input.files) : []
-        // 已经拿到（或明确没有）文件：focus 兜底不再需要
-        this.clearCancelWatch()
         const typeCode = this.pendingType
         if (!selected.length) {
           // 取消选择（change 有时会以空 files 的形式到达）

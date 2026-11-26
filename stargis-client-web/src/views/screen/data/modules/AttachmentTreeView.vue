@@ -29,7 +29,15 @@
       preview / download / remove (file)
   -->
   <div class="attachment-tree">
-    <div v-if="loading" class="attachment-tree__loading">加载中…</div>
+    <!--
+      ★ 只在「首次加载、还没有任何内容」时整块换成加载提示。
+        刷新 / 删除后重拉时保留当前这棵树，原因有两个：
+        ① 换掉内容会把整棵 DOM 拆了重建，用户正看着的文件列表会闪一下；
+        ② 面板是可滚动的，DOM 重建会把滚动位置打回顶部 ——
+           用户删完一个文件就找不到刚才那一段了。
+        加载中的反馈由父级的「刷新」按钮与树上的操作结果承担（都会给 toast）。
+    -->
+    <div v-if="loading && !hasContent" class="attachment-tree__loading">加载中…</div>
 
     <template v-else>
       <!-- ① 多项目模式 -->
@@ -74,6 +82,8 @@
               :key="group.key"
               :group="group"
               :editable="editable"
+              :expanded="isGroupExpanded(group.key)"
+              @toggle="toggleGroup(group.key)"
               @upload="$emit('upload', $event)"
               @preview="$emit('preview', $event)"
               @download="$emit('download', $event)"
@@ -108,6 +118,8 @@
           :key="group.key"
           :group="group"
           :editable="editable"
+          :expanded="isGroupExpanded(group.key)"
+          @toggle="toggleGroup(group.key)"
           @upload="$emit('upload', $event)"
           @preview="$emit('preview', $event)"
           @download="$emit('download', $event)"
@@ -155,12 +167,35 @@ export default {
        *   记收起集合就得在数据到达时把每个 id 都塞进去；
        *   记展开集合时初始为空数组，天然就是全收起。
        */
-      expandedProjects: []
+      expandedProjects: [],
+      /**
+       * **已展开**的材料类型分组 key（后端给的是 `type:bizId:码`，全局唯一，见
+       * `LandAttachmentServiceImpl#buildGroup`）。
+       *
+       * ★ 为什么这份状态必须放在这里、而不是分组组件自己存（2026-11-24 修）：
+       *   删除一个附件后，附件管理页会重拉整棵树；`loadTree` 期间 loading=true，
+       *   本组件模板切到「加载中…」，所有 `attachment-type-group` 实例被销毁，
+       *   数据回来后再重建。状态若放在分组组件内部，重建即归零 ——
+       *   用户刚展开的目录在每次删除后自己收起来（实测反馈的现象）。
+       *   放在本组件后，重建的只是子实例，展开集合一直在这里。
+       *
+       * ★ 默认**收起**：一个项目的材料类型可能十几个，默认全展开会把列表拉得很长
+       *   （用户第一眼看到的是一屏文件名，而不是「有哪些材料类型」）。
+       *   收起来先给出目录全貌，要看文件再点开。
+       */
+      expandedGroups: []
     }
   },
   computed: {
     groups () {
       return (this.tree && this.tree.groups) || []
+    },
+    /**
+     * 是否已经有内容可渲染（决定「加载中…」要不要顶掉整棵树）。
+     * ★ 只认「真的渲染得出来」的东西：多项目模式下有项目行，单对象模式下有分组。
+     */
+    hasContent () {
+      return this.projects.length > 0 || this.groups.length > 0
     }
   },
   methods: {
@@ -182,6 +217,24 @@ export default {
         this.expandedProjects.splice(index, 1)
       } else {
         this.expandedProjects.push(bizId)
+      }
+    },
+
+    /**
+     * 材料类型分组的展开态。
+     * ★ 按 group.key 记（`type:bizId:码`）：不限归属类型时同一棵树下混着
+     *   宗地与配套，同一个类型码在不同项目里是不同的分组，不能只按类型码记。
+     */
+    isGroupExpanded (key) {
+      return this.expandedGroups.indexOf(key) > -1
+    },
+
+    toggleGroup (key) {
+      const index = this.expandedGroups.indexOf(key)
+      if (index > -1) {
+        this.expandedGroups.splice(index, 1)
+      } else {
+        this.expandedGroups.push(key)
       }
     }
   }

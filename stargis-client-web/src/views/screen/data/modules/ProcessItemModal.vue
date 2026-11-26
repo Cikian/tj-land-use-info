@@ -33,6 +33,10 @@
       ★ 状态与备注现在可以在 ProcessTreePanel 的表格里直接改，不必为改一个字打开本弹窗；
         本弹窗负责日期、问题类型、录入信息这些表格里放不下的明细。
 
+    ★ 弹窗尺寸（2026-11-24 与数据管理另两个表单弹窗一起放大）：
+      宽 1080（原 880），仍是两列 112px 标签 → 每格控件约 400px；
+      高度沿用 calc(100vh - 200px)（本来就接近整屏，不需要再动）。
+
     公开方法：
       open(payload)  打开并编辑一个事项
         payload = { ptId, facilityName, lcId, lcName, stageName, processTime,
@@ -45,7 +49,7 @@
   <screen-modal
     :visible.sync="visible"
     :title="title"
-    :width="880"
+    :width="1080"
     :show-footer="false"
     :body-max-height="'calc(100vh - 200px)'"
     @cancel="handleClose"

@@ -27,13 +27,13 @@
       ok  保存成功后抛出，父组件据此刷新列表
   -->
   <!--
-    弹窗形态（2026-10 用户实测后调整）：
-      · 宽 960 + 表单 2 列：3 列时每列太窄，缩到 960 后 2 列才是正常比例
-        （标签 150 + 控件约 330）。
-      · 高度取「原来的一半」：改造前 body 上限 = calc(100vh - 200px)，
-        头 46 + 底栏 54 ≈ 100，所以原来的总高 ≈ 100vh - 100；
-        这里取 calc(50vh - 150px)，实测总高正好是原来的一半。
-        正文因此会滚动 —— 这是有意的，弹窗矮下去才看得到下面的地图。
+    弹窗形态（2026-10 定为 960 / 半高；2026-11-24 用户反馈偏小，与 FacilityFormModal
+    一起放大到 1180 / calc(70vh - 150px)，两个表单始终同参数）：
+      · 宽 1180 + 表单 2 列：标签固定 150 + 控件约 370。
+        3 列时代每列太窄（这也是 2026-10 从 1280/3 列降到两列的原因），所以只加宽不加列。
+      · 高度：原来刻意取「半个屏幕」（calc(50vh - 150px)），为的是矮下去看得到下面的地图；
+        但配套/地块表单字段多，半屏必须一路滚动。现在抬到 calc(70vh - 150px)
+        （1080 高屏上正文约 606px），上下仍各留约 190px 露出地图。
       · draggable + :dimmed="false"：背景不压暗、弹窗可拖到一边，
         用户就能一边填表一边直接在地图上操作（这也是「选取地块」不再需要
         全屏隐藏页面的原因，见 ScreenPickStage）。
@@ -41,11 +41,11 @@
   <screen-modal
     :visible.sync="visible"
     :title="title"
-    :width="960"
+    :width="1180"
     :confirm-loading="saving"
     ok-text="保存"
     cancel-text="取消"
-    :body-max-height="'calc(50vh - 150px)'"
+    :body-max-height="'calc(70vh - 150px)'"
     draggable
     :dimmed="false"
     @ok="handleOk"
@@ -1007,7 +1007,7 @@ export default {
     color: var(--screen-text-mute);
   }
 
-  /* 标签列 150px + 控件列，**两列**排布（弹窗宽 960）；窄屏再降到一列 */
+  /* 标签列 150px + 控件列，**两列**排布（弹窗宽 1180）；窄屏再降到一列 */
   &__grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

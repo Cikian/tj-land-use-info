@@ -23,10 +23,13 @@ import {
  *  2. ★ `/process/save` 与 `/process/saveBatch` 的 ptId / lcId 是 **query 参数**，
  *     而进度字段在 JSON body 里；manageJava 的 javaPostAction 第二个参数只进 body，
  *     所以这里手工把 query 拼在 URL 上（与 ledger.js 的 changeLedgerStatus 同一做法）。
- *  3. ★ `/byLand` 返回的每个配套带 `processStat`（环节进度汇总）与
- *     `stageStatus`（六大阶段各自的 { stageId, stageName, status, percent, filledCount }），
- *     列表页的阶段状态标签直接用它，**不要在前端重算汇总** —— 汇总口径
- *     （尤其「不涉及」怎么算）在后端 ProcessStatus 里是唯一实现。
+ *  3. ★ `/list` 与 `/byLand` 返回的每个配套都带 `processStat`
+ *     （环节进度汇总：{ total, filled, finished, running, notInvolved, notStarted,
+ *     overdue, status, percent }）；`/byLand` 另带 `stageStatus`（六大阶段各自的
+ *     { stageId, stageName, status, percent, filledCount, itemCount }）。
+ *     列表的「整体进度」列**直接取 `processStat.percent`**，不要在前端拿已填记录重算 ——
+ *     分母是「全部启用中的环节」，与详情「配套流程」页签同源（后端 ProcessStatus 唯一实现）。
+ *     ★ 2026-11-24 前 `/list` 不带这个字段，列表恒显示 0%、而详情显示真实值。
  *  4. ★ `/expectEnd` 的 `calendarBased=false` 表示该年度没有人工维护的节假日日历，
  *     后端只按「周末 + 配置的节假日」推算，结果会偏乐观，必须提示用户。
  */

@@ -2,11 +2,11 @@
  * 新增/编辑弹窗改造验证（真实浏览器 / CDP）
  * ==================================================================
  * 断言的是**需求本身**：
- *   ① 表单由 3 列改 2 列；弹窗高度是原来的一半；
+ *   ① 表单是 2 列；弹窗尺寸 = 1180 宽 × 「正文 70vh」高（原 960 × 半屏，2026-11-24 放大）；
  *   ② 弹窗可以随意拖动（且不会被拖出屏幕找不回来）；弹窗以外的背景**不再变暗**，
  *      并且背景里的地图**真的能操作**（不是「看着没变暗但事件被吃掉」）；
- *   ③ 点「添加地块」不再隐藏任何页面，弹窗仍在、地图仍可操作，
- *      两个按钮落在顶栏之下（不压导航）；Esc / 完成绘制都能回到表单；
+ *   ③ 点「管理图形」不再隐藏任何页面：表单弹窗仍可见、地图仍可操作，
+ *      图形管理弹窗叠在表单上（顶栏之下）；Esc / 「完成」都只收上一层；
  *   ④ 经营性用地与配套项目两个表单一致。
  *
  * ★ 端口：3000 = 管理端 admin-client，3001 = 大屏端 stargis-client-web（本脚本的对象）。
@@ -69,8 +69,22 @@ class CDP {
   }
   async evalJs (expression) {
     const r = await this.send('Runtime.evaluate', { expression, returnByValue: true })
-    if (r.exceptionDetails) return { __error: (r.exceptionDetails.exception || {}).description || r.exceptionDetails.text }
+    /*
+     * ★ 页面内异常必须**抛出来**，不能返回一个对象糊弄过去：
+     *   调用方几乎都写成 JSON.parse(await evalJs(...))，返回对象只会得到
+     *   `"[object Object]" is not valid JSON` 这种完全指不到现场的错。
+     */
+    if (r.exceptionDetails) {
+      const detail = (r.exceptionDetails.exception || {}).description || r.exceptionDetails.text
+      throw new Error('页面内执行出错：' + detail + '\n  表达式：' + String(expression).slice(0, 160))
+    }
     return r.result.value
+  }
+  /** 页面刷新 / 热更新会清掉注入的 __vm，关键步骤前补一次 */
+  async ensureHelpers () {
+    const alive = await this.evalJs('typeof window.__vm === "object" && !!window.__vm')
+    if (!alive) await this.evalJs(HELPERS)
+    return alive
   }
   /** 截一小块图（用于「背景有没有被压暗」的像素级比对） */
   async clipShot (x, y, width, height) {
@@ -212,14 +226,15 @@ function check (name, ok, detail) {
     await cdp.evalJs(HELPERS)
     const vp = JSON.parse(await cdp.evalJs('JSON.stringify({ w: innerWidth, h: innerHeight })'))
     /*
-     * 「原来的一半」的基准：改造前 body-max-height = calc(100vh - 200px)，
-     * 弹窗头 46 + 底栏 54 = 100，所以改造前的弹窗总高 = 100vh - 100。
-     * 改造后应约为它的一半。
+     * 弹窗总高 = 正文上限 + 头 46 + 底栏 54（= 100）。
+     * 2026-11-24 起正文上限是 calc(70vh - 150px)（放大前是 calc(50vh - 150px)），
+     * 所以期望总高 = 0.7 × 视口高 - 50。
      */
-    const baselineHeight = vp.h - 100
-    const expectedHeight = baselineHeight / 2
+    const HEAD_FOOT = 100
+    const bodyCap = vp.h * 0.7 - 150
+    const expectedHeight = bodyCap + HEAD_FOOT
     console.log(`### 已登录；视口 ${vp.w}×${vp.h}`)
-    console.log(`### 改造前弹窗高度基准 = 100vh - 100 = ${baselineHeight}px，减半后应 ≈ ${expectedHeight}px\n`)
+    console.log(`### 正文上限 70vh - 150 = ${r1(bodyCap)}px → 弹窗总高应 ≈ ${r1(expectedHeight)}px\n`)
 
     await cdp.evalJs(`(() => {
       const norm = t => String(t||'').replace(/\\s/g,'')
@@ -230,21 +245,25 @@ function check (name, ok, detail) {
 
     const panels = [
       {
-        tab: '经营性用地信息录入',
+        tab: '经营性用地信息',
         scope: '.land-entry',
         addText: '新增宗地',
         gridSel: '.land-form__grid',
         formSel: '.land-form',
         pickBtnSel: '.land-form__map-pick-btn',
+        /** 组管理弹窗要「编号」才肯开（见 LandFormModal.handleOpenGroup 的守卫） */
+        codeInputSel: '#lf-crzdbh',
         name: '经营性用地'
       },
       {
-        tab: '配套地块数据录入',
+        tab: '配套项目信息',
         scope: '.facility-entry',
         addText: '新增配套',
         gridSel: '.facility-form__grid',
         formSel: '.facility-form',
         pickBtnSel: '.facility-form__map-pick-btn',
+        /* 配套表单的宗地是「从下拉里选一个」，新增态没有编号 → 只验守卫路径 */
+        codeInputSel: null,
         name: '配套项目'
       }
     ]
@@ -254,11 +273,13 @@ function check (name, ok, detail) {
 
     for (const p of panels) {
       console.log(`================ ${p.name} ================`)
-      await cdp.evalJs(`(() => {
+      const tabClicked = await cdp.evalJs(`(() => {
         const norm = t => String(t||'').replace(/\\s/g,'')
         const b = Array.from(document.querySelectorAll('.data-screen__nav-item')).find(x => norm(x.textContent) === ${JSON.stringify(p.tab)})
         if (b) b.click(); return !!b
       })()`)
+      check(`${p.name}：能切到左侧页签「${p.tab}」`, tabClicked)
+      await cdp.ensureHelpers()
       await sleep(2500)
 
       // 打开弹窗之前先截一块背景，稍后逐字节比对
@@ -268,9 +289,10 @@ function check (name, ok, detail) {
       check(`${p.name}：能打开新增弹窗（点「${p.addText}」）`, opened)
       for (let i = 0; i < 30; i++) {
         await sleep(300)
-        if (await cdp.evalJs(`!!window.__vm.dialog()`)) break
+        if (await cdp.evalJs(`!!(window.__vm && window.__vm.dialog())`)) break
       }
       await sleep(900)
+      await cdp.ensureHelpers()
 
       const st = JSON.parse(await cdp.evalJs(`(() => {
         var d = window.__vm.dialog(), m = window.__vm.mask()
@@ -279,6 +301,7 @@ function check (name, ok, detail) {
         return JSON.stringify({
           dialog: window.__vm.box(d),
           head: window.__vm.box(window.__vm.head()),
+          bodyBox: window.__vm.box(body),
           gridTracks: window.__vm.gridTracks(${JSON.stringify(p.gridSel)}),
           maskBg: ms ? ms.backgroundColor : null,
           maskPE: ms ? ms.pointerEvents : null,
@@ -303,18 +326,18 @@ function check (name, ok, detail) {
         `列数 ${st.gridTracks}`
       )
       check(
-        `${p.name}：弹窗高度约为原来的**一半**`,
+        `${p.name}：弹窗高度按 70vh 上限撑开（放大前是半屏）`,
         near(st.dialog.height, expectedHeight, 20),
-        `实测 ${r1(st.dialog.height)}px；基准 ${baselineHeight}px → 一半 ${r1(expectedHeight)}px`
+        `实测 ${r1(st.dialog.height)}px；期望 ${r1(expectedHeight)}px（正文上限 ${r1(bodyCap)} + 头底 ${HEAD_FOOT}）`
       )
       check(
-        `${p.name}：正文确实在滚动（说明高度是被上限压住的，不是内容不够）`,
-        st.bodyScrollable === true,
-        `body 可滚动 = ${st.bodyScrollable}`
+        `${p.name}：正文高度被上限压住（= 70vh - 150px，不是自由撑高）`,
+        !!st.bodyBox && st.bodyBox.height <= bodyCap + 2,
+        `body 高 ${r1(st.bodyBox && st.bodyBox.height)} ≤ 上限 ${r1(bodyCap)}；可滚动 = ${st.bodyScrollable}`
       )
       check(
-        `${p.name}：弹窗宽度已收窄到 960`,
-        near(st.dialog.width, 960, 2),
+        `${p.name}：弹窗宽度 1180（放大前 960）`,
+        near(st.dialog.width, 1180, 2),
         `宽 ${r1(st.dialog.width)}px`
       )
 
@@ -381,9 +404,9 @@ function check (name, ok, detail) {
         `Δx ${r1(d1.left - d0.left)}（期望 ${r1(160 + shiftX)}）/ Δy ${r1(d1.top - d0.top)}（期望 ${r1(-140 + shiftY)}）`
       )
       check(
-        `${p.name}：拖动不改变弹窗尺寸（宽度不变；高度只随视口 50vh 联动）`,
-        near(d1.width, d0.width, 1) && near(d1.height - d0.height, (vpAfter.h - vp.h) / 2, 1.5),
-        `宽 ${r1(d1.width)}；高 ${r1(d0.height)} → ${r1(d1.height)}（视口高 ${vp.h} → ${vpAfter.h}，50vh 联动 ${r1((vpAfter.h - vp.h) / 2)}）`
+        `${p.name}：拖动不改变弹窗尺寸（宽度不变；高度只随视口 70vh 联动）`,
+        near(d1.width, d0.width, 1) && near(d1.height - d0.height, (vpAfter.h - vp.h) * 0.7, 1.5),
+        `宽 ${r1(d1.width)}；高 ${r1(d0.height)} → ${r1(d1.height)}（视口高 ${vp.h} → ${vpAfter.h}，70vh 联动 ${r1((vpAfter.h - vp.h) * 0.7)}）`
       )
 
       // 键盘也能挪（无障碍：不只有鼠标能拖）
@@ -428,7 +451,7 @@ function check (name, ok, detail) {
         `拖后 left ${r1(d3.left)} / top ${r1(d3.top)}`
       )
 
-      /* ---------- 收窄到 960 之后没有内容被裁掉 ---------- */
+      /* ---------- 加宽到 1180 之后没有内容被裁掉 ---------- */
       const clip = JSON.parse(await cdp.evalJs(`(() => {
         var body = document.querySelector('.screen-modal__body')
         var items = Array.prototype.slice.call(document.querySelectorAll('.screen-modal__dialog [class$="__readonly-item"]'))
@@ -456,113 +479,153 @@ function check (name, ok, detail) {
         clip.readonlyCount ? `${clip.readonlyCount} 个格子，越界 ${clip.clipped} 个` : '本表单没有这类格子（跳过）'
       )
 
-      /* ---------- 需求③：添加地块不再隐藏页面 ---------- */
-      const pickClicked = await cdp.evalJs(`(() => {
+      /* ---------- 需求③：管理图形不隐藏页面 ----------
+       * 2026-11-15 起「添加地块」升级成「管理地块/地块图形」：点它开的是**叠在表单上面的**
+       * FeatureGroupModal（组管理弹窗），选点覆盖层 .pick-stage 只在那弹窗里点「添加」后才出现。
+       * 断言仍是同一条需求：不隐藏任何页面、表单仍然可见、地图仍可操作、Esc 只关上一层。
+       *
+       * 两段式：
+       *   ① 守卫路径 —— 新增态还没填编号时点它，只提示、不开弹窗、不藏东西；
+       *   ② 真有编号时 —— 组管理弹窗叠在表单上，Esc /「完成」都只收上一层。
+       */
+      const pkClick = `(() => {
         const b = document.querySelector(${JSON.stringify(p.pickBtnSel)})
         if (!b) return false
         b.click()
         return true
-      })()`)
-      check(`${p.name}：能点「添加地块」`, pickClicked)
-      for (let i = 0; i < 20; i++) {
-        await sleep(300)
-        if (await cdp.evalJs(`!!document.querySelector('.pick-stage')`)) break
-      }
-      await sleep(700)
-
-      const pk = JSON.parse(await cdp.evalJs(`(() => {
-        var stage = document.querySelector('.pick-stage')
-        var acts = document.querySelector('.pick-stage__actions')
+      })()`
+      const pkState = `(() => {
+        var inner = document.querySelector('.feature-group')
+        var innerDialog = inner ? inner.closest('.screen-modal__dialog') : null
+        var titleEl = innerDialog ? innerDialog.querySelector('.screen-modal__title') : null
         var header = document.querySelector('.screen-header')
-        var d = window.__vm.dialog()
+        var outer = window.__vm.dialog()
         var root = document.querySelector('.screen-modal-root')
         var body = document.querySelector('.data-screen__body')
         return JSON.stringify({
-          stage: !!stage,
-          stagePE: stage ? getComputedStyle(stage).pointerEvents : null,
-          actions: window.__vm.box(acts),
+          group: !!inner,
+          groupTitle: titleEl ? titleEl.textContent : null,
+          innerBox: innerDialog ? window.__vm.box(innerDialog) : null,
+          outerVisible: !!outer && outer.getBoundingClientRect().height > 0,
+          dialogCount: document.querySelectorAll('.screen-modal__dialog').length,
           headerBottom: header ? header.getBoundingClientRect().bottom : null,
           hidden: window.__vm.hiddenCount(),
           pickingFlag: window.__vm.pickingFlag(),
-          dialogVisible: !!d && d.getBoundingClientRect().height > 0,
-          dialogBox: window.__vm.box(d),
           modalVisibility: root ? getComputedStyle(root).visibility : null,
           bodyOpacity: body ? getComputedStyle(body).opacity : null,
           bodyVisible: body ? body.getBoundingClientRect().height > 0 : null,
-          cancelBtn: !!Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-            .find(function (b) { return window.__vm.norm(b.textContent) === '取消绘制' }),
-          doneBtn: !!Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-            .find(function (b) { return window.__vm.norm(b.textContent) === '完成绘制' }),
           hitMap: window.__vm.hit(300, 200)
         })
-      })()`))
+      })()`
 
-      check(`${p.name}：进入了选取模式（覆盖层出现）`, pk.stage && pk.cancelBtn && pk.doneBtn)
+      /* ---- ① 守卫路径 ---- */
+      check(`${p.name}：能点「管理图形」`, await cdp.evalJs(pkClick))
+      await sleep(800)
+      const guard = JSON.parse(await cdp.evalJs(pkState))
+      check(
+        `${p.name}：新增态没有唯一编号时不硬开弹窗（走守卫提示）`,
+        p.codeInputSel ? guard.group === false : true,
+        p.codeInputSel ? `组弹窗 ${guard.group} / 弹窗层数 ${guard.dialogCount}` : '（配套表单：编号来自下拉，另见下一段）'
+      )
       check(
         `${p.name}：**没有隐藏任何页面**（不存在 .is-pick-hidden）`,
-        pk.hidden === 0,
-        `隐藏元素 ${pk.hidden} 个`
+        guard.hidden === 0,
+        `隐藏元素 ${guard.hidden} 个`
       )
       check(
         `${p.name}：body 上不再打选取模式的标记类（页面层与浮层都不再被藏）`,
-        pk.pickingFlag === false,
-        `body.is-picking-map = ${pk.pickingFlag}`
+        guard.pickingFlag === false,
+        `body.is-picking-map = ${guard.pickingFlag}`
       )
       check(
         `${p.name}：页面内容仍然可见（内容区 opacity=1 且有高度）`,
-        pk.bodyOpacity === '1' && pk.bodyVisible === true,
-        `opacity ${pk.bodyOpacity} / 有高度 ${pk.bodyVisible}`
+        guard.bodyOpacity === '1' && guard.bodyVisible === true,
+        `opacity ${guard.bodyOpacity} / 有高度 ${guard.bodyVisible}`
       )
       check(
-        `${p.name}：**发起选取的弹窗仍然可见**（不再被藏起来）`,
-        pk.dialogVisible && pk.modalVisibility === 'visible',
-        `对话框有高度 ${pk.dialogVisible} / visibility ${pk.modalVisibility}`
+        `${p.name}：**发起操作的表单弹窗仍然可见**（不再被藏起来）`,
+        guard.outerVisible && guard.modalVisibility === 'visible',
+        `表单弹窗有高度 ${guard.outerVisible} / visibility ${guard.modalVisibility}`
       )
       check(
-        `${p.name}：覆盖层不吃鼠标，选取时地图仍可操作`,
-        pk.stagePE === 'none' && (/canvas/i.test(String(pk.hitMap)) || /cesium|s3dm/i.test(String(pk.hitMap))),
-        `覆盖层 ${pk.stagePE}；(300,200) 命中 ${pk.hitMap}`
-      )
-      check(
-        `${p.name}：两个按钮落在**顶栏之下**，不压导航`,
-        pk.actions && pk.headerBottom !== null && pk.actions.top >= pk.headerBottom,
-        `按钮顶 ${r1(pk.actions && pk.actions.top)} ≥ 顶栏底 ${r1(pk.headerBottom)}`
+        `${p.name}：弹窗外的地图**仍可操作**（没有整屏覆盖层吃鼠标）`,
+        (/canvas/i.test(String(guard.hitMap)) || /cesium|s3dm/i.test(String(guard.hitMap))),
+        `(300,200) 命中 ${guard.hitMap}`
       )
 
-      // Esc = 取消绘制，且**不能**把填了一半的表单一起关掉
-      await cdp.pressKey('Escape', 'Escape', 27)
-      await sleep(900)
-      const afterEsc = JSON.parse(await cdp.evalJs(`JSON.stringify({
-        stage: !!document.querySelector('.pick-stage'),
-        dialog: !!window.__vm.dialog(),
-        pickingFlag: window.__vm.pickingFlag()
-      })`))
-      check(
-        `${p.name}：Esc 只退出选取，弹窗（表单）仍在`,
-        !afterEsc.stage && afterEsc.dialog,
-        `覆盖层 ${afterEsc.stage} / 弹窗 ${afterEsc.dialog}`
-      )
+      /* ---- ② 真有编号 → 组管理弹窗叠在表单上 ---- */
+      if (p.codeInputSel) {
+        const filled = await cdp.evalJs(`(() => {
+          const el = document.querySelector(${JSON.stringify(p.codeInputSel)})
+          if (!el) return false
+          el.value = 'TEST-VERIFY-MODAL-0001'
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+          return true
+        })()`)
+        check(`${p.name}：能填上编号（组管理弹窗的前置条件）`, filled)
+        await sleep(400)
+        await cdp.evalJs(pkClick)
+        for (let i = 0; i < 20; i++) {
+          await sleep(300)
+          if (await cdp.evalJs(`!!document.querySelector('.feature-group')`)) break
+        }
+        await sleep(700)
+        const pk = JSON.parse(await cdp.evalJs(pkState))
+        check(
+          `${p.name}：打开的是「管理图形」弹窗（叠在表单上）`,
+          pk.group && /管理.*图形/.test(String(pk.groupTitle)) && pk.dialogCount === 2,
+          `标题「${pk.groupTitle}」/ 弹窗层数 ${pk.dialogCount}`
+        )
+        check(
+          `${p.name}：图形管理弹窗落在**顶栏之下**，不压导航`,
+          !!pk.innerBox && pk.headerBottom !== null && pk.innerBox.top >= pk.headerBottom,
+          `弹窗顶 ${r1(pk.innerBox && pk.innerBox.top)} ≥ 顶栏底 ${r1(pk.headerBottom)}`
+        )
 
-      // 再进一次，用「完成绘制」退出
-      await cdp.evalJs(`(() => { const b = document.querySelector(${JSON.stringify(p.pickBtnSel)}); if (b) b.click(); return !!b })()`)
-      await sleep(1500)
-      const doneClicked = await cdp.evalJs(`(() => {
-        const b = Array.prototype.slice.call(document.querySelectorAll('.pick-stage button'))
-          .find(function (x) { return window.__vm.norm(x.textContent) === '完成绘制' })
-        if (!b) return false
-        b.click()
-        return true
-      })()`)
-      await sleep(900)
-      const afterDone = JSON.parse(await cdp.evalJs(`JSON.stringify({
-        stage: !!document.querySelector('.pick-stage'),
-        dialog: !!window.__vm.dialog()
-      })`))
-      check(
-        `${p.name}：「完成绘制」回到表单（弹窗不关）`,
-        doneClicked && !afterDone.stage && afterDone.dialog,
-        `覆盖层 ${afterDone.stage} / 弹窗 ${afterDone.dialog}`
-      )
+        // Esc 只关上一层：图形管理弹窗关掉，填了一半的表单必须还在
+        await cdp.pressKey('Escape', 'Escape', 27)
+        await sleep(900)
+        const afterEsc = JSON.parse(await cdp.evalJs(`JSON.stringify({
+          group: !!document.querySelector('.feature-group'),
+          dialogs: document.querySelectorAll('.screen-modal__dialog').length
+        })`))
+        check(
+          `${p.name}：Esc 只关闭图形管理弹窗，表单仍在`,
+          !afterEsc.group && afterEsc.dialogs === 1,
+          `图形弹窗 ${afterEsc.group} / 剩余弹窗 ${afterEsc.dialogs}`
+        )
+
+        // 再进一次，用「完成」退出（落库仍由表单保存统一做）
+        await cdp.evalJs(pkClick)
+        for (let i = 0; i < 20; i++) {
+          await sleep(300)
+          if (await cdp.evalJs(`!!document.querySelector('.feature-group')`)) break
+        }
+        await sleep(500)
+        const doneClicked = await cdp.evalJs(`(() => {
+          const inner = document.querySelector('.feature-group')
+          if (!inner) return false
+          const dialog = inner.closest('.screen-modal__dialog') || inner
+          const b = Array.prototype.slice.call(dialog.querySelectorAll('button'))
+            .find(function (x) { return window.__vm.norm(x.textContent) === '完成' })
+          if (!b) return false
+          b.click()
+          return true
+        })()`)
+        await sleep(900)
+        const afterDone = JSON.parse(await cdp.evalJs(`JSON.stringify({
+          group: !!document.querySelector('.feature-group'),
+          dialogs: document.querySelectorAll('.screen-modal__dialog').length
+        })`))
+        check(
+          `${p.name}：「完成」回到表单（表单不关）`,
+          doneClicked && !afterDone.group && afterDone.dialogs === 1,
+          `点中 ${doneClicked} / 图形弹窗 ${afterDone.group} / 剩余弹窗 ${afterDone.dialogs}`
+        )
+      } else {
+        console.log('   （配套表单新增态没有唯一编号，组管理弹窗的叠加 / Esc 断言只在宗地表单上做）')
+      }
 
       // 关闭弹窗，准备下一个面板
       await cdp.evalJs(`(() => {
@@ -573,7 +636,7 @@ function check (name, ok, detail) {
       await sleep(900)
       check(
         `${p.name}：关闭后弹窗卸载干净`,
-        !(await cdp.evalJs(`!!window.__vm.dialog()`))
+        !(await cdp.evalJs(`!!(window.__vm && window.__vm.dialog())`))
       )
       console.log('')
     }
@@ -602,7 +665,7 @@ function check (name, ok, detail) {
     check('回归：二次确认里的「确定」可点（浮层没被改动影响）', confirmed)
     for (let i = 0; i < 20; i++) {
       await sleep(300)
-      if (await cdp.evalJs(`!!window.__vm.dialog()`)) break
+      if (await cdp.evalJs(`!!(window.__vm && window.__vm.dialog())`)) break
     }
     await sleep(700)
     const reg = JSON.parse(await cdp.evalJs(`(() => {
@@ -638,7 +701,7 @@ function check (name, ok, detail) {
       if (b) b.click(); return !!b
     })()`)
     await sleep(700)
-    check('回归：确认框取消后弹窗卸载干净', !(await cdp.evalJs(`!!window.__vm.dialog()`)))
+    check('回归：确认框取消后弹窗卸载干净', !(await cdp.evalJs(`!!(window.__vm && window.__vm.dialog())`)))
     console.log('')
 
     const failed = results.filter((r) => !r.ok)
@@ -648,7 +711,7 @@ function check (name, ok, detail) {
       console.log('失败项：\n  - ' + failed.map((f) => f.name).join('\n  - '))
       process.exitCode = 1
     } else {
-      console.log('✓ 全部通过：2 列 + 高度减半 + 可拖动 + 背景不变暗且地图可操作 + 选取不再隐藏页面（两个面板一致）')
+      console.log('✓ 全部通过：2 列 + 1180 × 70vh + 可拖动 + 背景不变暗且地图可操作 + 选取不再隐藏页面（两个面板一致）')
     }
   } catch (e) {
     console.log('✗ 脚本异常：' + (e && e.message))

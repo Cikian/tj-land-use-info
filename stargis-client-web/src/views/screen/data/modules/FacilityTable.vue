@@ -4,22 +4,19 @@
     --------------------------------
     纯展示组件：不发任何请求，全部交互通过事件抛给父组件。
 
-    ★ 「配套流程」列有两种数据来源，组件都能吃：
-      · 从 `/byLand` 来的行带 `stageStatus`（数组，每个阶段一条汇总）——
-        这是「按宗地看配套」时的权威口径，直接渲染；
-      · 从 `/facilityAdmin/list` 来的行**没有** stageStatus（后端分页返回的是
-        Facility 实体本身）—— 此时该列显示「未加载」，而不是假装成「未开启」。
-        假装的后患是：用户会以为这六个阶段真的没开始，而实际只是没查。
-      需要阶段汇总时点「配套流程」进入 ProcessTreePanel，那里是权威视图。
+    ★ 2026-11-24 收口：列表不再承担「六大阶段」与环节进度入口
+      · 「六大阶段」列已删除：一格里塞六个色块读不出内容（阶段名靠截断、
+        进度靠悬浮），却把行高压成两行；「六个阶段各到哪一步」现在只在
+        详情 →「配套流程」页签里看（那是 29 环节的权威视图，能改能存）。
+      · 行内只留「详情」这一个查看入口：操作记录、附件、配套流程都收进
+        详情弹窗的对应页签。同一条数据开三个入口，用户得先判断点哪个，
+        而其中两个最终都只是打开同一个详情页。
 
     事件：
       byLand    (row)  只看该宗地下的全部配套
-      detail    (row)  详情
-      process   (row)  打开配套流程树
-      history   (row)  操作记录
+      detail    (row)  详情（唯一查看入口：基本信息 / 配套流程 / 附件 / 操作记录）
       edit      (row)  编辑
       remove    (row)  移除
-      attachments (row) 该配套的附件（跳到附件面板）
       locate   (row)  整行双击：地图定位并高亮该配套地块（父组件负责有图形的判断与飞行）
   -->
   <screen-data-table
@@ -27,7 +24,7 @@
     :data="dataSource"
     :loading="loading"
     row-key="id"
-    :min-width="1200"
+    :min-width="1100"
     :selectable="selectable"
     :selected-keys="selectedRowKeys"
     :empty-text="emptyText"
@@ -83,29 +80,10 @@
         </span>
       </span>
     </template>
-    <template #stageStatus="{ row }">
-      <facility-stage-chips
-        v-if="(row.stageStatus || []).length"
-        :stages="row.stageStatus"
-        compact
-      />
-      <button
-        v-else
-        type="button"
-        class="facility-table__link is-muted"
-        title="该视图按分页返回，不含阶段汇总；点这里打开权威的配套流程视图"
-        @click.stop="$emit('process', row)"
-      >
-        点开配套流程
-      </button>
-    </template>
-
     <template #action="{ row }">
       <span class="facility-table__actions">
-        <button type="button" class="facility-table__link" @click.stop="$emit('process', row)">配套流程</button>
+        <!-- 唯一的查看入口：配套流程 / 附件 / 操作记录都在详情里，见组件头注释 -->
         <button type="button" class="facility-table__link" @click.stop="$emit('detail', row)">详情</button>
-        <button type="button" class="facility-table__link" @click.stop="$emit('history', row)">操作记录</button>
-        <button type="button" class="facility-table__link" @click.stop="$emit('attachments', row)">附件</button>
 
         <template v-if="!readonly">
           <button type="button" class="facility-table__link" @click.stop="$emit('edit', row)">编辑</button>
@@ -126,7 +104,6 @@
 
 <script>
 import { ScreenDataTable, ScreenTag, ScreenIcon, ScreenPopconfirm } from '@/components/screen'
-import FacilityStageChips from './FacilityStageChips.vue'
 
 export default {
   name: 'FacilityTable',
@@ -134,8 +111,7 @@ export default {
     ScreenDataTable,
     ScreenTag,
     ScreenIcon,
-    ScreenPopconfirm,
-    FacilityStageChips
+    ScreenPopconfirm
   },
   props: {
     dataSource: { type: Array, default: () => [] },
@@ -151,21 +127,15 @@ export default {
       /**
        * ★ 列宽之和应 ≤ min-width，否则表格一定出现横向滚动条。
        *
-       * 原来的分配是 190+250+100+110+190+130+200+380+260 = 1810，而 min-width 是 1780 ——
-       * 在 1920 宽的屏幕上内容区只有约 1560px（要减掉左侧导航与内边距），
-       * 于是**必然**横向滚动，而且滚出来的是一大片空白（列宽之和已超过实际内容需要）。
-       *
        * 定宽原则（按「这一列要放什么」定，不是按标题长度）：
        *   · 编号 / 区划 / 分类：短编号或固定几个字，够显示即可；
        *   · 名称 / 建设单位：长文本，本来就有 ellipsis + title 兜底，宁可窄一点；
-       *   · 六大阶段：6 个阶段名等分，最长的是「立项用地规划许可阶段」（10 字），
-       *     FacilityStageChips 内部是 flex + ellipsis，窄了会截断并靠 title 悬浮查看；
        *   · 操作：**不设 width**，让浏览器把剩余宽度全给它 ——
-       *     它是唯一「不能靠 ellipsis」的列（六个链接必须放得下），
+       *     它是唯一「不能靠 ellipsis」的列（几个链接必须放得下），
        *     而「剩余多少」只有布局时才知道，写死反而容易要么溢出、要么留白。
        *
-       * ★ 因此 min-width 只需覆盖**有明确宽度的那 8 列**：
-       *   210+230+80+120+150+130+180+100 = 1200。
+       * ★ 因此 min-width 只需覆盖**有明确宽度的那 7 列**：
+       *   210+230+80+120+150+130+180 = 1100。
        *   剩余宽度由「操作」列吸收；表格 `width:100%` 会填满容器，不会留白。
        */
       columns: [
@@ -176,8 +146,7 @@ export default {
         { key: 'jsdw', title: '建设单位', width: 150, type: 'slot' },
         { key: 'tzgs', title: '投资估算(万元)', width: 130, type: 'slot', align: 'center' },
         { key: 'percent', title: '整体进度', width: 180, type: 'slot', align: 'center' },
-        { key: 'stageStatus', title: '六大阶段', width: 100, type: 'slot', align: 'center' },
-        // ★ 不设 width：剩余宽度全部给操作列，保证六个链接一行放得下
+        // ★ 不设 width：剩余宽度全部给操作列，保证链接一行放得下
         { key: 'action', title: '操作', type: 'slot', align: 'center' }
       ]
     }
@@ -297,7 +266,7 @@ export default {
     display: inline-flex;
     align-items: center;
     gap: var(--screen-space-2);
-    // 六个操作在窄列里一定会换行，允许换行避免横向溢出
+    // 三个操作在窄列里仍可能换行，允许换行避免横向溢出
     flex-wrap: wrap;
     justify-content: center;
   }

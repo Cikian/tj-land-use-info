@@ -3,7 +3,15 @@
     ProcessTreePanel 29 环节进度树（六大阶段 × 各事项）
     --------------------------------
     这是「配套地块数据录入」的**旗舰视图**，也是后端 `FacilityProcessTreeVO`
-    唯一的专用界面。整屏弹窗打开，因为 6 个阶段 × 各事项的表格需要横向空间。
+    唯一的专用界面。
+
+    ★ 2026-11-24：不再是整屏弹窗，改为**嵌在配套详情弹窗的「配套流程」页签里**。
+      原因：配套流程本来就是「这条配套做到哪一步」，与基本信息、附件、操作记录
+      是同一个对象的四个侧面 —— 单独一个弹窗意味着用户在列表上要分辨「详情」
+      和「配套流程」该点哪个，而两者打开的都是同一条配套。
+      版面没变宽（详情弹窗本身就是 fullscreen），所以 6 个阶段 × 各事项的表格
+      仍然放得下；原来挂在弹窗标题栏的「整屏保存 / 刷新 / 待保存标签」下移成
+      组件自己的工具条（见模板里的 __toolbar），页签里同样能存、能刷。
 
     三段式版面：
       ① 顶部指标条 —— 环节总数 / 已完成 / 进行中 / 不涉及 / 未开启 / 已填报 / 逾期
@@ -15,7 +23,7 @@
                     两个视图的**表格内编辑能力完全一致**（状态 / 备注就地改，
                     共用同一份 pending 与同一次「整屏保存」）——只给其中一个留内联编辑，
                     用户会以为另一张表是只读的。
-      ③ 底部整屏保存 —— 收集本地脏项，一次 POST /process/saveBatch，
+      ③ 工具条整屏保存 —— 收集本地脏项，一次 POST /process/saveBatch，
                         并逐条展示失败明细。
 
     ★★ 为什么「整屏保存」是必要的而不是锦上添花：
@@ -51,19 +59,20 @@
       也已经生效了。
 
     公开方法：
-      open(facility)  facility = { id, ptxmmc, crzdbh }（列表行或详情对象）
+      open(facility)   facility = { id, ptxmmc, crzdbh }（列表行或详情对象）。
+                       由详情弹窗在「配套流程」页签首次激活时调用（懒加载，不激活不发请求）。
+      pendingCount()   还有多少环节的改动没保存。详情弹窗关闭前用它决定是否要提醒。
     事件：
       changed  进度被改动且已落库（整屏保存成功 / 单条撤回成功），父组件据此刷新列表
   -->
-  <screen-modal
-    :visible.sync="visible"
-    :title="title"
-    fullscreen
-    :show-footer="false"
-    :body-max-height="null"
-    @cancel="handleClose"
-  >
-    <template #head-extra>
+  <div class="process-tree">
+    <!--
+      工具条：待保存状态 + 整屏保存 + 刷新。
+      ★ 这三件事原先在整屏弹窗的标题栏里（head-extra）。2026-11-24 起本组件嵌进
+        详情弹窗的「配套流程」页签，没有自己的标题栏，所以它们改由组件自己承担——
+        页签里同样要能存、能刷，否则「改完没法保存」。
+    -->
+    <div class="process-tree__toolbar">
       <div class="process-tree__tags">
         <screen-tag v-if="tree && tree.crzdbh" tone="muted" size="sm">{{ tree.crzdbh }}</screen-tag>
         <screen-tag v-if="dirtyCount" tone="warning" size="sm">待保存 {{ dirtyCount }} 个环节</screen-tag>
@@ -82,193 +91,84 @@
       </screen-button>
 
       <screen-button size="sm" icon="reload" :loading="loading" @click="loadTree">刷新</screen-button>
-    </template>
-
-    <div class="process-tree">
-      <!-- ================= ① 顶部指标条 ================= -->
-      <div class="process-tree__summary">
-        <div class="process-tree__progress">
-          <div class="process-tree__progress-head">
-            <span class="process-tree__progress-value">{{ overallPercent }}%</span>
-            <!-- 「未保存预览」是清单 P2-03 的硬要求：本地推演与服务端权威值必须一眼可分 -->
-            <screen-tag v-if="previewing" tone="warning" size="sm">未保存预览</screen-tag>
-            <screen-tag v-else-if="dirtyCount" tone="danger" size="sm">已恢复服务端进度</screen-tag>
-          </div>
-          <span class="process-tree__progress-label">整体完成度（已剔除「不涉及」）</span>
-          <span class="process-tree__progress-track" aria-hidden="true">
-            <i class="process-tree__progress-fill" :style="{ width: overallPercent + '%' }" />
-          </span>
+    </div>
+    <!-- ================= ① 顶部指标条 ================= -->
+    <div class="process-tree__summary">
+      <div class="process-tree__progress">
+        <div class="process-tree__progress-head">
+          <span class="process-tree__progress-value">{{ overallPercent }}%</span>
+          <!-- 「未保存预览」是清单 P2-03 的硬要求：本地推演与服务端权威值必须一眼可分 -->
+          <screen-tag v-if="previewing" tone="warning" size="sm">未保存预览</screen-tag>
+          <screen-tag v-else-if="dirtyCount" tone="danger" size="sm">已恢复服务端进度</screen-tag>
         </div>
-
-        <ul class="process-tree__stats">
-          <li v-for="item in summaries" :key="item.key" class="process-tree__stat">
-            <span class="process-tree__stat-label">{{ item.label }}</span>
-            <b class="process-tree__stat-value" :class="item.tone ? `is-${item.tone}` : ''">{{ item.value }}</b>
-            <span class="process-tree__stat-unit">{{ item.unit }}</span>
-          </li>
-        </ul>
+        <span class="process-tree__progress-label">整体完成度（已剔除「不涉及」）</span>
+        <span class="process-tree__progress-track" aria-hidden="true">
+          <i class="process-tree__progress-fill" :style="{ width: overallPercent + '%' }" />
+        </span>
       </div>
 
-      <screen-tabs v-model="view" :tabs="viewTabs" class="process-tree__views" />
+      <ul class="process-tree__stats">
+        <li v-for="item in summaries" :key="item.key" class="process-tree__stat">
+          <span class="process-tree__stat-label">{{ item.label }}</span>
+          <b class="process-tree__stat-value" :class="item.tone ? `is-${item.tone}` : ''">{{ item.value }}</b>
+          <span class="process-tree__stat-unit">{{ item.unit }}</span>
+        </li>
+      </ul>
+    </div>
 
-      <!-- ================= ② 按阶段（树） ================= -->
-      <div v-show="view === 'tree'" class="process-tree__pane">
-        <screen-loading
-          class="process-tree__content"
-          :loading="loading"
-          text="正在加载六大阶段进度…"
-          :overlay="false"
+    <screen-tabs v-model="view" :tabs="viewTabs" class="process-tree__views" />
+
+    <!-- ================= ② 按阶段（树） ================= -->
+    <div v-show="view === 'tree'" class="process-tree__pane">
+      <screen-loading
+        class="process-tree__content"
+        :loading="loading"
+        text="正在加载六大阶段进度…"
+        :overlay="false"
+      >
+        <screen-panel
+          v-for="stageView in stageViews"
+          :key="stageView.stage.stageId"
+          class="process-tree__stage"
+          collapsible
+          :title="stageView.stage.stageName"
+          :sub-title="stageView.subTitle"
         >
-          <screen-panel
-            v-for="stageView in stageViews"
-            :key="stageView.stage.stageId"
-            class="process-tree__stage"
-            collapsible
-            :title="stageView.stage.stageName"
-            :sub-title="stageView.subTitle"
-          >
-            <template #extra>
-              <screen-tag :tone="stageStatusTone(stageView.status)" size="sm">{{ stageView.status }}</screen-tag>
-              <span class="process-tree__stage-percent">{{ stageView.percent }}%</span>
-              <!-- 只有本阶段有本地未保存改动时才标「未保存预览」：没改过的阶段用后端值 -->
-              <screen-tag v-if="stageView.preview" tone="warning" size="sm">未保存预览</screen-tag>
-              <span
-                v-if="stageView.overdueCount"
-                class="process-tree__stage-overdue"
-                :title="`本阶段有 ${stageView.overdueCount} 个环节逾期`"
-              >
-                <screen-icon name="alert-triangle" :size="12" />
-                逾期 {{ stageView.overdueCount }}
-              </span>
-            </template>
-
-            <screen-data-table
-              :columns="itemColumns"
-              :data="stageView.rows"
-              row-key="lcId"
-              :min-width="1400"
-              :animated="false"
-              empty-text="该阶段下没有配置事项"
+          <template #extra>
+            <screen-tag :tone="stageStatusTone(stageView.status)" size="sm">{{ stageView.status }}</screen-tag>
+            <span class="process-tree__stage-percent">{{ stageView.percent }}%</span>
+            <!-- 只有本阶段有本地未保存改动时才标「未保存预览」：没改过的阶段用后端值 -->
+            <screen-tag v-if="stageView.preview" tone="warning" size="sm">未保存预览</screen-tag>
+            <span
+              v-if="stageView.overdueCount"
+              class="process-tree__stage-overdue"
+              :title="`本阶段有 ${stageView.overdueCount} 个环节逾期`"
             >
-              <template #lcName="{ row }">
-                <span class="process-tree__lc-name" :title="row.lcName || ''">
-                  {{ row.lcName }}
-                </span>
-                <span class="process-tree__lc-path">{{ row.path || '' }}</span>
-              </template>
-
-              <template #zgbm="{ row }">
-                <span class="process-tree__ellipsis" :title="row.zgbm || ''">{{ row.zgbm || '—' }}</span>
-              </template>
-
-              <!-- 状态：表格内直接改（选项仍是字典 land_process_status 的四个值） -->
-              <template #lcqk="{ row }">
-                <screen-select
-                  :value="row.lcqk || '未开启'"
-                  :options="statusOptions"
-                  size="sm"
-                  :clearable="false"
-                  :aria-label="`${row.lcName} 的环节情况`"
-                  @change="handleInlineStatus(row, $event)"
-                />
-              </template>
-
-              <!--
-                备注：写的是 `jtwt`（具体问题）—— 后端这一行没有独立备注列，
-                它是唯一的自由文本，理由见组件头注释。
-                「未填报」原先挂在状态格里，现在由占位符承担：少一行文字，信息不丢。
-              -->
-              <template #jtwt="{ row }">
-                <screen-input
-                  :value="row.jtwt || ''"
-                  size="sm"
-                  :maxlength="1000"
-                  :placeholder="row.filled ? '可留空' : '未填报'"
-                  :aria-label="`${row.lcName} 的备注`"
-                  @change="handleInlineRemark(row, $event)"
-                />
-              </template>
-
-              <template #dates="{ row }">
-                <span class="process-tree__dates">
-                  <span class="process-tree__date" :title="'开始时间'">{{ row.lckssj || '—' }}</span>
-                  <span class="process-tree__date is-sub" :title="'预计结束时间'">
-                    预计 {{ row.yjjssj || '—' }}
-                  </span>
-                  <span class="process-tree__date is-sub" :title="'实际结束时间'">
-                    实际 {{ row.lcjssj || '—' }}
-                  </span>
-                </span>
-              </template>
-
-              <template #overdue="{ row }">
-                <span v-if="row.overdue" class="process-tree__overdue" :title="`逾期 ${row.overdueDays || 0} 天`">
-                  <screen-icon name="alert-triangle" :size="12" />
-                  逾期 {{ row.overdueDays || 0 }} 天
-                </span>
-                <span v-else class="process-tree__mute">—</span>
-              </template>
-
-              <template #attachmentCount="{ row }">
-                <span class="process-tree__num">{{ row.attachmentCount || 0 }}</span>
-              </template>
-
-              <template #action="{ row }">
-                <span class="process-tree__actions">
-                  <!-- 日期、问题类型、录入人等字段仍走弹窗：表格里放不下，也不该挤在 29 行里 -->
-                  <button
-                    type="button"
-                    class="process-tree__link"
-                    @click.stop="handleEditItem(row, stageView.stage)"
-                  >
-                    {{ row.filled ? '编辑' : '录入' }}
-                  </button>
-                  <span v-if="isDirty(row.lcId)" class="process-tree__dirty">已改</span>
-                </span>
-              </template>
-            </screen-data-table>
-          </screen-panel>
-        </screen-loading>
-      </div>
-
-      <!-- ================= ②b 平铺表格 ================= -->
-      <div v-show="view === 'flat'" class="process-tree__pane">
-        <section class="process-tree__block">
-          <h4 class="process-tree__block-title">
-            全部环节（平铺）
-            <span class="process-tree__block-sub">
-              共 {{ flatRows.length }} 条 · 按阶段顺序排列 · 数据来自 /processList
+              <screen-icon name="alert-triangle" :size="12" />
+              逾期 {{ stageView.overdueCount }}
             </span>
-          </h4>
+          </template>
 
           <screen-data-table
-            :columns="flatColumns"
-            :data="flatViewRows"
-            :loading="flatLoading"
+            :columns="itemColumns"
+            :data="stageView.rows"
             row-key="lcId"
-            :min-width="1600"
+            :min-width="1400"
             :animated="false"
-            empty-text="暂无环节配置"
+            empty-text="该阶段下没有配置事项"
           >
-            <template #stageName="{ row }">
-              <span class="process-tree__ellipsis" :title="row.stageName || ''">{{ row.stageName || '—' }}</span>
-              <span class="process-tree__lc-path">{{ row.stagePercent || 0 }}%</span>
-            </template>
-
             <template #lcName="{ row }">
-              <span class="process-tree__lc-name" :title="row.lcName || ''">{{ row.lcName }}</span>
+              <span class="process-tree__lc-name" :title="row.lcName || ''">
+                {{ row.lcName }}
+              </span>
+              <span class="process-tree__lc-path">{{ row.path || '' }}</span>
             </template>
 
             <template #zgbm="{ row }">
               <span class="process-tree__ellipsis" :title="row.zgbm || ''">{{ row.zgbm || '—' }}</span>
             </template>
 
-            <!--
-              平铺视图与「按阶段」树视图**同一套内联编辑**（P2-03）：
-              状态 / 备注都能直接在格子里改，改动进同一份 pending，
-              由同一个「整屏保存（N）」提交。两个视图行为不一致时，
-              用户会以为平铺那张表是只读的。
-            -->
+            <!-- 状态：表格内直接改（选项仍是字典 land_process_status 的四个值） -->
             <template #lcqk="{ row }">
               <screen-select
                 :value="row.lcqk || '未开启'"
@@ -280,7 +180,11 @@
               />
             </template>
 
-            <!-- 备注写的是 `jtwt`（具体问题），与树视图、环节弹窗同一个字段 -->
+            <!--
+              备注：写的是 `jtwt`（具体问题）—— 后端这一行没有独立备注列，
+              它是唯一的自由文本，理由见组件头注释。
+              「未填报」原先挂在状态格里，现在由占位符承担：少一行文字，信息不丢。
+            -->
             <template #jtwt="{ row }">
               <screen-input
                 :value="row.jtwt || ''"
@@ -294,46 +198,147 @@
 
             <template #dates="{ row }">
               <span class="process-tree__dates">
-                <span class="process-tree__date">{{ row.lckssj || '—' }}</span>
-                <span class="process-tree__date is-sub">预计 {{ row.yjjssj || '—' }}</span>
-                <span class="process-tree__date is-sub">实际 {{ row.lcjssj || '—' }}</span>
+                <span class="process-tree__date" :title="'开始时间'">{{ row.lckssj || '—' }}</span>
+                <span class="process-tree__date is-sub" :title="'预计结束时间'">
+                  预计 {{ row.yjjssj || '—' }}
+                </span>
+                <span class="process-tree__date is-sub" :title="'实际结束时间'">
+                  实际 {{ row.lcjssj || '—' }}
+                </span>
               </span>
             </template>
 
             <template #overdue="{ row }">
-              <span v-if="row.overdue" class="process-tree__overdue">
+              <span v-if="row.overdue" class="process-tree__overdue" :title="`逾期 ${row.overdueDays || 0} 天`">
                 <screen-icon name="alert-triangle" :size="12" />
                 逾期 {{ row.overdueDays || 0 }} 天
               </span>
               <span v-else class="process-tree__mute">—</span>
             </template>
 
+            <template #attachmentCount="{ row }">
+              <span class="process-tree__num">{{ row.attachmentCount || 0 }}</span>
+            </template>
+
             <template #action="{ row }">
               <span class="process-tree__actions">
-                <!-- 日期 / 问题类型 / 录入人等表格里放不下的字段仍走弹窗 -->
-                <button type="button" class="process-tree__link" @click.stop="handleEditFlat(row)">
+                <!-- 日期、问题类型、录入人等字段仍走弹窗：表格里放不下，也不该挤在 29 行里 -->
+                <button
+                  type="button"
+                  class="process-tree__link"
+                  @click.stop="handleEditItem(row, stageView.stage)"
+                >
                   {{ row.filled ? '编辑' : '录入' }}
                 </button>
                 <span v-if="isDirty(row.lcId)" class="process-tree__dirty">已改</span>
               </span>
             </template>
           </screen-data-table>
-        </section>
-      </div>
-
-      <process-item-modal
-        v-if="itemVisible"
-        ref="itemModal"
-        @saved="handleItemSaved"
-        @withdrawn="handleItemWithdrawn"
-      />
+        </screen-panel>
+      </screen-loading>
     </div>
-  </screen-modal>
+
+    <!-- ================= ②b 平铺表格 ================= -->
+    <div v-show="view === 'flat'" class="process-tree__pane">
+      <section class="process-tree__block">
+        <h4 class="process-tree__block-title">
+          全部环节（平铺）
+          <span class="process-tree__block-sub">
+            共 {{ flatRows.length }} 条 · 按阶段顺序排列 · 数据来自 /processList
+          </span>
+        </h4>
+
+        <screen-data-table
+          :columns="flatColumns"
+          :data="flatViewRows"
+          :loading="flatLoading"
+          row-key="lcId"
+          :min-width="1600"
+          :animated="false"
+          empty-text="暂无环节配置"
+        >
+          <template #stageName="{ row }">
+            <span class="process-tree__ellipsis" :title="row.stageName || ''">{{ row.stageName || '—' }}</span>
+            <span class="process-tree__lc-path">{{ row.stagePercent || 0 }}%</span>
+          </template>
+
+          <template #lcName="{ row }">
+            <span class="process-tree__lc-name" :title="row.lcName || ''">{{ row.lcName }}</span>
+          </template>
+
+          <template #zgbm="{ row }">
+            <span class="process-tree__ellipsis" :title="row.zgbm || ''">{{ row.zgbm || '—' }}</span>
+          </template>
+
+          <!--
+            平铺视图与「按阶段」树视图**同一套内联编辑**（P2-03）：
+            状态 / 备注都能直接在格子里改，改动进同一份 pending，
+            由同一个「整屏保存（N）」提交。两个视图行为不一致时，
+            用户会以为平铺那张表是只读的。
+          -->
+          <template #lcqk="{ row }">
+            <screen-select
+              :value="row.lcqk || '未开启'"
+              :options="statusOptions"
+              size="sm"
+              :clearable="false"
+              :aria-label="`${row.lcName} 的环节情况`"
+              @change="handleInlineStatus(row, $event)"
+            />
+          </template>
+
+          <!-- 备注写的是 `jtwt`（具体问题），与树视图、环节弹窗同一个字段 -->
+          <template #jtwt="{ row }">
+            <screen-input
+              :value="row.jtwt || ''"
+              size="sm"
+              :maxlength="1000"
+              :placeholder="row.filled ? '可留空' : '未填报'"
+              :aria-label="`${row.lcName} 的备注`"
+              @change="handleInlineRemark(row, $event)"
+            />
+          </template>
+
+          <template #dates="{ row }">
+            <span class="process-tree__dates">
+              <span class="process-tree__date">{{ row.lckssj || '—' }}</span>
+              <span class="process-tree__date is-sub">预计 {{ row.yjjssj || '—' }}</span>
+              <span class="process-tree__date is-sub">实际 {{ row.lcjssj || '—' }}</span>
+            </span>
+          </template>
+
+          <template #overdue="{ row }">
+            <span v-if="row.overdue" class="process-tree__overdue">
+              <screen-icon name="alert-triangle" :size="12" />
+              逾期 {{ row.overdueDays || 0 }} 天
+            </span>
+            <span v-else class="process-tree__mute">—</span>
+          </template>
+
+          <template #action="{ row }">
+            <span class="process-tree__actions">
+              <!-- 日期 / 问题类型 / 录入人等表格里放不下的字段仍走弹窗 -->
+              <button type="button" class="process-tree__link" @click.stop="handleEditFlat(row)">
+                {{ row.filled ? '编辑' : '录入' }}
+              </button>
+              <span v-if="isDirty(row.lcId)" class="process-tree__dirty">已改</span>
+            </span>
+          </template>
+        </screen-data-table>
+      </section>
+    </div>
+
+    <process-item-modal
+      v-if="itemVisible"
+      ref="itemModal"
+      @saved="handleItemSaved"
+      @withdrawn="handleItemWithdrawn"
+    />
+  </div>
 </template>
 
 <script>
 import {
-  ScreenModal,
   ScreenPanel,
   ScreenTabs,
   ScreenTag,
@@ -353,6 +358,14 @@ import {
 } from '@/api/land/facilityAdmin'
 import { queryLandDictItems } from '@/api/land/landAdmin'
 import { PROCESS_STATUSES, dictDefinitions, stageStatusTone } from '../constants'
+
+/**
+ * 「环节情况」下拉选项的模块级缓存。
+ * ★ 本组件 2026-11-24 起随详情弹窗一起创建 / 销毁（看一次详情的配套流程 = 一个新实例），
+ *   而字典在一次会话里不会变 —— 不缓存就会「每看一次详情打一次字典接口」。
+ *   取值仍与 ProcessItemModal 同源（同一个 land_process_status 字典），不存在漂移。
+ */
+const statusOptionsCache = { list: null }
 
 /**
  * 四个环节情况（与后端 ProcessStatus 枚举逐字一致）。
@@ -446,7 +459,6 @@ function summarizeStatuses (statuses) {
 export default {
   name: 'ProcessTreePanel',
   components: {
-    ScreenModal,
     ScreenPanel,
     ScreenTabs,
     ScreenTag,
@@ -460,7 +472,6 @@ export default {
   },
   data () {
     return {
-      visible: false,
       loading: false,
       saving: false,
       flatLoading: false,
@@ -510,10 +521,6 @@ export default {
     }
   },
   computed: {
-    title () {
-      const name = this.facility.ptxmmc || (this.tree && this.tree.facilityName) || ''
-      return name ? `${name} · 29 环节进度` : '29 环节进度'
-    },
     stages () {
       return (this.tree && this.tree.stages) || []
     },
@@ -626,8 +633,15 @@ export default {
   created () {
     // 表格内状态下拉与环节弹窗共用同一个字典（land_process_status）：
     // 各写一份必然漂移，出现「表格能选、弹窗不能选」这种最难解释的问题。
+    // ★ 取过一次就进模块缓存：本组件现在每次开详情都会新建（见 statusOptionsCache）
+    if (statusOptionsCache.list) {
+      this.statusOptions = statusOptionsCache.list
+      return
+    }
     queryLandDictItems(dictDefinitions()).then((dicts) => {
-      if (dicts && dicts.processStatus) this.statusOptions = dicts.processStatus
+      if (!dicts || !dicts.processStatus) return
+      statusOptionsCache.list = dicts.processStatus
+      this.statusOptions = dicts.processStatus
     })
   },
   methods: {
@@ -635,29 +649,29 @@ export default {
 
     /* ---------------- 对外入口 ---------------- */
 
+    /**
+     * 载入某条配套的环节进度（由详情弹窗在「配套流程」页签首次激活时调用）。
+     * ★ 未保存队列必须清空：上一批没提交的改动不该跟着新配套走，
+     *   否则会把 A 配套的进度写到 B 配套上（后端只认 ptId + lcId）。
+     */
     open (facility) {
       const record = facility || {}
       this.facility = record
-      this.visible = true
       this.view = 'tree'
       this.tree = null
       this.flatRows = []
-      // ★ 关掉再打开必须清空待保存队列：上一批未提交的改动不该跟着新配套走，
-      //   否则会把 A 配套的进度写到 B 配套上（后端只认 ptId + lcId）。
       this.pending = {}
       this.saveFailed = false
       this.loadTree()
     },
 
-    handleClose () {
-      if (this.dirtyCount) {
-        // 有待保存的修改时给一次确认机会，避免手滑关掉白填
-        const confirmed = window.confirm(`还有 ${this.dirtyCount} 个环节的修改没有保存，确定关闭吗？`)
-        if (!confirmed) return
-      }
-      this.visible = false
-      this.pending = {}
-      this.saveFailed = false
+    /**
+     * 还有多少环节的改动没保存。
+     * ★ 本组件没有再「关闭」自己的入口了（它跟着详情弹窗一起消失），
+     *   所以关闭前的确认由详情弹窗发起 —— 它靠这个数字判断要不要拦一下。
+     */
+    pendingCount () {
+      return this.dirtyCount
     },
 
     /* ---------------- 数据 ---------------- */
@@ -987,13 +1001,28 @@ export default {
   display: flex;
   flex-direction: column;
   gap: var(--screen-space-2);
-  height: 100%;
+  /*
+   * 嵌入详情弹窗的页签：本节点是页签容器（flex 列）里唯一的子项，
+   * 用 flex 撑满剩余高度，而不是 height: 100% —— 页签容器的高度由外层
+   * 弹性布局算出来（min-height: 0），百分比高度在那里不稳定。
+   */
+  flex: 1 1 auto;
   min-height: 0;
+
+  /* 工具条：待保存标签贴左，保存 / 刷新贴右（原先在弹窗标题栏里，见组件头注释） */
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--screen-space-2);
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
 
   &__tags {
     display: flex;
     align-items: center;
     gap: 6px;
+    flex: 1 1 auto;
     flex-wrap: wrap;
   }
 

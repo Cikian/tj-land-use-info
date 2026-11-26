@@ -5,7 +5,8 @@
     全屏弹窗 + 四个页签：
       基本信息 —— 53 个字段按 6 组（标识与属性 / 参建单位 / 前期审批与进度 /
                   档案要件（历史，只读）/ 说明 / 录入信息）分组展示
-      配套流程管理 —— 29 环节的**只读摘要** + 打开整屏面板的入口（面板本身不在这里，见下）
+      配套流程 —— 29 环节的**权威视图**（ProcessTreePanel 本体，可改状态与备注、
+                  整屏保存），在本页签内嵌，不再是另开一个整屏弹窗
       附件 —— 该配套的附件列表（按 bizType=facility 查）
       操作记录 —— 字段级变更（走 `/land/data/recycle/history`，
                   这是「按业务对象取操作记录」的唯一入口，与宗地用的
@@ -17,22 +18,24 @@
       实际文件在新系统的统一附件模块里，标志位只是历史口径。
       所以这一组老实标明「历史标志位」，并在旁边给出「看实际文件请翻附件页签」。
 
-    ★ 「配套流程管理」为什么只留入口、不嵌面板（P1-01 回归）：
-      ProcessTreePanel 是整屏弹窗，而本组件的外层 ScreenModal 根节点是 v-if="visible"。
-      把整屏面板塞进详情弹窗里，「先关详情、再开面板」就等于把整棵子树销毁 → 面板跟着消失，
-      表现是「点了配套流程管理没反应（或闪一下）」。
-      所以详情弹窗只 `$emit('open-process', detail)`，由列表页
-      （FacilityEntryPanel 里那**一个**常驻 process-tree-panel）负责真正打开。
+    ★ 「配套流程」为什么改成内嵌（2026-11-24，原先是一个独立的整屏弹窗）：
+      配套流程回答的是「这条配套做到哪一步」，与基本信息、附件、操作记录是同一个
+      对象的四个侧面。挂成另一个弹窗的代价是：列表上要同时摆「详情」和「配套流程」
+      两个入口，用户得先判断点哪个，而两个打开的都是同一条配套。
+      现在详情只上抛一个门，配套流程是它的一页。
+      ★ 能内嵌的前提是 ProcessTreePanel 已经不是弹窗（自身没有 ScreenModal 包裹）：
+        外层 ScreenModal 的对话框是 `v-if="visible"`，如果内嵌进去的还是一个弹窗，
+        「关详情」就会连面板一起销毁（这正是此前 P1-01 回归的成因）。
 
     公开方法：
-      open(record, tab)  按列表行打开；tab 可指定初始页签
+      open(record, tab)  按列表行打开；tab 可指定初始页签（'process' 直接落到配套流程）
     事件：
       edit(detail)          点「编辑」时抛出
       remove(detail)        点「移除」时抛出
-      open-process(detail)  点「配套流程管理」或「流程」页签里的按钮时抛出
+      changed               配套流程里的进度已落库，父页面据此刷新列表
   -->
   <screen-modal
-    :visible.sync="visible"
+    :visible="visible"
     title="配套项目详情"
     fullscreen
     :show-footer="false"
@@ -58,7 +61,7 @@
       </div>
 
       <screen-button size="sm" icon="layers" :disabled="!detail" @click="handleOpenProcess">
-        配套流程管理
+        配套流程
       </screen-button>
       <screen-button size="sm" icon="edit" :disabled="!detail" @click="handleEdit">编辑</screen-button>
       <screen-popconfirm
@@ -142,40 +145,17 @@
         </screen-loading>
       </div>
 
-      <!-- ================= 配套流程管理（只读摘要 + 入口） ================= -->
-      <div v-show="activeTab === 'process'" class="facility-detail__pane">
-        <div class="facility-detail__placeholder">
-          <!--
-            只读摘要：进页签时懒加载一次 /process/tree（不进在这里就不发请求），
-            让用户不打开整屏面板也能知道「这项目 29 个环节做到哪了」。
-            录入仍然只能在 ProcessTreePanel 里做 —— 它需要整屏宽度（6 阶段 × 多个事项）。
-          -->
-          <screen-loading
-            class="facility-detail__process-summary"
-            :loading="processSummaryLoading"
-            text="正在统计环节进度…"
-            :overlay="false"
-          >
-            <screen-descriptions
-              v-if="processSummaryItems.length"
-              variant="flat"
-              allow-wrap
-              :items="processSummaryItems"
-              :columns="2"
-              label-width="120px"
-            />
-            <screen-empty
-              v-else-if="!processSummaryLoading"
-              size="sm"
-              text="还没有环节进度数据"
-              description="29 个环节在流程管理里按阶段录入，录入后这里会显示完成度与逾期数"
-            />
-          </screen-loading>
-
-          <screen-button type="primary" icon="layers" :disabled="!detail" @click="handleOpenProcess">
-            打开配套流程管理
-          </screen-button>
-        </div>
+      <!-- ================= 配套流程（29 环节，权威视图） ================= -->
+      <div v-show="activeTab === 'process'" class="facility-detail__pane facility-detail__pane--fill">
+        <!--
+          ★ 面板只在首次切到本页签时创建 + open()（懒加载）：多数用户只看基本信息，
+            进详情就为 29 个环节打一次 /process/tree、拉一次环节状态字典属于白跑。
+        -->
+        <process-tree-panel
+          v-if="processMounted"
+          ref="processPanel"
+          @changed="handleProcessChanged"
+        />
       </div>
 
       <!-- ================= 附件（按材料类型分组的目录树） ================= -->
@@ -302,13 +282,13 @@ import {
   ScreenDescriptions,
   ScreenButton,
   ScreenLoading,
-  ScreenEmpty,
   ScreenPopconfirm
 } from '@/components/screen'
 import { toast } from '@/components/screen/toast'
 import AttachmentTreeView from './AttachmentTreeView.vue'
 import AttachmentPreviewModal from './AttachmentPreviewModal.vue'
-import { queryFacilityAdminById, queryProcessTree } from '@/api/land/facilityAdmin'
+import ProcessTreePanel from './ProcessTreePanel.vue'
+import { queryFacilityAdminById } from '@/api/land/facilityAdmin'
 import { queryAttachmentTree, buildAttachmentDownloadUrl } from '@/api/land/attachment'
 import { queryChangeHistory } from '@/api/land/dataRecycle'
 import {
@@ -344,10 +324,10 @@ export default {
     ScreenDescriptions,
     ScreenButton,
     ScreenLoading,
-    ScreenEmpty,
     ScreenPopconfirm,
     AttachmentTreeView,
-    AttachmentPreviewModal
+    AttachmentPreviewModal,
+    ProcessTreePanel
   },
   data () {
     return {
@@ -361,14 +341,18 @@ export default {
       attachmentTree: { groups: [] },
       history: [],
       detailVisible: false,
-      /** 「流程」页签的只读摘要（/process/tree 的顶层计数，进页签才懒加载） */
-      processSummary: null,
-      processSummaryLoading: false,
+      /**
+       * 「配套流程」页签的面板是否已创建 / 是否已经载入过当前配套。
+       * 两个标志合起来实现懒加载 + 「同一配套只加载一次」：
+       *   processMounted 决定面板要不要挂出来，processLoaded 决定要不要再 open() 一次。
+       */
+      processMounted: false,
+      processLoaded: false,
       detailTitle: '字段变更明细',
       activeDetails: [],
       tabs: [
         { key: 'base', label: '基本信息' },
-        { key: 'process', label: '配套流程管理' },
+        { key: 'process', label: '配套流程' },
         { key: 'files', label: '附件' },
         { key: 'history', label: '操作记录' }
       ],
@@ -482,36 +466,16 @@ export default {
     attachmentSizeText () {
       const total = Number(this.attachmentTree.totalSize || 0)
       return formatSize(total)
-    },
-    /**
-     * 「流程」页签的只读摘要。
-     * ★ 只取 /process/tree 顶层的权威计数，不在前端重算完成度 ——
-     *   阶段加权口径在后端，前端再算一遍会在后端改口径时静默分叉。
-     */
-    processSummaryItems () {
-      const data = this.processSummary
-      if (!data) return []
-      const total = Number(data.totalItems || 0)
-      const finished = Number(data.finishedItems || 0)
-      const running = Number(data.runningItems || 0)
-      return [
-        { key: 'percent', label: '整体完成度', value: `${Number(data.percent || 0)}%`, tone: 'accent' },
-        { key: 'total', label: '环节总数', value: `${total} 个`, tone: 'number' },
-        { key: 'finished', label: '已完成', value: `${finished} 个`, tone: 'number' },
-        { key: 'running', label: '进行中', value: `${running} 个`, tone: 'number' },
-        { key: 'filled', label: '已填报', value: `${Number(data.filledItems || 0)} 个`, tone: 'number' },
-        { key: 'overdue', label: '逾期环节', value: `${Number(data.overdueItems || 0)} 个`, tone: 'number' }
-      ]
     }
   },
   watch: {
     /**
-     * 切到「流程」页签时才拉摘要。
+     * 切到「配套流程」页签时才挂面板并拉进度。
      * ★ 懒加载的原因：多数用户只看基本信息，进详情就为主信息 + 附件 + 操作记录
-     *   再打一次进度接口属于白跑。
+     *   再打一次进度接口（外加一次环节状态字典）属于白跑。
      */
     activeTab (tab) {
-      if (tab === 'process') this.loadProcessSummary()
+      if (tab === 'process') this.ensureProcessLoaded()
     }
   },
   methods: {
@@ -533,8 +497,9 @@ export default {
       this.attachmentTree = { groups: [] }
       this.history = []
       this.detailVisible = false
-      this.processSummary = null
-      this.processSummaryLoading = false
+      // 换一条配套：配套流程必须重新载入（面板实例可能还留上一条的树与待保存队列）
+      this.processMounted = false
+      this.processLoaded = false
       this.load(record.id)
     },
 
@@ -551,8 +516,8 @@ export default {
           // 附件与操作记录不阻塞主信息展示，并行拉取
           this.loadAttachments(this.detail.id)
           this.loadHistory(this.detail.id)
-          // 直接从「流程」页签打开时（open(record, 'process')）也要补一次只读摘要
-          if (this.activeTab === 'process') this.loadProcessSummary()
+          // 直接从「配套流程」页签打开时（open(record, 'process')）也要补一次载入
+          if (this.activeTab === 'process') this.ensureProcessLoaded()
         })
         .finally(() => {
           this.loading = false
@@ -613,34 +578,32 @@ export default {
 
     /* ---------------- 操作 ---------------- */
 
-    /**
-     * 打开「配套流程管理」。
-     * ★ 只上抛事件，**不在这里关自己、也不挂面板**：
-     *   本组件根节点随 visible 一起销毁，任何「关详情 → 开内嵌面板」的写法都会
-     *   连面板一起销毁（P1-01 回归的成因）。真正的打开动作在列表页
-     *   （FacilityEntryPanel 的 processPanel 是常驻实例），它收到事件后先关详情再开面板。
-     */
+    /** 标题栏的「配套流程」按钮 = 切到配套流程页签（本页签是懒加载的，走同一个入口） */
     handleOpenProcess () {
       if (!this.detail) return
-      this.$emit('open-process', this.detail)
+      this.activeTab = 'process'
+      this.ensureProcessLoaded()
     },
 
-    /** 「流程」页签的只读摘要：懒加载一次，失败保持空态（不打扰主信息） */
-    loadProcessSummary () {
-      const ptId = this.detail && this.detail.id
-      if (!ptId || this.processSummary || this.processSummaryLoading) return
-      this.processSummaryLoading = true
-      queryProcessTree(ptId)
-        .then((res) => {
-          if (!res || !res.success) return
-          this.processSummary = res.result || {}
-        })
-        .catch(() => {
-          this.processSummary = null
-        })
-        .finally(() => {
-          this.processSummaryLoading = false
-        })
+    /**
+     * 首次切到「配套流程」页签时挂下面板并载入当前配套。
+     * ★ 挂在 $nextTick 之后：面板由 v-if 创建，同一 tick 里拿不到 $refs。
+     * ★ 已经载入过就不再 open()：重复调用会把用户还没保存的改动清空
+     *   （open() 内部会重置 pending）。换配套时 open(record) 会把标志复位。
+     */
+    ensureProcessLoaded () {
+      if (!this.detail || this.processLoaded) return
+      this.processLoaded = true
+      this.processMounted = true
+      this.$nextTick(() => {
+        const panel = this.$refs.processPanel
+        if (panel && typeof panel.open === 'function') panel.open(this.detail)
+      })
+    },
+
+    /** 配套流程里的进度已落库：上抛给列表页刷新（整体完成度与逾期数都会变） */
+    handleProcessChanged () {
+      this.$emit('changed')
     },
 
     downloadAttachment (row) {
@@ -692,13 +655,33 @@ export default {
       if (this.detail) this.$emit('remove', this.detail)
     },
 
+    /**
+     * 关闭详情。
+     * ★ 配套流程的待保存改动只在内存里（要靠它自己的「整屏保存」落库），而面板跟着本
+     *   弹窗一起销毁 —— 关闭前必须问一句，否则用户改完几个环节一关就白填了。
+     *   这句确认原先在流程面板自己的关闭按钮上，面板内嵌后挪到了这里。
+     * ★ 本组件的 ScreenModal 因此刻意**不写 .sync**：Esc、右上角关闭、遮罩都走
+     *   这一个出口，确认框才有机会拦下来（写了 .sync 会被 update:visible 直接关掉）。
+     * @returns {boolean} 是否真的关掉了（false = 用户在未保存确认里点了取消）
+     */
     handleClose () {
+      const panel = this.$refs.processPanel
+      const pending = panel && typeof panel.pendingCount === 'function' ? panel.pendingCount() : 0
+      if (pending) {
+        const confirmed = window.confirm(`配套流程还有 ${pending} 个环节的修改没有保存，确定关闭吗？`)
+        if (!confirmed) return false
+      }
       this.visible = false
+      return true
     },
 
-    /** 供父面板在编辑或打开流程管理前关闭全屏详情。 */
+    /**
+     * 供父面板在编辑前关闭全屏详情。
+     * @returns {boolean} 是否已关闭；false 时调用方**不要**再开别的弹窗
+     *   （否则表单会盖在还开着的详情上，关掉表单后用户面对两层界面）
+     */
     close () {
-      this.handleClose()
+      return this.handleClose()
     }
   }
 }
@@ -767,33 +750,15 @@ export default {
     min-height: 0;
     overflow-y: auto;
     .screen-scrollbar();
-  }
 
-  &__placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--screen-space-4);
-    flex: 1 1 auto;
-    min-height: 320px;
-    padding: var(--screen-space-6);
-    background: var(--screen-panel-bg);
-    border: 1px solid var(--screen-border-soft);
-    border-radius: var(--screen-radius);
-  }
-
-  /*
-    「流程」页签的只读摘要：描述列表按两列铺开，居中会让两列挤在中间，
-    所以这里改为撑满宽度（占位容器本身是 align-items:center）。
-  */
-  &__process-summary {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-self: stretch;
-    width: 100%;
-    min-height: 140px;
+    /*
+     * 「配套流程」页签：内容（29 环节树 / 平铺表）自己内部滚动。
+     * ★ 这里必须 overflow: hidden —— 页签容器若能滚，加上面板内部那一层就能滚，
+     *   用户会看到两条滚动条，且外层那条永远滚不到底（高度被内层算走了）。
+     */
+    &--fill {
+      overflow: hidden;
+    }
   }
 
   &__two-col {

@@ -192,7 +192,7 @@
                   :disabled="!((row.details || []).length)"
                   @click.stop="handleShowDetail(row)"
                 >
-                  查看改了什么
+                  查看明细
                 </button>
               </template>
             </screen-data-table>

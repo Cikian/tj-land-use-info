@@ -544,9 +544,6 @@ export default {
       return this.objectOptions.some(item => item.value === this.form.bizId)
     }
   },
-  beforeDestroy () {
-    this.clearCancelWatch()
-  },
   methods: {
     formatSize,
 
@@ -554,7 +551,6 @@ export default {
 
     open (preset) {
       const record = preset || {}
-      this.clearCancelWatch()
       this.form = Object.assign(emptyForm(), {
         bizType: record.bizType || 'facility',
         bizId: record.bizId || record.processId || record.progressId || ''
@@ -893,37 +889,28 @@ export default {
         this.pendingType = ''
         return
       }
-      this.armPickerCancel(group.fileType)
       // ScreenUpload 的公开触发方法：清空 value 后 click，保证再选同一文件仍触发 change
       uploader.handleTriggerClick()
     },
 
-    armPickerCancel (typeCode) {
-      this.clearCancelWatch()
-      // Chromium 部分版本不对原生 input 派发 cancel，窗口重新聚焦再延时核对作为兜底。
-      this._cancelFocusHandler = () => {
-        this._cancelTimer = window.setTimeout(() => {
-          if (!this.batchRunning && this.pendingType === typeCode) {
-            this.resetPickState()
-          }
-        }, 400)
-      }
-      window.addEventListener('focus', this._cancelFocusHandler)
-    },
-
-    clearCancelWatch () {
-      if (this._cancelFocusHandler) {
-        window.removeEventListener('focus', this._cancelFocusHandler)
-        this._cancelFocusHandler = null
-      }
-      if (this._cancelTimer) {
-        window.clearTimeout(this._cancelTimer)
-        this._cancelTimer = null
-      }
-    },
-
+    /**
+     * 取消「这一次选择」的临时状态（还没起传时调用）。
+     *
+     * ★ 这里**不能**用定时器猜「用户是否取消了」，曾经有过一版兜底：
+     *   监听 window focus，窗口重新获得焦点 400ms 后若还没开始上传就把状态清掉
+     *   （理由是「Chromium 部分版本不派发 input cancel」）。
+     *   它在目录上传上是**必然误伤**的：选完文件夹后 Chromium 会先弹一次
+     *   「此网站要上传 N 个文件」的确认框，用户点「上传」之前 focus 事件就已经到过页面了——
+     *   于是 400ms 后 pendingType 被清空，而随后到达的 change 照常开始上传，
+     *   结果「字节传上去了、材料类型却是空的」：一个文件都登记不进目录、界面毫无反馈。
+     *   这正是「选择文件夹后系统没有反应」的成因（选文件时没有这个确认框，所以只有目录上传会撞上）。
+     *
+     * ★ 现在只由两条**确定的**信号触发复位：原生 input 的 cancel 事件、
+     *   以及 change 里拿到 0 个文件（见 ScreenUpload.handleFileChange）。
+     *   其余情况下 pendingType 一直留着 —— 它不影响任何界面状态，
+     *   只是「这次选择归到哪个材料类型」的答案，留到 change 到达为止。
+     */
     resetPickState () {
-      this.clearCancelWatch()
       this.pendingType = ''
       this.uploadingType = ''
       this.batchRunning = false
@@ -962,7 +949,6 @@ export default {
       }
       this.percent = Number(percent) || 0
       this.batchRunning = true
-      this.clearCancelWatch()
     },
 
     /**
@@ -975,7 +961,6 @@ export default {
           this.uploadingType = this.pendingType
         }
         this.batchRunning = true
-        this.clearCancelWatch()
         return
       }
       this.resetPickState()
@@ -993,8 +978,16 @@ export default {
     handleUploaded (payload) {
       const file = payload && payload.file
       const storePath = payload && payload.storePath
-      const typeCode = this.uploadingType
-      if (!file || !storePath || !typeCode) {
+      // ★ 兜一层：目标类型正常在起传时就固化进 uploadingType，这里再回读 pendingType，
+      //   是为了让「类型暂时丢了」不至于变成静默丢件（见下面那条显式报错）。
+      const typeCode = this.uploadingType || this.pendingType
+      if (!file || !storePath) {
+        return
+      }
+      if (!typeCode) {
+        // 宁可报错也不静默：这是「字节已经上去了、却挂不到任何材料类型」的状态，
+        // 用户必须知道要去重传，否则会以为系统没有反应（历史 bug 的实际表现）。
+        this.errorMessage = `${file.name}：文件已上传到服务器，但没有确定材料类型，未能登记到目录，请重新在该类型下选择文件`
         return
       }
       this.saveMeta(file, typeCode, storePath).then((record) => {
