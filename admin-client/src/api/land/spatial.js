@@ -26,7 +26,21 @@ import { axios } from '@/utils/request'
 export const spatialUrl = {
   importShp: '/land/spatial/import',
   precheck: '/land/spatial/precheck',
-  sourceStats: '/land/spatial/source'
+  sourceStats: '/land/spatial/source',
+  pgConfig: '/land/spatial/config'
+}
+
+/**
+ * 空间库默认连接信息（弹窗回显用）：PG 主机 / 端口 / 账号，不含口令。
+ *
+ * 默认值只认服务端配置（land.spatial.pg-*，值来自 .env 的 TJ_PG_*）。
+ * 前端曾经把 127.0.0.1 写死成默认值，导入时被原样登记进 land_mvt_source.db_url，
+ * 导致 MVT 探活与出图一直连本机、报 Connection refused。
+ *
+ * @returns {Promise} result: { host, port, user }
+ */
+export function getSpatialPgConfig () {
+  return axios({ url: spatialUrl.pgConfig, method: 'get', timeout: 10000 })
 }
 
 /**

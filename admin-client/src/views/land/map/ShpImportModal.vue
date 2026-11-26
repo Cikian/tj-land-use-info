@@ -36,7 +36,7 @@
           <a-row :gutter="12">
             <a-col :span="12">
               <a-form-item label="PG 地址" :label-col="{ span: 8 }" :wrapper-col="{ span: 16 }">
-                <a-input v-decorator="['pgHost', { initialValue: '127.0.0.1', rules: [{ required: true, message: '必填' }] }]" @change="resetPrecheck" />
+                <a-input v-decorator="['pgHost', { rules: [{ required: true, message: '必填' }] }]" @change="resetPrecheck" />
               </a-form-item>
             </a-col>
             <a-col :span="12">
@@ -46,7 +46,7 @@
             </a-col>
             <a-col :span="12">
               <a-form-item label="账号" :label-col="{ span: 8 }" :wrapper-col="{ span: 16 }">
-                <a-input v-decorator="['pgUser', { initialValue: 'postgres', rules: [{ required: true, message: '必填' }] }]" @change="resetPrecheck" />
+                <a-input v-decorator="['pgUser', { rules: [{ required: true, message: '必填' }] }]" @change="resetPrecheck" />
               </a-form-item>
             </a-col>
             <a-col :span="12">
@@ -178,7 +178,7 @@
 </template>
 
 <script>
-import { importShp, precheckDb } from '@/api/land/spatial'
+import { getSpatialPgConfig, importShp, precheckDb } from '@/api/land/spatial'
 
 export default {
   name: 'ShpImportModal',
@@ -253,6 +253,33 @@ export default {
       this.appendTarget = ''
       this.successInfo = { dbName: '', tableName: '', rowCountText: '0', engine: '', elapsedText: '', appendText: '共' }
       this.visible = true
+      this.loadPgDefaults()
+    },
+    /**
+     * 连接信息默认值只来自服务端配置（land.spatial.pg-*，值来自 .env 的 TJ_PG_*）。
+     * ★ 不能再写死 127.0.0.1：导入会把表单地址原样登记进 land_mvt_source.db_url，
+     *   MVT 探活/出图都读它，于是后端主机的本机地址被永久钉进数据库，
+     *   表现为「.env 配了 192.168.20.24，却一直连 127.0.0.1 报 Connection refused」。
+     * 读不到配置不拦导入：用户手填即可（后端空值也会回退同一份配置）。
+     */
+    async loadPgDefaults () {
+      try {
+        const res = await getSpatialPgConfig()
+        const cfg = (res && res.result) || {}
+        // 表单字段要等弹窗内容首次挂载后才有实例，故等一帧再回填
+        await this.$nextTick()
+        // 弹窗已被关掉就别再回填（表单实例已卸载，setFieldsValue 只会告警）
+        if (!this.visible) return
+        const current = this.form.getFieldsValue(['pgHost', 'pgPort', 'pgUser']) || {}
+        const patch = {}
+        if (cfg.host && !current.pgHost) patch.pgHost = cfg.host
+        // 5432 是本表单的端口默认值：等于它即用户没改过，允许被配置覆盖
+        if (cfg.port && (!current.pgPort || Number(current.pgPort) === 5432)) patch.pgPort = cfg.port
+        if (cfg.user && !current.pgUser) patch.pgUser = cfg.user
+        if (Object.keys(patch).length) this.form.setFieldsValue(patch)
+      } catch (e) {
+        // 配置接口不可用时保持空值，必填校验会让用户显式填写
+      }
     },
     close () {
       // 预检/导入进行中不允许关闭（右上角 ✕ / 取消都走这里），否则进度反馈丢失

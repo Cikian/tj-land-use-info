@@ -70,6 +70,11 @@ public class ShpImportServiceImpl implements IShpImportService {
     public SpatialPrecheckVO precheck(String host, int port, String user,
                                       String password, String dbName) throws Exception {
         PgSupport.checkIdentifier(dbName, "数据库名");
+        // 连接信息空值回退服务端配置（.env 的 TJ_PG_*）：见 emptyTo 的说明
+        host = emptyTo(host, props.getPgHost());
+        port = port > 0 ? port : props.getPgPort();
+        user = emptyTo(user, props.getPgUser());
+        password = emptyTo(password, props.getPgPassword());
         SpatialPrecheckVO vo = new SpatialPrecheckVO();
         List<String> tables = new ArrayList<>();
         try (Connection conn = PgSupport.connect(host, port, dbName, user, password, PROBE_TIMEOUT_SECS);
@@ -124,6 +129,11 @@ public class ShpImportServiceImpl implements IShpImportService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请上传 SHP 的 zip 压缩包");
         }
+        // 连接信息空值回退服务端配置（.env 的 TJ_PG_*）：见 emptyTo 的说明
+        host = emptyTo(host, props.getPgHost());
+        port = port > 0 ? port : props.getPgPort();
+        user = emptyTo(user, props.getPgUser());
+        password = emptyTo(password, props.getPgPassword());
         PgSupport.checkIdentifier(dbName, "数据库名");
 
         File workDir = new File(props.getTempDir(), UUID.randomUUID().toString());
@@ -553,6 +563,21 @@ public class ShpImportServiceImpl implements IShpImportService {
     /** 双引号包裹 PG 标识符（中文表名/列名安全；内嵌双引号翻倍转义） */
     private static String quoteIdent(String name) {
         return "\"" + name.replace("\"", "\"\"") + "\"";
+    }
+
+    /**
+     * 连接信息空值回退服务端配置（land.spatial.pg-*，值来自 .env 的 TJ_PG_*）。
+     *
+     * <p>★ 为什么要回退：管理端导入弹窗曾把 PG 地址写死成 127.0.0.1 当默认值，
+     * 导入时该地址被原样登记进 <code>land_mvt_source.db_url</code>（MVT 探活与出图都读它），
+     * 而后端主机上并没有本机 PG —— 表现就是「.env 配了 192.168.20.24，
+     * 却一直在连 127.0.0.1，报 Connection refused」（2026-11-23 实测三条登记全中）。
+     * 现在前端只做配置回显，空值一律以服务端配置为准，本机地址不再可能被默认带进库。
+     *
+     * <p>只判空、不 trim：口令可能含首尾空格，这一层不改写用户填的任何字符。
+     */
+    private static String emptyTo(String value, String fallback) {
+        return value == null || value.isEmpty() ? fallback : value;
     }
 
     /**
@@ -1061,6 +1086,18 @@ public class ShpImportServiceImpl implements IShpImportService {
      * /land/spatial/source/register 注册 sys_data_source，但该端点在后端
      * 并不存在，调用被 .catch 静默吞掉——sys_data_source 从未真正登记过。
      * 现在导入成功即登记两表，前端不再参与登记。
+     *
+     * <p>★ 两表的口令格式**故意不同**：
+     * <ul>
+     *   <li><code>land_mvt_source</code> 存<b>明文</b>——消费方是 MvtService 探活与本类的切片源
+     *       直连，全部直接 <code>DriverManager</code>/<code>PgSupport.connect</code> 用原值；</li>
+     *   <li><code>sys_data_source</code> 存 <b>jeecg 口径的 AES 密文</b>——
+     *       出图/拾取走 DynamicDBUtil → SysBaseApiImpl.getDynamicDbSourceByCode()，
+     *       那里对 db_password 无条件 <code>SecurityUtil.jiemi()</code>；写明文会让 hutool
+     *       抛 <code>CryptoException: IllegalBlockSizeException</code>，表现是
+     *       「无法读取空间目录」「瓦片查询失败」503（2026-11-23 实测：库里三条均为明文
+     *       6 位口令，其它由界面建的数据源都是 32 位密文）。</li>
+     * </ul>
      */
     private void replaceRegistration(String dbName, String host, int port, String user, String password) {
         JdbcTemplate jdbc = jdbc();
@@ -1075,9 +1112,23 @@ public class ShpImportServiceImpl implements IShpImportService {
                         + "(id, code, name, db_type, db_driver, db_url, db_name, db_username, db_password) "
                         + "VALUES (REPLACE(UUID(),'-',''), ?, ?, '6', 'org.postgresql.Driver', ?, ?, ?, ?)",
                 dbName, dbName + "（SHP 导入）", PgSupport.url(host, port, dbName),
-                dbName, user, password);
+                dbName, user, encryptForSysDataSource(password));
         log.info("[spatial] 已替换登记 GIS 库：{} -> {}", dbName, PgSupport.url(host, port, dbName));
     }
+
+    /**
+     * 按 jeecg 口径加密出图数据源口令（AES/ECB/PKCS5，key 与
+     * <code>org.jeecg.modules.system.util.SecurityUtil</code> 一致；该类在 system-biz，
+     * land 模块依赖不到，故内联同一实现——与 MvtService.reachable 里的解密是同一套 key）。
+     * 不改写空口令：没有口令的库由 PG 认证自己拒绝，比存一段密文更好排查。
+     */
+    static String encryptForSysDataSource(String plain) {
+        if (plain == null || plain.isEmpty()) { return plain; }
+        return new cn.hutool.crypto.symmetric.SymmetricCrypto(
+                cn.hutool.crypto.symmetric.SymmetricAlgorithm.AES,
+                "JEECGBOOT1423670".getBytes()).encryptHex(plain);
+    }
+
 
     /** 从同名 .prj 粗略识别 SRID；识别不出返回 4326 */
     private int detectSrid(File shpFile) {

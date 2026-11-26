@@ -2,6 +2,8 @@ package org.jeecg.modules.land.spatial.service.impl;
 
 import org.jeecg.modules.land.spatial.config.SpatialProperties;
 import org.jeecg.modules.land.spatial.vo.SpatialSourceStatsVO;
+import cn.hutool.crypto.symmetric.SymmetricAlgorithm;
+import cn.hutool.crypto.symmetric.SymmetricCrypto;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -125,6 +127,28 @@ class ShpImportServiceImplGuardTest {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service.removeGisSource("nope", false));
         assertTrue(e.getMessage().contains("管理清单中不存在该记录"));
+    }
+
+    /**
+     * sys_data_source 的口令必须是 jeecg 口径的密文：出图/拾取走
+     * SysBaseApiImpl.getDynamicDbSourceByCode()，那里无条件 SecurityUtil.jiemi()，
+     * 写明文会让 hutool 抛 CryptoException（IllegalBlockSizeException）→
+     * 表现是「无法读取空间目录」「瓦片查询失败」503。
+     * 这里锁住「写进去的值 = 32 位十六进制 + 能用同一 key 解回原口令」。
+     */
+    @Test
+    void sysDataSourcePasswordIsEncryptedWithFrameworkKey() {
+        String cipher = ShpImportServiceImpl.encryptForSysDataSource("Chen0809");
+        assertEquals(32, cipher.length(), "AES/ECB/PKCS5 的 encryptHex 产出 32 位十六进制");
+        assertTrue(cipher.matches("[0-9a-f]{32}"), cipher);
+        // 用框架同一把 key 解回原口令，证明与 SecurityUtil.jiemi 兼容
+        String plain = new SymmetricCrypto(SymmetricAlgorithm.AES, "JEECGBOOT1423670".getBytes())
+                .decryptStr(cipher);
+        assertEquals("Chen0809", plain);
+        // 固定密文（无随机 IV）：同口令两次加密结果一致，才能与历史登记行互认
+        assertEquals(cipher, ShpImportServiceImpl.encryptForSysDataSource("Chen0809"));
+        // 空口令原样返回（不产出一段无意义密文）
+        assertEquals("", ShpImportServiceImpl.encryptForSysDataSource(""));
     }
 
     @Test

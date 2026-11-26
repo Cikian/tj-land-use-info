@@ -5,8 +5,10 @@ import io.swagger.annotations.ApiOperation;
 import lombok.extern.slf4j.Slf4j;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
+import org.jeecg.modules.land.spatial.config.SpatialProperties;
 import org.jeecg.modules.land.spatial.service.IShpImportService;
 import org.jeecg.modules.land.spatial.vo.SpatialFeatureGroupVO;
+import org.jeecg.modules.land.spatial.vo.SpatialPgConfigVO;
 import org.jeecg.modules.land.spatial.vo.SpatialPrecheckVO;
 import org.jeecg.modules.land.spatial.vo.SpatialSourceStatsVO;
 import org.jeecg.modules.land.spatial.vo.ShpImportResultVO;
@@ -58,17 +60,34 @@ public class SpatialImportController {
     @Autowired
     private IShpImportService shpImportService;
 
+    @Autowired
+    private SpatialProperties spatialProperties;
+
+    /**
+     * 默认连接信息回显：弹窗用它填 PG 地址/端口/账号的初始值。
+     * 口令不出服务端，空着由 land.spatial.pg-password 兜底。
+     */
+    @ApiOperation("空间库默认连接信息（弹窗回显，不含口令）")
+    @GetMapping("/config")
+    public Result<SpatialPgConfigVO> config() {
+        SpatialPgConfigVO vo = new SpatialPgConfigVO();
+        vo.setHost(spatialProperties.getPgHost());
+        vo.setPort(spatialProperties.getPgPort());
+        vo.setUser(spatialProperties.getPgUser());
+        return Result.OK(vo);
+    }
+
     @AutoLog("SHP导入预检")
     @ApiOperation("导入前预检：目标库是否存在/凭据是否可用/是否本系统导入/库内现有表")
     @PostMapping("/precheck")
     public Result<SpatialPrecheckVO> precheck(
-            @RequestParam("pgHost") String host,
-            @RequestParam(value = "pgPort", defaultValue = "5432") int port,
-            @RequestParam("pgUser") String user,
-            @RequestParam("pgPassword") String password,
+            @RequestParam(value = "pgHost", required = false) String host,
+            @RequestParam(value = "pgPort", required = false) Integer port,
+            @RequestParam(value = "pgUser", required = false) String user,
+            @RequestParam(value = "pgPassword", required = false) String password,
             @RequestParam("dbName") String dbName) {
         try {
-            return Result.OK(shpImportService.precheck(host, port, user, password, dbName));
+            return Result.OK(shpImportService.precheck(host, port == null ? 0 : port, user, password, dbName));
         } catch (Exception e) {
             log.error("SHP 导入预检失败", e);
             return Result.error("预检失败：" + e.getMessage());
@@ -80,17 +99,17 @@ public class SpatialImportController {
     @PostMapping("/import")
     public Result<ShpImportResultVO> importShp(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("pgHost") String pgHost,
-            @RequestParam(value = "pgPort", defaultValue = "5432") int pgPort,
-            @RequestParam("pgUser") String pgUser,
-            @RequestParam("pgPassword") String pgPassword,
+            @RequestParam(value = "pgHost", required = false) String pgHost,
+            @RequestParam(value = "pgPort", required = false) Integer pgPort,
+            @RequestParam(value = "pgUser", required = false) String pgUser,
+            @RequestParam(value = "pgPassword", required = false) String pgPassword,
             @RequestParam("dbName") String dbName,
             @RequestParam(value = "tableName", required = false) String tableName,
             @RequestParam(value = "srid", defaultValue = "0") int srid,
             @RequestParam(value = "importEngine", required = false) String importEngine,
             @RequestParam(value = "existingPolicy", required = false) String existingPolicy) {
         try {
-            ShpImportResultVO vo = shpImportService.importShp(file, pgHost, pgPort,
+            ShpImportResultVO vo = shpImportService.importShp(file, pgHost, pgPort == null ? 0 : pgPort,
                     pgUser, pgPassword, dbName, tableName, srid, importEngine, existingPolicy);
             return Result.OK(vo);
         } catch (Exception e) {

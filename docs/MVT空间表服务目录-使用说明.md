@@ -140,3 +140,51 @@ HTTP 仍是 200），解析不到 bounds 退回全球矩形（跨度 ≥ π）�
    范围计算超时会省略该字段——此时才是真正的范围问题。
 
 本次案例中后端、数据（1140 行）、bounds 计算（542ms，天津范围）全部正常，无需改任何代码。
+
+## 2026-11-23 排查记录：「.env 配了 PG 地址，却一直连 127.0.0.1」
+
+**报错形如**：`[MVT] 连接失败：jdbc:postgresql://127.0.0.1:5432/netzwk_jyxyd_dksj - Connection refused`，
+随后 `[MVT] 数据源探活失败` / `数据源探活过滤：N 个不可达已移除`。
+
+**根因不在 .env，而在一行登记数据**：
+
+1. MVT 探活与出图用的连接串来自 MySQL 的 `land_mvt_source.db_url`（`MvtSourceMapper` 直查，
+   再把 URL 原样交给 `DriverManager`），**从不读 `land.spatial.pg-*`**。
+2. 那三条登记里的 `db_url` 是导入当时**弹窗表单里的地址快照**：弹窗曾把 `pgHost` 写死
+   `127.0.0.1` 当默认值（同批还有 `pgUser=postgres`、`pgPort=5432`），导入成功即原样落库；
+   而 `TJ_PG_HOST` 映射出的 `SpatialProperties.getPgHost()` 在代码里**零引用**（只用到
+   `tempDir` / `importEngine`），所以改 `.env` 对这些记录完全无效。
+3. 于是「后端主机上没有本机 PG」= 三条源全部探活失败、被从下拉里过滤掉。
+
+**已落地的修法（治本）**：新增 `GET /land/spatial/config` 回显 `land.spatial.pg-*`（不含口令），
+弹窗打开时用它填 PG 地址/端口/账号，表单不再写死默认值；`/land/spatial/precheck|import` 的
+`pgHost/pgPort/pgUser/pgPassword` 改为可选，空值回退同一份配置。之后**新导入**的库一定登记成
+配置里的主机。
+
+**已有登记**仍需二选一修正（改 `.env` 不会回填历史行）：
+
+```sql
+-- 先确认目标 PG 上库真的存在，否则只会把「连接被拒」换成「database does not exist」
+UPDATE land_mvt_source SET db_url = REPLACE(db_url, '127.0.0.1', '<真实主机>') WHERE code = '<连接编码>';
+UPDATE sys_data_source SET db_url = REPLACE(db_url, '127.0.0.1', '<真实主机>') WHERE code = '<连接编码>';
+```
+
+更省事的做法是在「MVT 空间表服务」页对该库走一次**覆盖重建/连接导入**：登记是替换式的
+（先删后插），会用本次表单里的地址重写这两张表，顺带把口令也一起刷新。
+
+手工 UPDATE 时还有**两个必须记住的点**：
+
+1. **两张表的口令格式不同**。`land_mvt_source.db_password` 存明文（探活、切片源直连都用原值）；
+   `sys_data_source.db_password` 必须是 jeecg 口径的 AES 密文（`SecurityUtil.jiami`，32 位 hex），
+   因为出图/拾取走 `DynamicDBUtil → SysBaseApiImpl.getDynamicDbSourceByCode()`，
+   那里对 `db_password` **无条件 `jiemi()`**——写明文会抛
+   `CryptoException: IllegalBlockSizeException: Input length must be multiple of 16`，
+   于是地址改对了照样出不了图（报「无法读取空间目录」「瓦片查询失败」503）。
+   例如口令 `Chen0809` 的密文是 `44a468ada107ec9bf8d41cfa4ab88017`（AES/ECB/PKCS5，固定无 IV，
+   同口令结果恒定）；换口令就按同一 key 重新生成，别手写近似值。
+2. **直接改表不会清缓存**。出图连接由 `DataSourceCachePool` 缓存在 Redis（`SYS_DYNAMICDB_CACHE + code`）
+   并常驻进程内的 Druid 池；`UPDATE` 之后旧池/旧模型仍会被复用。改完要么重启后端，要么在
+   「系统管理 → 数据源管理」里对该条点一次保存（`editDataSource` 会调用 `DataSourceCachePool.removeCache`），
+   之后 MVT 的 30 秒源快照、5 分钟目录缓存与瓦片缓存也需等过期或点「刷新发现」。
+
+

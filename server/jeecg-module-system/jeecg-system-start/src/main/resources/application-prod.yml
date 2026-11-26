@@ -440,11 +440,11 @@ land:
   # SHP 上传入库（MVT 空间表服务的数据入口）与 MVT 出图共用的空间库配置
   # 对应 SpatialProperties.java（jeecg-module-land/spatial/config/）
   spatial:
-    # ★ 目标 PG 数据库默认连接信息（SHP 入库前端不填时用它；MVT 出图的
-    #   DynamicDBUtil 也按这份信息取连接）
-    pg-host: ${TJ_PG_HOST:49.232.252.56}
-    pg-port: ${TJ_PG_PORT:5432}
-    pg-user: ${TJ_PG_USER:postgres}
+    # ★ SHP 导入弹窗的默认连接信息（前端空值时用它；/land/spatial/config 也按它回显）。
+    #   MVT 出图不读这里，读的是导入时登记进 land_mvt_source / sys_data_source 的快照。
+    pg-host: ${TJ_PG_HOST}
+    pg-port: ${TJ_PG_PORT}
+    pg-user: ${TJ_PG_USER}
     # 口径同其它口令：真实值放 .env，仓库里不留明文（这个口令此前已在提交
     # 5fbad9f 里明文出现过，建议一并换掉）。缺这个键会启动即报占位符解析失败，
     # 比「连不上 PG」晚一步暴露要好。
