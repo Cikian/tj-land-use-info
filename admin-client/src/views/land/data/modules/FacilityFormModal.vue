@@ -296,13 +296,20 @@
     { value: '扩建', label: '扩建' },
     { value: '翻建', label: '翻建' },
     { value: '现状', label: '现状' },
-    { value: '其他', label: '其他' }
+    { value: '其他', label: '其他' },
+    // 2026-11-23 旧库实有写法（见 sql/data/18_legacy_option_extend.sql）
+    { value: '道路', label: '道路' },
+    { value: '城镇其他', label: '城镇其他' },
+    { value: '城镇建设与改造', label: '城镇建设与改造' }
   ]
   const ROAD_LEVEL_FALLBACK = [
     { value: '城市主干路', label: '城市主干路' },
     { value: '城市次干路', label: '城市次干路' },
     { value: '城市支路', label: '城市支路' },
-    { value: '快速路', label: '快速路' }
+    { value: '快速路', label: '快速路' },
+    { value: '次干路、支路', label: '次干路、支路' },
+    { value: '步行街', label: '步行街' },
+    { value: '管线不涉及', label: '管线不涉及' }
   ]
   const FUNCTION_AREA_FALLBACK = [
     { value: '生态城', label: '生态城' },
@@ -311,16 +318,81 @@
     { value: '高新区', label: '高新区' },
     { value: '保税区', label: '保税区' }
   ]
+  const CATEGORY_FALLBACK = [
+    { value: '道路', label: '道路' },
+    { value: '排水', label: '排水' },
+    { value: '供水', label: '供水' },
+    { value: '中水', label: '中水' },
+    // ★ 旧录入页写「供气」而字典写「燃气」，新系统统一为「燃气」
+    { value: '燃气', label: '燃气' },
+    { value: '路灯', label: '路灯' },
+    { value: '绿化', label: '绿化' },
+    { value: '交通设施', label: '交通设施' },
+    { value: '道路及管线', label: '道路及管线' },
+    { value: '供水、排水', label: '供水、排水' }
+  ]
+  const FUND_SOURCE_FALLBACK = [
+    { value: '土地整理成本', label: '土地整理成本' },
+    { value: '地块收益', label: '地块收益' },
+    { value: '成本分摊', label: '成本分摊' },
+    { value: '区内统筹', label: '区内统筹' },
+    { value: '其它', label: '其它' },
+    { value: '自筹', label: '自筹' },
+    { value: '企业自筹', label: '企业自筹' },
+    { value: 'PPP模式', label: 'PPP模式' },
+    { value: '区内统筹、专项债', label: '区内统筹、专项债' },
+    { value: '城市更新成本', label: '城市更新成本' },
+    { value: '政府专项债及自有资金', label: '政府专项债及自有资金' },
+    { value: '财政', label: '财政' },
+    { value: '自筹及其它', label: '自筹及其它' },
+    { value: '财政资金和专项债', label: '财政资金和专项债' },
+    { value: '市级资金', label: '市级资金' },
+    { value: '自筹及银行贷款', label: '自筹及银行贷款' },
+    { value: '市财政资金', label: '市财政资金' },
+    { value: '自筹、银行贷款', label: '自筹、银行贷款' }
+  ]
+  const FUND_STATUS_FALLBACK = [
+    { value: '已落实', label: '已落实' },
+    { value: '未落实', label: '未落实' },
+    { value: '已落实（部分）', label: '已落实（部分）' },
+    { value: '正常推进', label: '正常推进' },
+    { value: '未批复', label: '未批复' }
+  ]
+  const PUSH_STATUS_FALLBACK = [
+    { value: '正常推进', label: '正常推进' },
+    { value: '有问题', label: '有问题' },
+    { value: '已批复', label: '已批复' },
+    { value: '不涉及', label: '不涉及' },
+    { value: '已完成', label: '已完成' },
+    { value: '未批复', label: '未批复' },
+    { value: '未开始', label: '未开始' },
+    { value: '未申报', label: '未申报' },
+    { value: '已完工', label: '已完工' },
+    { value: '已竣工', label: '已竣工' },
+    { value: '未开工', label: '未开工' },
+    { value: '前期筹备', label: '前期筹备' },
+    { value: '以备案制进行推进', label: '以备案制进行推进' },
+    { value: '评审单位正在进行造价评审', label: '评审单位正在进行造价评审' }
+  ]
 
   /**
    * 字典码 → data 里的候选项数组。
-   * ★ 只登记这三列：配套设施类别 / 资金来源 / 资金落实情况等其余枚举本轮不动
-   *   （清单只要求建设性质、道路等级、功能区与业务数据对齐），避免顺手扩大改动面。
+   *
+   * ★ 2026-11-23 起六列全部走字典（原先只有建设性质 / 道路等级 / 功能区三列走字典，
+   *   设施类别 / 资金来源 / 资金落实情况 / 审批状态四列是写死的）。
+   *   改的原因：旧库全量数据里这四列有 400 余处「标准值之外但确有其事」的写法，
+   *   写死的数组改一次要发一次版，业务补一种资金口径就得等版本；
+   *   进字典后管理员在「系统管理 → 数据字典」里就能加项，页面与导入同时生效。
+   *   取不到字典时仍有本地兜底（与字典 seed 逐字一致），不会出现空下拉。
    */
   const FACILITY_DICT_OPTIONS = [
+    { key: 'categoryOptions', code: 'land_facility_category' },
     { key: 'buildNatureOptions', code: 'land_jsxx' },
     { key: 'roadLevelOptions', code: 'land_dldj' },
-    { key: 'functionAreaOptions', code: 'land_gnq' }
+    { key: 'functionAreaOptions', code: 'land_gnq' },
+    { key: 'fundSourceOptions', code: 'land_zjly' },
+    { key: 'fundStatusOptions', code: 'land_zjlsqk' },
+    { key: 'pushStatusOptions', code: 'land_pfzt' }
   ]
 
   /**
@@ -363,36 +435,14 @@
           { value: '市级项目', label: '市级项目' },
           { value: '区级项目', label: '区级项目' }
         ],
-        categoryOptions: [
-          { value: '道路', label: '道路' },
-          { value: '排水', label: '排水' },
-          { value: '供水', label: '供水' },
-          { value: '中水', label: '中水' },
-          // ★ 旧录入页写「供气」而字典写「燃气」，新系统统一为「燃气」
-          { value: '燃气', label: '燃气' },
-          { value: '路灯', label: '路灯' },
-          { value: '绿化', label: '绿化' },
-          { value: '交通设施', label: '交通设施' }
-        ],
-        // ---- 建设性质 / 道路等级 / 功能区：先给兜底值，mounted 里再用字典覆盖 ----
+        // ---- 枚举选项：先给兜底值，mounted 里再用字典覆盖（字典是唯一可维护来源） ----
+        categoryOptions: CATEGORY_FALLBACK,
         buildNatureOptions: BUILD_NATURE_FALLBACK,
         roadLevelOptions: ROAD_LEVEL_FALLBACK,
         functionAreaOptions: FUNCTION_AREA_FALLBACK,
-        fundSourceOptions: [
-          { value: '土地整理成本', label: '土地整理成本' },
-          { value: '地块收益', label: '地块收益' },
-          { value: '成本分摊', label: '成本分摊' },
-          { value: '区内统筹', label: '区内统筹' },
-          { value: '其它', label: '其它' }
-        ],
-        fundStatusOptions: [
-          { value: '已落实', label: '已落实' },
-          { value: '未落实', label: '未落实' }
-        ],
-        pushStatusOptions: [
-          { value: '正常推进', label: '正常推进' },
-          { value: '有问题', label: '有问题' }
-        ],
+        fundSourceOptions: FUND_SOURCE_FALLBACK,
+        fundStatusOptions: FUND_STATUS_FALLBACK,
+        pushStatusOptions: PUSH_STATUS_FALLBACK,
         yesNoOptions: [
           { value: '是', label: '是' },
           { value: '否', label: '否' }

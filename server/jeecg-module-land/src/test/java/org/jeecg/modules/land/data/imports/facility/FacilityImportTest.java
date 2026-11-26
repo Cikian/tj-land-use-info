@@ -200,6 +200,53 @@ public class FacilityImportTest extends LandIntegrationTestBase {
     }
 
     /**
+     * 2026-11-23 扩取值：旧库全量数据里实有的写法必须能原值导入。
+     *
+     * <p>背景：旧系统这几个枚举列是自由文本（页面用下拉，但数据是历史录入的），
+     * 全量迁移时统计出 400 余处「标准值之外但确有其事」的写法（自筹 / PPP模式 /
+     * 次干路、支路 / 已批复 / 已落实（部分） / 道路及管线 …）。
+     * 早先的口径是「归不了位就留空」，代价是这批数据的业务事实被抹掉，
+     * 且首页立项率、资金到位率的分母跟着变小。本用例锁住新口径：
+     * <b>保留原值，同时原值必须在允许取值内（否则入库就被拦下）</b>。
+     *
+     * <p>同时锁住两条「该改的还要改」：{@code 次干路/支路} 按别名归到
+     * {@code 次干路、支路}；{@code 落实} 归到 {@code 已落实}。
+     */
+    @Test
+    public void legacyOptionValuesFromOldDatabaseImportAsIs() throws Exception {
+        String crzdbh = TEST_PREFIX + "legacy-" + System.nanoTime();
+        Land land = new Land();
+        land.setCrzdbh(crzdbh);
+        land.setDkmc("旧库取值扩展测试宗地");
+        landService.createLand(land);
+
+        FacilityImportResultVO result = importService.confirm(file(sheet -> {
+            fillValidRow(sheet, 2, crzdbh, "取值扩展测试道路");
+            setCell(sheet, 2, "ptsslb", "道路及管线");
+            setCell(sheet, 2, "jsxx", "城镇建设与改造");
+            setCell(sheet, 2, "dldj", "次干路/支路");
+            setCell(sheet, 2, "zjly", "PPP模式");
+            setCell(sheet, 2, "zjlsqk", "已落实（部分）");
+            setCell(sheet, 2, "xjpfzt", "已批复");
+            setCell(sheet, 2, "kgzt", "前期筹备");
+        }), FacilityDuplicateStrategy.REJECT, false, false);
+
+        assertTrue(result.getErrors().isEmpty(), "旧库实有取值不该被拦下：" + result.getErrors());
+        assertEquals(1, result.getInsertedRows());
+
+        List<java.util.Map<String, Object>> rows = facilityAdminService.queryByLand(crzdbh);
+        assertEquals(1, rows.size());
+        Facility saved = facilityAdminService.queryDetail((String) rows.get(0).get("id"));
+        assertEquals("道路及管线", saved.getPtsslb(), "跨类别写法保留原值");
+        assertEquals("城镇建设与改造", saved.getJsxx());
+        assertEquals("次干路、支路", saved.getDldj(), "「次干路/支路」按别名归到新档");
+        assertEquals("PPP模式", saved.getZjly());
+        assertEquals("已落实（部分）", saved.getZjlsqk(), "部分到位是业务中间态，不得并入「已落实」");
+        assertEquals("已批复", saved.getXjpfzt());
+        assertEquals("前期筹备", saved.getKgzt());
+    }
+
+    /**
      * P1-06：<b>不传策略</b>（默认 upsert）时，混合文件「已有行更新 + 新行插入」且不重复插入。
      *
      * <p>★ 这条用例锁住的是「默认值」本身：传 {@code null} 而不是
@@ -306,8 +353,10 @@ public class FacilityImportTest extends LandIntegrationTestBase {
                 FacilityImportField.XZQH_OPTIONS, "行政区划只含已确认的 16 区");
         assertEquals(Arrays.asList("生态城", "土地发展中心", "经开区", "高新区", "保税区"),
                 FacilityImportField.GNQ_OPTIONS, "功能区单列，不混入 xzqh");
-        assertEquals(Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路"),
-                FacilityImportField.DLDJ_OPTIONS, "道路等级含已确认的快速路");
+        assertEquals(Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路",
+                        // 2026-11-23 旧库全量数据里实有的三种写法：一条配套含两级道路 / 步行街 / 不涉及道路
+                        "次干路、支路", "步行街", "管线不涉及"),
+                FacilityImportField.DLDJ_OPTIONS, "道路等级 = 4 个标准等级 + 旧库实有写法");
         assertEquals(FacilityImportField.FieldType.ENUM, FacilityImportField.of("xzqh").getType());
         assertEquals(FacilityImportField.FieldType.ENUM, FacilityImportField.of("dldj").getType());
         assertEquals(FacilityImportField.FieldType.TEXT, FacilityImportField.of("gnq").getType(),

@@ -215,9 +215,17 @@ public final class FacilityImportField {
      * <p>★ 取「燃气」而不是旧录入页写的「供气」：字典表
      * {@code xj_kjkfb_supporting_facilities_category} 与 {@code sql/data/01_data_dict.sql}
      * 都用「燃气」，旧录入页那一处是笔误。同义异写由 {@code PTSSLB_ALIASES} 兜住。
+     *
+     * <p>★ <b>2026-11-23 扩取值</b>（旧库全量数据迁移时发现的实有写法，见
+     * {@code sql/data/18_legacy_option_extend.sql}）：
+     * {@code 道路及管线}、{@code 供水、排水} 这两类「一条配套同时含两类设施」的写法。
+     * 早先刻意不归位（归到哪一类都会让另一类统计少一条），改为<b>保留原值 + 单列一档</b>：
+     * 归位会改掉业务事实，留空会丢数据，加一档既保住原值也不污染既有类别。
      */
     public static final List<String> PTSSLB_OPTIONS = Collections.unmodifiableList(Arrays.asList(
-            "道路", "排水", "供水", "中水", "燃气", "路灯", "绿化", "交通设施"));
+            "道路", "排水", "供水", "中水", "燃气", "路灯", "绿化", "交通设施",
+            // ↓ 2026-11-23 旧库实有取值
+            "道路及管线", "供水、排水"));
 
     /**
      * 建设性质（★ 含「现状」）。
@@ -228,24 +236,38 @@ public final class FacilityImportField {
      * <p>★ <b>sys_dict（{@code land_jsxx}）与本数组同源</b>：改一处必须同步另一处
      * —— 字典供界面下拉，本数组供导入校验与模板填表说明；
      * 只改一边就会出现「下拉里有、导入说不在允许取值内」。同源脚本见
-     * {@code sql/data/17_facility_dict_jsxx_dldj_gnq.sql}，其末尾的核对查询会把两边比出来。
+     * {@code sql/data/17_facility_dict_jsxx_dldj_gnq.sql}，
+     * 其末尾的核对查询会把两边比出来。
+     *
+     * <p>★ <b>2026-11-23 扩取值</b>：{@code 道路}、{@code 城镇其他}、{@code 城镇建设与改造}
+     * 是旧库「建设性质」列里的实有写法（共 13 条），语义上确实是建设性质，
+     * 归到「其他」会丢掉「道路/城镇其他」这层区分，因此单列成档。
      */
     public static final List<String> JSXX_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("新建", "改建", "扩建", "翻建", "现状", "其他"));
+            Arrays.asList("新建", "改建", "扩建", "翻建", "现状", "其他",
+                    // ↓ 2026-11-23 旧库实有取值
+                    "道路", "城镇其他", "城镇建设与改造"));
 
     /**
-     * 道路等级（4 档，含快速路）。
+     * 道路等级（7 档：4 个标准等级 + 3 个旧库实有写法）。
      *
      * <p>★ 旧库实测还有「主干道 / 城市主干道 / 次干道 / 快速路」等异写，
      * 能唯一归位的（主干道系）放进别名表。「快速路」既不是主干路也不是次干路，
      * 早先<b>刻意不放进下拉</b>（硬归会改掉业务事实）；2026-11 业务确认它就是独立一档
      * → 补为第 4 个标准值，仍不做归位（别名表里只映射它自己）。
      *
+     * <p>★ <b>2026-11-23 扩取值</b>（旧库实有写法，共 6 条）：
+     * {@code 次干路、支路}（一条配套同时含两级道路）、{@code 步行街}、{@code 管线不涉及}
+     * （该条配套没有道路工程）。这三类都是「一格写一件事」的真实分类，
+     * 硬归到四级里任何一档都会改掉业务事实，所以单列成档。
+     *
      * <p>★ <b>sys_dict（{@code land_dldj}）与本数组同源</b>：改一处必须同步另一处
      * （理由同 {@link #JSXX_OPTIONS}）。
      */
     public static final List<String> DLDJ_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路"));
+            Arrays.asList("城市主干路", "城市次干路", "城市支路", "快速路",
+                    // ↓ 2026-11-23 旧库实有取值
+                    "次干路、支路", "步行街", "管线不涉及"));
 
     /**
      * 功能区（滨海的功能区不是行政区，2026-11 整改 P1-05 起与 {@code xzqh} 分列）。
@@ -266,17 +288,52 @@ public final class FacilityImportField {
     public static final List<String> GNQ_OPTIONS = Collections.unmodifiableList(
             Arrays.asList("生态城", "土地发展中心", "经开区", "高新区", "保税区"));
 
-    /** 资金来源 */
+    /**
+     * 资金来源（5 个标准值 + 旧库实有写法）。
+     *
+     * <p>★ <b>2026-11-23 扩取值</b>：旧库全量数据里出现了大量「标准值之外但确有其事」的来源写法
+     * （自筹 34 条、企业自筹 26 条、PPP模式 15 条、区内统筹、专项债 9 条 …）。
+     * 早期版本对这些值<b>刻意不归位</b>（归到「其它」会把可区分的信息抹掉），
+     * 结果是这批数据要么导不进来、要么被清空；本版改为<b>原值单列成档</b>，
+     * 既保留原始口径，也让「按资金来源汇总」不会凭空少几百条。
+     */
     public static final List<String> ZJLY_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("土地整理成本", "地块收益", "成本分摊", "区内统筹", "其它"));
+            Arrays.asList("土地整理成本", "地块收益", "成本分摊", "区内统筹", "其它",
+                    // ↓ 2026-11-23 旧库实有取值
+                    "自筹", "企业自筹", "PPP模式", "区内统筹、专项债", "城市更新成本",
+                    "政府专项债及自有资金", "财政", "自筹及其它", "财政资金和专项债",
+                    "市级资金", "自筹及银行贷款", "市财政资金", "自筹、银行贷款"));
 
-    /** 审批 / 开工状态（三阶段批复与开工状态共用同一套取值） */
+    /**
+     * 审批 / 开工状态（三阶段批复与开工状态共用同一套取值）。
+     *
+     * <p>★ <b>2026-11-23 扩取值</b>：旧库这几个状态列里，「正常推进 / 有问题」之外还有
+     * 一整族真实在用的流程写法（已批复 / 已完成 / 未开始 / 未申报 / 不涉及 / 已完工 /
+     * 已竣工 / 未开工 / 前期筹备 / 以备案制进行推进 / 评审单位正在进行造价评审 …）。
+     * 这些值如果被清空，首页「立项率 / 开工率」就只剩一部分数据能算，指标会静默失真；
+     * 因此按原值单列成档。
+     *
+     * <p>★ 只把「是 / 否 / √ / ×」这类<b>填错列</b>的写法排除在外（它们不是状态，
+     * 是填表人把「是否完成」写进了「状态」列，导入时留空并在回执里提示）。
+     */
     public static final List<String> PROGRESS_STATUS_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("正常推进", "有问题"));
+            Arrays.asList("正常推进", "有问题",
+                    // ↓ 2026-11-23 旧库实有取值
+                    "已批复", "不涉及", "已完成", "未批复", "未开始", "未申报",
+                    "已完工", "已竣工", "未开工", "前期筹备", "以备案制进行推进",
+                    "评审单位正在进行造价评审"));
 
-    /** 资金落实情况 */
+    /**
+     * 资金落实情况。
+     *
+     * <p>★ <b>2026-11-23 扩取值</b>：旧库还有「已落实（部分）」「正常推进」「未批复」三种写法。
+     * 「已落实（部分）」是业务上确实存在的中间态（部分资金到位），
+     * 归到「已落实」会让资金到位率虚高；另两种保留原值，供业务核对后自行收敛。
+     */
     public static final List<String> ZJLSQK_OPTIONS = Collections.unmodifiableList(
-            Arrays.asList("已落实", "未落实"));
+            Arrays.asList("已落实", "未落实",
+                    // ↓ 2026-11-23 旧库实有取值
+                    "已落实（部分）", "正常推进", "未批复"));
 
     /** 是/否 的常见写法 → 规范值（与宗地导入同一套口径） */
     private static Map<String, String> yesNoAliases() {
@@ -355,6 +412,8 @@ public final class FacilityImportField {
         map.put("次干道", "城市次干路");
         map.put("城市次干道", "城市次干路");
         map.put("支路", "城市支路");
+        // 「次干路/支路」是同一格里的两级道路，归到已扩展的「次干路、支路」档
+        map.put("次干路/支路", "次干路、支路");
         return map;
     }
 
@@ -382,6 +441,25 @@ public final class FacilityImportField {
         return map;
     }
 
+    /**
+     * 资金落实情况的异写 → 标准值。
+     *
+     * <p>只收两种<b>语义完全相同</b>的写法：{@code 落实} = {@code 已落实}；
+     * {@code 否}（回答「资金是否落实」） = {@code 未落实}。
+     * 「已落实（部分）」「正常推进」「未批复」刻意<b>不归位</b>：
+     * 前两者在业务上是有意义的中间态，硬归会让「资金到位率」虚高或虚低；
+     * 「未批复」说的是审批进度、不是到位情况，归到「未落实」等于替业务下结论。
+     */
+    private static Map<String, String> zjlsqkAliases() {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String option : ZJLSQK_OPTIONS) {
+            map.put(option, option);
+        }
+        map.put("落实", "已落实");
+        map.put("否", "未落实");
+        return map;
+    }
+
     // ==================================================================
     // 二、字段清单（顺序 = 模板列顺序 = 错误回执列顺序）
     // ==================================================================
@@ -397,6 +475,7 @@ public final class FacilityImportField {
         Map<String, String> ptsslb = ptsslbAliases();
         Map<String, String> dldj = dldjAliases();
         Map<String, String> zjly = zjlyAliases();
+        Map<String, String> zjlsqk = zjlsqkAliases();
 
         List<FieldSpec> list = new ArrayList<>();
 
@@ -470,7 +549,7 @@ public final class FacilityImportField {
         list.add(new FieldSpec("gspfje", "概算批复金额（万元）", FieldType.NUMBER, false, true,
                 null, null, 0, "3180.00"));
         list.add(new FieldSpec("zjlsqk", "资金落实情况", FieldType.ENUM, false, true,
-                ZJLSQK_OPTIONS, null, 100, "已落实"));
+                ZJLSQK_OPTIONS, zjlsqk, 100, "已落实"));
 
         // ---- 进度 ----
         list.add(new FieldSpec("sfkg", "是否开工", FieldType.YES_NO, false, true,
