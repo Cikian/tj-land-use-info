@@ -330,7 +330,37 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         int pageNo = condition.getPageNo() == null || condition.getPageNo() < 1 ? 1 : condition.getPageNo();
         int pageSize = condition.getPageSize() == null || condition.getPageSize() < 1
                 ? 10 : Math.min(condition.getPageSize(), MAX_PAGE_SIZE);
-        return page(new Page<>(pageNo, pageSize), wrapper);
+        IPage<Facility> rows = page(new Page<>(pageNo, pageSize), wrapper);
+        // ★ 列表每行都要显示「整体进度」，而它不是本表的一列：
+        //   按页批量补（一条 pt_id IN (...)），不在循环里查。
+        fillProcessStat(rows.getRecords());
+        return rows;
+    }
+
+    /**
+     * 给列表行补「环节进度汇总」（{@link Facility#getProcessStat()}）。
+     *
+     * <p>口径与「配套流程」页签完全同一实现 {@link #summarize(List, Skeleton)}：
+     * 未填报的环节按「未开启」占位、进分母，「不涉及」从分母剔除。
+     */
+    private void fillProcessStat(List<Facility> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        List<String> ptIds = new ArrayList<>(rows.size());
+        for (Facility row : rows) {
+            if (StringUtils.isNotBlank(row.getId())) {
+                ptIds.add(row.getId());
+            }
+        }
+        if (ptIds.isEmpty()) {
+            return;
+        }
+        Map<String, List<FacilityProcess>> byPt = groupByPt(facilityProcessMapper.selectByFacilities(ptIds));
+        Skeleton skeleton = loadSkeleton();
+        for (Facility row : rows) {
+            row.setProcessStat(summarize(byPt.get(row.getId()), skeleton));
+        }
     }
 
     @Override
@@ -364,6 +394,8 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         }
         // 一次拿全部环节进度，按配套分桶 —— 避免「每个配套查一次」（N+1）
         Map<String, List<FacilityProcess>> byPt = groupByPt(facilityProcessMapper.selectByFacilities(ptIds));
+        // 汇总口径的唯一骨架：六大阶段 + 全部启用中的事项（与「配套流程」页签同一副）
+        Skeleton skeleton = loadSkeleton();
 
         List<Map<String, Object>> result = new ArrayList<>(facilities.size());
         for (Facility facility : facilities) {
@@ -387,9 +419,9 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
             item.put("lrr", facility.getLrr());
             item.put("createTime", facility.getCreateTime());
             // 环节进度汇总
-            item.put("processStat", summarize(processes));
+            item.put("processStat", summarize(processes, skeleton));
             // 阶段状态（六大阶段各自的汇总）
-            item.put("stageStatus", stageStatusOf(processes));
+            item.put("stageStatus", stageStatusOf(processes, skeleton));
             result.add(item);
         }
         return result;
@@ -565,22 +597,8 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         if (facility == null) {
             throw new JeecgBootException("未找到对应的配套项目（可能已被移除）");
         }
-        // ① 环节骨架：全部启用中的阶段 + 事项
-        List<ProcessConfig> all = processConfigMapper.selectEnabledAll();
-        List<ProcessConfig> stages = new ArrayList<>();
-        Map<String, List<ProcessConfig>> itemsByStage = new LinkedHashMap<>();
-        for (ProcessConfig config : all) {
-            if (config.isStage()) {
-                stages.add(config);
-                itemsByStage.put(config.getId(), new ArrayList<ProcessConfig>());
-            }
-        }
-        for (ProcessConfig config : all) {
-            List<ProcessConfig> bucket = itemsByStage.get(config.getParentId());
-            if (bucket != null) {
-                bucket.add(config);
-            }
-        }
+        // ① 环节骨架：全部启用中的阶段 + 事项（★ 与列表页的汇总共用同一副，见 Skeleton）
+        Skeleton skeleton = loadSkeleton();
         // ② 进度数据：一次查全，按 lcId 建索引
         List<FacilityProcess> progresses = facilityProcessMapper.selectByFacility(ptId);
         Map<String, FacilityProcess> byLc = new LinkedHashMap<>();
@@ -596,7 +614,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         tree.setFacilityName(facility.getPtxmmc());
 
         Date today = new Date();
-        for (ProcessConfig stage : stages) {
+        for (ProcessConfig stage : skeleton.stages) {
             FacilityProcessTreeVO.StageNode stageNode = new FacilityProcessTreeVO.StageNode();
             stageNode.setStageId(stage.getId());
             stageNode.setStageName(stage.getName());
@@ -604,7 +622,7 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
             stageNode.setProcessTime(stage.getProcessTime());
 
             List<String> childStatuses = new ArrayList<>();
-            for (ProcessConfig item : itemsByStage.get(stage.getId())) {
+            for (ProcessConfig item : skeleton.itemsOfStage(stage.getId())) {
                 FacilityProcess progress = byLc.get(item.getId());
                 FacilityProcessTreeVO.ItemNode itemNode = toItemNode(item, progress, today);
                 childStatuses.add(itemNode.getLcqk());
@@ -1163,15 +1181,31 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
         return node;
     }
 
-    /** 环节进度汇总（列表页每个配套一格） */
-    private Map<String, Object> summarize(List<FacilityProcess> processes) {
+    /**
+     * 环节进度汇总（列表页每个配套一格 / 「整体进度」列）。
+     *
+     * <p><b>★ 分母是「全部启用中的环节」</b>，与「配套流程」页签
+     * （{@link #queryProcessTree(String)} 的 {@code percent}）逐字同源：
+     * 未填报的环节按「未开启」占位、计入分母，「不涉及」从分母剔除。
+     *
+     * <p>此前这里只把「已填报的记录」当分母 —— 一个 24 环节里填了 4 条且都完成、
+     * 但只填了 4 条的配套，列表算出 100%，而详情算出 17%，两个数字都对不上
+     * （2026-11-24 用户反馈「进度不同步」）。列表是「这条配套整体做到哪一步」，
+     * 分母只能是全部环节，否则「填得少」会被读成「干得快」。
+     *
+     * @param processes 该配套已填报的环节进度（可空）
+     * @param skeleton  环节骨架（阶段 + 事项），同一批次复用一份，避免逐行查配置表
+     */
+    private Map<String, Object> summarize(List<FacilityProcess> processes, Skeleton skeleton) {
         Map<String, Object> stat = new LinkedHashMap<>();
-        List<String> statuses = new ArrayList<>();
+        Map<String, String> statusByLc = new LinkedHashMap<>();
         int overdue = 0;
         Date today = new Date();
         if (processes != null) {
             for (FacilityProcess progress : processes) {
-                statuses.add(progress.getLcqk());
+                if (progress.getLcId() != null) {
+                    statusByLc.put(progress.getLcId(), progress.getLcqk());
+                }
                 Date compareBase = progress.getLcjssj() != null ? progress.getLcjssj() : today;
                 if (progress.getYjjssj() != null && compareBase.after(progress.getYjjssj())
                         && !ProcessStatus.NOT_INVOLVED.getValue().equals(progress.getLcqk())) {
@@ -1179,39 +1213,116 @@ public class FacilityAdminServiceImpl extends ServiceImpl<FacilityMapper, Facili
                 }
             }
         }
-        int totalItems = processConfigMapper.selectEnabledAll().size();
-        stat.put("filled", statuses.size());
+        // 按骨架拉平：没填报的环节补「未开启」，这样分母 = 全部环节
+        List<String> statuses = new ArrayList<>(skeleton.items.size());
+        int filled = 0;
+        for (ProcessConfig item : skeleton.items) {
+            String lcqk = statusByLc.get(item.getId());
+            if (StringUtils.isBlank(lcqk)) {
+                statuses.add(ProcessStatus.defaultValue());
+            } else {
+                statuses.add(lcqk);
+                filled++;
+            }
+        }
+        stat.put("total", skeleton.items.size());
+        stat.put("filled", filled);
         stat.put("finished", countOf(statuses, ProcessStatus.FINISHED.getValue()));
         stat.put("running", countOf(statuses, ProcessStatus.RUNNING.getValue()));
         stat.put("notInvolved", countOf(statuses, ProcessStatus.NOT_INVOLVED.getValue()));
+        stat.put("notStarted", countOf(statuses, ProcessStatus.defaultValue()));
         stat.put("overdue", overdue);
         stat.put("status", ProcessStatus.rollUpStageStatus(statuses));
         stat.put("percent", ProcessStatus.stagePercent(statuses));
         return stat;
     }
 
-    /** 各阶段状态（列表页展示六个阶段的小标签） */
-    private List<Map<String, Object>> stageStatusOf(List<FacilityProcess> processes) {
+    /** 各阶段状态（列表页展示六个阶段的小标签 / 悬浮） */
+    private List<Map<String, Object>> stageStatusOf(List<FacilityProcess> processes, Skeleton skeleton) {
+        Map<String, String> statusByLc = new LinkedHashMap<>();
+        if (processes != null) {
+            for (FacilityProcess progress : processes) {
+                if (progress.getLcId() != null) {
+                    statusByLc.put(progress.getLcId(), progress.getLcqk());
+                }
+            }
+        }
         List<Map<String, Object>> result = new ArrayList<>();
-        for (ProcessConfig stage : processConfigMapper.selectStages()) {
+        for (ProcessConfig stage : skeleton.stages) {
+            // ★ 与 queryProcessTree 同口径：阶段下未填报的事项按「未开启」计入分母
             List<String> statuses = new ArrayList<>();
-            if (processes != null) {
-                for (FacilityProcess progress : processes) {
-                    if (stage.getId().equals(progress.getStageId())) {
-                        statuses.add(progress.getLcqk());
-                    }
+            int filledCount = 0;
+            for (ProcessConfig item : skeleton.itemsOfStage(stage.getId())) {
+                String lcqk = statusByLc.get(item.getId());
+                if (StringUtils.isBlank(lcqk)) {
+                    statuses.add(ProcessStatus.defaultValue());
+                } else {
+                    statuses.add(lcqk);
+                    filledCount++;
                 }
             }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("stageId", stage.getId());
             item.put("stageName", stage.getName());
-            item.put("status", statuses.isEmpty()
-                    ? ProcessStatus.defaultValue() : ProcessStatus.rollUpStageStatus(statuses));
+            item.put("status", ProcessStatus.rollUpStageStatus(statuses));
             item.put("percent", ProcessStatus.stagePercent(statuses));
-            item.put("filledCount", statuses.size());
+            item.put("filledCount", filledCount);
+            item.put("itemCount", statuses.size());
             result.add(item);
         }
         return result;
+    }
+
+    /**
+     * 环节骨架：六大阶段 + 各自的事项，全部来自 {@code t_process_configuration}（启用中的）。
+     *
+     * <p><b>★ 为什么单独抽一个内部类</b>：完成度的分母必须是「全部启用中的环节」，
+     * 而这份骨架有<b>三处</b>消费方 —— 「配套流程」页签（{@link #queryProcessTree(String)}）、
+     * 按宗地查配套（{@link #queryByLand(String)}）、分页列表（{@link #queryPage}）。
+     * 三处各自拼一遍「阶段 → 事项」的映射，迟早会有一处漏掉「未填报也要进分母」，
+     * 表现就是同一配套在不同页面显示不同百分比（2026-11-24 的实际故障）。
+     * 抽出来以后，「分母是什么」只有这一个定义。
+     */
+    private static final class Skeleton {
+
+        /** 六大阶段，按业务顺序 */
+        private final List<ProcessConfig> stages = new ArrayList<>();
+
+        /** 全部事项（拉平），按业务顺序 */
+        private final List<ProcessConfig> items = new ArrayList<>();
+
+        /** 阶段ID → 该阶段下的事项 */
+        private final Map<String, List<ProcessConfig>> itemsByStage = new LinkedHashMap<>();
+
+        Skeleton(List<ProcessConfig> all) {
+            if (all == null) {
+                return;
+            }
+            for (ProcessConfig config : all) {
+                if (config.isStage()) {
+                    stages.add(config);
+                    itemsByStage.put(config.getId(), new ArrayList<ProcessConfig>());
+                }
+            }
+            for (ProcessConfig config : all) {
+                List<ProcessConfig> bucket = itemsByStage.get(config.getParentId());
+                if (bucket != null) {
+                    bucket.add(config);
+                    items.add(config);
+                }
+            }
+        }
+
+        /** 某阶段下的事项（没有就是空列表，调用方不必再判空） */
+        List<ProcessConfig> itemsOfStage(String stageId) {
+            List<ProcessConfig> bucket = itemsByStage.get(stageId);
+            return bucket == null ? Collections.<ProcessConfig>emptyList() : bucket;
+        }
+    }
+
+    /** 取当前启用中的环节骨架（每次调用查一次配置表；一页/一个配套只查一次） */
+    private Skeleton loadSkeleton() {
+        return new Skeleton(processConfigMapper.selectEnabledAll());
     }
 
     private static int countOf(List<String> statuses, String value) {

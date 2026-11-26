@@ -12,6 +12,7 @@ import lombok.experimental.Accessors;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.Map;
 
 /**
  * @Description: 市政配套项目（配套项目宽表）
@@ -260,4 +261,24 @@ public class Facility implements Serializable {
     @TableField("updateTime")
     @JsonFormat(timezone = "GMT+8", pattern = "yyyy-MM-dd HH:mm:ss")
     private Date updateTime;
+
+    // ------------------------------------------------------------------
+    // 非表字段：查询时按页批量填充
+    // ------------------------------------------------------------------
+
+    /**
+     * 环节进度汇总（{@code /list} 与 {@code /byLand} 的每一行都会带）：
+     * {@code { total, filled, finished, running, notInvolved, notStarted, overdue, status, percent }}。
+     *
+     * <p>★ <b>为什么挂在实体上</b>：列表页每行要显示「整体进度」，而进度不在本表任何一列
+     * （在 {@code t_facility_process}）。{@code /list} 按 {@code pt_id IN (...)} 一次取完整页的
+     * 环节进度再按配套分桶，不是逐行查（没有任何 N+1）。
+     *
+     * <p>★ <b>口径必须与「配套流程」页签一致</b>：分母是<b>全部启用中的环节</b>
+     * （未填报的按「未开启」占位，「不涉及」剔除），由 {@code ProcessStatus.stagePercent}
+     * 唯一实现。此前的实现只拿「已填报的记录」当分母，于是同一个配套在列表里 100%、
+     * 在详情「配套流程」里 17%（用户 2026-11-24 反馈的「进度不同步」）。
+     */
+    @TableField(exist = false)
+    private Map<String, Object> processStat;
 }

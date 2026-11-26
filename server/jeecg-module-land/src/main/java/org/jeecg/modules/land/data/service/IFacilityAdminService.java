@@ -55,6 +55,11 @@ public interface IFacilityAdminService {
      * <p>★ 形参是 {@link FacilityQueryDTO}（在通用条件之上多一个 {@code gnq}），
      * 参数名与 {@link LandAdminQueryDTO} 完全兼容 —— 老的调用方传原 DTO 也能编过，
      * 只是拿不到功能区过滤。
+     *
+     * <p>★ <b>每行都带 {@link Facility#getProcessStat()}</b>（整体进度 / 已填 / 已完成 / 逾期…），
+     * 口径与「配套流程」页签的 {@code percent} 同源：分母是<b>全部启用中的环节</b>，
+     * 未填报的按「未开启」计入、「不涉及」剔除。列表上的「整体进度」必须直接用它，
+     * 不要在前端拿已填记录重算 —— 那会得到「填得少 = 进度高」的反向结果。
      */
     IPage<Facility> queryPage(FacilityQueryDTO query);
 
@@ -87,6 +92,9 @@ public interface IFacilityAdminService {
      * 某宗地下的全部配套项目 + 各自的阶段进度汇总。
      *
      * <p>「1 宗地 N 配套」的入口查询：宗地详情页 / 环节录入页用它一次拿到全部配套。
+     *
+     * <p>★ 每项带 {@code processStat}（整体汇总）与 {@code stageStatus}（六个阶段各自的状态 /
+     * 完成度 / 已填数 / 事项数），两者都与「配套流程」页签同一口径（分母 = 全部启用环节）。
      */
     List<Map<String, Object>> queryByLand(String crzdbh);
 

@@ -103,8 +103,16 @@
                 :stroke-width="6"
                 :show-info="false"
                 class="stat-cell__bar" />
-              <span class="stat-cell__text">
-                已完成 {{ text.finished || 0 }} / 已填 {{ text.filled || 0 }}
+              <!--
+                分母写「共 N 项」而不是「已填 N」：进度条的百分比分母是**全部环节**
+                （未填报的按「未开启」计入），与详情「配套流程」页签的完成度同源。
+                业主曾看到「已完成 4 / 已填 4 + 一根 17% 的条」而困惑 —— 两个分母混在一格里。
+                已填数仍有用（还有多少没填），收进悬浮提示。
+              -->
+              <span
+                class="stat-cell__text"
+                :title="`已填 ${text.filled || 0} / 共 ${text.total || 0} 项，已完成 ${text.finished || 0} 项`">
+                已完成 {{ text.finished || 0 }} / 共 {{ text.total || 0 }}
               </span>
               <a-tag v-if="text.overdue" color="red">逾期 {{ text.overdue }}</a-tag>
             </div>

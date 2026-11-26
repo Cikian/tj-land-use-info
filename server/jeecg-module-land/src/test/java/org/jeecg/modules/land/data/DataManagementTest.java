@@ -459,6 +459,53 @@ public class DataManagementTest extends LandIntegrationTestBase {
     }
 
     @Test
+    public void listProgressMatchesProcessTree() {
+        String crzdbh = uniqueNo("sync");
+        landAdminService.createLand(buildLand(crzdbh, "进度同步地"), null);
+        String facilityId = facilityAdminService.createFacility(buildFacility(crzdbh, "进度同步配套"), null);
+
+        // 24 个环节里只填 1 个「已完成」→ 整体完成度 4%（1/24）。
+        // ★ 若分母取「已填报的记录」，这里会算出 100% —— 正是用户反馈的两种视图不同步。
+        ProcessConfig item = processConfigMapper.selectItems().get(0);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("lcqk", "已完成");
+        payload.put("lckssj", "2026-03-02");
+        payload.put("lcjssj", "2026-03-10");
+        facilityAdminService.saveProcess(facilityId, item.getId(), payload, null);
+
+        FacilityProcessTreeVO tree = facilityAdminService.queryProcessTree(facilityId);
+        assertEquals(4, tree.getPercent(), "1/24 环节完成 ≈ 4%");
+
+        // ① 分页列表（大屏默认视图）：每行都要带 processStat，否则「整体进度」列恒为 0%
+        FacilityQueryDTO query = new FacilityQueryDTO();
+        query.setCrzdbh(storedCode(crzdbh));
+        Facility row = facilityAdminService.queryPage(query).getRecords().get(0);
+        Map<String, Object> stat = row.getProcessStat();
+        assertNotNull(stat, "分页列表必须带环节进度汇总，否则列表只能显示 0%");
+        assertEquals(tree.getPercent(), ((Number) stat.get("percent")).intValue(),
+                "列表的整体进度必须与「配套流程」页签一致（分母都是全部启用环节）");
+        assertEquals(tree.getTotalItems(), ((Number) stat.get("total")).intValue(), "分母 = 全部启用环节数");
+        assertEquals(1, ((Number) stat.get("filled")).intValue());
+        assertEquals(1, ((Number) stat.get("finished")).intValue());
+
+        // ② 按宗地查配套（管理端列表）：同口径
+        Map<String, Object> byLandRow = facilityAdminService.queryByLand(crzdbh).get(0);
+        Map<?, ?> byLandStat = (Map<?, ?>) byLandRow.get("processStat");
+        assertEquals(tree.getPercent(), ((Number) byLandStat.get("percent")).intValue(),
+                "按宗地查配套的整体进度也要同口径");
+
+        // ③ 阶段汇总：未填报的事项必须进分母，否则「填了 1 个就 100%」
+        Map<?, ?> stageRow = (Map<?, ?>) ((List<?>) byLandRow.get("stageStatus")).get(0);
+        FacilityProcessTreeVO.StageNode treeStage = tree.getStages().get(0);
+        assertEquals(treeStage.getPercent(), ((Number) stageRow.get("percent")).intValue(),
+                "阶段完成度与「配套流程」页签一致");
+        assertEquals(treeStage.getStatus(), stageRow.get("status"));
+        assertEquals(1, ((Number) stageRow.get("filledCount")).intValue());
+        assertEquals(treeStage.getItemCount(), ((Number) stageRow.get("itemCount")).intValue(),
+                "阶段事项数应等于流程树里该阶段的行数");
+    }
+
+    @Test
     public void oneLandHasManyFacilities() {
         String crzdbh = uniqueNo("1n");
         landAdminService.createLand(buildLand(crzdbh, "一块地"), null);
