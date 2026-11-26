@@ -405,6 +405,84 @@ mvn -pl jeecg-module-system/jeecg-system-start dependency:tree "-Dincludes=org.y
 蒙版偏移逐像素核对 + 数据管理左右拖宽折叠 + 刷新持久化 + 0 条未捕获异常）；
 横向可拖高的回归仍看 `perf/verify-data-layout.js`。
 
+### 3.13 MVT 连的是 `127.0.0.1` 而不是 `.env` 里的 PG 地址：登记行是快照，配置只管新导入
+
+**症状**：日志刷 `[MVT] 连接失败：jdbc:postgresql://127.0.0.1:5432/xxx - Connection refused`，
+接着 `数据源探活过滤：N 个不可达已移除`；而 `.env` 里 `TJ_PG_HOST` 明明配的是别的机器。
+
+**根因**：MVT 探活/出图的连接串来自 MySQL 的 `land_mvt_source.db_url`（`MvtSourceMapper` 直查，
+原样交给 `DriverManager`），**从不读 `land.spatial.pg-*`**。那条 `db_url` 是导入当时
+「SHP 导入弹窗表单里的地址」的快照——弹窗曾把 `pgHost` 写死 `127.0.0.1`（含 `pgUser=postgres`、
+`pgPort=5432`），导入成功即原样落库；同时 `SpatialProperties.getPgHost()` 全项目**零引用**
+（导入只用 `tempDir`/`importEngine`），所以改 `.env` 对已登记的行完全无效。
+
+**怎么排查（两分钟）**：`SELECT code, db_url FROM land_mvt_source;` —— 三列全 `127.0.0.1` 即本条。
+别先去翻 yml/.env，那里没有能影响它的开关。
+
+**已修**：弹窗默认值改为 `GET /land/spatial/config` 回显 `land.spatial.pg-*`（不含口令），
+`/land/spatial/precheck|import` 的 `pgHost/pgPort/pgUser/pgPassword` 改可选、空值回退同一份配置。
+**已有登记**仍需改 `land_mvt_source` + `sys_data_source` 的 `db_url`（或走一次覆盖重建/连接导入，
+登记是替换式的，会用本次表单值重写两表）。改之前先确认目标 PG 上**库真的存在**，
+否则报错只会从「连接被拒」变成 `database does not exist`。
+
+**同一条链上的第二个坑（同批修掉）**：两表的**口令格式故意不同**——`sys_data_source.db_password`
+必须是 jeecg 口径的 AES 密文（`SecurityUtil.jiami`，32 位 hex），因为出图/拾取走
+`DynamicDBUtil → SysBaseApiImpl.getDynamicDbSourceByCode()`，那里对 `db_password`
+**无条件 `jiemi()`**；写明文会让 hutool 抛 `CryptoException: IllegalBlockSizeException`，
+于是**地址改对了也出不了图**（表现「无法读取空间目录」「瓦片查询失败」503）。
+`land_mvt_source.db_password` 反过来必须是**明文**（探活与切片源都直接 JDBC）。
+手工修历史行时别把两份写成同一个值：地址两表都改，口令只有 `sys_data_source` 要密文。
+
+### 3.14 枚举取值「字典里加了」≠「导入就能用」：导入校验读的是 Java 数组
+
+**症状**：管理员在「系统管理 → 数据字典」给 `land_dldj` 加了一项「步行街」，页面下拉能选、
+单条录入能存，**批量导入同一份 Excel 却报「道路等级「步行街」不在允许的取值内」**。
+
+**根因**：枚举合法的唯一真相在 **`FacilityImportField.XXX_OPTIONS`（Java 硬编码数组）**，
+字典（`sys_dict`）只供界面下拉。两处同源、各管一段：字典管「能选什么」，数组管「能导什么」。
+只改一边必然出现「页面能选、导入报错」（P1-05 的现象就是这个），反过来则是「导入能进、
+下拉里选不出来、编辑时显示空白」。
+
+**怎么做**（新增一个取值要动三处，缺一处就漂移）：
+1. `FacilityImportField` 的 `XXX_OPTIONS`（+ 需要同义归位时加进对应 `*Aliases()`）；
+2. `sql/data/<NN>_xxx.sql` 往对应字典补项（参考 `18_legacy_option_extend.sql`：**只补缺项、
+   不 DELETE 既有项**，这样管理员自己加的项不会被脚本冲掉）；
+3. 前端下拉——2026-11-23 起配套表单的六列（设施类别 / 建设性质 / 道路等级 / 资金来源 /
+   资金落实情况 / 审批与开工状态）**全部走字典**（`FacilityFormModal.vue` 的
+   `FACILITY_DICT_OPTIONS`），所以第 3 步通常不用改代码，改完第 2 步重新登录即可。
+
+**为什么会出现「400 余处非法值」**：旧系统这几列是自由文本，历史数据一直在用「标准值之外但
+确有其事」的写法（自筹 / PPP模式 / 次干路、支路 / 已批复 / 已落实（部分）…）。处理口径是
+**保留原值 + 把原值补进允许取值**，而不是归到「其它」或清空——清空会让首页立项率、开工率、
+资金到位率的分母跟着变小，**指标静默失真比报错更难查**。真正的脏值只有两类：纯符号（`/`、
+`-`）和「填错列」的「是/否/√」，这两类才留空并在导入回执里提示。
+
+### 3.15 下载方法里的 `response.reset()` 会清掉跨域头：`fetch` 下载一律报「Failed to fetch」
+
+**症状**：点「下载错误回执」（经营性用地 / 配套两处）报
+`Access to fetch at '.../errorReport?token=...' from origin 'http://localhost:3000' has been blocked
+by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource`，
+前端只弹一句「Failed to fetch」。而同一个后端的**预览接口一直正常**，模板下载也正常。
+
+**根因**：`response.reset()` 按 Servlet 规范会**连缓冲区、状态码和全部响应头一起清空**；
+而 `Access-Control-Allow-Origin` 是 `WebMvcConfiguration#corsFilter` / `JwtFilter#preHandle`
+在**进入 Controller 之前**加上的 →「先加头、后 reset」= 头白加。所以跨域配置本身没问题，
+是响应写回时自己把头抹了。
+
+**为什么只有回执下载中招**：模板 / 变更明细走 `window.open` 原生下载，**导航不参与 CORS 校验**；
+回执因为要 POST 文件内容只能用 `fetch + blob`，这是全项目唯一受 CORS 约束的二进制下载
+（两个前端的 `src/api/land/*Import.js`，`src/api` 下再无别的 `fetch`）。
+
+**怎么做**：下载方法里不要直接 `response.reset()`，改用
+`DownloadResponseSupport.resetKeepingCors(response)`（`land/common/util`）——它先抄下现场
+CORS 头再 reset 后补回。只清正文不改头时用 `response.resetBuffer()`。
+回执两个 Controller 已按此修改，回归用例 `ImportErrorReportControllerTest#crossOrigin*`
+用真实 `CorsFilter` 卡住这一点（改回 `reset()` 会立刻红）。
+
+**取证方式**（比猜快）：`curl -H "Origin: http://localhost:3000" -H "X-Access-Token: <token>"
+-i -X POST -F file=@某.xlsx http://127.0.0.1:9802/api/land/data/import/errorReport`，
+看响应头里有没有 `Access-Control-Allow-Origin`——没有就是本条；有的话再查前端。
+
 ---
 
 ## 4. 常用命令速查
@@ -538,6 +616,7 @@ git status --porcelain
 | 2026-10-21 | **补 §2.1 已实现域** | `stat.query` + `stat.export` 落地（查询统计：经营性用地综合查询 / 用地配套项目查询 / 高级查询 / Excel 导出，接口 `/land/stat/query/*`），前端新增 `views/screen/query` 并接入顶栏「查询统计」。改查询口径前先读 `docs/模块实现说明/查询统计-实现说明.md`：**两个数据集的指标口径不同**（宗地口径按配套名称去重 + 环节漏斗；配套口径按条计、不漏斗），别拿两页的数字互相校验 |
 | 2026-10-22 | **大屏「档案查询」页签并入「档案维护」** | 两者本来就共用 `ArchiveSearchForm`（13 个检索条件）、`ArchiveTable`、`/land/archive/list`，差别只有「只读 + 条件默认全展开 + 每页 20 条」，在大屏上属同一功能的两种用法 → 合并，侧栏 8 项→7 项，方案 2.3.2 第 3 项由「档案维护」承载。改动：`ArchiveMaintain.vue` 接管 `applyDrill` / `openDetailById`（原 `ArchiveQuery.vue`，已删除），并新增 `searchInitialQuery` 计算属性把深链参数 `archiveId` 挡在检索条件之外（原来会被「查询/导出」原样带给后端）；`archive/index.vue` 删 `query` 页签、`DRILLABLE_PANELS` 改 `['maintain','ledger','handover','completion']`、`handleDrill` 落点改 `maintain`；`views/screen/index.vue` 的 `ARCHIVE_TABS` 同步删 `query`（历史深链 `?tab=query` 静默落回维护、条件照常生效）；统计页/台账/移交的下钻落点随之改到维护页。**`admin-client` 的「档案查询」菜单保留不动** —— 那里才是「只查不改」的权限边界（`land:archive:list` + `export`），且方案条目由它满足 |
 | 2026-10-22 | **首页「项目预警」补齐（市级 / 区级 / 地块）** | 方案 2.3.1（五）。数据早就在 `pendingFacility.warnings` 里，但前端只把百分比原样印出来，等于没做。本轮：① `views/screen/config.js` 新增 `warningTiers` / `warningTone()` —— **阈值唯一口径**，市级 5 档（0-20/20-40/40-60/60-80/≥80）、区级 3 档（0-33.33/33.33-66.66/≥66.66），照搬旧 `homePage.js` 的 `GetColumn717` / `GetColumn0805`；颜色取 `screen-tokens.less` 的 `--screen-level-*`。**两处都要改**，只改一处会让底部面板与弹窗颜色不一致。② 「一条配套都没上报」的区改成跨七列一句「未填报配套项目信息」。③ 第三个页签「地块预警信息」补回 `warningTabs` 并接上 `plotVisible` —— 此前 `HomeAttrPanel` emit 了 `open-plot-warning` 但**没有任何监听者**，点了没反应。④ 新增 `GET /land/stat/home/warningDetail`（按区下钻、一行一宗地）；下钻按**页签 key** 传 `projectType`，不要从行 id 的中文字符串猜（旧 `changeShowInfo()` 的老毛病）。⑤ 删掉旧 `/land/data/facility/warning/detail`：它按 `l.xzqh` 过滤，而区级预警的分组列是 `xzqh2` → **区级点「查看」永远空表**；口径收口到 `stat/home`。⑥ 预警分子分母补软删过滤（D-613）、`0/0` 不再出 `NaN%`（D-614）、阈值按真实数值比较（D-615）。改预警口径前先读 `docs/模块实现说明/首页看板-实现说明.md` 第 6 节：**7 项未完成率按配套条数算、不按 `ptxmmc` 去重**，与同页「配套总数 / 已完成」的去重口径故意不同 |
+| 2026-11-23 | **新增 §3.13（MVT 连 `127.0.0.1` 而非 `.env` 里的 PG 地址）** | MVT 探活/出图的连接串来自 MySQL `land_mvt_source.db_url`——导入时「弹窗表单里的地址」的快照，从不读 `land.spatial.pg-*`；而弹窗把 `pgHost` 写死 `127.0.0.1`、`SpatialProperties.getPgHost()` 全项目**零引用**，于是改 `.env` 对已登记行完全无效（实测三条登记全 `127.0.0.1:5432`，报 Connection refused）。修：新增 `GET /land/spatial/config` 回显 `land.spatial.pg-*`（不含口令），弹窗默认值改读它；`/land/spatial/precheck\|import` 的 `pgHost/pgPort/pgUser/pgPassword` 改可选、空值回退同一份配置。同步把 `.env.example`、`application-{dev,prod}.yml`、《环境变量与敏感信息.md》里「SHP 入库 + MVT 出图共用」的过时口径改成「只管导入弹窗默认值」。**已有登记行仍需改 `land_mvt_source` + `sys_data_source` 的 `db_url`（或走一次重新导入，登记是替换式的）**；改之前先确认目标 PG 上库真的存在 |
 
 > 新增陷阱时，请**同时**：① 在本文件 §3 加一条（编号继续，
 > 例如 §3.10）；② 在本表登记。陷阱要写**症状**和**怎么排查**，不要只写结论。
@@ -625,3 +704,6 @@ git status --porcelain
 | 2026-11-17 | **反向合并：本机 181 项整改落地 + 合并远端 b3e1783「地图管理」** 本轮把工作区（后端 + 两端前端 + SQL）拆成后端 / 管理端 / 大屏端 3 个提交，再 `pull --no-rebase` 合远端，冲突 4 个文件，逐个人工核对两侧改动都在：① `AGENTS.md` —— 两侧都只是追加变更记录，按「本机三条在前、同事三条在后」全留，表结构无重叠；② `LandEntryPanel.vue` —— 保留本机 P1-02 的 `ensureListLoaded`（`created` / `activated` 共用同 tick 去重），**移除本机原有的 `geoLayer` 生命周期**（created 建实例、activated 重铺、deactivated / beforeDestroy 清）：同事 2026-11-14 起进菜单不自动铺图、定位走切片源，两边都保留会在同一地图上画两遍面；③ `FacilityEntryPanel.vue` —— 以本机版本为底（P2-05 快速定位需要两个图层实例 + 概览缓存），叠加同事两项新增：移除成功后 `purgeFeatureGroups` 联动清切片图形、双击行改 `$emit('locate-record')` 交给父页定位；同时把本机 `loadGeoLayer` 收成「**只在定位态**铺本宗地配套面」（无定位态直接空转），顺带修掉同事版本里 `this.geoLayer` 已不再创建却仍在 `handleLocate` 里调用 `has/highlight/flyTo` 的运行时炸点；④ `map/index.vue` —— 本机 P2-02 的 `resetPickResult`（清结果 + 图层名）与同事 MVT 叠加拾取的 `clearPickHighlight` / `_lastPluginPickPayload` 全部保留：`beforeDestroy` / `deactivated` / 退出拾取三处两个都调，`handlePickResult` 先记 payload 再归一 rows。判据：`git grep '^<<<<<<<'` 为 0，两端 `verify-sfc` 与后端编译在合并后复跑（见下一条）。 |
 | 2026-11-18 | **合并远端 `ee738ed` / `68be66b`（配套分析优化）+ 删除 system-start 8 个跑不起来的测试** | ① 本机唯一改动是 8 个集成测试被删除（`jeecg-system-start/src/test/java` 下 `ArchiveAndDocumentServiceTest` / `ArchiveCategoryServiceTest` / `ArchiveDemoExportTest` / `ArchiveManifestFormatTest` / `LandPermissionTreeTest` / `SysUserTest` / `SampleTest` / `TestMain`）：该模块的 surefire 继承根 pom 的 `skipTests=true`，而把 skipTests 改回 false 的 `it` profile **只定义在 `jeecg-module-land`**（§3.5），所以这些类从来没进过任何一次构建；它们还假设「本机 MySQL 127.0.0.1」，与 §3.2「一律打远程库」口径相反。**已知代价**：仓库内没有同名副本，`jeecg-module-land` 现有 33 个测试类也没有覆盖档案类别 / 权限树 / 系统用户 —— 以后补测试请写在 `jeecg-module-land`，不要再往 `system-start` 放。② 远端两个提交（配套估算改 MVT 拾取 + 业务表兜底出让金、管线统计底部布局与断面接线回归）**零冲突**合并；按 §3.10 复跑两端 `verify-sfc`（大屏 113 / 管理端 64）与改动文件 `eslint --no-ignore` 全绿，并核对 `analysis/index.vue` 尾部 `</style>` 完整、`estimate.js` 的具名导出确被 `analysis/index.vue` 引用（无孤儿线索）。 |
 | 2026-11-23 | **1118 业务侧整改落地（提交 / 推送 / 合并）** | 本轮按《业务相关问题整改清单1118》把工作区拆成后端 / 管理端 / 大屏端 / 文档四个提交推到 `origin/main`，再拉取合并（两侧功能都保留）。要点：① 竣工档案新增 `POST /land/archive/completion/linkArchiveBatch`（批量关联扫描件，整批一个事务、上限 100 条、任一失败全批回滚，每条按自身项目重算 `archive_count`）；② 档案类别 `archiveCount` 改为按 `path` 汇总「自身 + 全部祖先」（原来父类别恒为 0、详情也漏算子树），`t_archive_file` 不可用时「移除」直接拒绝，不再跳过校验后误删；③ 档案查询的类别条件改 `choose`（`categoryPath` 优先、否则 `categoryId`），两条件同时 AND 会查不到；④ 道路移交 / 验收台账：同一道路已有「移交中 / 已移交」（台账「验收中 / 已移交」）时禁止再次发起或推进到活跃态，编辑排除自身；详情关联档案 `limit=0` = 不限量；⑤ `limit=0` 成为「显式全量」契约（mapper 不拼 LIMIT，缺省仍 50 条上限），移交 / 台账 / 配套下拉共用；⑥ 单条配套与宗地解耦（P0-05）：宗地已移除 / 未登记不再阻断保存，`landExists` 只作提示，批量导入的 `allowOrphan` 闸门不变；配套查询补接 `ptsslb`（前端一直传、后端漏接 = 条件静默失效）；⑦ 附件：新增 `GET /land/data/attachment/objectOptions`（归属候选收进附件权限域，避免只有 `land:data:attachment` 的角色被档案 / 配套 Admin 权限拦成空候选），预览前先校验文件真实存在（否则把必然 404 交给 kkFileView，只表现为空白），压缩包只下载不预览；⑧ 切片：以 `pg_attribute` 真实列名解析字段（SHP 导入保留 DBF 大小写 `CRZDBH`，前端契约是小写），修掉 `column crzdbh does not exist` 导致图形回显 / 整组保存 / 定位一起失败；匹配 0 行时探测 U+FFFD 损坏并提示「按原始 DBF 编码（一般 GBK）重新导入」，对应 1118「双击定位报错 / 移除后图形残留」；⑨ 提级论证：行政区划 / 项目类型必填（编辑按「原值 + 本次值」合并校验），已办结必须有论证结论；详情补可打印区（原来 `window.print()` 打出来是空白页），查询页详情「编辑」改只读提示、图表下钻带页面当前条件；⑩ 查询统计新增 `crzdbh` 多值条件并按写入口径归一（补末尾「号」）；⑪ 大屏趋势图 x 轴标签抽稀（≤8 个、首末必留）。文档路径统一指向重组后的 `docs/模块实现说明/`、`docs/参考资料/`、`docs/原型与设计/`。验证：两端 `verify-sfc`（管理端 65 / 大屏 114）通过、改动文件 `eslint --no-ignore` 通过（`ScreenHeader.vue` / `ScreenStage.vue` 的 comma-dangle 是 HEAD 既有问题，本次只改注释行）；`ShpImportServiceImplGuardTest` 是随实现包一起移到 `spatial/service/impl`，不是删测试。 |
+| 2026-11-23 | **新增 §3.14 + 配套枚举扩档（旧库全量数据迁移）** | 把旧库 `nutzwk_ywk` 的 847 条地块 / 1433 条配套整理成两份可直接导入的 Excel（`docs/参考资料/旧系统迁移/新系统导入Excel/`），过程中发现旧库枚举列是自由文本、有 323 处「标准值之外但确有其事」的写法。口径定为**保留原值 + 原值补进允许取值**（清空会让首页立项率/开工率/资金到位率分母变小 → 指标静默失真）。改动：① `FacilityImportField` 扩 `PTSSLB/JSXX/DLDJ/ZJLY/ZJLSQK/PROGRESS_STATUS` 六个数组 + `zjlsqkAliases()`（落实→已落实、否→未落实）+ dldj 补「次干路/支路→次干路、支路」；② 新增 `sql/data/18_legacy_option_extend.sql`（**只补缺项、不删既有项**，新建 `land_zjly`/`land_zjlsqk`/`land_pfzt` 三个字典，已在远程库执行，三条守卫查询 0 行异常）；③ `FacilityFormModal.vue` 六列下拉全部改走字典（`FACILITY_DICT_OPTIONS`）+ 同源兜底数组，管理员此后可在「数据字典」里自己加项；④ 新增测试 `legacyOptionValuesFromOldDatabaseImportAsIs`，并同步 `confirmedDistrictFunctionAreaAndRoadLevelDefinitionsStayAligned` 的道路等级期望值。验证：`mvn -pl jeecg-module-land -am test -Pit -Dtest=FacilityImportTest,LandImportTest` → **30 个用例 0 失败**；`verify-sfc`（65 个 .vue）+ 改动文件 `eslint --no-ignore` 通过；两份 Excel 反读校验（必填/手机号/枚举/文件内重复/日期数值）**0 错误**，余 8 条孤儿配套需中心核对宗地编号。 |
+| 2026-11-24 | **修「配套列表的整体进度与详情『配套流程』不同步」** | 现象：大屏列表「整体进度」恒 0%，详情页签却显示 17%。根因是三个数各算各的：① `GET /land/data/facilityAdmin/list` 直接返回 `Facility` 实体、**根本没有 `processStat`**，前端 `progressOf()` 只能兜底 0%；② `/byLand` 的 `summarize` 把**已填报的记录**当分母（4 条全完成 = 100%）；③ `/processTree` 用「全部启用环节」当分母（4/24 = 17%）。收口：`FacilityAdminServiceImpl` 抽出内部类 `Skeleton`（六大阶段 + 全部事项）作为分母的唯一定义，`queryProcessTree` / `queryByLand` / `queryPage` 三处共用；`queryPage` 用一条 `pt_id IN (...)` 按页补 `processStat`（`Facility` 新增 `@TableField(exist=false)` 非表字段），`stageStatus` 同口径并补 `itemCount`（未填报按「未开启」计入分母）。管理端「环节进度」格文案由「已完成 x / 已填 y」改为「已完成 x / 共 N」（已填数收进悬浮提示），避免「17% 的条 + 4/4」自相矛盾。回归：`DataManagementTest#listProgressMatchesProcessTree`（列表 / `byLand` / 流程树三个百分数必须相等）。验证：`DataManagementTest` 40 用例全绿、`verify-sfc` 65 文件通过；全量 352 用例余 11 条失败经 stash 前后对照确认**与本次改动无关**（档案四类的基线快照/关联用例 + MVT 性能用例，属真实库数据漂移与机器时延）。 |
+| 2026-11-24 | **新增 §3.15 + 修两类导入错误回执的跨域下载** | 真机点「下载错误回执」报 `blocked by CORS policy: No 'Access-Control-Allow-Origin'`。根因不是跨域没配，而是下载方法里 `response.reset()` 按 Servlet 规范会把过滤器先加好的跨域头一起清掉（预览接口返回 JSON、不 reset，所以一直正常；模板下载走 window.open、不做 CORS 校验，也只有回执这种 `fetch + blob` 会中招）。新增 `DownloadResponseSupport.resetKeepingCors()`（`land/common/util`），经营性用地 / 配套两个回执的 `writeWorkbook` 与 `writeJsonError` 一并改用；`ImportErrorReportControllerTest` 补 3 个用真实 `CorsFilter` 的用例（改回 `reset()` 立刻红）。 |

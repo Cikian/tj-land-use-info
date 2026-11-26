@@ -28,3 +28,5 @@ dist/
 
 miiddle
 BKService
+## 运行期本地上传目录（TJ_UPLOAD_PATH 默认 ./upFiles，含真实业务文件，不入库）
+server/upFiles/
