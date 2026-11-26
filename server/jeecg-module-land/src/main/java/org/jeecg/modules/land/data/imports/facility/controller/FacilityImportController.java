@@ -8,6 +8,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.jeecg.common.api.vo.Result;
 import org.jeecg.common.aspect.annotation.AutoLog;
+import org.jeecg.modules.land.common.util.DownloadResponseSupport;
 import org.jeecg.modules.land.data.imports.facility.FacilityDuplicateStrategy;
 import org.jeecg.modules.land.data.imports.facility.FacilityImportField;
 import org.jeecg.modules.land.data.imports.facility.FacilityImportResultVO;
@@ -402,14 +403,21 @@ public class FacilityImportController {
                 + ".xlsx";
     }
 
-    /** 把工作簿写进响应流（.xlsx）。先序列化再提交响应，生成失败时才能返回完整 JSON 错误。 */
+    /**
+     * 把工作簿写进响应流（.xlsx）。先序列化再提交响应，生成失败时才能返回完整 JSON 错误。
+     *
+     * <p>★ 重置响应必须走 {@link DownloadResponseSupport#resetKeepingCors}，不能用 {@code response.reset()}：
+     * 配套回执与管理端/大屏端之间是跨域 {@code fetch + blob}，reset 会把过滤器加好的
+     * {@code Access-Control-Allow-Origin} 一起清掉，浏览器就把响应拦成「Failed to fetch」
+     * （经营性用地回执 2026-11-24 真机故障，本条与其同构）。
+     */
     private void writeWorkbook(HttpServletResponse response, Workbook workbook, String fileName)
             throws Exception {
         java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
         workbook.write(buffer);
 
         String encoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20");
-        response.reset();
+        DownloadResponseSupport.resetKeepingCors(response);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
@@ -422,10 +430,10 @@ public class FacilityImportController {
         }
     }
 
-    /** 未提交响应时统一返回合法 JSON，避免调用方把异常文本下载成损坏的 xlsx。 */
+    /** 未提交响应时统一返回合法 JSON，避免调用方把异常文本下载成损坏的 xlsx；reset 同样要保住跨域头。 */
     private void writeJsonError(HttpServletResponse response, String message) {
         try {
-            response.reset();
+            DownloadResponseSupport.resetKeepingCors(response);
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write(com.alibaba.fastjson.JSON.toJSONString(

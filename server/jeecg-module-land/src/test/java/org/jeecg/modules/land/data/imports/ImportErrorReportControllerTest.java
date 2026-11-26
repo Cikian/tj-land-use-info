@@ -16,8 +16,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -149,6 +153,139 @@ public class ImportErrorReportControllerTest {
         assertTrue(body.startsWith("{"), "异常响应不得带 ZIP/xlsx 前缀：" + body);
         assertTrue(body.contains("模拟 POI 序列化失败"), "应把真实序列化异常交给前端：" + body);
         assertTrue(body.contains("\"success\":false"));
+    }
+
+    // ------------------------------------------------------------------
+    // 跨域（CORS）回归
+    // ------------------------------------------------------------------
+
+    /**
+     * ★ 回归：跨域下载必须保住 CORS 响应头（两类回执都要）。
+     *
+     * <p><b>2026-11-24 真机故障</b>：点「下载错误回执」报
+     * {@code Access to fetch at '.../errorReport?token=...' from origin 'http://localhost:3000'
+     * has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present}。
+     *
+     * <p><b>根因</b>：Controller 的 {@code writeWorkbook} / {@code writeJsonError} 调了
+     * {@link javax.servlet.http.HttpServletResponse#reset()}，而按 Servlet 规范
+     * {@code reset()} 会把**响应头连同缓冲区一起清空** —— 其中就包括
+     * {@code CorsFilter}（{@code WebMvcConfiguration#corsFilter}）与 {@code JwtFilter#preHandle}
+     * 在进入 Controller 之前加好的 {@code Access-Control-Allow-Origin}。
+     * 于是浏览器认定「响应没有授权跨域」，前端 {@code fetch} 直接被拦成「Failed to fetch」。
+     *
+     * <p><b>为什么只有回执下载会中招</b>：模板/变更明细走 {@code window.open} 原生下载，
+     * 导航不参与 CORS 校验；回执因为要 POST 文件内容，只能用 {@code fetch + blob}，
+     * 这是全项目唯一受 CORS 约束的二进制下载。
+     *
+     * <p>用例用真实的 {@link CorsFilter}（与线上同一份配置口径）在 Controller 前面加头，
+     * 再断言经过 {@code reset()} 之后头还在。
+     */
+    @Test
+    public void crossOriginBinaryDownloadKeepsCorsHeaders() throws Exception {
+        ILandImportService service = mock(ILandImportService.class);
+        LandImportResultVO result = new LandImportResultVO();
+        result.addError(3, "TJ-TEST-CORS-3", "crzdbh", "出让宗地编号", "编号重复");
+        when(service.buildErrorReport(any(), eq(LandDuplicateStrategy.REJECT)))
+                .thenReturn(new LandImportSupport().buildErrorReport(result, rowNum -> null));
+
+        LandImportController controller = new LandImportController();
+        ReflectionTestUtils.setField(controller, "importService", service);
+        MvcResult response = MockMvcBuilders.standaloneSetup(controller)
+                .addFilters(allowAllCorsFilter())
+                .build()
+                .perform(crossOrigin(multipart("/land/data/import/errorReport").file(excelFile())))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertCorsHeadersUsable(response, "经营性用地错误回执", true);
+        assertXlsxResponse(response, "经营性用地导入错误回执_");
+    }
+
+    /** 配套回执同构：同一个 @reset 陷阱、同一个断言（真机两类都能复现） */
+    @Test
+    public void crossOriginFacilityErrorReportKeepsCorsHeaders() throws Exception {
+        IFacilityImportService service = mock(IFacilityImportService.class);
+        FacilityImportResultVO result = new FacilityImportResultVO();
+        result.addError(3, "TJ-TEST-CORS-F3", "lxdh", "联系电话", "手机号格式不正确");
+        when(service.buildErrorReport(any(), any(), anyBoolean()))
+                .thenReturn(new FacilityImportSupport().buildErrorReport(result, rowNum -> null));
+
+        FacilityImportController controller = new FacilityImportController();
+        ReflectionTestUtils.setField(controller, "importService", service);
+        MvcResult response = MockMvcBuilders.standaloneSetup(controller)
+                .addFilters(allowAllCorsFilter())
+                .build()
+                .perform(crossOrigin(multipart("/land/data/facilityImport/errorReport").file(excelFile())))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertCorsHeadersUsable(response, "配套信息错误回执", true);
+        assertXlsxResponse(response, "配套信息导入错误回执_");
+    }
+
+    /**
+     * 失败分支同样要保住 CORS 头：{@code writeJsonError} 也是 reset 后重写，
+     * 否则前端拿不到后端给的「为什么失败」，只剩一句笼统的「Failed to fetch」。
+     */
+    @Test
+    public void crossOriginJsonErrorKeepsCorsHeaders() throws Exception {
+        ILandImportService service = mock(ILandImportService.class);
+        Workbook broken = mock(Workbook.class);
+        doThrow(new IOException("模拟 POI 序列化失败")).when(broken).write(any(OutputStream.class));
+        when(service.buildErrorReport(any(org.springframework.web.multipart.MultipartFile.class),
+                any(LandDuplicateStrategy.class))).thenReturn(broken);
+
+        LandImportController controller = new LandImportController();
+        ReflectionTestUtils.setField(controller, "importService", service);
+        MvcResult response = MockMvcBuilders.standaloneSetup(controller)
+                .addFilters(allowAllCorsFilter())
+                .build()
+                .perform(crossOrigin(multipart("/land/data/import/errorReport").file(excelFile())))
+                .andExpect(status().isInternalServerError())
+                .andReturn();
+
+        assertCorsHeadersUsable(response, "错误回执的 JSON 失败响应", false);
+        String body = new String(response.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("模拟 POI 序列化失败"), "失败原因必须仍能跨域读到：" + body);
+    }
+
+    /** 与线上 {@code WebMvcConfiguration#corsFilter} 同口径：放行任意来源 + 允许携带凭证 */
+    private CorsFilter allowAllCorsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.addAllowedOriginPattern("*");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        source.registerCorsConfiguration("/**", config);
+        return new CorsFilter(source);
+    }
+
+    /** 模拟浏览器从管理端/大屏端 devServer 发出的跨域请求（带 Origin 与自定义令牌头） */
+    private MockHttpServletRequestBuilder crossOrigin(MockHttpServletRequestBuilder builder) {
+        return builder
+                .header("Origin", "http://localhost:3000")
+                .header("X-Access-Token", "stub-token");
+    }
+
+    /**
+     * 浏览器放行一个跨域响应要同时满足：回显来源 + 允许凭证；成功分支还必须能读到文件名字段。
+     * 少任何一个，前端都会退化成「Failed to fetch」且拿不到错误原因。
+     *
+     * @param expectExposeHeaders 二进制成功响应才需要（前端要从 Content-Disposition 取文件名）；
+     *                            JSON 失败响应只回状态与原因，不要求这一项
+     */
+    private void assertCorsHeadersUsable(MvcResult result, String what, boolean expectExposeHeaders) {
+        assertEquals("http://localhost:3000",
+                result.getResponse().getHeader("Access-Control-Allow-Origin"),
+                what + "：reset() 之后 Access-Control-Allow-Origin 丢了，浏览器会直接拦掉这个响应");
+        assertEquals("true",
+                result.getResponse().getHeader("Access-Control-Allow-Credentials"),
+                what + "：Access-Control-Allow-Credentials 丢了");
+        if (expectExposeHeaders) {
+            assertNotNull(result.getResponse().getHeader("Access-Control-Expose-Headers"),
+                    what + "：跨域下前端读不到 Content-Disposition，文件名与错误判定都会失效");
+        }
     }
 
     private MockMultipartFile excelFile() {
